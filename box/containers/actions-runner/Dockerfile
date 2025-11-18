@@ -11,7 +11,7 @@ LABEL org.opencontainers.image.base.name="docker.io/summerwind/actions-runner:v2
 USER root
 
 # Add additional APT sources for better availability
-COPY etc/apt/sources.list.d/ /etc/apt/sources.list.d/
+COPY rootfs/etc/apt/sources.list.d/ /etc/apt/sources.list.d/
 
 # Install make and other build essentials
 RUN apt-get update && \
