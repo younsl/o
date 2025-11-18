@@ -11,7 +11,7 @@ LABEL org.opencontainers.image.base.name="docker.io/summerwind/actions-runner:v2
 USER root
 
 # Add additional APT sources for better availability
-COPY kakao-mirror.sources /etc/apt/sources.list.d/kakao-mirror.sources
+COPY etc/apt/sources.list.d/ /etc/apt/sources.list.d/
 
 # Install make and other build essentials
 RUN apt-get update && \

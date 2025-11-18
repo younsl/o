@@ -30,9 +30,13 @@ docker build -t actions-runner . --platform linux/amd64
 # (Replace summerwind/actions-runner with this image)
 ```
 
+## Project Structure
+
+This project follows a common Docker pattern where the directory structure mirrors the container's filesystem layout. Configuration files are organized under `etc/apt/sources.list.d/` matching their actual destination path `/etc/apt/sources.list.d/` in the container. This approach makes it immediately clear where files will be placed and simplifies adding new configuration files.
+
 ## Customization
 
-Edit `additional-sources.list` to add or modify APT repository sources.
+Add or modify APT repository sources by placing `.sources` files in `etc/apt/sources.list.d/`.
 
 ## Changelog
 
