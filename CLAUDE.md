@@ -80,7 +80,11 @@ make deploy         # Deploy to Kubernetes (where available)
 **Container-Specific Notes**:
 - **filesystem-cleaner**: Includes `make all` target that runs fmt + lint + test + build
 - **elasticache-backup**: Supports multi-arch builds and has `run-json` target for JSON log testing
-- **actions-runner**: Has specialized build workflow for multi-arch images
+- **actions-runner**: Container-only image (no Makefile), built via GitHub Actions for linux/amd64
+  - Uses rootfs directory pattern: `rootfs/etc/apt/sources.list.d/` mirrors container destination `/etc/apt/sources.list.d/`
+  - APT sources use DEB822 format (`.sources` files), the official standard since Ubuntu 24.04
+  - Build args: BUILD_DATE for OCI image labels
+  - Release workflow checks if image exists on GHCR before building to prevent duplicate pushes
 - **hugo**, **backup-utils**: Built from external sources via workflow_dispatch (no local Dockerfile)
 - Update ECR_REGISTRY variable in Makefiles before pushing
 
