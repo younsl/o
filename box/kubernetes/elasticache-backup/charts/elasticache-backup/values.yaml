@@ -73,6 +73,10 @@ serviceAccount:
     # eks.amazonaws.com/role-arn: arn:aws:iam::123456789012:role/elasticache-backup-role
   # -- (bool) Automatically mount service account token in pods
   automountServiceAccountToken: true
+  # -- (list) Image pull secrets for the service account
+  imagePullSecrets: []
+    # - name: ghcr-secret
+    # - name: ecr-secret
 
 # -- Resource requests and limits
 # @default -- See below
@@ -114,6 +118,14 @@ env:
   # -- (int) Timezone offset in hours for snapshot filename generation (e.g., 9 for Asia/Seoul UTC+9, 0 for UTC)
   timezoneOffsetHours: 9
 
+# -- (object) Additional labels to add to pods
+# @default -- `{}`
+podLabels: {}
+
+# -- (object) Additional annotations to add to pods
+# @default -- `{}`
+podAnnotations: {}
+
 # -- (object) Node labels for pod assignment
 # @default -- `{}`
 nodeSelector: {}
@@ -125,6 +137,9 @@ tolerations: []
 # -- (object) Affinity rules for pod assignment
 # @default -- `{}`
 affinity: {}
+
+# -- (string) DNS policy for the pod (ClusterFirst, Default, ClusterFirstWithHostNet, None)
+dnsPolicy: ""
 
 # -- (object) DNS configuration for the pod
 # @default -- `{}`

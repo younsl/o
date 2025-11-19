@@ -99,11 +99,12 @@ The following table lists the configurable parameters and their default values.
 | snapshot.exportTimeout | int | `300` | Maximum wait time for S3 export completion in seconds (5 minutes) |
 | snapshot.checkInterval | int | `30` | Snapshot status check interval in seconds |
 | snapshot.retentionCount | int | `7` | Number of snapshots to retain in S3 (0 = unlimited, no cleanup) |
-| serviceAccount | object | `{"annotations":{},"automountServiceAccountToken":true,"create":true,"name":"elasticache-backup"}` | Service Account configuration |
+| serviceAccount | object | `{"annotations":{},"automountServiceAccountToken":true,"create":true,"imagePullSecrets":[],"name":"elasticache-backup"}` | Service Account configuration |
 | serviceAccount.create | bool | `true` | Specifies whether a service account should be created |
 | serviceAccount.name | string | `"elasticache-backup"` | The name of the service account to use |
 | serviceAccount.annotations | object | `{}` | Annotations to add to the service account (e.g., IRSA for AWS permissions) |
 | serviceAccount.automountServiceAccountToken | bool | `true` | Automatically mount service account token in pods |
+| serviceAccount.imagePullSecrets | list | `[]` | Image pull secrets for the service account |
 | resources | object | See below | Resource requests and limits |
 | resources.requests | object | `{"cpu":"100m","memory":"128Mi"}` | Resource requests |
 | resources.requests.memory | string | `"128Mi"` | Memory request |
@@ -121,9 +122,12 @@ The following table lists the configurable parameters and their default values.
 | env.logLevel | string | `"info"` | Log level (debug, info, warn, error) |
 | env.logFormat | string | `"json"` | Log format (json or pretty) |
 | env.timezoneOffsetHours | int | `9` | Timezone offset in hours for snapshot filename generation (e.g., 9 for Asia/Seoul UTC+9, 0 for UTC) |
+| podLabels | object | `{}` | Additional labels to add to pods |
+| podAnnotations | object | `{}` | Additional annotations to add to pods |
 | nodeSelector | object | `{}` | Node labels for pod assignment |
 | tolerations | list | `[]` | Tolerations for pod assignment |
 | affinity | object | `{}` | Affinity rules for pod assignment |
+| dnsPolicy | string | `""` | DNS policy for the pod (ClusterFirst, Default, ClusterFirstWithHostNet, None) |
 | dnsConfig | object | `{}` | DNS configuration for the pod |
 
 ## Source Code
