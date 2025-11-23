@@ -12,6 +12,10 @@ ec2-statuscheck-rebooter is a Kubernetes-based operational tool that monitors **
 
 Built with Rust 1.91 for minimal resource usage and maximum reliability.
 
+![Architecture Diagram](docs/assets/1.png)
+
+For detailed component structure and design decisions, see [Architecture Documentation](docs/architecture.md).
+
 ### What are EC2 Status Checks?
 
 AWS performs automated checks on every running EC2 instance to identify hardware and software issues:
@@ -45,33 +49,9 @@ This tool is specifically designed for monitoring **external EC2 instances** tha
 
 **Important**: This tool does NOT manage Kubernetes worker nodes. For EKS node health, use AWS Node Termination Handler or Karpenter. If you need Kubernetes node automatic reboots (e.g., after kernel updates), consider using [kured (Kubernetes Reboot Daemon)](https://github.com/kubereboot/kured) which safely drains and reboots nodes when `/var/run/reboot-required` is present.
 
-## Architecture
-
-![Architecture Diagram](docs/assets/1.png)
-
-For detailed component structure and design decisions, see [Architecture Documentation](docs/architecture.md).
-
 ## Installation
 
 For detailed installation instructions, see [Installation Guide](docs/installation.md).
-
-### Quick Start
-
-```bash
-# Pull chart from OCI registry
-helm pull oci://ghcr.io/younsl/ec2-statuscheck-rebooter-chart --untar
-
-# Install with EKS Pod Identity (recommended)
-helm upgrade --install ec2-statuscheck-rebooter ./charts/ec2-statuscheck-rebooter \
-  --namespace monitoring \
-  --create-namespace
-
-# Or install with IRSA
-helm upgrade --install ec2-statuscheck-rebooter ./charts/ec2-statuscheck-rebooter \
-  --namespace monitoring \
-  --create-namespace \
-  --set serviceAccount.annotations."eks\.amazonaws\.com/role-arn"=arn:aws:iam::ACCOUNT_ID:role/ROLE_NAME
-```
 
 ## Documentation
 

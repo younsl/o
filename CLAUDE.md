@@ -450,7 +450,8 @@ make run
 # Debug logging mode
 make dev
 
-# Deploy via Helm with EKS Pod Identity (recommended for EKS 1.24+)
+# Deploy via Helm OCI Registry (requires Helm 3.8.0+)
+# Deploy with EKS Pod Identity (recommended for EKS 1.24+)
 # Prerequisites: Create pod identity association first
 aws eks create-pod-identity-association \
   --cluster-name my-cluster \
@@ -458,18 +459,21 @@ aws eks create-pod-identity-association \
   --service-account ec2-statuscheck-rebooter \
   --role-arn arn:aws:iam::ACCOUNT_ID:role/EC2RebooterRole
 
-helm install ec2-statuscheck-rebooter ./box/kubernetes/ec2-statuscheck-rebooter/charts/ec2-statuscheck-rebooter \
+helm install ec2-statuscheck-rebooter oci://ghcr.io/younsl/charts/ec2-statuscheck-rebooter \
+  --version 0.1.0 \
   --namespace monitoring \
   --create-namespace
 
-# Deploy via Helm with IRSA
-helm install ec2-statuscheck-rebooter ./box/kubernetes/ec2-statuscheck-rebooter/charts/ec2-statuscheck-rebooter \
+# Deploy with IRSA
+helm install ec2-statuscheck-rebooter oci://ghcr.io/younsl/charts/ec2-statuscheck-rebooter \
+  --version 0.1.0 \
   --namespace monitoring \
   --create-namespace \
   --set serviceAccount.annotations."eks\.amazonaws\.com/role-arn"=arn:aws:iam::ACCOUNT_ID:role/ROLE_NAME
 
 # Monitor specific instances using tag filters
-helm install ec2-statuscheck-rebooter ./charts/ec2-statuscheck-rebooter \
+helm install ec2-statuscheck-rebooter oci://ghcr.io/younsl/charts/ec2-statuscheck-rebooter \
+  --version 0.1.0 \
   --set rebooter.tagFilters="{Environment=production,Role=database,AutoReboot=true}" \
   --set rebooter.checkIntervalSeconds=180 \
   --set rebooter.failureThreshold=3

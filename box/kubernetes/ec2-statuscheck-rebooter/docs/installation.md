@@ -6,7 +6,7 @@
 - AWS IAM role with EC2 permissions
   - Supports [IRSA (IAM Roles for Service Accounts)](https://docs.aws.amazon.com/eks/latest/userguide/iam-roles-for-service-accounts.html)
   - Supports [EKS Pod Identity](https://docs.aws.amazon.com/eks/latest/userguide/pod-identities.html)
-- Helm 3.x
+- Helm 3.8.0 or later (required for OCI Registry support)
 
 ## Required IAM Permissions
 
@@ -44,6 +44,13 @@ For detailed permission breakdown and usage, see [Architecture Documentation - A
 
 ## Installation Methods
 
+There are two ways to install ec2-statuscheck-rebooter:
+
+1. **Install from OCI Registry** - Pull and install directly from GitHub Container Registry (recommended)
+2. **Install from Local Chart** - Download chart locally first, then install
+
+Choose the authentication method that fits your environment:
+
 ### Option 1: EKS Pod Identity (Recommended for EKS 1.24+)
 
 [EKS Pod Identity](https://docs.aws.amazon.com/eks/latest/userguide/pod-identities.html) is the newer, simpler authentication method.
@@ -60,7 +67,7 @@ kubectl get daemonset eks-pod-identity-agent -n kube-system
 **Setup Steps:**
 
 1. Create IAM role with EC2 permissions with trust relationship for EKS pod identity
-2. Create pod identity association
+2. Create [pod identity association](https://docs.aws.amazon.com/cli/latest/reference/eks/create-pod-identity-association.html)
 
 ```bash
 aws eks create-pod-identity-association \
