@@ -13,9 +13,13 @@ ec2-statuscheck-rebooter/
 │   ├── lib.rs           # Module declarations
 │   ├── config.rs        # Configuration management
 │   ├── rebooter.rs      # Core monitoring loop
-│   ├── ec2.rs           # AWS EC2 API client
+│   ├── ec2.rs           # EC2 module entry point
+│   ├── ec2/
+│   │   ├── client.rs    # AWS SDK initialization & basic API calls
+│   │   ├── status.rs    # Status check logic & impaired detection (26 tests)
+│   │   └── tags.rs      # Tag processing & EKS node filtering (21 tests)
 │   ├── health.rs        # Health check server
-│   └── logging.rs       # Logging setup
+│   └── logging.rs       # Logging setup with RFC3339 timestamps
 ├── charts/              # Helm chart
 ├── Dockerfile
 ├── Cargo.toml
@@ -36,9 +40,21 @@ Defines all application settings including polling interval, failure threshold, 
 
 Implements the main monitoring loop that polls EC2 instance status at regular intervals. Maintains an in-memory failure tracker as a HashMap that counts consecutive failures for each instance. When an instance's failure count reaches the configured threshold, triggers a reboot and resets the counter. Coordinates between the EC2 client for API calls and the health server for readiness status.
 
-### ec2.rs - AWS API Integration
+### ec2 Module - AWS API Integration (Single Responsibility Principle Applied)
 
-Handles all interactions with AWS EC2 APIs. Initializes the AWS SDK with region configuration and tests connectivity on startup. Queries instance status using DescribeInstanceStatus and fetches instance tags with DescribeInstances. Implements EKS worker node exclusion by detecting Kubernetes-related tags (kubernetes.io/cluster/*, eks:cluster-name, eks:nodegroup-name). Logs excluded EKS nodes with cluster information and executes instance reboots via the RebootInstances API.
+The ec2 module is split into three focused components following the Single Responsibility Principle:
+
+#### ec2.rs - Module Entry Point
+Exports the public API (`Ec2Client` and `InstanceStatus` struct) and organizes submodules.
+
+#### ec2/client.rs - AWS SDK Initialization (115 lines)
+Handles AWS SDK configuration and basic API operations. Manages region resolution with priority: explicit config → AWS SDK defaults (env/~/.aws/config/IMDS). Provides connectivity testing via DescribeRegions API and executes instance reboots via RebootInstances API.
+
+#### ec2/status.rs - Status Check Logic (345 lines, 26 tests)
+Implements instance status monitoring and impaired detection. Queries DescribeInstanceStatus API with tag filters and processes status check results. Contains the critical `has_impaired_status()` function that determines reboot decisions. Comprehensive test coverage includes all status combinations: ok, impaired, insufficient-data, initializing, not-applicable, unknown, and edge cases.
+
+#### ec2/tags.rs - Tag Processing & EKS Filtering (455 lines, 21 tests)
+Handles instance tag retrieval and EKS worker node identification. Fetches tags via DescribeInstances API and filters out EKS nodes by detecting Kubernetes-related tags (`kubernetes.io/cluster/*`, `eks:cluster-name`, `eks:nodegroup-name`). Implements pattern matching for prefix and exact tag detection. Logs excluded EKS nodes with cluster information to prevent accidental cluster disruption.
 
 ### health.rs - Kubernetes Health Probes
 
@@ -46,7 +62,11 @@ Provides HTTP endpoints for Kubernetes liveness and readiness probes on port 808
 
 ### logging.rs - Structured Logging Setup
 
-Initializes tracing-subscriber with configurable format and level. Supports JSON format for structured logging in production (CloudWatch/Loki) and pretty format for human-readable output during local development. Respects environment variable overrides for flexible log level configuration per deployment.
+Initializes tracing-subscriber with configurable format and level. Supports two formats:
+- **JSON** (default, production): Single-line JSON with RFC3339 timestamps and `flatten_event(true)` for log aggregators like CloudWatch/Loki
+- **Pretty** (development): Multi-line human-readable output with `.compact()` formatting for local debugging
+
+Includes log format validation with automatic fallback to JSON for invalid inputs. Logs initialization details (format and level) for startup verification.
 
 ## Data Flow
 
@@ -67,14 +87,17 @@ Supports both IRSA (IAM Roles for Service Accounts) and EKS Pod Identity for cre
 
 | Permission | Purpose | Used In |
 |------------|---------|---------|
-| `ec2:DescribeRegions` | Verify AWS API connectivity on startup | `ec2.rs::test_connectivity()` |
-| `ec2:DescribeInstanceStatus` | Query instance status check results | `ec2.rs::get_instance_statuses()` |
-| `ec2:DescribeInstances` | Fetch instance tags for filtering EKS nodes | `ec2.rs::get_instance_tags()` |
-| `ec2:RebootInstances` | Execute instance reboot when threshold reached | `ec2.rs::reboot_instance()` |
+| `ec2:DescribeRegions` | Verify AWS API connectivity on startup | `ec2/client.rs::test_connectivity()` |
+| `ec2:DescribeInstanceStatus` | Query instance status check results | `ec2/status.rs::get_instance_statuses()` |
+| `ec2:DescribeInstances` | Fetch instance tags for filtering EKS nodes | `ec2/tags.rs::get_instance_tags()` |
+| `ec2:RebootInstances` | Execute instance reboot when threshold reached | `ec2/client.rs::reboot_instance()` |
 
 ### Setup Examples
 
 **Option 1: IRSA (IAM Roles for Service Accounts)**
+
+Traditional authentication method using OIDC provider. The service account annotation links the Kubernetes ServiceAccount to an IAM role, enabling the pod to assume AWS credentials automatically.
+
 ```yaml
 serviceAccount:
   annotations:
@@ -82,14 +105,24 @@ serviceAccount:
 ```
 
 **Option 2: EKS Pod Identity (EKS 1.24+)**
+
+Simplified authentication method that eliminates the need for OIDC provider configuration. Creates a direct association between the EKS cluster, namespace, service account, and IAM role. Recommended for new EKS clusters.
+
 ```bash
 aws eks create-pod-identity-association \
   --cluster-name my-cluster \
+  --namespace monitoring \
   --service-account ec2-statuscheck-rebooter \
   --role-arn arn:aws:iam::ACCOUNT:role/ROLE_NAME
 ```
 
-Both authentication methods are supported and work transparently with the AWS SDK.
+**Note**: The `create-pod-identity-association` command requires AWS CLI version 2.13.23 or later. Use `aws eks help` to verify EKS Pod Identity commands are available.
+
+**Reference**:
+- [EKS Pod Identity AWS CLI Reference](https://docs.aws.amazon.com/cli/latest/reference/eks/create-pod-identity-association.html)
+- [EKS Pod Identity Official Guide](https://docs.aws.amazon.com/eks/latest/userguide/pod-identities.html)
+
+Both authentication methods are supported and work transparently with the AWS SDK. The application automatically detects and uses the available credentials without code changes.
 
 ## Design Decisions
 

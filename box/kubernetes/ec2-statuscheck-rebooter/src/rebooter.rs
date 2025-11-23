@@ -17,7 +17,8 @@ pub struct StatusCheckRebooter {
 
 impl StatusCheckRebooter {
     pub async fn new(config: Config, health_server: HealthServer) -> Result<Self> {
-        let ec2_client = Ec2Client::new(config.region.clone()).await?;
+        // Pass region as Option<&str> to avoid cloning
+        let ec2_client = Ec2Client::new(config.region.as_deref()).await?;
 
         Ok(Self {
             ec2_client,

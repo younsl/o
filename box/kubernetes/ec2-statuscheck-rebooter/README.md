@@ -25,6 +25,24 @@ AWS performs automated checks on every running EC2 instance to identify hardware
 
 When these checks fail and return **impaired** status, this tool automatically reboots the instance after reaching the configured failure threshold.
 
+### Status Check Handling
+
+The following table shows how different status check combinations are handled:
+
+| Situation | System Status | Instance Status | Action |
+|-----------|---------------|-----------------|--------|
+| Normal operation | `ok` | `ok` | No action |
+| Physical host failure | `impaired` | `ok` | Reboot after threshold |
+| Guest OS issue (kernel panic, OOM, etc.) | `ok` | `impaired` | Reboot after threshold |
+| Both checks failed | `impaired` | `impaired` | Reboot after threshold |
+| Insufficient monitoring data | `insufficient-data` | `ok` | No action (wait for data) |
+| Instance initializing | `initializing` | `initializing` | No action (wait for ready) |
+
+**Notes**:
+- Reboot occurs only after reaching `failure_threshold` (default: 2 consecutive failures)
+- `insufficient-data` status is ignored as it's temporary during instance startup or metric collection issues
+- EKS worker nodes are automatically excluded from monitoring (managed by Karpenter/Kured instead)
+
 ## Features
 
 - **Automatic Monitoring**: Periodically checks EC2 instance status
