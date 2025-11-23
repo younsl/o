@@ -1,5 +1,5 @@
 <!--
-Thank you for contributing to idled!
+Thank you for contributing!
 
 Please make sure that your PR meets the following requirements:
 -->

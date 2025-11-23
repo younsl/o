@@ -118,7 +118,6 @@ box/
 │   └── policies/          # Kyverno and CEL admission policies
 ├── tools/                 # CLI utilities
 │   ├── cocd/              # GitHub Actions deployment monitor (Go, TUI)
-│   ├── idled/             # AWS idle resource scanner (moved to private repo)
 │   ├── kk/                # Domain connectivity checker (Rust)
 │   ├── qg/                # QR code generator (Rust)
 │   └── s3vget/            # S3 object version downloader (Rust)
@@ -603,29 +602,37 @@ GitHub Actions automatically builds and releases on tag push:
 # CLI tool releases (pattern: {tool}/x.y.z)
 git tag cocd/1.0.0 && git push --tags      # Go
 git tag promdrop/1.0.0 && git push --tags  # Rust
+git tag kk/1.0.0 && git push --tags        # Rust
 
 # Container image releases (pattern: {container}/x.y.z)
 git tag filesystem-cleaner/1.0.0 && git push --tags
 git tag elasticache-backup/1.0.0 && git push --tags
 git tag ec2-statuscheck-rebooter/1.0.0 && git push --tags
+git tag redis-console/1.0.0 && git push --tags
 git tag actions-runner/1.0.0 && git push --tags
 
+# Helm chart releases (pattern: {chart}-chart/x.y.z)
+git tag elasticache-backup-chart/1.0.0 && git push --tags
+git tag redis-console-chart/1.0.0 && git push --tags
+
 # Available workflows:
-# - release-cocd.yml                    (Go CLI tool)
-# - release-kk.yml                      (Rust CLI + container)
-# - release-promdrop.yml                (Rust CLI + container)
-# - release-filesystem-cleaner.yml      (Rust container)
-# - release-elasticache-backup.yml      (Rust container)
-# - release-ec2-statuscheck-rebooter.yml (Rust container)
-# - release-actions-runner.yml          (Container image)
-# - release-hugo.yml                    (Workflow dispatch - builds from external source)
-# - release-backup-utils.yml            (Workflow dispatch - builds from external source)
+# - release-cocd.yml                         (Go CLI tool)
+# - release-kk.yml                           (Rust CLI + container)
+# - release-promdrop.yml                     (Rust CLI + container)
+# - release-filesystem-cleaner.yml           (Rust container)
+# - release-elasticache-backup.yml           (Rust container)
+# - release-elasticache-backup-chart.yml     (Helm chart)
+# - release-ec2-statuscheck-rebooter.yml     (Rust container)
+# - release-redis-console.yml                (Rust container)
+# - release-redis-console-chart.yml          (Helm chart)
+# - release-actions-runner.yml               (Container image)
+# - release-backup-utils.yml                 (Workflow dispatch - builds from external source)
+# - release-hugo.yml                         (Workflow dispatch)
 
 # Rust tools without automated releases (manual release required):
 # - qg (QR code generator)
 # - s3vget (S3 object version downloader)
 # - podver (Pod version scanner - has Makefile docker-build/push targets)
-# - redis-console (Redis cluster management CLI - has Makefile docker-build/push targets)
 ```
 
 ## Testing Guidelines
@@ -668,3 +675,14 @@ Rust projects:
 
 **Graceful Shutdown**:
 - Both: Signal handling (SIGTERM, SIGINT) with cleanup logic
+
+## Pull Request Guidelines
+
+When creating pull requests, follow the template structure in `.github/pull_request_template.md`:
+
+**PR Types**: bump, bug, cleanup, documentation, feature, enhancement, test, chore
+
+**Required Sections**:
+- What this PR does / why we need it
+- Which issue(s) this PR fixes (use `Fixes #issue_number` format)
+- Testing done (unit tests, integration tests, manual verification)
