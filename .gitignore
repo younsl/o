@@ -99,39 +99,13 @@ terraform.rc
 #----------------------------------
 /commit-history-cleaner.sh
 
-# Ignore original script file
-!box/script/github/commit-history-cleaner/commit-history-cleaner.sh
-
-#----------------------------------
-# Marp
-#----------------------------------
-# Ignore slides
-box/slides/*/*.html
-
-#----------------------------------
-# kk (knock-knock)
-#----------------------------------
-**/kk/*.yaml
-!**/kk/example.yaml
-!**/kk/internal/config
-
-#----------------------------------
-# cryptopunk-generator
-#----------------------------------
-!**/cryptopunk-generator/pkg/config
-
 #----------------------------------
 # cocd
 #----------------------------------
 !**/cocd/pkg/config
 
 #----------------------------------
-# job tracker
+# Rust
 #----------------------------------
-!**/job-tracker/cmd/job-tracker/*
-!**/job-tracker/pkg/config
-
-#----------------------------------
-# filesystem-cleaner
-#----------------------------------
-!**/filesystem-cleaner/pkg/config
+# Build artifacts
+**/target/
