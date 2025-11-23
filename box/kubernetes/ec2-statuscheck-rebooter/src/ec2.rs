@@ -228,11 +228,55 @@ impl Ec2Client {
             .context("Failed to describe instances for tags")?;
 
         let mut tags_map = std::collections::HashMap::new();
+        let mut eks_nodes_excluded = 0;
 
         for reservation in response.reservations() {
             for instance in reservation.instances() {
                 if let Some(instance_id) = instance.instance_id() {
                     let tags = instance.tags();
+
+                    // Check if instance is an EKS worker node
+                    let is_eks_node = tags.iter().any(|tag| {
+                        if let Some(key) = tag.key() {
+                            key.starts_with("kubernetes.io/cluster/")
+                                || key == "eks:cluster-name"
+                                || key == "eks:nodegroup-name"
+                        } else {
+                            false
+                        }
+                    });
+
+                    if is_eks_node {
+                        let instance_name = tags
+                            .iter()
+                            .find(|tag| tag.key() == Some("Name"))
+                            .and_then(|tag| tag.value())
+                            .unwrap_or("N/A");
+
+                        let cluster_name = tags
+                            .iter()
+                            .find(|tag| tag.key() == Some("eks:cluster-name"))
+                            .and_then(|tag| tag.value())
+                            .or_else(|| {
+                                tags.iter()
+                                    .find(|tag| {
+                                        tag.key().is_some_and(|k| {
+                                            k.starts_with("kubernetes.io/cluster/")
+                                        })
+                                    })
+                                    .and_then(|tag| tag.key())
+                                    .map(|k| {
+                                        k.strip_prefix("kubernetes.io/cluster/")
+                                            .unwrap_or("unknown")
+                                    })
+                            })
+                            .unwrap_or("unknown");
+
+                        info!(instance_id = %instance_id, instance_name = %instance_name, cluster_name = %cluster_name, "Excluding EKS worker node from monitoring");
+                        eks_nodes_excluded += 1;
+                        continue;
+                    }
+
                     for tag in tags {
                         if tag.key() == Some("Name")
                             && let Some(value) = tag.value()
@@ -244,6 +288,14 @@ impl Ec2Client {
             }
         }
 
+        if eks_nodes_excluded > 0 {
+            info!(
+                eks_nodes_excluded = eks_nodes_excluded,
+                total_instances_checked = instance_ids.len(),
+                "EKS worker nodes excluded from monitoring"
+            );
+        }
+
         debug!(
             tagged_instances = tags_map.len(),
             "Fetched instance name tags"
@@ -253,9 +305,11 @@ impl Ec2Client {
     }
 
     pub async fn reboot_instance(&self, instance_id: &str) -> Result<()> {
-        debug!(
+        info!(
             instance_id = %instance_id,
-            "Calling EC2 RebootInstances API"
+            region = %self.region,
+            api_action = "RebootInstances",
+            "Sending reboot request to AWS EC2 API"
         );
 
         self.client
