@@ -492,6 +492,8 @@ helm install ec2-statuscheck-rebooter ./charts/ec2-statuscheck-rebooter \
 
 **Important**: NOT for EKS worker node management - use AWS Node Termination Handler or Karpenter instead.
 
+**Note**: For Kubernetes node automatic reboots (e.g., after kernel updates), consider using [kured (Kubernetes Reboot Daemon)](https://github.com/kubereboot/kured) which safely drains and reboots nodes when `/var/run/reboot-required` is present.
+
 ### redis-console - Interactive Redis Cluster Management CLI (Rust)
 
 An interactive REPL for managing multiple Redis and AWS ElastiCache clusters from a single terminal session.

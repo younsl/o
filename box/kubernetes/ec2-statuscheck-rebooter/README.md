@@ -43,7 +43,7 @@ This tool is specifically designed for monitoring **external EC2 instances** tha
 - **Third-party Software**: Licensed software requiring EC2 deployment
 - **Hybrid Infrastructure**: Bridge between traditional and cloud-native workloads
 
-**Important**: This tool does NOT manage Kubernetes worker nodes. For EKS node health, use AWS Node Termination Handler or Karpenter.
+**Important**: This tool does NOT manage Kubernetes worker nodes. For EKS node health, use AWS Node Termination Handler or Karpenter. If you need Kubernetes node automatic reboots (e.g., after kernel updates), consider using [kured (Kubernetes Reboot Daemon)](https://github.com/kubereboot/kured) which safely drains and reboots nodes when `/var/run/reboot-required` is present.
 
 ## Architecture
 
