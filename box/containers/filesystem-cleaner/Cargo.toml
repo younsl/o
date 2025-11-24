@@ -29,7 +29,7 @@ globset = "=0.4.18"
 sysinfo = "0.37"
 
 # Human-readable byte sizes
-bytesize = "2.1"
+bytesize = "2.3"
 
 # Serialization (for future config file support)
 serde = { version = "1.0", features = ["derive"] }
