@@ -75,7 +75,7 @@ func Load() (*Config, error) {
 	if config.GitHub.Token == "" {
 		if token := os.Getenv("GITHUB_TOKEN"); token != "" {
 			config.GitHub.Token = token
-		} else if token := getGHToken(); token != "" {
+		} else if token := getGHToken(config.GitHub.BaseURL); token != "" {
 			config.GitHub.Token = token
 		} else {
 			return nil, fmt.Errorf("GitHub token is required. Please set GITHUB_TOKEN environment variable or login with 'gh auth login'")
@@ -85,11 +85,49 @@ func Load() (*Config, error) {
 	return &config, nil
 }
 
-func getGHToken() string {
-	cmd := exec.Command("gh", "auth", "token")
+// getGHToken retrieves GitHub token from gh CLI.
+// If baseURL is provided, it uses the --hostname flag to specify the GitHub instance.
+func getGHToken(baseURL string) string {
+	hostname := extractHostname(baseURL)
+
+	var cmd *exec.Cmd
+	if hostname == "" {
+		// No hostname specified, use default gh auth token
+		cmd = exec.Command("gh", "auth", "token")
+	} else {
+		// Use --hostname flag for both github.com and GHES
+		cmd = exec.Command("gh", "auth", "token", "--hostname", hostname)
+	}
+
 	output, err := cmd.Output()
 	if err != nil {
 		return ""
 	}
 	return strings.TrimSpace(string(output))
+}
+
+// extractHostname extracts the hostname from a URL or returns the input if it's already a hostname.
+// Examples:
+//   - "https://github.com" -> "github.com"
+//   - "https://api.github.com" -> "api.github.com"
+//   - "https://github.coinfra.net" -> "github.coinfra.net"
+//   - "github.coinfra.net" -> "github.coinfra.net"
+func extractHostname(baseURL string) string {
+	if baseURL == "" {
+		return ""
+	}
+
+	// Remove protocol prefix if present
+	baseURL = strings.TrimPrefix(baseURL, "https://")
+	baseURL = strings.TrimPrefix(baseURL, "http://")
+
+	// Remove path and query parameters if present
+	if idx := strings.Index(baseURL, "/"); idx != -1 {
+		baseURL = baseURL[:idx]
+	}
+	if idx := strings.Index(baseURL, "?"); idx != -1 {
+		baseURL = baseURL[:idx]
+	}
+
+	return baseURL
 }
