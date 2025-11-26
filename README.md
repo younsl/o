@@ -1,6 +1,6 @@
 # o
 
-<img width="64" height="64" alt="l" src="https://github.com/user-attachments/assets/fc9a3082-30ed-4ce2-9415-b1f73dc2389d" />
+<img width="64" height="64" alt="logo" src="logo-64x64.png" />
 
 **o** stands for **operation essentials** — a collection of Kubernetes addons and CLI tools for production operations.
 
