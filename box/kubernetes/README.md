@@ -21,7 +21,6 @@ Kubernetes tools, policy resources, and architecture documentation organized by 
 | Kubernetes Addon | [redis-console](./redis-console/) | [Rust](./redis-console/Cargo.toml) | Active | Centralized terminal running as Kubernetes [Deployment](https://kubernetes.io/docs/concepts/workloads/controllers/deployment/) for managing multiple Redis and AWS ElastiCache clusters (Helm chart available) |
 | Tools | [podver](./podver/) | [Rust](./podver/Cargo.toml) | Active | CLI tool that scans and reports Java and Node.js runtime versions across pods in a cluster |
 | Tools | [promdrop](./promdrop/) | [Rust](./promdrop/Cargo.toml) | Active | Prometheus scrape config generator to drop unused metrics analyzed by [mimirtool](https://grafana.com/docs/mimir/latest/manage/tools/mimirtool/) |
-| Resources | [policies](./policies/) | - | Active | Collection of [Kyverno](https://kyverno.io/) policies for Kubernetes cluster security and governance. |
 
 ## License
 
