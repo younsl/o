@@ -11,7 +11,7 @@ Built primarily with [Rust](https://github.com/rust-lang/rust) 1.91+ (except `co
 Production-ready tools, controllers, and automation resources for Kubernetes and cloud infrastructure.
 
 - **[tools](./box/tools/)** - CLI tools for monitoring and testing
-- **[kubernetes](./box/kubernetes/)** - Controllers and admission policies
+- **[kubernetes](./box/kubernetes/)** - Kubernetes addons and CLI tools
 - **[containers](./box/containers/)** - Runtime images for CI/CD and data platforms
 - **[terraform](./box/terraform/)** - Infrastructure modules
 - **[actions](./box/actions/)** - Reusable workflow templates
