@@ -34,7 +34,7 @@ RUN strip /app/target/release/filesystem-cleaner && \
     upx --best --lzma /app/target/release/filesystem-cleaner
 
 # Runtime stage
-FROM alpine:3.22 AS runtime
+FROM alpine:3.23 AS runtime
 
 # Create non-root user (no ca-certificates or tzdata - not needed for filesystem operations)
 RUN addgroup -g 1000 cleaner && \
