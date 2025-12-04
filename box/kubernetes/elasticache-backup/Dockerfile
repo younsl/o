@@ -23,7 +23,7 @@ COPY src ./src
 RUN cargo build --release
 
 # Runtime stage - Minimal Alpine (multi-arch)
-FROM alpine:3.22 AS runtime
+FROM alpine:3.23 AS runtime
 
 # Install only essential runtime dependencies
 RUN apk add --no-cache \
