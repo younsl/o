@@ -7,7 +7,7 @@
 #   http://localhost:8080/
 #
 
-FROM alpine:3.22.2
+FROM alpine:3.23.0
 LABEL maintainer="Younsung Lee <cysl@kakao.com>" \
       version="1.0.0" \
       description="Lightweight container image for running apache benchmark(ab)" \
