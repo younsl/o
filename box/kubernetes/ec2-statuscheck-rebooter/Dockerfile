@@ -37,7 +37,7 @@ COPY src ./src
 RUN CARGO_INCREMENTAL=0 CARGO_BUILD_JOBS=2 cargo build --release
 
 # Runtime stage
-FROM alpine:3.22 AS runtime
+FROM alpine:3.23 AS runtime
 
 # Install runtime dependencies
 RUN apk add --no-cache ca-certificates
