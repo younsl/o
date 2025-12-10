@@ -1,6 +1,6 @@
 # ij
 
-Interactive EC2 Session Manager connection tool. Scans all AWS regions concurrently and connects via SSM.
+Interactive EC2 Session Manager connection tool written in Rust. Scans all AWS regions concurrently and connects via SSM. Inspired by [gossm](https://github.com/gjbae1212/gossm).
 
 ## Usage
 
