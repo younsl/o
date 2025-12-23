@@ -15,6 +15,7 @@ Production-ready container images for DevOps automation, development tooling, an
 | 3 | [**mageai**](./mageai/0.9.73-custom.1/) | Custom mageai 0.9.73 image | - | - |
 | 4 | [**backup-utils**](/.github/workflows/release-backup-utils.yml) | GitHub Enterprise backup/restore tools (uses original Dockerfile) | [backup-utils](https://github.com/younsl/charts/tree/main/charts/backup-utils) | [ghcr.io/younsl/backup-utils](https://github.com/younsl/o/pkgs/container/backup-utils) ⚠️ **Deprecated** - GitHub Enterprise Server 3.17+ includes [built-in backup service](https://docs.github.com/en/enterprise-server@latest/admin/backing-up-and-restoring-your-instance/backup-service-for-github-enterprise-server/configuring-the-backup-service) |
 | 5 | [**filesystem-cleaner**](./filesystem-cleaner/) | Sidecar container that monitors and cleans specified directories | - | [ghcr.io/younsl/filesystem-cleaner](https://github.com/younsl/o/pkgs/container/filesystem-cleaner) |
+| 6 | [**logstash-with-opensearch-plugin**](./logstash-with-opensearch-plugin/) | Logstash 8.17.0 with OpenSearch output plugin and Asia/Seoul timezone | - | [ghcr.io/younsl/logstash-with-opensearch-plugin](https://github.com/younsl/o/pkgs/container/logstash-with-opensearch-plugin) |
 
 ## References
 
