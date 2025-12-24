@@ -81,13 +81,13 @@ jobs:
         uses: dtolnay/rust-toolchain@stable
 
       - name: Cache cargo registry
-        uses: actions/cache@v4
+        uses: actions/cache@v5
         with:
           path: ~/.cargo/registry
           key: ${{ runner.os }}-cargo-registry-${{ hashFiles('**/Cargo.lock') }}
 
       - name: Cache cargo build
-        uses: actions/cache@v4
+        uses: actions/cache@v5
         with:
           path: ${{ env.PROJECT_BASE_DIR }}/target
           key: ${{ runner.os }}-cargo-build-test-${{ hashFiles('**/Cargo.lock') }}
