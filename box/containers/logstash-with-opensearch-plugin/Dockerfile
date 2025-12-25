@@ -5,7 +5,7 @@
 #   -v $(pwd)/pipeline:/usr/share/logstash/pipeline \
 #   logstash-with-opensearch-plugin:8.17.0
 
-FROM docker.elastic.co/logstash/logstash:8.17.0
+FROM docker.elastic.co/logstash/logstash:9.2.3
 
 LABEL maintainer="Younsung Lee <cysl@kakao.com>" \
       version="8.17.0" \
