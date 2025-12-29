@@ -77,5 +77,5 @@ PVC 삭제 시 StorageClass의 `reclaimPolicy`에 따라 PV(EBS)도 함께 삭�
 
 ## 참고
 
-- MSK가 버퍼 역할을 하므로 StatefulSet 삭제 중 데이터 손실 없음
+- MSK가 메시지를 retention 기간 동안 보관하고 consumer offset을 관리하므로, Logstash StatefulSet 삭제 후 재생성 시에도 마지막 처리 지점부터 이어서 consume할 수 있어 데이터 손실이 없다
 - DLQ 필요 시 PVC + `dead_letter_queue.enable: true` 설정 필요
