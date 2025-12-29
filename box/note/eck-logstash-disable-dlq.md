@@ -19,6 +19,8 @@ Kafka가 메시지 영속성을 보장하므로 Logstash 실패 시에도 데이
 
 ### 1. DLQ 비활성화
 
+`dead_letter_queue.enable`을 생략하면 기본값은 `true`이므로 명시적으로 비활성화해야 한다.
+
 ```yaml
 # charts/eck-stack/values.yaml
 eck-logstash:
