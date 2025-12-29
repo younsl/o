@@ -25,6 +25,7 @@ Kafka가 메시지 영속성을 보장하므로 Logstash 실패 시에도 데이
 # charts/eck-stack/values.yaml
 eck-logstash:
   config:
+    # Disable DLQ to prevent automatic volume creation
     dead_letter_queue.enable: false
 ```
 
