@@ -35,7 +35,7 @@ bytesize = "2.3"
 serde = { version = "1.0", features = ["derive"] }
 
 [dev-dependencies]
-tempfile = "3.13"
+tempfile = "3.24"
 
 [build-dependencies]
 chrono = "0.4"
