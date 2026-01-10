@@ -15,3 +15,5 @@ sources:
   - https://github.com/younsl/o/tree/main/box/kubernetes/trivy-collector
 maintainers:
   - name: younsl
+    email: cysl@kakao.com
+    url: https://github.com/younsl
