@@ -45,11 +45,11 @@ spec:
               value: {{ .Values.logging.level | quote }}
             - name: HEALTH_PORT
               value: {{ .Values.health.port | quote }}
+            - name: CLUSTER_NAME
+              value: {{ .Values.clusterName | quote }}
             {{- if eq .Values.mode "collector" }}
             - name: SERVER_URL
               value: {{ .Values.collector.serverUrl | quote }}
-            - name: CLUSTER_NAME
-              value: {{ .Values.collector.clusterName | quote }}
             {{- if .Values.collector.namespaces }}
             - name: NAMESPACES
               value: {{ join "," .Values.collector.namespaces | quote }}

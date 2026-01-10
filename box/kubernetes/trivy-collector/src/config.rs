@@ -58,9 +58,9 @@ pub struct Config {
     #[arg(long, env = "SERVER_URL")]
     pub server_url: Option<String>,
 
-    /// Cluster identifier (collector mode only)
-    #[arg(long, env = "CLUSTER_NAME")]
-    pub cluster_name: Option<String>,
+    /// Cluster identifier
+    #[arg(long, env = "CLUSTER_NAME", default_value = "local")]
+    pub cluster_name: String,
 
     /// Namespaces to watch, comma-separated (empty = all namespaces)
     #[arg(long, env = "NAMESPACES", value_delimiter = ',')]
@@ -100,10 +100,6 @@ pub struct Config {
     /// Enable local Kubernetes API watching in server mode
     #[arg(long, env = "WATCH_LOCAL", default_value = "true")]
     pub watch_local: bool,
-
-    /// Local cluster name for server mode K8s watching
-    #[arg(long, env = "LOCAL_CLUSTER_NAME", default_value = "local")]
-    pub local_cluster_name: String,
 }
 
 impl Config {
@@ -118,9 +114,6 @@ impl Config {
                 if self.server_url.is_none() {
                     return Err("SERVER_URL is required in collector mode".to_string());
                 }
-                if self.cluster_name.is_none() {
-                    return Err("CLUSTER_NAME is required in collector mode".to_string());
-                }
             }
             Mode::Server => {
                 // Server mode has sensible defaults, no required fields
@@ -134,9 +127,9 @@ impl Config {
         self.server_url.as_deref().unwrap_or("")
     }
 
-    /// Get cluster name (collector mode)
+    /// Get cluster name
     pub fn get_cluster_name(&self) -> &str {
-        self.cluster_name.as_deref().unwrap_or("unknown")
+        &self.cluster_name
     }
 
     /// Get SQLite database path

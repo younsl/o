@@ -45,7 +45,7 @@ pub async fn run(
     // Start local Kubernetes watcher if enabled
     let watcher_handle = if config.watch_local {
         let db_clone = db.clone();
-        let cluster_name = config.local_cluster_name.clone();
+        let cluster_name = config.cluster_name.clone();
         let namespaces = config.namespaces.clone();
         let shutdown_rx = shutdown.clone();
         let watcher_status_clone = watcher_status.clone();

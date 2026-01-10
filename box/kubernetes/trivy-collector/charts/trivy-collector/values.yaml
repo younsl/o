@@ -68,6 +68,9 @@ securityContext:
 # @default -- collector
 mode: collector
 
+# -- (string) Cluster name identifier
+clusterName: "local"
+
 # ============================================
 # Collector mode settings (Edge clusters)
 # ============================================
@@ -75,8 +78,6 @@ mode: collector
 collector:
   # -- (string) Central server URL (required for collector mode)
   serverUrl: ""
-  # -- (string) Cluster identifier (required for collector mode)
-  clusterName: ""
   # -- (list) Namespaces to watch (empty = all namespaces)
   namespaces: []
   # -- (bool) Collect VulnerabilityReports

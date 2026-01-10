@@ -28,6 +28,7 @@ async fn main() -> Result<()> {
         commit = env!("VERGEN_GIT_SHA"),
         build_date = env!("VERGEN_BUILD_TIMESTAMP"),
         mode = %config.mode,
+        cluster = %config.cluster_name,
         "trivy-collector starting"
     );
 
@@ -96,6 +97,8 @@ async fn run_mode(
             info!(
                 port = config.server_port,
                 storage_path = %config.storage_path,
+                cluster = %config.cluster_name,
+                watch_local = config.watch_local,
                 "Running in server mode"
             );
             server::run(config, health_server, shutdown_rx).await
