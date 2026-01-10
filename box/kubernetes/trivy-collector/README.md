@@ -10,6 +10,25 @@ Multi-cluster Trivy report collector and viewer - Rust-based Kubernetes applicat
 
 This tool collects [Trivy Operator](https://github.com/aquasecurity/trivy-operator) reports (VulnerabilityReports, SbomReports) from multiple Kubernetes clusters and provides a centralized web UI for viewing and filtering security reports.
 
+## Background
+
+[Trivy Operator](https://github.com/aquasecurity/trivy-operator) is an excellent tool for scanning container vulnerabilities and generating SBOMs in Kubernetes. However, it only creates Custom Resources (VulnerabilityReports, SbomReports) within the cluster - **it doesn't provide any interface for Security Engineers to analyze this data**.
+
+This creates real collaboration challenges:
+
+- **Kubernetes Expertise Required**: Security Engineers must learn kubectl, understand CRDs, and parse YAML/JSON to review vulnerabilities
+- **Scattered Data**: In multi-cluster environments, reports are distributed across clusters with no central view
+- **No Filtering**: Finding critical vulnerabilities across hundreds of reports means manual grep/jq operations
+- **No Historical View**: CRDs only show current state; there's no built-in way to track changes over time
+
+```bash
+# Without trivy-collector: Security Engineers need to run this
+kubectl get vulnerabilityreports -A -o json | \
+  jq '.items[] | select(.report.summary.criticalCount > 0) | {namespace: .metadata.namespace, name: .metadata.name, critical: .report.summary.criticalCount}'
+```
+
+**trivy-collector** bridges the gap between Platform Engineers and Security Engineers. Security teams can analyze vulnerability data through a familiar web interface - no Kubernetes knowledge or cluster access required. Just open the dashboard and start reviewing.
+
 ## Features
 
 - **Multi-cluster support**: Collect reports from multiple Kubernetes clusters
