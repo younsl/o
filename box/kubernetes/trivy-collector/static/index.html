@@ -1,0 +1,106 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Trivy Collector</title>
+    <link rel="stylesheet" href="/style.css">
+</head>
+<body>
+    <header>
+        <div class="header-left">
+            <h1>Trivy Collector</h1>
+            <span class="version-info" id="version-info"></span>
+            <div class="watcher-status">
+                <div class="status-item">
+                    <span class="led" id="led-vuln"></span>
+                    <span class="status-label">VULN</span>
+                </div>
+                <div class="status-item">
+                    <span class="led" id="led-sbom"></span>
+                    <span class="status-label">SBOM</span>
+                </div>
+                <div class="status-item" id="db-status" title="Database">
+                    <span class="led" id="led-db"></span>
+                    <span class="status-label">DB</span>
+                    <span class="db-size" id="header-db-size">-</span>
+                </div>
+                <div class="status-item" id="collectors-status" title="Connected collectors">
+                    <span class="status-label">Collectors</span>
+                    <span class="collectors-count" id="stat-clusters">0</span>
+                </div>
+            </div>
+        </div>
+        <nav>
+            <button id="btn-vuln" class="active">Vulnerabilities</button>
+            <button id="btn-sbom">SBOM</button>
+        </nav>
+    </header>
+
+    <main>
+        <!-- Main Reports List View -->
+        <section id="reports" class="reports-container">
+            <div class="reports-toolbar">
+                <div class="toolbar-left">
+                    <span class="reports-count" id="reports-count"></span>
+                    <div class="severity-totals" id="severity-totals">
+                        <span class="severity-total critical"><span id="stat-critical">0</span> Critical</span>
+                        <span class="severity-total high"><span id="stat-high">0</span> High</span>
+                        <span class="severity-total medium"><span id="stat-medium">0</span> Medium</span>
+                        <span class="severity-total low"><span id="stat-low">0</span> Low</span>
+                    </div>
+                </div>
+                <button id="btn-export-csv" class="btn-export" title="Export to CSV">
+                    <span class="export-icon">↓</span> Export CSV
+                </button>
+            </div>
+            <table id="reports-table">
+                <thead id="reports-thead">
+                    <!-- Dynamic header rendered by JavaScript -->
+                </thead>
+                <tbody id="reports-body">
+                    <tr>
+                        <td colspan="9" class="loading">Loading...</td>
+                    </tr>
+                </tbody>
+            </table>
+
+            <!-- Filter Popup -->
+            <div id="filter-popup" class="filter-popup hidden">
+                <div class="filter-popup-header">
+                    <span id="filter-popup-title">Filter</span>
+                    <button id="filter-popup-close">&times;</button>
+                </div>
+                <div class="filter-popup-body" id="filter-popup-body">
+                    <!-- Dynamic content -->
+                </div>
+                <div class="filter-popup-footer">
+                    <button id="filter-apply" class="btn-primary">Apply</button>
+                    <button id="filter-clear" class="btn-secondary">Clear</button>
+                </div>
+            </div>
+        </section>
+
+        <!-- Detail Drill-down View -->
+        <section id="detail-view" class="detail-container hidden">
+            <div class="detail-header">
+                <button id="btn-back" class="btn-back">&larr; Back to List</button>
+                <h2 id="detail-title">Report Details</h2>
+            </div>
+            <div class="detail-summary" id="detail-summary"></div>
+            <div class="detail-table-container">
+                <table id="detail-table">
+                    <thead id="detail-thead"></thead>
+                    <tbody id="detail-tbody"></tbody>
+                </table>
+            </div>
+        </section>
+    </main>
+
+    <footer>
+        <p>Trivy Collector &mdash; Multi-cluster security report aggregator</p>
+    </footer>
+
+    <script src="/app.js"></script>
+</body>
+</html>

@@ -1,0 +1,17 @@
+apiVersion: v2
+name: trivy-collector
+description: Multi-cluster Trivy report collector and viewer
+type: application
+version: 0.1.0
+appVersion: "0.1.0"
+keywords:
+  - trivy
+  - security
+  - vulnerability
+  - sbom
+  - kubernetes
+home: https://github.com/younsl/o
+sources:
+  - https://github.com/younsl/o/tree/main/box/kubernetes/trivy-collector
+maintainers:
+  - name: younsl

@@ -1,0 +1,239 @@
+# -- (int) Number of replicas for the deployment
+replicaCount: 1
+
+# -- (int) Number of old ReplicaSets to retain for rollback
+revisionHistoryLimit: 10
+
+# -- Container image configuration
+image:
+  # -- (string) Image repository
+  repository: ghcr.io/younsl/trivy-collector
+  # -- (string) Image pull policy
+  pullPolicy: IfNotPresent
+  # -- (string) Image tag (defaults to chart appVersion)
+  tag: ""
+
+# -- (list) Image pull secrets for private registries
+imagePullSecrets: []
+
+# -- (string) Override the name of the chart
+nameOverride: ""
+
+# -- (string) Override the full name of the chart
+fullnameOverride: ""
+
+# -- ServiceAccount configuration
+serviceAccount:
+  # -- (bool) Create a ServiceAccount
+  create: true
+  # -- (bool) Automount service account token
+  automount: true
+  # -- (object) Annotations to add to the ServiceAccount
+  annotations: {}
+  # -- (string) Name of the ServiceAccount (auto-generated if empty)
+  name: ""
+
+# -- (object) Annotations to add to the pod
+podAnnotations: {}
+
+# -- (object) Labels to add to the pod
+podLabels: {}
+
+# -- Pod security context configuration
+podSecurityContext:
+  # -- (bool) Run as non-root user
+  runAsNonRoot: true
+  # -- (int) User ID to run as
+  runAsUser: 1000
+  # -- (int) Group ID to run as
+  runAsGroup: 1000
+  # -- (int) Filesystem group ID
+  fsGroup: 1000
+
+# -- Container security context configuration
+securityContext:
+  # -- (bool) Disallow privilege escalation
+  allowPrivilegeEscalation: false
+  # -- Capabilities to drop
+  capabilities:
+    drop:
+      - ALL
+  # -- (bool) Mount root filesystem as read-only
+  readOnlyRootFilesystem: true
+
+# ============================================
+# Deployment Mode
+# ============================================
+# -- (string) Deployment mode: "collector" (Edge clusters) or "server" (Central cluster)
+# @default -- collector
+mode: collector
+
+# ============================================
+# Collector mode settings (Edge clusters)
+# ============================================
+# -- Collector mode configuration (for Edge clusters)
+collector:
+  # -- (string) Central server URL (required for collector mode)
+  serverUrl: ""
+  # -- (string) Cluster identifier (required for collector mode)
+  clusterName: ""
+  # -- (list) Namespaces to watch (empty = all namespaces)
+  namespaces: []
+  # -- (bool) Collect VulnerabilityReports
+  collectVulnerabilityReports: true
+  # -- (bool) Collect SbomReports
+  collectSbomReports: true
+  # -- (int) Number of retry attempts on failure
+  retryAttempts: 3
+  # -- (int) Delay between retries in seconds
+  retryDelaySecs: 5
+
+# ============================================
+# Server mode settings (Central cluster)
+# ============================================
+# -- Server mode configuration (for Central cluster)
+server:
+  # -- (int) HTTP server port
+  port: 3000
+
+  # -- Persistent volume configuration
+  persistence:
+    # -- (bool) Enable persistent storage
+    enabled: true
+    # -- (string) Use existing PVC instead of creating one
+    existingClaim: ""
+    # -- (string) Storage class for dynamic provisioning
+    storageClass: ""
+    # -- (string) PVC access mode
+    accessMode: ReadWriteOnce
+    # -- (string) Storage size
+    size: 5Gi
+    # -- (object) Labels to add to the PVC
+    labels: {}
+    # -- (object) Annotations to add to the PVC
+    annotations: {}
+
+  # -- Ingress configuration
+  ingress:
+    # -- (bool) Enable Ingress
+    enabled: false
+    # -- (string) Ingress class name
+    className: ""
+    # -- (object) Annotations to add to the Ingress
+    annotations: {}
+      # kubernetes.io/ingress.class: nginx
+      # cert-manager.io/cluster-issuer: letsencrypt-prod
+    # -- (list) Ingress hosts configuration
+    hosts:
+      - host: trivy.example.com
+        paths:
+          - path: /
+            pathType: Prefix
+    # -- (list) TLS configuration for Ingress
+    tls: []
+    #  - secretName: trivy-tls
+    #    hosts:
+    #      - trivy.example.com
+
+  # -- Gateway API HTTPRoute configuration (alternative to Ingress)
+  gateway:
+    # -- (bool) Enable HTTPRoute
+    enabled: false
+    # -- (string) HTTPRoute name (defaults to fullname)
+    name: ""
+    # -- (list) Parent Gateway references
+    parentRefs:
+      - group: gateway.networking.k8s.io
+        kind: Gateway
+        name: main-gateway
+        namespace: gateway-system
+        sectionName: https
+    # -- (list) Hostnames for the route
+    hostnames:
+      - trivy.example.com
+    # -- (list) HTTP route rules
+    rules:
+      - matches:
+          - path:
+              type: PathPrefix
+              value: /
+        # -- (list) HTTPRoute filters (RequestHeaderModifier, ResponseHeaderModifier, RequestRedirect, URLRewrite, RequestMirror, ExtensionRef)
+        filters: []
+        backendRefs:
+          - name: ""
+            port: 3000
+
+# -- Service configuration
+service:
+  # -- (string) Service type
+  type: ClusterIP
+  # -- (int) Service port
+  port: 3000
+
+# -- Health check configuration
+health:
+  # -- (int) Health check server port
+  port: 8080
+
+# -- Logging configuration
+logging:
+  # -- (string) Log format: "json" or "pretty"
+  format: json
+  # -- (string) Log level: trace, debug, info, warn, error
+  level: info
+
+# -- Resource requests and limits
+resources:
+  limits:
+    # -- (string) Memory limit
+    memory: 256Mi
+  requests:
+    # -- (string) CPU request
+    cpu: 100m
+    # -- (string) Memory request
+    memory: 128Mi
+
+# -- (list) Container resize policy for in-place resource updates
+# @default -- []
+resizePolicy: []
+  # - resourceName: cpu
+  #   restartPolicy: NotRequired
+  # - resourceName: memory
+  #   restartPolicy: NotRequired
+
+# -- Liveness probe configuration
+livenessProbe:
+  httpGet:
+    path: /healthz
+    port: health
+  # -- (int) Initial delay before starting probes
+  initialDelaySeconds: 10
+  # -- (int) Probe interval
+  periodSeconds: 30
+  # -- (int) Probe timeout
+  timeoutSeconds: 5
+  # -- (int) Number of failures before marking unhealthy
+  failureThreshold: 3
+
+# -- Readiness probe configuration
+readinessProbe:
+  httpGet:
+    path: /readyz
+    port: health
+  # -- (int) Initial delay before starting probes
+  initialDelaySeconds: 5
+  # -- (int) Probe interval
+  periodSeconds: 10
+  # -- (int) Probe timeout
+  timeoutSeconds: 5
+  # -- (int) Number of failures before marking not ready
+  failureThreshold: 3
+
+# -- (object) Node selector for pod scheduling
+nodeSelector: {}
+
+# -- (list) Tolerations for pod scheduling
+tolerations: []
+
+# -- (object) Affinity rules for pod scheduling
+affinity: {}
