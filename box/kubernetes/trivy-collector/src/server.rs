@@ -3,10 +3,10 @@ pub mod watcher;
 
 use anyhow::Result;
 use axum::{
-    http::{header, Method, StatusCode},
+    Router,
+    http::{Method, StatusCode, header},
     response::{Html, IntoResponse},
     routing::{delete, get, post, put},
-    Router,
 };
 use rust_embed::Embed;
 use std::net::SocketAddr;
@@ -57,7 +57,8 @@ pub async fn run(
         );
 
         Some(tokio::spawn(async move {
-            match LocalWatcher::new(db_clone, cluster_name, namespaces, watcher_status_clone).await {
+            match LocalWatcher::new(db_clone, cluster_name, namespaces, watcher_status_clone).await
+            {
                 Ok(watcher) => {
                     if let Err(e) = watcher.run(shutdown_rx).await {
                         error!(error = %e, "Local watcher error");
@@ -86,7 +87,10 @@ pub async fn run(
         .route("/healthz", get(api::healthz))
         // API routes
         .route("/api/v1/reports", post(api::receive_report))
-        .route("/api/v1/vulnerabilityreports", get(api::list_vulnerability_reports))
+        .route(
+            "/api/v1/vulnerabilityreports",
+            get(api::list_vulnerability_reports),
+        )
         .route(
             "/api/v1/vulnerabilityreports/{cluster}/{namespace}/{name}",
             get(api::get_vulnerability_report),

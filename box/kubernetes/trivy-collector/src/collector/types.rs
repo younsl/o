@@ -1,6 +1,6 @@
 use k8s_openapi::apimachinery::pkg::apis::meta::v1::ObjectMeta;
-use kube::api::TypeMeta;
 use kube::Resource;
+use kube::api::TypeMeta;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 

@@ -33,7 +33,10 @@ async fn main() -> Result<()> {
 
     let (health_ready_tx, health_ready_rx) = tokio::sync::oneshot::channel();
     tokio::spawn(async move {
-        if let Err(e) = health_server_clone.serve(health_port, health_ready_tx).await {
+        if let Err(e) = health_server_clone
+            .serve(health_port, health_ready_tx)
+            .await
+        {
             error!(error = %e, "Health check server failed");
         }
     });

@@ -1,9 +1,9 @@
 use anyhow::{Context, Result};
 use futures::StreamExt;
 use kube::{
-    api::Api,
-    runtime::watcher::{watcher, Config as WatcherConfig, Event},
     Client,
+    api::Api,
+    runtime::watcher::{Config as WatcherConfig, Event, watcher},
 };
 use std::sync::Arc;
 use tracing::{debug, error, info, warn};

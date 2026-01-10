@@ -1,5 +1,5 @@
 use anyhow::{Context, Result};
-use rusqlite::{params, Connection};
+use rusqlite::{Connection, params};
 use std::path::Path;
 use std::sync::{Arc, Mutex};
 use tracing::{debug, error, info};
@@ -91,7 +91,9 @@ impl Database {
         let db_exists = Path::new(db_path).exists();
         if db_exists {
             let metadata = std::fs::metadata(db_path).ok();
-            let size = metadata.map(|m| Self::format_bytes(m.len())).unwrap_or_else(|| "unknown".to_string());
+            let size = metadata
+                .map(|m| Self::format_bytes(m.len()))
+                .unwrap_or_else(|| "unknown".to_string());
             info!(path = %db_path, size = %size, "Found existing database file");
         } else {
             info!(path = %db_path, "Creating new database file");
@@ -107,10 +109,12 @@ impl Database {
 
         // Open database connection
         debug!(path = %db_path, "Opening SQLite connection");
-        let conn = Connection::open(db_path).map_err(|e| {
-            error!(path = %db_path, error = %e, "Failed to open SQLite database");
-            e
-        }).context("Failed to open SQLite database")?;
+        let conn = Connection::open(db_path)
+            .map_err(|e| {
+                error!(path = %db_path, error = %e, "Failed to open SQLite database");
+                e
+            })
+            .context("Failed to open SQLite database")?;
 
         // Get SQLite version
         let sqlite_version: String = conn
@@ -145,11 +149,9 @@ impl Database {
     /// Get total report count
     fn get_total_report_count(&self) -> Result<i64> {
         let conn = self.conn.lock().unwrap();
-        let count: i64 = conn.query_row(
-            "SELECT COUNT(*) FROM reports",
-            [],
-            |row| row.get(0),
-        ).unwrap_or(0);
+        let count: i64 = conn
+            .query_row("SELECT COUNT(*) FROM reports", [], |row| row.get(0))
+            .unwrap_or(0);
         Ok(count)
     }
 
@@ -451,7 +453,11 @@ impl Database {
     }
 
     /// Query reports with filters
-    pub fn query_reports(&self, report_type: &str, params: &QueryParams) -> Result<Vec<ReportMeta>> {
+    pub fn query_reports(
+        &self,
+        report_type: &str,
+        params: &QueryParams,
+    ) -> Result<Vec<ReportMeta>> {
         let conn = self.conn.lock().unwrap();
 
         let mut sql = String::from(
@@ -517,7 +523,8 @@ impl Database {
             sql.push_str(&format!(" OFFSET {}", offset));
         }
 
-        let params_refs: Vec<&dyn rusqlite::ToSql> = sql_params.iter().map(|p| p.as_ref()).collect();
+        let params_refs: Vec<&dyn rusqlite::ToSql> =
+            sql_params.iter().map(|p| p.as_ref()).collect();
 
         let mut stmt = conn.prepare(&sql)?;
         let rows = stmt.query_map(params_refs.as_slice(), |row| {
@@ -680,9 +687,8 @@ impl Database {
                 results.push(row?);
             }
         } else {
-            let mut stmt = conn.prepare(
-                "SELECT DISTINCT namespace FROM reports ORDER BY namespace",
-            )?;
+            let mut stmt =
+                conn.prepare("SELECT DISTINCT namespace FROM reports ORDER BY namespace")?;
             let rows = stmt.query_map([], |row| row.get::<_, String>(0))?;
             for row in rows {
                 results.push(row?);

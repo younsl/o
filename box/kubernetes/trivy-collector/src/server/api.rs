@@ -1,12 +1,12 @@
 use axum::{
+    Json,
     extract::{Path, Query, State},
     http::StatusCode,
     response::IntoResponse,
-    Json,
 };
 use serde::{Deserialize, Serialize};
-use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, Ordering};
 use tracing::{debug, error, info};
 
 use crate::collector::types::{ReportEvent, ReportEventType};
@@ -69,11 +69,10 @@ impl ListQuery {
             cluster: self.cluster.clone(),
             namespace: self.namespace.clone(),
             app: self.app.clone(),
-            severity: self.severity.as_ref().map(|s| {
-                s.split(',')
-                    .map(|x| x.trim().to_string())
-                    .collect()
-            }),
+            severity: self
+                .severity
+                .as_ref()
+                .map(|s| s.split(',').map(|x| x.trim().to_string()).collect()),
             image: self.image.clone(),
             cve: self.cve.clone(),
             limit: self.limit,
@@ -113,7 +112,12 @@ pub async fn healthz(
         remote_addr = %addr,
         "Health check request received"
     );
-    (StatusCode::OK, Json(HealthResponse { status: "ok".to_string() }))
+    (
+        StatusCode::OK,
+        Json(HealthResponse {
+            status: "ok".to_string(),
+        }),
+    )
 }
 
 /// Receive report from collector
@@ -130,27 +134,25 @@ pub async fn receive_report(
     );
 
     match event.event_type {
-        ReportEventType::Apply => {
-            match state.db.upsert_report(&event.payload) {
-                Ok(()) => {
-                    info!(
-                        cluster = %event.payload.cluster,
-                        report_type = %event.payload.report_type,
-                        namespace = %event.payload.namespace,
-                        name = %event.payload.name,
-                        "Report stored"
-                    );
-                    (StatusCode::OK, Json(serde_json::json!({"status": "ok"})))
-                }
-                Err(e) => {
-                    error!(error = %e, "Failed to store report");
-                    (
-                        StatusCode::INTERNAL_SERVER_ERROR,
-                        Json(serde_json::json!({"error": e.to_string()})),
-                    )
-                }
+        ReportEventType::Apply => match state.db.upsert_report(&event.payload) {
+            Ok(()) => {
+                info!(
+                    cluster = %event.payload.cluster,
+                    report_type = %event.payload.report_type,
+                    namespace = %event.payload.namespace,
+                    name = %event.payload.name,
+                    "Report stored"
+                );
+                (StatusCode::OK, Json(serde_json::json!({"status": "ok"})))
             }
-        }
+            Err(e) => {
+                error!(error = %e, "Failed to store report");
+                (
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                    Json(serde_json::json!({"error": e.to_string()})),
+                )
+            }
+        },
         ReportEventType::Delete => {
             match state.db.delete_report(
                 &event.payload.cluster,
@@ -167,7 +169,10 @@ pub async fn receive_report(
                         deleted = deleted,
                         "Report delete processed"
                     );
-                    (StatusCode::OK, Json(serde_json::json!({"status": "ok", "deleted": deleted})))
+                    (
+                        StatusCode::OK,
+                        Json(serde_json::json!({"status": "ok", "deleted": deleted})),
+                    )
                 }
                 Err(e) => {
                     error!(error = %e, "Failed to delete report");
@@ -217,7 +222,10 @@ pub async fn get_vulnerability_report(
     State(state): State<AppState>,
     Path((cluster, namespace, name)): Path<(String, String, String)>,
 ) -> impl IntoResponse {
-    match state.db.get_report(&cluster, &namespace, &name, "vulnerabilityreport") {
+    match state
+        .db
+        .get_report(&cluster, &namespace, &name, "vulnerabilityreport")
+    {
         Ok(Some(report)) => (StatusCode::OK, Json(serde_json::to_value(report).unwrap())),
         Ok(None) => (
             StatusCode::NOT_FOUND,
@@ -269,7 +277,10 @@ pub async fn get_sbom_report(
     State(state): State<AppState>,
     Path((cluster, namespace, name)): Path<(String, String, String)>,
 ) -> impl IntoResponse {
-    match state.db.get_report(&cluster, &namespace, &name, "sbomreport") {
+    match state
+        .db
+        .get_report(&cluster, &namespace, &name, "sbomreport")
+    {
         Ok(Some(report)) => (StatusCode::OK, Json(serde_json::to_value(report).unwrap())),
         Ok(None) => (
             StatusCode::NOT_FOUND,
@@ -369,10 +380,16 @@ pub async fn delete_report(
     State(state): State<AppState>,
     Path((cluster, report_type, namespace, name)): Path<(String, String, String, String)>,
 ) -> impl IntoResponse {
-    match state.db.delete_report(&cluster, &namespace, &name, &report_type) {
+    match state
+        .db
+        .delete_report(&cluster, &namespace, &name, &report_type)
+    {
         Ok(deleted) => {
             if deleted {
-                (StatusCode::OK, Json(serde_json::json!({"status": "deleted"})))
+                (
+                    StatusCode::OK,
+                    Json(serde_json::json!({"status": "deleted"})),
+                )
             } else {
                 (
                     StatusCode::NOT_FOUND,
@@ -402,7 +419,10 @@ pub async fn update_notes(
     Path((cluster, report_type, namespace, name)): Path<(String, String, String, String)>,
     Json(request): Json<UpdateNotesRequest>,
 ) -> impl IntoResponse {
-    match state.db.update_notes(&cluster, &namespace, &name, &report_type, &request.notes) {
+    match state
+        .db
+        .update_notes(&cluster, &namespace, &name, &report_type, &request.notes)
+    {
         Ok(updated) => {
             if updated {
                 info!(
@@ -412,7 +432,10 @@ pub async fn update_notes(
                     name = %name,
                     "Report notes updated"
                 );
-                (StatusCode::OK, Json(serde_json::json!({"status": "updated"})))
+                (
+                    StatusCode::OK,
+                    Json(serde_json::json!({"status": "updated"})),
+                )
             } else {
                 (
                     StatusCode::NOT_FOUND,
@@ -447,12 +470,24 @@ pub struct WatcherInfo {
 pub async fn get_watcher_status(State(state): State<AppState>) -> impl IntoResponse {
     let status = WatcherStatusResponse {
         vuln_watcher: WatcherInfo {
-            running: state.watcher_status.vuln_watcher_running.load(Ordering::SeqCst),
-            initial_sync_done: state.watcher_status.vuln_initial_sync_done.load(Ordering::SeqCst),
+            running: state
+                .watcher_status
+                .vuln_watcher_running
+                .load(Ordering::SeqCst),
+            initial_sync_done: state
+                .watcher_status
+                .vuln_initial_sync_done
+                .load(Ordering::SeqCst),
         },
         sbom_watcher: WatcherInfo {
-            running: state.watcher_status.sbom_watcher_running.load(Ordering::SeqCst),
-            initial_sync_done: state.watcher_status.sbom_initial_sync_done.load(Ordering::SeqCst),
+            running: state
+                .watcher_status
+                .sbom_watcher_running
+                .load(Ordering::SeqCst),
+            initial_sync_done: state
+                .watcher_status
+                .sbom_initial_sync_done
+                .load(Ordering::SeqCst),
         },
     };
     (StatusCode::OK, Json(status))

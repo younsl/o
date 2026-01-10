@@ -1,9 +1,9 @@
 use anyhow::{Context, Result};
 use futures::StreamExt;
 use kube::{
-    api::Api,
-    runtime::watcher::{watcher, Config as WatcherConfig, Event},
     Client,
+    api::Api,
+    runtime::watcher::{Config as WatcherConfig, Event, watcher},
 };
 use std::sync::Arc;
 use tracing::{debug, error, info, warn};
@@ -60,11 +60,27 @@ impl LocalWatcher {
         let watcher_status_sbom = self.watcher_status.clone();
 
         let vuln_handle = tokio::spawn(async move {
-            watch_vulnerability_reports(client_vuln, db_vuln, cluster_vuln, namespaces_vuln, shutdown_vuln, watcher_status_vuln).await
+            watch_vulnerability_reports(
+                client_vuln,
+                db_vuln,
+                cluster_vuln,
+                namespaces_vuln,
+                shutdown_vuln,
+                watcher_status_vuln,
+            )
+            .await
         });
 
         let sbom_handle = tokio::spawn(async move {
-            watch_sbom_reports(client_sbom, db_sbom, cluster_sbom, namespaces_sbom, shutdown_sbom, watcher_status_sbom).await
+            watch_sbom_reports(
+                client_sbom,
+                db_sbom,
+                cluster_sbom,
+                namespaces_sbom,
+                shutdown_sbom,
+                watcher_status_sbom,
+            )
+            .await
         });
 
         tokio::select! {
@@ -142,8 +158,7 @@ async fn watch_sbom_reports(
 ) -> Result<()> {
     let api: Api<SbomReport> = Api::all(client);
     // Use smaller page size for SBOM reports since they can be very large
-    let watcher_config = WatcherConfig::default()
-        .page_size(50);
+    let watcher_config = WatcherConfig::default().page_size(50);
     let mut stream = watcher(api, watcher_config).boxed();
 
     watcher_status.set_sbom_running(true);
