@@ -6,7 +6,13 @@ metadata:
   labels:
     {{- include "trivy-collector.labels" . | nindent 4 }}
 rules:
-  - apiGroups: ["aquasecurity.github.io"]
-    resources: ["vulnerabilityreports", "sbomreports"]
-    verbs: ["get", "list", "watch"]
+  - apiGroups:
+      - aquasecurity.github.io
+    resources:
+      - vulnerabilityreports
+      - sbomreports
+    verbs:
+      - get
+      - list
+      - watch
 {{- end }}
