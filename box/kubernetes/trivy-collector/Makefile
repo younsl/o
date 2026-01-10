@@ -59,11 +59,11 @@ install: release ## Install to ~/.cargo/bin/
 deps: ## Update dependencies
 	cargo update
 
-docker-build: ## Build Docker image (cross-compiles for Linux with cross)
+docker-build: ## Build Docker image (cross-compiles for Linux with cargo-zigbuild)
 	@ARCH=$$(uname -m | sed 's/x86_64/amd64/;s/aarch64/arm64/'); \
 	if [ "$$ARCH" = "amd64" ]; then TARGET=x86_64-unknown-linux-musl; else TARGET=aarch64-unknown-linux-musl; fi; \
-	echo "Building for $$TARGET with cross..."; \
-	cross build --release --target $$TARGET; \
+	echo "Building for $$TARGET with cargo-zigbuild..."; \
+	cargo zigbuild --release --target $$TARGET; \
 	cp target/$$TARGET/release/$(BINARY_NAME) $(BINARY_NAME)-linux-$$ARCH; \
 	docker build -t $(IMAGE_NAME):$(VERSION) -t $(IMAGE_NAME):latest .; \
 	rm -f $(BINARY_NAME)-linux-$$ARCH
@@ -74,15 +74,15 @@ docker-push: ## Push to registry
 	docker push $(ECR_REGISTRY)/$(IMAGE_NAME):$(VERSION)
 	docker push $(ECR_REGISTRY)/$(IMAGE_NAME):latest
 
-podman-build: ## Build container image with Podman (cross-compiles for Linux with cross)
+podman-build: ## Build container image with Podman (cross-compiles for Linux with cargo-zigbuild)
 	@ARCH=$$(uname -m | sed 's/x86_64/amd64/;s/aarch64/arm64/'); \
 	if [ "$$ARCH" = "amd64" ]; then TARGET=x86_64-unknown-linux-musl; else TARGET=aarch64-unknown-linux-musl; fi; \
-	echo "Building for $$TARGET with cross..."; \
-	cross build --release --target $$TARGET; \
+	echo "Building for $$TARGET with cargo-zigbuild..."; \
+	cargo zigbuild --release --target $$TARGET; \
 	cp target/$$TARGET/release/$(BINARY_NAME) $(BINARY_NAME)-linux-$$ARCH; \
 	podman build -t $(IMAGE_NAME):$(VERSION) -t $(IMAGE_NAME):latest .; \
 	rm -f $(BINARY_NAME)-linux-$$ARCH
 
-build-all: ## Build for all platforms (requires cross)
-	cross build --release --target x86_64-unknown-linux-musl
-	cross build --release --target aarch64-unknown-linux-musl
+build-all: ## Build for all platforms (requires cargo-zigbuild)
+	cargo zigbuild --release --target x86_64-unknown-linux-musl
+	cargo zigbuild --release --target aarch64-unknown-linux-musl

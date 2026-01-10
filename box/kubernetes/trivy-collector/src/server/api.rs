@@ -505,8 +505,8 @@ pub struct VersionResponse {
 pub async fn get_version() -> impl IntoResponse {
     let version = VersionResponse {
         version: env!("CARGO_PKG_VERSION").to_string(),
-        commit: env!("GIT_COMMIT").to_string(),
-        build_date: env!("BUILD_DATE").to_string(),
+        commit: env!("VERGEN_GIT_SHA").to_string(),
+        build_date: env!("VERGEN_BUILD_TIMESTAMP").to_string(),
     };
     (StatusCode::OK, Json(version))
 }

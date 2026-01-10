@@ -1,7 +1,7 @@
 use anyhow::Result;
 use tracing::{error, info};
 
-use trivy_collector::config::{Config, Mode};
+use trivy_collector::config::{Command, Config, Mode};
 use trivy_collector::health::HealthServer;
 use trivy_collector::{collector, logging, server};
 
@@ -9,13 +9,24 @@ use trivy_collector::{collector, logging, server};
 async fn main() -> Result<()> {
     let config = Config::from_args();
 
+    // Handle version subcommand
+    if let Some(Command::Version) = &config.command {
+        println!(
+            "trivy-collector {}, commit: {}, build_date: {}",
+            env!("CARGO_PKG_VERSION"),
+            env!("VERGEN_GIT_SHA"),
+            env!("VERGEN_BUILD_TIMESTAMP"),
+        );
+        return Ok(());
+    }
+
     // Initialize logging
     logging::init(&config.log_format, &config.log_level);
 
     info!(
         version = env!("CARGO_PKG_VERSION"),
-        commit = env!("GIT_COMMIT"),
-        build_date = env!("BUILD_DATE"),
+        commit = env!("VERGEN_GIT_SHA"),
+        build_date = env!("VERGEN_BUILD_TIMESTAMP"),
         mode = %config.mode,
         "trivy-collector starting"
     );

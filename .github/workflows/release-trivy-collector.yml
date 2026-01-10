@@ -129,9 +129,11 @@ jobs:
 
       - name: Setup Rust
         uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
 
-      - name: Install cross
-        run: cargo install cross --git https://github.com/cross-rs/cross
+      - name: Install cargo-zigbuild
+        run: pip install ziglang && cargo install cargo-zigbuild
 
       - name: Cache cargo registry
         uses: actions/cache@v5
@@ -145,7 +147,7 @@ jobs:
           path: ~/.cargo/git
           key: ${{ runner.os }}-cargo-index-${{ hashFiles('**/Cargo.lock') }}
 
-      - name: Build binary with cross
+      - name: Build binary with cargo-zigbuild
         working-directory: ${{ env.PROJECT_BASE_DIR }}
         run: |
           echo "================================="
@@ -155,12 +157,7 @@ jobs:
           echo "Version: ${{ env.VERSION }}"
           echo "================================="
 
-          # Set version info for build.rs
-          export GIT_COMMIT="${{ github.sha }}"
-          export BUILD_DATE="${{ github.event.head_commit.timestamp }}"
-
-          # Build with cross
-          cross build --release --target ${{ matrix.target }}
+          cargo zigbuild --release --target ${{ matrix.target }}
 
           # Define paths
           BINARY_NAME="${{ env.PROJECT_NAME }}-linux-${{ matrix.arch }}"

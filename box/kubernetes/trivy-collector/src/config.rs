@@ -1,4 +1,4 @@
-use clap::{Parser, ValueEnum};
+use clap::{Parser, Subcommand, ValueEnum};
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, ValueEnum, Serialize, Deserialize)]
@@ -19,6 +19,12 @@ impl std::fmt::Display for Mode {
     }
 }
 
+#[derive(Subcommand, Debug, Clone)]
+pub enum Command {
+    /// Show version information
+    Version,
+}
+
 #[derive(Parser, Debug, Clone)]
 #[command(
     name = "trivy-collector",
@@ -27,6 +33,8 @@ impl std::fmt::Display for Mode {
     long_about = "A Kubernetes application that collects Trivy Operator reports from multiple clusters and provides a centralized UI for viewing and filtering security reports."
 )]
 pub struct Config {
+    #[command(subcommand)]
+    pub command: Option<Command>,
     /// Deployment mode
     #[arg(long, env = "MODE", value_enum, default_value = "collector")]
     pub mode: Mode,
