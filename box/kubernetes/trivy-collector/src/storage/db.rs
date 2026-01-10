@@ -98,12 +98,11 @@ impl Database {
         }
 
         // Create parent directory if it doesn't exist
-        if let Some(parent) = Path::new(db_path).parent() {
-            if !parent.exists() {
-                info!(directory = %parent.display(), "Creating database directory");
-                std::fs::create_dir_all(parent)
-                    .context("Failed to create database directory")?;
-            }
+        if let Some(parent) = Path::new(db_path).parent()
+            && !parent.exists()
+        {
+            info!(directory = %parent.display(), "Creating database directory");
+            std::fs::create_dir_all(parent).context("Failed to create database directory")?;
         }
 
         // Open database connection
@@ -488,21 +487,21 @@ impl Database {
         }
 
         // Severity filter (only for vulnerability reports, SBOM reports don't have severity counts)
-        if report_type == "vulnerabilityreport" {
-            if let Some(severities) = &params.severity {
-                let mut severity_conditions = Vec::new();
-                for severity in severities {
-                    match severity.to_lowercase().as_str() {
-                        "critical" => severity_conditions.push("critical_count > 0"),
-                        "high" => severity_conditions.push("high_count > 0"),
-                        "medium" => severity_conditions.push("medium_count > 0"),
-                        "low" => severity_conditions.push("low_count > 0"),
-                        _ => {}
-                    }
+        if report_type == "vulnerabilityreport"
+            && let Some(severities) = &params.severity
+        {
+            let mut severity_conditions = Vec::new();
+            for severity in severities {
+                match severity.to_lowercase().as_str() {
+                    "critical" => severity_conditions.push("critical_count > 0"),
+                    "high" => severity_conditions.push("high_count > 0"),
+                    "medium" => severity_conditions.push("medium_count > 0"),
+                    "low" => severity_conditions.push("low_count > 0"),
+                    _ => {}
                 }
-                if !severity_conditions.is_empty() {
-                    sql.push_str(&format!(" AND ({})", severity_conditions.join(" OR ")));
-                }
+            }
+            if !severity_conditions.is_empty() {
+                sql.push_str(&format!(" AND ({})", severity_conditions.join(" OR ")));
             }
         }
 

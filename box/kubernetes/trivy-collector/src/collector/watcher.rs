@@ -151,11 +151,8 @@ async fn watch_sbom_reports(
     namespaces: Vec<String>,
     mut shutdown: tokio::sync::watch::Receiver<bool>,
 ) -> Result<()> {
-    let api: Api<SbomReport> = if namespaces.is_empty() {
-        Api::all(client)
-    } else {
-        Api::all(client)
-    };
+    // Watch all namespaces and filter later
+    let api: Api<SbomReport> = Api::all(client);
 
     let watcher_config = WatcherConfig::default();
     let mut stream = watcher(api, watcher_config).boxed();
