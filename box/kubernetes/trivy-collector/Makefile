@@ -59,13 +59,14 @@ install: release ## Install to ~/.cargo/bin/
 deps: ## Update dependencies
 	cargo update
 
-docker-build: ## Build Docker image
-	docker build \
-		--build-arg GIT_COMMIT=$(GIT_COMMIT) \
-		--build-arg BUILD_DATE=$(BUILD_DATE) \
-		-t $(IMAGE_NAME):$(VERSION) \
-		-t $(IMAGE_NAME):latest \
-		.
+docker-build: ## Build Docker image (cross-compiles for Linux)
+	@ARCH=$$(uname -m | sed 's/x86_64/amd64/;s/aarch64/arm64/'); \
+	if [ "$$ARCH" = "amd64" ]; then TARGET=x86_64-unknown-linux-musl; else TARGET=aarch64-unknown-linux-musl; fi; \
+	echo "Building for $$TARGET..."; \
+	cargo build --release --target $$TARGET; \
+	cp target/$$TARGET/release/$(BINARY_NAME) $(BINARY_NAME)-linux-$$ARCH; \
+	docker build -t $(IMAGE_NAME):$(VERSION) -t $(IMAGE_NAME):latest .; \
+	rm -f $(BINARY_NAME)-linux-$$ARCH
 
 docker-push: ## Push to registry
 	docker tag $(IMAGE_NAME):$(VERSION) $(ECR_REGISTRY)/$(IMAGE_NAME):$(VERSION)
@@ -73,13 +74,14 @@ docker-push: ## Push to registry
 	docker push $(ECR_REGISTRY)/$(IMAGE_NAME):$(VERSION)
 	docker push $(ECR_REGISTRY)/$(IMAGE_NAME):latest
 
-podman-build: ## Build container image with Podman
-	podman build \
-		--build-arg GIT_COMMIT=$(GIT_COMMIT) \
-		--build-arg BUILD_DATE=$(BUILD_DATE) \
-		-t $(IMAGE_NAME):$(VERSION) \
-		-t $(IMAGE_NAME):latest \
-		.
+podman-build: ## Build container image with Podman (cross-compiles for Linux)
+	@ARCH=$$(uname -m | sed 's/x86_64/amd64/;s/aarch64/arm64/'); \
+	if [ "$$ARCH" = "amd64" ]; then TARGET=x86_64-unknown-linux-musl; else TARGET=aarch64-unknown-linux-musl; fi; \
+	echo "Building for $$TARGET..."; \
+	cargo build --release --target $$TARGET; \
+	cp target/$$TARGET/release/$(BINARY_NAME) $(BINARY_NAME)-linux-$$ARCH; \
+	podman build -t $(IMAGE_NAME):$(VERSION) -t $(IMAGE_NAME):latest .; \
+	rm -f $(BINARY_NAME)-linux-$$ARCH
 
 build-all: ## Build for all platforms (requires cross)
 	cross build --release --target x86_64-unknown-linux-gnu

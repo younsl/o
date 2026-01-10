@@ -106,8 +106,126 @@ jobs:
         working-directory: ${{ env.PROJECT_BASE_DIR }}
         run: cargo fmt --check
 
-  build-docker:
+  build-binaries:
     needs: [extract-version, check, test]
+    if: ${{ needs.check.outputs.image_exists == 'false' }}
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+    env:
+      PROJECT_NAME: trivy-collector
+      PROJECT_BASE_DIR: box/kubernetes/trivy-collector
+      VERSION: ${{ needs.extract-version.outputs.version }}
+    strategy:
+      matrix:
+        include:
+          - target: x86_64-unknown-linux-musl
+            arch: amd64
+          - target: aarch64-unknown-linux-musl
+            arch: arm64
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+
+      - name: Install musl-tools (amd64)
+        if: matrix.arch == 'amd64'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y musl-tools
+        env:
+          DEBIAN_FRONTEND: noninteractive
+
+      - name: Install cross-compilation tools (arm64)
+        if: matrix.arch == 'arm64'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y gcc-aarch64-linux-gnu g++-aarch64-linux-gnu musl-tools
+
+          # Download and install aarch64 musl cross-compiler
+          curl -LO https://musl.cc/aarch64-linux-musl-cross.tgz
+          tar -xzf aarch64-linux-musl-cross.tgz
+          sudo mv aarch64-linux-musl-cross /opt/
+        env:
+          DEBIAN_FRONTEND: noninteractive
+
+      - name: Configure cross-compilation (arm64)
+        if: matrix.arch == 'arm64'
+        run: |
+          echo "CARGO_TARGET_AARCH64_UNKNOWN_LINUX_MUSL_LINKER=/opt/aarch64-linux-musl-cross/bin/aarch64-linux-musl-gcc" >> $GITHUB_ENV
+          echo "CC_aarch64_unknown_linux_musl=/opt/aarch64-linux-musl-cross/bin/aarch64-linux-musl-gcc" >> $GITHUB_ENV
+          echo "CXX_aarch64_unknown_linux_musl=/opt/aarch64-linux-musl-cross/bin/aarch64-linux-musl-g++" >> $GITHUB_ENV
+
+      - name: Cache cargo registry
+        uses: actions/cache@v5
+        with:
+          path: ~/.cargo/registry
+          key: ${{ runner.os }}-cargo-registry-${{ hashFiles('**/Cargo.lock') }}
+
+      - name: Cache cargo index
+        uses: actions/cache@v5
+        with:
+          path: ~/.cargo/git
+          key: ${{ runner.os }}-cargo-index-${{ hashFiles('**/Cargo.lock') }}
+
+      - name: Cache cargo build
+        uses: actions/cache@v5
+        with:
+          path: ${{ env.PROJECT_BASE_DIR }}/target
+          key: ${{ runner.os }}-cargo-build-${{ matrix.arch }}-${{ hashFiles('**/Cargo.lock') }}
+
+      - name: Build binary
+        working-directory: ${{ env.PROJECT_BASE_DIR }}
+        run: |
+          echo "================================="
+          echo "Building ${{ env.PROJECT_NAME }}"
+          echo "Target: ${{ matrix.target }}"
+          echo "Architecture: ${{ matrix.arch }}"
+          echo "Version: ${{ env.VERSION }}"
+          echo "================================="
+
+          # Set version info for build.rs
+          export GIT_COMMIT="${{ github.sha }}"
+          export BUILD_DATE="${{ github.event.head_commit.timestamp }}"
+
+          # Build with verbose output for debugging
+          cargo build --release --target ${{ matrix.target }} --verbose
+
+          # Define paths
+          BINARY_NAME="${{ env.PROJECT_NAME }}-linux-${{ matrix.arch }}"
+          SOURCE_BINARY="target/${{ matrix.target }}/release/${{ env.PROJECT_NAME }}"
+
+          # Verify binary was created
+          if [ ! -f "${SOURCE_BINARY}" ]; then
+            echo "Error: Binary not found at ${SOURCE_BINARY}"
+            echo "Contents of target/${{ matrix.target }}/release/:"
+            ls -la target/${{ matrix.target }}/release/ || echo "Directory not found"
+            exit 1
+          fi
+
+          # Strip debug symbols to reduce binary size
+          strip "${SOURCE_BINARY}" || echo "Warning: strip failed (may be cross-compiled binary)"
+
+          # Copy and set permissions
+          cp "${SOURCE_BINARY}" "${BINARY_NAME}"
+          chmod +x "${BINARY_NAME}"
+
+          echo "Binary created: ${BINARY_NAME}"
+          ls -lh "${BINARY_NAME}"
+          file "${BINARY_NAME}"
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v6
+        with:
+          name: ${{ env.PROJECT_NAME }}-linux-${{ matrix.arch }}
+          path: ${{ env.PROJECT_BASE_DIR }}/${{ env.PROJECT_NAME }}-linux-${{ matrix.arch }}
+
+  build-docker:
+    needs: [extract-version, check, test, build-binaries]
     if: ${{ needs.check.outputs.image_exists == 'false' }}
     runs-on: ubuntu-24.04
     permissions:
@@ -121,8 +239,25 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v6
 
-      - name: Set up QEMU
-        uses: docker/setup-qemu-action@v3
+      - name: Download amd64 binary
+        uses: actions/download-artifact@v7
+        with:
+          name: trivy-collector-linux-amd64
+          path: ${{ env.PROJECT_BASE_DIR }}
+
+      - name: Download arm64 binary
+        uses: actions/download-artifact@v7
+        with:
+          name: trivy-collector-linux-arm64
+          path: ${{ env.PROJECT_BASE_DIR }}
+
+      - name: Verify binaries
+        working-directory: ${{ env.PROJECT_BASE_DIR }}
+        run: |
+          echo "Downloaded binaries:"
+          ls -lh trivy-collector-linux-*
+          file trivy-collector-linux-*
+          chmod +x trivy-collector-linux-*
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
@@ -151,10 +286,6 @@ jobs:
           push: true
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
-          build-args: |
-            VERSION=${{ env.VERSION }}
-            GIT_COMMIT=${{ github.sha }}
-            BUILD_DATE=${{ github.event.head_commit.timestamp }}
           provenance: false
           sbom: false
           cache-from: type=gha
