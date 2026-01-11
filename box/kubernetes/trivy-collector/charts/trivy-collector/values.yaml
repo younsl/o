@@ -108,7 +108,7 @@ server:
     # -- (string) PVC access mode
     accessMode: ReadWriteOnce
     # -- (string) Storage size
-    size: 5Gi
+    size: 1Gi
     # -- (object) Labels to add to the PVC
     labels: {}
     # -- (object) Annotations to add to the PVC
@@ -187,12 +187,12 @@ logging:
 resources:
   limits:
     # -- (string) Memory limit
-    memory: 256Mi
+    memory: 64Mi
   requests:
     # -- (string) CPU request
-    cpu: 100m
+    cpu: 20m
     # -- (string) Memory request
-    memory: 128Mi
+    memory: 32Mi
 
 # -- (list) Container resize policy for in-place resource updates
 # @default -- []
@@ -238,3 +238,18 @@ tolerations: []
 
 # -- (object) Affinity rules for pod scheduling
 affinity: {}
+
+# -- (string) DNS policy for the pod (ClusterFirst, ClusterFirstWithHostNet, Default, None)
+# @default -- ""
+dnsPolicy: ""
+
+# -- (object) DNS configuration for the pod
+# @default -- {}
+dnsConfig: {}
+  # nameservers:
+  #   - 8.8.8.8
+  # searches:
+  #   - example.com
+  # options:
+  #   - name: ndots
+  #     value: "2"
