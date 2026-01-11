@@ -114,6 +114,7 @@ box/
 │   ├── podver/            # Pod Version Scanner (Rust, container)
 │   ├── promdrop/          # Prometheus metric filter generator (Rust, CLI + container)
 │   ├── redis-console/     # Interactive Redis cluster management CLI (Rust, CLI + container)
+│   ├── trivy-collector/   # Multi-cluster Trivy report collector/viewer (Rust, container)
 │   └── policies/          # Kyverno and CEL admission policies
 ├── tools/                 # CLI utilities
 │   ├── cocd/              # GitHub Actions deployment monitor (Go, TUI)
@@ -124,6 +125,7 @@ box/
 ├── containers/            # Custom container images
 │   ├── actions-runner/    # GitHub Actions runner
 │   ├── filesystem-cleaner/# File system cleanup tool (Rust)
+│   ├── logstash-with-opensearch-plugin/  # Logstash with OpenSearch plugin for ECK
 │   ├── ab/                # Apache Bench container
 │   ├── mageai/            # Mage AI custom image
 │   ├── yarn/              # Yarn package manager container
@@ -576,6 +578,57 @@ helm install redis-console ./charts/redis-console \
   --set serviceAccount.annotations."eks\.amazonaws\.com/role-arn"=arn:aws:iam::ACCOUNT:role/redis-console-role
 ```
 
+### trivy-collector - Multi-cluster Trivy Report Collector (Rust)
+
+Collects Trivy Operator reports (VulnerabilityReports, SbomReports) from multiple Kubernetes clusters and provides a centralized web UI.
+
+```bash
+# Server mode (central cluster)
+helm install trivy-collector ./charts/trivy-collector \
+  --namespace trivy-system \
+  --create-namespace \
+  --set mode=server \
+  --set server.persistence.enabled=true \
+  --set server.ingress.enabled=true
+
+# Collector mode (edge clusters)
+helm install trivy-collector ./charts/trivy-collector \
+  --namespace trivy-system \
+  --create-namespace \
+  --set mode=collector \
+  --set collector.serverUrl=http://trivy-server.central-cluster:3000 \
+  --set collector.clusterName=edge-cluster-a
+
+# Build commands
+make build      # Debug build
+make release    # Optimized release build
+make run        # Build and run server locally
+make dev        # Run with debug logging
+```
+
+**Technical Details**:
+- Dual-mode architecture: Server (central web UI + SQLite storage) or Collector (edge watcher)
+- Watches VulnerabilityReports and SbomReports CRDs via kube-rs
+- Web UI for Security Engineers (no kubectl required)
+- OpenAPI documentation at `/api-docs/openapi.json`
+- Helm chart for both modes
+
+**Why this exists**: Trivy Operator creates CRDs but provides no interface for Security Engineers to analyze data without Kubernetes expertise.
+
+### logstash-with-opensearch-plugin - Logstash for ECK
+
+Pre-built Logstash image with `logstash-output-opensearch` plugin for ECK Operator.
+
+```bash
+# Build locally
+docker build -t logstash-with-opensearch-plugin:8.17.0 .
+
+# Use in ECK Logstash resource
+image: ghcr.io/younsl/logstash-with-opensearch-plugin:8.17.0
+```
+
+**Why this exists**: Official Logstash image lacks the OpenSearch plugin; installing via initContainer causes 5+ minute startup delays.
+
 ## Performance & API Guidelines
 
 ### GitHub API Constraints
@@ -615,11 +668,14 @@ git tag kk/1.0.0 && git push --tags        # Rust
 git tag filesystem-cleaner/1.0.0 && git push --tags
 git tag elasticache-backup/1.0.0 && git push --tags
 git tag redis-console/1.0.0 && git push --tags
+git tag trivy-collector/1.0.0 && git push --tags
 git tag actions-runner/1.0.0 && git push --tags
+git tag logstash-with-opensearch-plugin/8.17.0 && git push --tags
 
 # Helm chart releases (pattern: {chart}-chart/x.y.z)
 git tag elasticache-backup-chart/1.0.0 && git push --tags
 git tag redis-console-chart/1.0.0 && git push --tags
+git tag trivy-collector-chart/1.0.0 && git push --tags
 
 # Available workflows:
 # - release-cocd.yml                         (Go CLI tool)
@@ -630,6 +686,9 @@ git tag redis-console-chart/1.0.0 && git push --tags
 # - release-elasticache-backup-chart.yml     (Helm chart)
 # - release-redis-console.yml                (Rust container)
 # - release-redis-console-chart.yml          (Helm chart)
+# - release-trivy-collector.yml              (Rust container)
+# - release-trivy-collector-chart.yml        (Helm chart)
+# - release-logstash-with-opensearch-plugin.yml (Container image)
 # - release-actions-runner.yml               (Container image)
 # - release-backup-utils.yml                 (Workflow dispatch - builds from external source)
 # - release-hugo.yml                         (Workflow dispatch)
