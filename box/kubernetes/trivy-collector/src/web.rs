@@ -37,7 +37,7 @@ use crate::storage::{ClusterInfo, FullReport, ReportMeta, Stats, VulnSummary};
     info(
         title = "Trivy Collector API",
         description = "Multi-cluster Trivy report collector and viewer API",
-        version = "0.1.0",
+        version = env!("CARGO_PKG_VERSION"),
         license(name = "MIT")
     ),
     paths(
