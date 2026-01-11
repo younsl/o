@@ -42,7 +42,7 @@ make clean          # Remove build artifacts
 
 ### Rust Projects
 
-Standard Makefile patterns for Rust tools (ij, kk, qg, s3vget, podver, promdrop, filesystem-cleaner, elasticache-backup, ec2-statuscheck-rebooter, redis-console):
+Standard Makefile patterns for Rust tools (ij, kk, qg, s3vget, podver, promdrop, filesystem-cleaner, elasticache-backup, redis-console):
 
 ```bash
 # Core build commands
@@ -110,7 +110,6 @@ terraform destroy   # Destroy resources
 ```
 box/
 ├── kubernetes/             # K8s controllers, policies, helm charts
-│   ├── ec2-statuscheck-rebooter/ # EC2 status check auto-rebooter (Rust, container)
 │   ├── elasticache-backup/# ElastiCache S3 backup automation (Rust, container)
 │   ├── podver/            # Pod Version Scanner (Rust, container)
 │   ├── promdrop/          # Prometheus metric filter generator (Rust, CLI + container)
@@ -501,64 +500,6 @@ helm install elasticache-backup ./box/kubernetes/elasticache-backup/charts/elast
 
 **Workflow**: Snapshot Creation → Wait → S3 Export → Wait → Cleanup
 
-### ec2-statuscheck-rebooter - EC2 Status Check Auto-Rebooter (Rust)
-
-Automated reboot for standalone EC2 instances with status check failures running as Kubernetes Deployment.
-
-```bash
-# Local testing with dry-run
-make run
-
-# Debug logging mode
-make dev
-
-# Deploy via Helm OCI Registry (requires Helm 3.8.0+)
-# Deploy with EKS Pod Identity (recommended for EKS 1.24+)
-# Prerequisites: Create pod identity association first
-aws eks create-pod-identity-association \
-  --cluster-name my-cluster \
-  --namespace monitoring \
-  --service-account ec2-statuscheck-rebooter \
-  --role-arn arn:aws:iam::ACCOUNT_ID:role/EC2RebooterRole
-
-helm install ec2-statuscheck-rebooter oci://ghcr.io/younsl/charts/ec2-statuscheck-rebooter \
-  --version 0.1.0 \
-  --namespace monitoring \
-  --create-namespace
-
-# Deploy with IRSA
-helm install ec2-statuscheck-rebooter oci://ghcr.io/younsl/charts/ec2-statuscheck-rebooter \
-  --version 0.1.0 \
-  --namespace monitoring \
-  --create-namespace \
-  --set serviceAccount.annotations."eks\.amazonaws\.com/role-arn"=arn:aws:iam::ACCOUNT_ID:role/ROLE_NAME
-
-# Monitor specific instances using tag filters
-helm install ec2-statuscheck-rebooter oci://ghcr.io/younsl/charts/ec2-statuscheck-rebooter \
-  --version 0.1.0 \
-  --set rebooter.tagFilters="{Environment=production,Role=database,AutoReboot=true}" \
-  --set rebooter.checkIntervalSeconds=180 \
-  --set rebooter.failureThreshold=3
-```
-
-**Technical Details**:
-- Monitors **standalone EC2 instances outside the cluster** (not EKS worker nodes)
-- Polls EC2 DescribeInstanceStatus API at configurable intervals
-- Tracks failure counts for instances with impaired status checks
-- Automatically reboots instances when failure threshold is reached
-- Supports both EKS Pod Identity and IRSA authentication
-- Health check endpoints for Kubernetes probes (`/healthz`, `/readyz` on port 8080)
-- Structured JSON/pretty logging for CloudWatch/Loki integration
-- Tag-based filtering for targeting specific instances
-
-**AWS Permissions Required**: `ec2:DescribeInstanceStatus`, `ec2:DescribeInstances`, `ec2:RebootInstances`
-
-**Use Cases**: Legacy applications, database servers, bastion hosts, Windows servers, third-party software on EC2
-
-**Important**: NOT for EKS worker node management - use AWS Node Termination Handler or Karpenter instead.
-
-**Note**: For Kubernetes node automatic reboots (e.g., after kernel updates), consider using [kured (Kubernetes Reboot Daemon)](https://github.com/kubereboot/kured) which safely drains and reboots nodes when `/var/run/reboot-required` is present.
-
 ### redis-console - Interactive Redis Cluster Management CLI (Rust)
 
 An interactive REPL for managing multiple Redis and AWS ElastiCache clusters from a single terminal session.
@@ -673,7 +614,6 @@ git tag kk/1.0.0 && git push --tags        # Rust
 # Container image releases (pattern: {container}/x.y.z)
 git tag filesystem-cleaner/1.0.0 && git push --tags
 git tag elasticache-backup/1.0.0 && git push --tags
-git tag ec2-statuscheck-rebooter/1.0.0 && git push --tags
 git tag redis-console/1.0.0 && git push --tags
 git tag actions-runner/1.0.0 && git push --tags
 
@@ -688,7 +628,6 @@ git tag redis-console-chart/1.0.0 && git push --tags
 # - release-filesystem-cleaner.yml           (Rust container)
 # - release-elasticache-backup.yml           (Rust container)
 # - release-elasticache-backup-chart.yml     (Helm chart)
-# - release-ec2-statuscheck-rebooter.yml     (Rust container)
 # - release-redis-console.yml                (Rust container)
 # - release-redis-console-chart.yml          (Helm chart)
 # - release-actions-runner.yml               (Container image)

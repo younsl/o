@@ -16,7 +16,6 @@ Kubernetes tools, policy resources, and architecture documentation organized by 
 
 | Category | Name | Language | Status | Description |
 |----------|------|----------|--------|-------------|
-| Kubernetes Addon | [ec2-statuscheck-rebooter](./ec2-statuscheck-rebooter/) | [Rust](./ec2-statuscheck-rebooter/Cargo.toml) | Active | Automated reboot for standalone EC2 instances with status check failures running as Kubernetes [Deployment](https://kubernetes.io/docs/concepts/workloads/controllers/deployment/) (Helm chart available) |
 | Kubernetes Addon | [elasticache-backup](./elasticache-backup/) | [Rust](./elasticache-backup/Cargo.toml) | Active | ElastiCache snapshot backup to S3 automation running as Kubernetes [CronJob](https://kubernetes.io/docs/concepts/workloads/controllers/cron-jobs/) (Helm chart available) |
 | Kubernetes Addon | [redis-console](./redis-console/) | [Rust](./redis-console/Cargo.toml) | Active | Centralized terminal running as Kubernetes [Deployment](https://kubernetes.io/docs/concepts/workloads/controllers/deployment/) for managing multiple Redis and AWS ElastiCache clusters (Helm chart available) |
 | Kubernetes Addon | [trivy-collector](./trivy-collector/) | [Rust](./trivy-collector/Cargo.toml) | Active | Multi-cluster [Trivy Operator](https://github.com/aquasecurity/trivy-operator) report collector and viewer running as Kubernetes [Deployment](https://kubernetes.io/docs/concepts/workloads/controllers/deployment/) with Web UI (Helm chart available) |

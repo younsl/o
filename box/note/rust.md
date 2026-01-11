@@ -1,6 +1,6 @@
 # Rust Development Best Practices
 
-Production-tested patterns extracted from Kubernetes operators and container tools in this repository. Focuses on async runtime (Tokio), structured logging (tracing), CLI design (Clap), and containerization best practices. All examples are from real tools: ec2-statuscheck-rebooter, elasticache-backup, podver, promdrop, and filesystem-cleaner.
+Production-tested patterns extracted from Kubernetes operators and container tools in this repository. Focuses on async runtime (Tokio), structured logging (tracing), CLI design (Clap), and containerization best practices. All examples are from real tools: elasticache-backup, podver, promdrop, and filesystem-cleaner.
 
 ## Project Structure
 
@@ -281,8 +281,7 @@ stream::iter(items).for_each(|item| {
 
 ## Production Examples
 
-- **ec2-statuscheck-rebooter** - AWS automation, health endpoints
-- **elasticache-backup** - Workflow orchestration, structured logs
+- **elasticache-backup** - AWS automation, workflow orchestration, structured logs
 - **podver** - Concurrent scanning, progress bars
 - **promdrop** - JSON/YAML processing
 - **filesystem-cleaner** - Sidecar pattern, glob matching

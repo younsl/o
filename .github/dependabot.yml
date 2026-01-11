@@ -58,7 +58,6 @@ updates:
       - "/box/kubernetes/promdrop"
       - "/box/kubernetes/podver"
       - "/box/kubernetes/elasticache-backup"
-      - "/box/kubernetes/ec2-statuscheck-rebooter"
       - "/box/containers/filesystem-cleaner"
     schedule:
       interval: "weekly"
