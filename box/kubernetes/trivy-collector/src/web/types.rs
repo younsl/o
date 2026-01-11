@@ -1,0 +1,210 @@
+//! Request and response types for API endpoints
+
+use serde::{Deserialize, Serialize};
+use utoipa::{IntoParams, ToSchema};
+
+use crate::storage::QueryParams;
+
+/// Query parameters for list endpoints
+#[derive(Debug, Deserialize, IntoParams)]
+#[into_params(parameter_in = Query)]
+pub struct ListQuery {
+    /// Filter by cluster name
+    #[param(example = "prod-cluster")]
+    pub cluster: Option<String>,
+    /// Filter by namespace
+    #[param(example = "default")]
+    pub namespace: Option<String>,
+    /// Filter by application name
+    #[param(example = "nginx")]
+    pub app: Option<String>,
+    /// Filter by severity (comma-separated: "critical,high")
+    #[param(example = "critical,high")]
+    pub severity: Option<String>,
+    /// Filter by image (partial match)
+    #[param(example = "nginx")]
+    pub image: Option<String>,
+    /// Filter by CVE ID
+    #[param(example = "CVE-2024-1234")]
+    pub cve: Option<String>,
+    /// Limit results (default: 1000)
+    #[param(example = 100)]
+    pub limit: Option<i64>,
+    /// Pagination offset
+    #[param(example = 0)]
+    pub offset: Option<i64>,
+}
+
+impl ListQuery {
+    pub fn to_query_params(&self) -> QueryParams {
+        QueryParams {
+            cluster: self.cluster.clone(),
+            namespace: self.namespace.clone(),
+            app: self.app.clone(),
+            severity: self
+                .severity
+                .as_ref()
+                .map(|s| s.split(',').map(|x| x.trim().to_string()).collect()),
+            image: self.image.clone(),
+            cve: self.cve.clone(),
+            limit: self.limit,
+            offset: self.offset,
+        }
+    }
+}
+
+/// Response wrapper for list endpoints
+#[derive(Serialize, ToSchema)]
+pub struct ListResponse<T: ToSchema> {
+    /// List of items
+    pub items: Vec<T>,
+    /// Total count
+    pub total: usize,
+}
+
+/// Error response
+#[derive(Serialize, ToSchema)]
+pub struct ErrorResponse {
+    /// Error message
+    pub error: String,
+}
+
+/// Health response
+#[derive(Serialize, ToSchema)]
+pub struct HealthResponse {
+    /// Health status
+    #[schema(example = "ok")]
+    pub status: String,
+}
+
+/// Update notes request
+#[derive(Deserialize, ToSchema)]
+pub struct UpdateNotesRequest {
+    /// Notes content
+    #[schema(example = "Reviewed, patch scheduled")]
+    pub notes: String,
+}
+
+/// Watcher status response
+#[derive(Serialize, ToSchema)]
+pub struct WatcherStatusResponse {
+    /// Vulnerability watcher status
+    pub vuln_watcher: WatcherInfo,
+    /// SBOM watcher status
+    pub sbom_watcher: WatcherInfo,
+}
+
+/// Individual watcher info
+#[derive(Serialize, ToSchema)]
+pub struct WatcherInfo {
+    /// Whether watcher is running
+    pub running: bool,
+    /// Whether initial sync is completed
+    pub initial_sync_done: bool,
+}
+
+/// Version info response
+#[derive(Serialize, ToSchema)]
+pub struct VersionResponse {
+    /// Application version
+    #[schema(example = "0.1.0")]
+    pub version: String,
+    /// Git commit hash
+    #[schema(example = "abc1234")]
+    pub commit: String,
+    /// Build date
+    #[schema(example = "2025-01-11T00:00:00Z")]
+    pub build_date: String,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_list_query_to_query_params_empty() {
+        let query = ListQuery {
+            cluster: None,
+            namespace: None,
+            app: None,
+            severity: None,
+            image: None,
+            cve: None,
+            limit: None,
+            offset: None,
+        };
+
+        let params = query.to_query_params();
+        assert!(params.cluster.is_none());
+        assert!(params.namespace.is_none());
+        assert!(params.app.is_none());
+        assert!(params.severity.is_none());
+        assert!(params.image.is_none());
+        assert!(params.cve.is_none());
+        assert!(params.limit.is_none());
+        assert!(params.offset.is_none());
+    }
+
+    #[test]
+    fn test_list_query_to_query_params_full() {
+        let query = ListQuery {
+            cluster: Some("prod".to_string()),
+            namespace: Some("default".to_string()),
+            app: Some("nginx".to_string()),
+            severity: Some("critical,high".to_string()),
+            image: Some("nginx:1.25".to_string()),
+            cve: Some("CVE-2024-1234".to_string()),
+            limit: Some(100),
+            offset: Some(50),
+        };
+
+        let params = query.to_query_params();
+        assert_eq!(params.cluster, Some("prod".to_string()));
+        assert_eq!(params.namespace, Some("default".to_string()));
+        assert_eq!(params.app, Some("nginx".to_string()));
+        assert_eq!(params.image, Some("nginx:1.25".to_string()));
+        assert_eq!(params.cve, Some("CVE-2024-1234".to_string()));
+        assert_eq!(params.limit, Some(100));
+        assert_eq!(params.offset, Some(50));
+    }
+
+    #[test]
+    fn test_list_query_severity_parsing() {
+        let query = ListQuery {
+            cluster: None,
+            namespace: None,
+            app: None,
+            severity: Some("critical, high, medium".to_string()),
+            image: None,
+            cve: None,
+            limit: None,
+            offset: None,
+        };
+
+        let params = query.to_query_params();
+        let severities = params.severity.unwrap();
+        assert_eq!(severities.len(), 3);
+        assert_eq!(severities[0], "critical");
+        assert_eq!(severities[1], "high");
+        assert_eq!(severities[2], "medium");
+    }
+
+    #[test]
+    fn test_list_query_severity_single() {
+        let query = ListQuery {
+            cluster: None,
+            namespace: None,
+            app: None,
+            severity: Some("critical".to_string()),
+            image: None,
+            cve: None,
+            limit: None,
+            offset: None,
+        };
+
+        let params = query.to_query_params();
+        let severities = params.severity.unwrap();
+        assert_eq!(severities.len(), 1);
+        assert_eq!(severities[0], "critical");
+    }
+}
