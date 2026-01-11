@@ -4,6 +4,19 @@ let currentReports = [];
 let sortColumn = null;
 let sortDirection = 'asc';
 
+// Total reports count (from stats API)
+let totalVulnReports = 0;
+let totalSbomReports = 0;
+
+// Total severity counts (from stats API)
+let totalSeverity = {
+    critical: 0,
+    high: 0,
+    medium: 0,
+    low: 0,
+    unknown: 0
+};
+
 // Filter state
 let filters = {
     cluster: '',
@@ -87,7 +100,7 @@ document.addEventListener('DOMContentLoaded', () => {
             closeFilterPopup();
         }
         // Close help tooltip when clicking outside
-        if (currentHelpTooltip && !currentHelpTooltip.contains(e.target) && !e.target.classList.contains('help-btn')) {
+        if (currentHelpTooltip && !currentHelpTooltip.contains(e.target) && !e.target.closest('.help-btn')) {
             closeHelpTooltip();
         }
         // Notes modal is handled by its own overlay click handler
@@ -97,11 +110,20 @@ document.addEventListener('DOMContentLoaded', () => {
     initSortableColumns();
     initFilterButtons();
 
-    // DB help button
+    // DB help button (click)
     document.getElementById('db-help-btn').addEventListener('click', (e) => {
         e.stopPropagation();
         showHelpTooltip('dbinfo', e.currentTarget);
     });
+
+    // SBOM help button in toolbar (click)
+    const sbomHelpBtn = document.getElementById('sbom-help-btn');
+    if (sbomHelpBtn) {
+        sbomHelpBtn.addEventListener('click', (e) => {
+            e.stopPropagation();
+            showHelpTooltip('sbom', e.currentTarget);
+        });
+    }
 
     // Poll status every 5 seconds
     setInterval(loadWatcherStatus, 5000);
@@ -266,7 +288,7 @@ async function showVersionPage() {
     versionBuildInfo.innerHTML = `
         <div class="detail-summary-item">
             <span class="detail-summary-label">Rust Version</span>
-            <span class="detail-summary-value">${versionData.rust_version} (${versionData.rust_channel})</span>
+            <span class="detail-summary-value"><a href="https://github.com/rust-lang/rust/releases" target="_blank" rel="noopener noreferrer">${versionData.rust_version}</a> (${versionData.rust_channel})</span>
         </div>
         <div class="detail-summary-item">
             <span class="detail-summary-label">LLVM Version</span>
@@ -311,11 +333,20 @@ async function loadStats() {
     try {
         const stats = await fetchApi('/api/v1/stats');
         document.getElementById('stat-clusters').textContent = stats.total_clusters;
-        document.getElementById('stat-critical').textContent = stats.total_critical;
-        document.getElementById('stat-high').textContent = stats.total_high;
-        document.getElementById('stat-medium').textContent = stats.total_medium;
-        document.getElementById('stat-low').textContent = stats.total_low;
-        document.getElementById('stat-unknown').textContent = stats.total_unknown;
+
+        // Store total report counts for filter display
+        totalVulnReports = stats.total_vuln_reports;
+        totalSbomReports = stats.total_sbom_reports;
+
+        // Store total severity counts for filter display
+        totalSeverity.critical = stats.total_critical;
+        totalSeverity.high = stats.total_high;
+        totalSeverity.medium = stats.total_medium;
+        totalSeverity.low = stats.total_low;
+        totalSeverity.unknown = stats.total_unknown;
+
+        // Update severity display (respects filter state)
+        updateSeverityTotals();
 
         const totalReports = stats.total_vuln_reports + stats.total_sbom_reports;
         const totalVulns = stats.total_critical + stats.total_high + stats.total_medium + stats.total_low + stats.total_unknown;
@@ -408,12 +439,74 @@ async function loadReports() {
     }
 }
 
+// Check if any filter is active
+function isFilterActive() {
+    return filters.cluster || filters.namespace || filters.app;
+}
+
+// Calculate filtered severity counts from current reports
+function calculateFilteredSeverity() {
+    const filtered = {
+        critical: 0,
+        high: 0,
+        medium: 0,
+        low: 0,
+        unknown: 0
+    };
+
+    if (currentReportType === 'vulnerabilityreport') {
+        currentReports.forEach(report => {
+            const summary = report.summary || {};
+            filtered.critical += summary.critical || 0;
+            filtered.high += summary.high || 0;
+            filtered.medium += summary.medium || 0;
+            filtered.low += summary.low || 0;
+            filtered.unknown += summary.unknown || 0;
+        });
+    }
+
+    return filtered;
+}
+
+// Update severity totals display with filtered/total format
+function updateSeverityTotals() {
+    const severityLevels = ['critical', 'high', 'medium', 'low', 'unknown'];
+    const filteredSeverity = calculateFilteredSeverity();
+    const filterActive = isFilterActive();
+
+    severityLevels.forEach(level => {
+        const el = document.getElementById(`stat-${level}`);
+        const filteredVal = filteredSeverity[level];
+        const totalVal = totalSeverity[level];
+
+        if (filterActive && totalVal > 0) {
+            el.innerHTML = `<span class="filtered-count">${filteredVal}</span><span class="total-count"> / ${totalVal}</span>`;
+        } else {
+            el.textContent = totalVal;
+        }
+    });
+}
+
 // Render reports
 function renderReports() {
     // Update reports count
     const reportTypeName = currentReportType === 'vulnerabilityreport' ? 'Vulnerability' : 'SBOM';
-    document.querySelector('#reports-count .stat-label').textContent = reportTypeName;
-    document.getElementById('reports-number').textContent = currentReports.length;
+    document.getElementById('reports-type-label').textContent = reportTypeName;
+
+    // Get total count based on current report type
+    const totalCount = currentReportType === 'vulnerabilityreport' ? totalVulnReports : totalSbomReports;
+    const filteredCount = currentReports.length;
+
+    // Display filtered/total when filter is active
+    const reportsNumberEl = document.getElementById('reports-number');
+    if (isFilterActive() && totalCount > 0) {
+        reportsNumberEl.innerHTML = `<span class="filtered-count">${filteredCount}</span><span class="total-count"> / ${totalCount}</span>`;
+    } else {
+        reportsNumberEl.textContent = filteredCount;
+    }
+
+    // Update severity totals with filtered/total display
+    updateSeverityTotals();
 
     const colspan = currentReportType === 'vulnerabilityreport' ? 10 : 6;
     if (currentReports.length === 0) {
@@ -566,31 +659,41 @@ function renderTableHeader() {
 
 // Help Tooltip Functions
 const helpTooltips = {
-    purl: {
-        title: 'Package URL (PURL)',
+    sbom: {
+        title: 'SBOM',
         content: `
-            <p><strong>PURL</strong>은 소프트웨어 패키지를 식별하는 표준화된 URL 형식입니다.</p>
-            <p>형식: <code>pkg:type/namespace/name@version</code></p>
-            <p>예시:</p>
+            <p>Software Bill of Materials — a complete list of components in your software.</p>
+            <p>Like a nutrition label for code.</p>
+            <p><strong>Use cases:</strong></p>
+            <p>• Track vulnerability impact</p>
+            <p>• Verify license compliance</p>
+            <p>• Manage supply chain security</p>
+            <p><a href="https://www.cisa.gov/sbom" target="_blank">Learn more →</a></p>
+        `
+    },
+    purl: {
+        title: 'PURL',
+        content: `
+            <p>Package URL — a standard format to identify software packages.</p>
+            <p>Format: <code>pkg:type/namespace/name@version</code></p>
+            <p>Examples:</p>
             <p><code>pkg:npm/%40babel/core@7.24.0</code></p>
             <p><code>pkg:golang/github.com/gin-gonic/gin@v1.9.1</code></p>
-            <p>PURL을 통해 패키지의 출처, 버전, 타입을 정확히 파악할 수 있어 취약점 추적과 의존성 관리에 유용합니다.</p>
-            <p><a href="https://github.com/package-url/purl-spec" target="_blank">PURL 스펙 자세히 보기 →</a></p>
+            <p><a href="https://github.com/package-url/purl-spec" target="_blank">Learn more →</a></p>
         `
     },
     bomformat: {
-        title: 'BOM Format (SBOM 형식)',
+        title: 'BOM Format',
         content: `
-            <p><strong>BOM Format</strong>은 Software Bill of Materials(SBOM)의 표준 형식을 나타냅니다.</p>
-            <p>주요 형식:</p>
-            <p><code>CycloneDX</code> - OWASP에서 개발한 경량 SBOM 표준. 보안 취약점 추적에 최적화.</p>
-            <p><code>SPDX</code> - Linux Foundation의 표준. 라이선스 컴플라이언스에 특화.</p>
-            <p>Trivy는 기본적으로 <strong>CycloneDX</strong> 형식을 사용하며, 버전 정보(예: 1.5)는 스펙 버전을 의미합니다.</p>
-            <p><a href="https://cyclonedx.org/specification/overview/" target="_blank">CycloneDX 스펙 보기 →</a></p>
+            <p>The standard format used for SBOM data.</p>
+            <p><code>CycloneDX</code> — OWASP standard, optimized for security.</p>
+            <p><code>SPDX</code> — Linux Foundation standard, focused on licensing.</p>
+            <p>Trivy uses <strong>CycloneDX</strong> by default. The version number (e.g., 1.5) indicates the spec version, which determines supported fields and features.</p>
+            <p><a href="https://cyclonedx.org/specification/overview/" target="_blank">Learn more →</a></p>
         `
     },
     dbinfo: {
-        title: 'Database Info',
+        title: 'Database',
         content: '<p>Loading...</p>'
     }
 };
@@ -660,8 +763,8 @@ function closeHelpTooltip() {
 }
 
 function initHelpButtons() {
-    // Exclude #db-help-btn which has its own handler registered in DOMContentLoaded
-    const helpBtns = document.querySelectorAll('.help-btn:not(#db-help-btn)');
+    // Exclude buttons with their own handlers registered in DOMContentLoaded
+    const helpBtns = document.querySelectorAll('.help-btn:not(#db-help-btn):not(#sbom-help-btn)');
     helpBtns.forEach(btn => {
         // Skip if already has listener (prevent duplicate registration)
         if (btn.dataset.listenerAttached) return;
@@ -808,12 +911,15 @@ function showListView() {
     reportsSection.classList.remove('hidden');
     detailView.classList.add('hidden');
 
-    // Show severity totals only for vuln reports
+    // Show severity totals only for vuln reports, show SBOM help for SBOM reports
     const severityTotals = document.getElementById('severity-totals');
+    const sbomHelpBtn = document.getElementById('sbom-help-btn');
     if (currentReportType === 'vulnerabilityreport') {
-        severityTotals.classList.remove('hidden');
+        if (severityTotals) severityTotals.classList.remove('hidden');
+        if (sbomHelpBtn) sbomHelpBtn.classList.add('hidden');
     } else {
-        severityTotals.classList.add('hidden');
+        if (severityTotals) severityTotals.classList.add('hidden');
+        if (sbomHelpBtn) sbomHelpBtn.classList.remove('hidden');
     }
 }
 

@@ -199,30 +199,42 @@ header h1 {
 
 header nav {
     display: flex;
-    gap: 8px;
+    background-color: var(--bg-tertiary);
+    border-radius: 10px;
+    padding: 4px;
+    border: 1px solid var(--border);
 }
 
 header nav button {
+    flex: 1;
     background: transparent;
-    border: 1px solid var(--border);
+    border: none;
     color: var(--text-secondary);
-    padding: 8px 16px;
-    border-radius: 6px;
+    padding: 12px 24px;
+    border-radius: 7px;
     cursor: pointer;
-    font-size: 13px;
-    font-weight: 500;
-    transition: all 0.15s ease;
+    font-size: 15px;
+    font-weight: 600;
+    transition: all 0.2s ease;
+    min-width: 140px;
+    text-align: center;
 }
 
-header nav button:hover {
-    background-color: var(--bg-hover);
+header nav button:hover:not(.active) {
     color: var(--text-primary);
+    background-color: var(--bg-hover);
 }
 
 header nav button.active {
     background-color: var(--accent);
-    border-color: var(--accent);
     color: white;
+    box-shadow: 0 2px 8px rgba(59, 130, 246, 0.3);
+}
+
+/* Toolbar help button */
+.toolbar-help {
+    margin-left: 4px;
+    vertical-align: middle;
 }
 
 /* Main */
@@ -494,6 +506,17 @@ main {
     color: var(--text-primary);
 }
 
+.stat-item .stat-value .filtered-count {
+    color: var(--text-primary);
+    font-weight: 600;
+}
+
+.stat-item .stat-value .total-count {
+    color: var(--text-muted);
+    font-weight: 500;
+    font-size: 11px;
+}
+
 .severity-totals {
     display: flex;
     gap: 12px;
@@ -531,6 +554,16 @@ main {
 .severity-total.medium .severity-count { color: var(--medium); }
 .severity-total.low .severity-count { color: var(--low); }
 .severity-total.unknown .severity-count { color: var(--unknown); }
+
+.severity-total .severity-count .filtered-count {
+    font-weight: 600;
+}
+
+.severity-total .severity-count .total-count {
+    font-weight: 500;
+    font-size: 11px;
+    color: var(--text-muted);
+}
 
 .btn-export {
     display: inline-flex;
@@ -680,24 +713,24 @@ main {
     display: inline-flex;
     align-items: center;
     justify-content: center;
-    width: 14px;
-    height: 14px;
+    width: 13px;
+    height: 13px;
     background-color: var(--bg-hover);
     border: 1px solid var(--border);
     color: var(--text-muted);
-    font-size: 9px;
+    font-size: 8px;
     font-weight: 600;
     cursor: pointer;
     border-radius: 50%;
-    margin-left: 6px;
+    margin-left: 3px;
     vertical-align: middle;
     transition: all 0.15s ease;
 }
 
 .help-btn:hover {
-    background-color: var(--accent);
-    border-color: var(--accent);
-    color: white;
+    background-color: var(--text-primary);
+    border-color: var(--text-primary);
+    color: var(--bg-primary);
 }
 
 /* Help Tooltip */
@@ -1039,6 +1072,15 @@ main {
     font-size: 13px;
     color: var(--text-primary);
     word-break: break-all;
+}
+
+.detail-summary-value a {
+    color: var(--accent);
+    text-decoration: none;
+}
+
+.detail-summary-value a:hover {
+    text-decoration: underline;
 }
 
 .detail-summary-value.sensitive {
