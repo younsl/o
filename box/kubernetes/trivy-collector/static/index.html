@@ -129,6 +129,17 @@
                 </div>
                 <div class="detail-summary" id="detail-summary"></div>
             </div>
+            <div class="graph-section" id="notes-section">
+                <div class="section-bar">
+                    <h3 class="graph-title">Notes</h3>
+                    <div class="notes-actions" id="notes-actions"></div>
+                </div>
+                <div class="notes-content" id="notes-content">
+                    <div class="notes-display" id="notes-display"></div>
+                    <textarea class="notes-textarea hidden" id="notes-textarea" placeholder="Add notes about this report..."></textarea>
+                    <div class="notes-footer" id="notes-footer"></div>
+                </div>
+            </div>
             <div class="dependency-graph-container hidden" id="dependency-graph-container">
                 <div class="graph-section">
                     <div class="section-bar">
@@ -174,6 +185,38 @@
                         <tbody id="sbom-detail-tbody"></tbody>
                     </table>
                 </div>
+            </div>
+        </section>
+
+        <!-- Version Info Page -->
+        <section id="version-view" class="detail-container hidden">
+            <div class="detail-header">
+                <button id="btn-version-back" class="btn-back"><i class="fa-solid fa-arrow-left"></i> Back to List</button>
+                <h2>Version Information</h2>
+            </div>
+            <div class="graph-section">
+                <div class="section-bar">
+                    <h3 class="graph-title">Application</h3>
+                </div>
+                <div class="detail-summary" id="version-app-info"></div>
+            </div>
+            <div class="graph-section">
+                <div class="section-bar">
+                    <h3 class="graph-title">Build Environment</h3>
+                </div>
+                <div class="detail-summary" id="version-build-info"></div>
+            </div>
+            <div class="graph-section">
+                <div class="section-bar">
+                    <h3 class="graph-title">Server Status</h3>
+                </div>
+                <div class="detail-summary" id="version-server-status"></div>
+            </div>
+            <div class="graph-section">
+                <div class="section-bar">
+                    <h3 class="graph-title">Runtime Configuration</h3>
+                </div>
+                <div class="detail-summary vertical" id="version-config-info"></div>
             </div>
         </section>
     </main>

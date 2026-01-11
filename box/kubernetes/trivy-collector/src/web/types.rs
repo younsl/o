@@ -103,7 +103,7 @@ pub struct WatcherInfo {
     pub initial_sync_done: bool,
 }
 
-/// Version info response
+/// Version info response (build-time information)
 #[derive(Serialize, ToSchema)]
 pub struct VersionResponse {
     /// Application version
@@ -115,6 +115,84 @@ pub struct VersionResponse {
     /// Build date
     #[schema(example = "2025-01-11T00:00:00Z")]
     pub build_date: String,
+    /// Rust version
+    #[schema(example = "1.92.0")]
+    pub rust_version: String,
+    /// Rust channel (stable, beta, nightly)
+    #[schema(example = "stable")]
+    pub rust_channel: String,
+    /// Target platform
+    #[schema(example = "aarch64-apple-darwin")]
+    pub platform: String,
+    /// LLVM version
+    #[schema(example = "19.1")]
+    pub llvm_version: String,
+}
+
+/// Server status response (runtime information)
+#[derive(Serialize, ToSchema)]
+pub struct StatusResponse {
+    /// Server hostname
+    #[schema(example = "trivy-collector-abc123")]
+    pub hostname: String,
+    /// Server uptime
+    #[schema(example = "2h 30m 15s")]
+    pub uptime: String,
+    /// Number of connected collectors (clusters)
+    #[schema(example = 3)]
+    pub collectors: i64,
+}
+
+/// Configuration item with env var name
+#[derive(Serialize, ToSchema)]
+pub struct ConfigItem {
+    /// Environment variable name
+    #[schema(example = "MODE")]
+    pub env: String,
+    /// Current value (as string, masked if sensitive)
+    #[schema(example = "server")]
+    pub value: String,
+    /// Whether this is a sensitive value (masked in UI)
+    #[schema(example = false)]
+    pub sensitive: bool,
+}
+
+impl ConfigItem {
+    /// Create a public (non-sensitive) config item
+    pub fn public(env: &str, value: impl ToString) -> Self {
+        Self {
+            env: env.to_string(),
+            value: value.to_string(),
+            sensitive: false,
+        }
+    }
+
+    /// Create a sensitive config item (value will be masked)
+    pub fn sensitive(env: &str, value: impl ToString) -> Self {
+        Self {
+            env: env.to_string(),
+            value: Self::mask_value(&value.to_string()),
+            sensitive: true,
+        }
+    }
+
+    /// Mask sensitive value
+    fn mask_value(value: &str) -> String {
+        if value.is_empty() {
+            "(empty)".to_string()
+        } else if value.len() <= 4 {
+            "****".to_string()
+        } else {
+            format!("{}****", &value[..2])
+        }
+    }
+}
+
+/// Configuration info response
+#[derive(Serialize, ToSchema)]
+pub struct ConfigResponse {
+    /// List of configuration items
+    pub items: Vec<ConfigItem>,
 }
 
 #[cfg(test)]

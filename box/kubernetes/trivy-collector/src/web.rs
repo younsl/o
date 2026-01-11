@@ -15,14 +15,14 @@ mod watcher;
 
 // Re-export public types
 pub use handlers::{
-    delete_report, get_sbom_report, get_stats, get_version, get_vulnerability_report,
-    get_watcher_status, healthz, list_clusters, list_namespaces, list_sbom_reports,
-    list_vulnerability_reports, receive_report, update_notes,
+    delete_report, get_config, get_sbom_report, get_stats, get_status, get_version,
+    get_vulnerability_report, get_watcher_status, healthz, list_clusters, list_namespaces,
+    list_sbom_reports, list_vulnerability_reports, receive_report, update_notes,
 };
-pub use state::{AppState, WatcherStatus};
+pub use state::{AppState, RuntimeInfo, WatcherStatus};
 pub use types::{
-    ErrorResponse, HealthResponse, ListQuery, ListResponse, UpdateNotesRequest, VersionResponse,
-    WatcherInfo, WatcherStatusResponse,
+    ConfigItem, ConfigResponse, ErrorResponse, HealthResponse, ListQuery, ListResponse,
+    StatusResponse, UpdateNotesRequest, VersionResponse, WatcherInfo, WatcherStatusResponse,
 };
 pub use watcher::LocalWatcher;
 
@@ -54,6 +54,8 @@ use crate::storage::{ClusterInfo, FullReport, ReportMeta, Stats, VulnSummary};
         handlers::update_notes,
         handlers::get_watcher_status,
         handlers::get_version,
+        handlers::get_status,
+        handlers::get_config,
     ),
     components(schemas(
         HealthResponse,
@@ -62,6 +64,8 @@ use crate::storage::{ClusterInfo, FullReport, ReportMeta, Stats, VulnSummary};
         WatcherStatusResponse,
         WatcherInfo,
         VersionResponse,
+        StatusResponse,
+        ConfigResponse,
         ReportMeta,
         FullReport,
         ClusterInfo,
@@ -80,7 +84,9 @@ use crate::storage::{ClusterInfo, FullReport, ReportMeta, Stats, VulnSummary};
         (name = "Namespaces", description = "Namespace listing endpoints"),
         (name = "Statistics", description = "Statistics endpoints"),
         (name = "Watcher", description = "Watcher status endpoints"),
-        (name = "Version", description = "Version information endpoints"),
+        (name = "Version", description = "Build version information endpoints"),
+        (name = "Status", description = "Server runtime status endpoints"),
+        (name = "Config", description = "Configuration endpoints"),
     )
 )]
 pub struct ApiDoc;
@@ -155,7 +161,14 @@ pub async fn run(
         None
     };
 
-    let state = AppState { db, watcher_status };
+    let config_info = Arc::new(state::ConfigInfo::from(&config));
+    let runtime_info = Arc::new(state::RuntimeInfo::new());
+    let state = AppState {
+        db,
+        watcher_status,
+        config: config_info,
+        runtime: runtime_info,
+    };
 
     // Configure CORS
     let cors = CorsLayer::new()
@@ -187,6 +200,8 @@ pub async fn run(
         .route("/api/v1/namespaces", get(list_namespaces))
         .route("/api/v1/watcher/status", get(get_watcher_status))
         .route("/api/v1/version", get(get_version))
+        .route("/api/v1/status", get(get_status))
+        .route("/api/v1/config", get(get_config))
         .route(
             "/api/v1/reports/{cluster}/{report_type}/{namespace}/{name}",
             delete(delete_report),

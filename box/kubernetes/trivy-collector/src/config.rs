@@ -1,6 +1,28 @@
 use clap::{Parser, Subcommand, ValueEnum};
 use serde::{Deserialize, Serialize};
 
+// ============================================
+// Environment variable name constants
+// These are shared between config parsing and API exposure
+// ============================================
+pub mod env {
+    pub const MODE: &str = "MODE";
+    pub const LOG_FORMAT: &str = "LOG_FORMAT";
+    pub const LOG_LEVEL: &str = "LOG_LEVEL";
+    pub const HEALTH_PORT: &str = "HEALTH_PORT";
+    pub const SERVER_URL: &str = "SERVER_URL";
+    pub const CLUSTER_NAME: &str = "CLUSTER_NAME";
+    pub const NAMESPACES: &str = "NAMESPACES";
+    pub const COLLECT_VULN: &str = "COLLECT_VULN";
+    pub const COLLECT_SBOM: &str = "COLLECT_SBOM";
+    pub const RETRY_ATTEMPTS: &str = "RETRY_ATTEMPTS";
+    pub const RETRY_DELAY_SECS: &str = "RETRY_DELAY_SECS";
+    pub const HEALTH_CHECK_INTERVAL_SECS: &str = "HEALTH_CHECK_INTERVAL_SECS";
+    pub const SERVER_PORT: &str = "SERVER_PORT";
+    pub const STORAGE_PATH: &str = "STORAGE_PATH";
+    pub const WATCH_LOCAL: &str = "WATCH_LOCAL";
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, ValueEnum, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum Mode {
@@ -36,69 +58,69 @@ pub struct Config {
     #[command(subcommand)]
     pub command: Option<Command>,
     /// Deployment mode
-    #[arg(long, env = "MODE", value_enum, default_value = "collector")]
+    #[arg(long, env = env::MODE, value_enum, default_value = "collector")]
     pub mode: Mode,
 
     /// Log format: json or pretty
-    #[arg(long, env = "LOG_FORMAT", default_value = "json")]
+    #[arg(long, env = env::LOG_FORMAT, default_value = "json")]
     pub log_format: String,
 
     /// Log level: trace, debug, info, warn, error
-    #[arg(long, env = "LOG_LEVEL", default_value = "info")]
+    #[arg(long, env = env::LOG_LEVEL, default_value = "info")]
     pub log_level: String,
 
     /// Health check server port
-    #[arg(long, env = "HEALTH_PORT", default_value = "8080")]
+    #[arg(long, env = env::HEALTH_PORT, default_value = "8080")]
     pub health_port: u16,
 
     // ============================================
     // Collector mode settings
     // ============================================
     /// Central server URL (collector mode only)
-    #[arg(long, env = "SERVER_URL")]
+    #[arg(long, env = env::SERVER_URL)]
     pub server_url: Option<String>,
 
     /// Cluster identifier
-    #[arg(long, env = "CLUSTER_NAME", default_value = "local")]
+    #[arg(long, env = env::CLUSTER_NAME, default_value = "local")]
     pub cluster_name: String,
 
     /// Namespaces to watch, comma-separated (empty = all namespaces)
-    #[arg(long, env = "NAMESPACES", value_delimiter = ',')]
+    #[arg(long, env = env::NAMESPACES, value_delimiter = ',')]
     pub namespaces: Vec<String>,
 
     /// Collect VulnerabilityReports
-    #[arg(long, env = "COLLECT_VULN", default_value = "true")]
+    #[arg(long, env = env::COLLECT_VULN, default_value = "true")]
     pub collect_vulnerability_reports: bool,
 
     /// Collect SbomReports
-    #[arg(long, env = "COLLECT_SBOM", default_value = "true")]
+    #[arg(long, env = env::COLLECT_SBOM, default_value = "true")]
     pub collect_sbom_reports: bool,
 
     /// Retry attempts on failure
-    #[arg(long, env = "RETRY_ATTEMPTS", default_value = "3")]
+    #[arg(long, env = env::RETRY_ATTEMPTS, default_value = "3")]
     pub retry_attempts: u32,
 
     /// Retry delay in seconds
-    #[arg(long, env = "RETRY_DELAY_SECS", default_value = "5")]
+    #[arg(long, env = env::RETRY_DELAY_SECS, default_value = "5")]
     pub retry_delay_secs: u64,
 
     /// Health check interval in seconds (0 to disable)
-    #[arg(long, env = "HEALTH_CHECK_INTERVAL_SECS", default_value = "30")]
+    #[arg(long, env = env::HEALTH_CHECK_INTERVAL_SECS, default_value = "30")]
     pub health_check_interval_secs: u64,
 
     // ============================================
     // Server mode settings
     // ============================================
     /// API/UI server port (server mode only)
-    #[arg(long, env = "SERVER_PORT", default_value = "3000")]
+    #[arg(long, env = env::SERVER_PORT, default_value = "3000")]
     pub server_port: u16,
 
     /// Storage path for SQLite database (server mode only)
-    #[arg(long, env = "STORAGE_PATH", default_value = "/data")]
+    #[arg(long, env = env::STORAGE_PATH, default_value = "/data")]
     pub storage_path: String,
 
     /// Enable local Kubernetes API watching in server mode
-    #[arg(long, env = "WATCH_LOCAL", default_value = "true")]
+    #[arg(long, env = env::WATCH_LOCAL, default_value = "true")]
     pub watch_local: bool,
 }
 

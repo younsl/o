@@ -10,12 +10,13 @@ use std::sync::atomic::Ordering;
 use tracing::{debug, error, info};
 
 use crate::collector::types::{ReportEvent, ReportEventType};
+use crate::config::env;
 use crate::storage::{ClusterInfo, FullReport, ReportMeta, Stats};
 
 use super::state::AppState;
 use super::types::{
-    ErrorResponse, HealthResponse, ListQuery, ListResponse, UpdateNotesRequest, VersionResponse,
-    WatcherInfo, WatcherStatusResponse,
+    ConfigItem, ConfigResponse, ErrorResponse, HealthResponse, ListQuery, ListResponse,
+    StatusResponse, UpdateNotesRequest, VersionResponse, WatcherInfo, WatcherStatusResponse,
 };
 
 /// Health check endpoint for collectors
@@ -529,7 +530,7 @@ pub async fn get_watcher_status(State(state): State<AppState>) -> impl IntoRespo
     (StatusCode::OK, Json(status))
 }
 
-/// Get version info
+/// Get version info (build-time information)
 #[utoipa::path(
     get,
     path = "/api/v1/version",
@@ -543,6 +544,78 @@ pub async fn get_version() -> impl IntoResponse {
         version: env!("CARGO_PKG_VERSION").to_string(),
         commit: env!("VERGEN_GIT_SHA").to_string(),
         build_date: env!("VERGEN_BUILD_TIMESTAMP").to_string(),
+        rust_version: env!("VERGEN_RUSTC_SEMVER").to_string(),
+        rust_channel: env!("VERGEN_RUSTC_CHANNEL").to_string(),
+        platform: env!("VERGEN_CARGO_TARGET_TRIPLE").to_string(),
+        llvm_version: option_env!("VERGEN_RUSTC_LLVM_VERSION")
+            .unwrap_or("unknown")
+            .to_string(),
     };
     (StatusCode::OK, Json(version))
+}
+
+/// Get server status (runtime information)
+#[utoipa::path(
+    get,
+    path = "/api/v1/status",
+    tag = "Status",
+    responses(
+        (status = 200, description = "Server status", body = StatusResponse)
+    )
+)]
+pub async fn get_status(State(state): State<AppState>) -> impl IntoResponse {
+    let collectors = state
+        .db
+        .list_clusters()
+        .map(|c| c.len() as i64)
+        .unwrap_or(0);
+
+    let status = StatusResponse {
+        hostname: state.runtime.hostname.clone(),
+        uptime: state.runtime.uptime_string(),
+        collectors,
+    };
+    (StatusCode::OK, Json(status))
+}
+
+/// Get config info
+#[utoipa::path(
+    get,
+    path = "/api/v1/config",
+    tag = "Config",
+    responses(
+        (status = 200, description = "Configuration information", body = ConfigResponse)
+    )
+)]
+pub async fn get_config(State(state): State<AppState>) -> impl IntoResponse {
+    let c = &state.config;
+
+    // Helper to format namespaces
+    let namespaces_str = if c.namespaces.is_empty() {
+        "all".to_string()
+    } else {
+        c.namespaces.join(", ")
+    };
+
+    // Build config items list - easy to extend by adding new entries
+    // Use ConfigItem::public() for normal values
+    // Use ConfigItem::sensitive() for values that should be masked (e.g., API keys, passwords)
+    // ENV names are defined in crate::config::env module (single source of truth)
+    let items = vec![
+        ConfigItem::public(env::MODE, &c.mode),
+        ConfigItem::public(env::CLUSTER_NAME, &c.cluster_name),
+        ConfigItem::public(env::NAMESPACES, &namespaces_str),
+        ConfigItem::public(env::SERVER_PORT, c.server_port),
+        ConfigItem::public(env::HEALTH_PORT, c.health_port),
+        ConfigItem::public(env::STORAGE_PATH, &c.storage_path),
+        ConfigItem::public(env::LOG_LEVEL, &c.log_level),
+        ConfigItem::public(env::LOG_FORMAT, &c.log_format),
+        ConfigItem::public(env::WATCH_LOCAL, c.watch_local),
+        ConfigItem::public(env::COLLECT_VULN, c.collect_vulnerability_reports),
+        ConfigItem::public(env::COLLECT_SBOM, c.collect_sbom_reports),
+        // Example of sensitive config (uncomment when adding sensitive values):
+        // ConfigItem::sensitive(env::API_KEY, &c.api_key),
+    ];
+
+    (StatusCode::OK, Json(ConfigResponse { items }))
 }

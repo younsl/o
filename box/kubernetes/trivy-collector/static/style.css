@@ -22,6 +22,11 @@
     --unknown: #6b7280;
 }
 
+.mono {
+    font-family: 'SF Mono', Monaco, Consolas, monospace;
+    font-size: 12px;
+}
+
 body {
     font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Display', 'Segoe UI', Roboto, sans-serif;
     background-color: var(--bg-primary);
@@ -31,6 +36,12 @@ body {
     flex-direction: column;
     font-size: 14px;
     line-height: 1.5;
+}
+
+body.modal-open {
+    position: fixed;
+    width: 100%;
+    overflow-y: scroll;
 }
 
 /* Header */
@@ -83,6 +94,16 @@ header h1 {
 
 .version-info:empty {
     display: none;
+}
+
+.version-info.clickable {
+    cursor: pointer;
+    transition: all 0.15s ease;
+}
+
+.version-info.clickable:hover {
+    background-color: var(--bg-hover);
+    color: var(--text-primary);
 }
 
 /* Watcher Status LED */
@@ -973,6 +994,34 @@ main {
     flex-wrap: wrap;
 }
 
+.detail-summary.vertical {
+    flex-direction: column;
+    gap: 0;
+}
+
+.detail-summary.vertical .detail-summary-item {
+    flex-direction: row;
+    justify-content: space-between;
+    align-items: center;
+    padding: 10px 0;
+    border-bottom: 1px solid var(--border);
+}
+
+.detail-summary.vertical .detail-summary-item:last-child {
+    border-bottom: none;
+}
+
+.detail-summary.vertical .detail-summary-label {
+    font-size: 13px;
+    text-transform: none;
+    letter-spacing: normal;
+    color: var(--text-secondary);
+}
+
+.detail-summary.vertical .detail-summary-value {
+    text-align: right;
+}
+
 .detail-summary-item {
     display: flex;
     flex-direction: column;
@@ -990,6 +1039,83 @@ main {
     font-size: 13px;
     color: var(--text-primary);
     word-break: break-all;
+}
+
+.detail-summary-value.sensitive {
+    color: var(--text-secondary);
+    font-style: italic;
+}
+
+/* Notes Section in Detail View */
+.notes-content {
+    padding: 16px 20px;
+}
+
+.notes-text {
+    font-size: 13px;
+    color: var(--text-primary);
+    line-height: 1.6;
+    white-space: pre-wrap;
+    word-break: break-word;
+}
+
+.notes-empty {
+    font-size: 13px;
+    color: var(--text-muted);
+    font-style: italic;
+}
+
+.notes-textarea {
+    width: 100%;
+    min-height: 100px;
+    padding: 12px;
+    background-color: var(--bg-primary);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    color: var(--text-primary);
+    font-size: 13px;
+    font-family: inherit;
+    line-height: 1.5;
+    resize: vertical;
+    transition: border-color 0.15s ease;
+}
+
+.notes-textarea:focus {
+    outline: none;
+    border-color: var(--accent);
+}
+
+.notes-textarea::placeholder {
+    color: var(--text-muted);
+}
+
+.notes-footer {
+    margin-top: 12px;
+}
+
+.notes-timestamps-inline {
+    display: flex;
+    gap: 16px;
+    font-size: 11px;
+    color: var(--text-muted);
+}
+
+.notes-actions {
+    display: flex;
+    gap: 8px;
+}
+
+.btn-sm {
+    padding: 5px 12px;
+    font-size: 12px;
+}
+
+/* Notes Indicator in List View */
+.notes-indicator {
+    margin-left: 8px;
+    color: var(--accent);
+    font-size: 11px;
+    opacity: 0.8;
 }
 
 /* Dependency Graph */

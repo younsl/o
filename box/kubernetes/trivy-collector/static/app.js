@@ -66,6 +66,7 @@ document.addEventListener('DOMContentLoaded', () => {
     btnSbom.addEventListener('click', () => switchReportType('sbomreport'));
     btnBack.addEventListener('click', showListView);
     btnExportCsv.addEventListener('click', exportToCsv);
+    document.getElementById('btn-version-back').addEventListener('click', hideVersionPage);
 
     // Scroll navigation
     document.getElementById('btn-scroll-top').addEventListener('click', () => {
@@ -109,12 +110,12 @@ document.addEventListener('DOMContentLoaded', () => {
     // Keyboard shortcuts
     document.addEventListener('keydown', (e) => {
         if (e.key === 'Escape') {
-            if (currentNotesPopup) {
-                closeNotesPopup();
-            } else if (currentHelpTooltip) {
+            if (currentHelpTooltip) {
                 closeHelpTooltip();
             } else if (!filterPopup.classList.contains('hidden')) {
                 closeFilterPopup();
+            } else if (!versionView.classList.contains('hidden')) {
+                hideVersionPage();
             } else if (!detailView.classList.contains('hidden')) {
                 showListView();
             }
@@ -162,16 +163,146 @@ function updateLed(led, watcherInfo) {
     }
 }
 
+// Version, status, and config data cache
+let versionData = null;
+let statusData = null;
+let configData = null;
+
+// Version View Elements
+const versionView = document.getElementById('version-view');
+const versionAppInfo = document.getElementById('version-app-info');
+const versionServerStatus = document.getElementById('version-server-status');
+const versionBuildInfo = document.getElementById('version-build-info');
+const versionConfigInfo = document.getElementById('version-config-info');
+
 // Load version info
 async function loadVersion() {
     try {
         const version = await fetchApi('/api/v1/version');
+        versionData = version;
         const commitShort = version.commit.substring(0, 7);
-        document.getElementById('version-info').textContent = `v${version.version} (${commitShort})`;
-        document.getElementById('version-info').title = `Build: ${version.build_date}\nCommit: ${version.commit}`;
+        const versionInfo = document.getElementById('version-info');
+        versionInfo.textContent = `v${version.version} (${commitShort})`;
+        versionInfo.title = 'Click to view detailed version info';
+        versionInfo.classList.add('clickable');
+        versionInfo.addEventListener('click', showVersionPage);
     } catch (error) {
         console.error('Failed to load version:', error);
     }
+}
+
+// Load config info
+async function loadConfig() {
+    try {
+        configData = await fetchApi('/api/v1/config');
+    } catch (error) {
+        console.error('Failed to load config:', error);
+    }
+}
+
+// Load server status info
+async function loadStatus() {
+    try {
+        statusData = await fetchApi('/api/v1/status');
+    } catch (error) {
+        console.error('Failed to load status:', error);
+    }
+}
+
+// Show version page
+async function showVersionPage() {
+    if (!versionData) return;
+
+    // Hide other views
+    reportsSection.classList.add('hidden');
+    detailView.classList.add('hidden');
+    versionView.classList.remove('hidden');
+
+    const commitShort = versionData.commit.substring(0, 7);
+    const buildDate = new Date(versionData.build_date).toLocaleString();
+
+    // Render application info
+    versionAppInfo.innerHTML = `
+        <div class="detail-summary-item">
+            <span class="detail-summary-label">Version</span>
+            <span class="detail-summary-value">v${versionData.version}+${commitShort}</span>
+        </div>
+        <div class="detail-summary-item">
+            <span class="detail-summary-label">Build Date</span>
+            <span class="detail-summary-value">${buildDate}</span>
+        </div>
+        <div class="detail-summary-item">
+            <span class="detail-summary-label">Commit</span>
+            <span class="detail-summary-value mono">${versionData.commit}</span>
+        </div>
+    `;
+
+    // Load and render server status
+    if (!statusData) {
+        versionServerStatus.innerHTML = '<p class="loading">Loading...</p>';
+        await loadStatus();
+    }
+
+    if (statusData) {
+        versionServerStatus.innerHTML = `
+            <div class="detail-summary-item">
+                <span class="detail-summary-label">Hostname</span>
+                <span class="detail-summary-value">${escapeHtml(statusData.hostname)}</span>
+            </div>
+            <div class="detail-summary-item">
+                <span class="detail-summary-label">Uptime</span>
+                <span class="detail-summary-value">${escapeHtml(statusData.uptime)}</span>
+            </div>
+            <div class="detail-summary-item">
+                <span class="detail-summary-label">Collectors</span>
+                <span class="detail-summary-value">${statusData.collectors}</span>
+            </div>
+        `;
+    } else {
+        versionServerStatus.innerHTML = '<p class="no-data">Failed to load server status</p>';
+    }
+
+    // Render build environment info
+    versionBuildInfo.innerHTML = `
+        <div class="detail-summary-item">
+            <span class="detail-summary-label">Rust Version</span>
+            <span class="detail-summary-value">${versionData.rust_version} (${versionData.rust_channel})</span>
+        </div>
+        <div class="detail-summary-item">
+            <span class="detail-summary-label">LLVM Version</span>
+            <span class="detail-summary-value">${versionData.llvm_version}</span>
+        </div>
+        <div class="detail-summary-item">
+            <span class="detail-summary-label">Platform</span>
+            <span class="detail-summary-value">${versionData.platform}</span>
+        </div>
+    `;
+
+    // Load and render config info
+    if (!configData) {
+        versionConfigInfo.innerHTML = '<p class="loading">Loading...</p>';
+        await loadConfig();
+    }
+
+    if (configData && configData.items) {
+        versionConfigInfo.innerHTML = configData.items.map(item => `
+            <div class="detail-summary-item">
+                <span class="detail-summary-label">${escapeHtml(item.env)}</span>
+                <span class="detail-summary-value${item.sensitive ? ' sensitive' : ''}">${escapeHtml(item.value)}</span>
+            </div>
+        `).join('');
+    } else {
+        versionConfigInfo.innerHTML = '<p class="no-data">Failed to load configuration</p>';
+    }
+
+    // Scroll to top
+    window.scrollTo(0, 0);
+}
+
+// Hide version page
+function hideVersionPage() {
+    versionView.classList.add('hidden');
+    reportsSection.classList.remove('hidden');
 }
 
 // Load stats
@@ -298,27 +429,22 @@ function renderReports() {
         row.innerHTML = currentReportType === 'vulnerabilityreport'
             ? createVulnRow(report)
             : createSbomRow(report);
-        row.addEventListener('click', (e) => {
-            // Don't navigate to detail if clicking notes button
-            if (e.target.classList.contains('notes-btn')) return;
+        row.addEventListener('click', () => {
             showReportDetail(report);
         });
         reportsBody.appendChild(row);
     });
-
-    // Add notes button handlers
-    initNotesButtons();
 }
 
 function createVulnRow(report) {
     const summary = report.summary || {};
     const hasNotes = report.notes && report.notes.trim().length > 0;
-    const notesBtn = `<button class="notes-btn${hasNotes ? ' has-notes' : ''}" data-cluster="${escapeHtml(report.cluster)}" data-namespace="${escapeHtml(report.namespace)}" data-name="${escapeHtml(report.name)}" data-report-type="vulnerabilityreport" data-notes="${escapeHtml(report.notes || '')}" data-notes-created="${escapeHtml(report.notes_created_at || '')}" data-notes-updated="${escapeHtml(report.notes_updated_at || '')}" title="${hasNotes ? 'View/Edit notes' : 'Add notes'}"><i class="fa-solid fa-note-sticky"></i></button>`;
+    const notesIcon = hasNotes ? '<i class="fa-solid fa-note-sticky notes-indicator" title="Has notes"></i>' : '';
     return `
         <td>${escapeHtml(report.cluster)}</td>
         <td>${escapeHtml(report.namespace)}</td>
         <td>${escapeHtml(report.app || '-')}</td>
-        <td class="image-cell">${escapeHtml(report.image || '-')}${notesBtn}</td>
+        <td class="image-cell">${escapeHtml(report.image || '-')}${notesIcon}</td>
         <td class="severity-col">${formatSeverity(summary.critical, 'critical')}</td>
         <td class="severity-col">${formatSeverity(summary.high, 'high')}</td>
         <td class="severity-col">${formatSeverity(summary.medium, 'medium')}</td>
@@ -330,12 +456,12 @@ function createVulnRow(report) {
 
 function createSbomRow(report) {
     const hasNotes = report.notes && report.notes.trim().length > 0;
-    const notesBtn = `<button class="notes-btn${hasNotes ? ' has-notes' : ''}" data-cluster="${escapeHtml(report.cluster)}" data-namespace="${escapeHtml(report.namespace)}" data-name="${escapeHtml(report.name)}" data-report-type="sbomreport" data-notes="${escapeHtml(report.notes || '')}" data-notes-created="${escapeHtml(report.notes_created_at || '')}" data-notes-updated="${escapeHtml(report.notes_updated_at || '')}" title="${hasNotes ? 'View/Edit notes' : 'Add notes'}"><i class="fa-solid fa-note-sticky"></i></button>`;
+    const notesIcon = hasNotes ? '<i class="fa-solid fa-note-sticky notes-indicator" title="Has notes"></i>' : '';
     return `
         <td>${escapeHtml(report.cluster)}</td>
         <td>${escapeHtml(report.namespace)}</td>
         <td>${escapeHtml(report.app || '-')}</td>
-        <td class="image-cell">${escapeHtml(report.image || '-')}${notesBtn}</td>
+        <td class="image-cell">${escapeHtml(report.image || '-')}${notesIcon}</td>
         <td><span class="components-badge">${report.components_count || 0}</span></td>
         <td>${formatDate(report.updated_at)}</td>
     `;
@@ -551,220 +677,6 @@ function initHelpButtons() {
     });
 }
 
-// Notes Popup Functions
-let currentNotesPopup = null;
-
-function initNotesButtons() {
-    const notesBtns = document.querySelectorAll('.notes-btn');
-    notesBtns.forEach(btn => {
-        btn.addEventListener('click', (e) => {
-            e.stopPropagation();
-            showNotesPopup(btn);
-        });
-    });
-}
-
-function showNotesPopup(buttonElement) {
-    // Close existing popup
-    closeNotesPopup();
-
-    const cluster = buttonElement.dataset.cluster;
-    const namespace = buttonElement.dataset.namespace;
-    const name = buttonElement.dataset.name;
-    const reportType = buttonElement.dataset.reportType;
-    const notes = buttonElement.dataset.notes || '';
-    const notesCreated = buttonElement.dataset.notesCreated || '';
-    const notesUpdated = buttonElement.dataset.notesUpdated || '';
-
-    // Format timestamps
-    const createdStr = notesCreated ? formatDate(notesCreated) : '';
-    const updatedStr = notesUpdated ? formatDate(notesUpdated) : '';
-    const hasTimestamps = createdStr || updatedStr;
-
-    // Create overlay
-    const overlay = document.createElement('div');
-    overlay.className = 'notes-modal-overlay';
-
-    const modal = document.createElement('div');
-    modal.className = 'notes-modal';
-    modal.innerHTML = `
-        <div class="notes-modal-header">
-            <span class="notes-modal-title">Notes</span>
-            <button class="notes-modal-close">&times;</button>
-        </div>
-        <div class="notes-modal-body">
-            <textarea class="notes-modal-textarea" placeholder="Add notes...">${escapeHtml(notes)}</textarea>
-            ${hasTimestamps ? `
-            <div class="notes-timestamps">
-                ${createdStr ? `<span class="notes-timestamp">Created: ${createdStr}</span>` : ''}
-                ${updatedStr && updatedStr !== createdStr ? `<span class="notes-timestamp">Updated: ${updatedStr}</span>` : ''}
-            </div>
-            ` : ''}
-        </div>
-        <div class="notes-modal-footer">
-            <button class="btn-danger notes-modal-delete" data-cluster="${escapeHtml(cluster)}" data-namespace="${escapeHtml(namespace)}" data-name="${escapeHtml(name)}" data-report-type="${escapeHtml(reportType)}" ${!notes ? 'disabled' : ''}><i class="fa-solid fa-trash"></i> Delete</button>
-            <div class="notes-modal-actions">
-                <button class="btn-secondary notes-modal-cancel">Cancel</button>
-                <button class="btn-primary notes-modal-save" data-cluster="${escapeHtml(cluster)}" data-namespace="${escapeHtml(namespace)}" data-name="${escapeHtml(name)}" data-report-type="${escapeHtml(reportType)}">Save</button>
-            </div>
-        </div>
-    `;
-
-    overlay.appendChild(modal);
-    document.body.appendChild(overlay);
-    currentNotesPopup = overlay;
-
-    // Event handlers
-    modal.querySelector('.notes-modal-close').addEventListener('click', closeNotesPopup);
-    modal.querySelector('.notes-modal-cancel').addEventListener('click', closeNotesPopup);
-    modal.querySelector('.notes-modal-save').addEventListener('click', saveNotesFromPopup);
-    modal.querySelector('.notes-modal-delete').addEventListener('click', deleteNotesFromPopup);
-    overlay.addEventListener('click', (e) => {
-        if (e.target === overlay) closeNotesPopup();
-    });
-
-    // Focus textarea
-    modal.querySelector('.notes-modal-textarea').focus();
-}
-
-function closeNotesPopup() {
-    if (currentNotesPopup) {
-        currentNotesPopup.remove();
-        currentNotesPopup = null;
-    }
-}
-
-async function saveNotesFromPopup(e) {
-    const btn = e.target;
-    const cluster = btn.dataset.cluster;
-    const namespace = btn.dataset.namespace;
-    const name = btn.dataset.name;
-    const reportType = btn.dataset.reportType;
-    const textarea = currentNotesPopup.querySelector('.notes-modal-textarea');
-    const notes = textarea.value;
-
-    btn.disabled = true;
-    btn.textContent = 'Saving...';
-
-    try {
-        const response = await fetch(
-            `/api/v1/reports/${encodeURIComponent(cluster)}/${encodeURIComponent(reportType)}/${encodeURIComponent(namespace)}/${encodeURIComponent(name)}/notes`,
-            {
-                method: 'PUT',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ notes })
-            }
-        );
-
-        if (response.ok) {
-            // Update the local report data with new timestamp
-            const report = currentReports.find(r =>
-                r.cluster === cluster &&
-                r.namespace === namespace &&
-                r.name === name
-            );
-            if (report) {
-                report.notes = notes;
-                const now = new Date().toISOString();
-                if (!report.notes_created_at) {
-                    report.notes_created_at = now;
-                }
-                report.notes_updated_at = now;
-            }
-            closeNotesPopup();
-            // Re-render to update the notes button state
-            renderReports();
-        } else {
-            throw new Error('Failed to save');
-        }
-    } catch (error) {
-        console.error('Failed to save notes:', error);
-        btn.textContent = 'Error';
-        setTimeout(() => {
-            btn.textContent = 'Save';
-            btn.disabled = false;
-        }, 2000);
-    }
-}
-
-function deleteNotesFromPopup(e) {
-    const btn = e.target.closest('.notes-modal-delete');
-
-    // Show inline confirmation buttons
-    const originalHtml = btn.innerHTML;
-    btn.classList.add('confirming');
-
-    // Create confirm/cancel buttons
-    const confirmBtn = document.createElement('button');
-    confirmBtn.className = 'btn-danger btn-confirm-yes';
-    confirmBtn.innerHTML = '<i class="fa-solid fa-check"></i>';
-    confirmBtn.title = 'Yes, delete';
-
-    const cancelBtn = document.createElement('button');
-    cancelBtn.className = 'btn-secondary btn-confirm-no';
-    cancelBtn.innerHTML = '<i class="fa-solid fa-xmark"></i>';
-    cancelBtn.title = 'Cancel';
-
-    // Insert buttons after delete button
-    btn.parentNode.insertBefore(confirmBtn, btn.nextSibling);
-    btn.parentNode.insertBefore(cancelBtn, confirmBtn.nextSibling);
-
-    // Cancel handler
-    cancelBtn.addEventListener('click', () => {
-        btn.classList.remove('confirming');
-        confirmBtn.remove();
-        cancelBtn.remove();
-    });
-
-    // Confirm handler
-    confirmBtn.addEventListener('click', async () => {
-        const cluster = btn.dataset.cluster;
-        const namespace = btn.dataset.namespace;
-        const name = btn.dataset.name;
-        const reportType = btn.dataset.reportType;
-
-        btn.disabled = true;
-        confirmBtn.disabled = true;
-        cancelBtn.disabled = true;
-        btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Deleting...';
-
-        try {
-            const response = await fetch(
-                `/api/v1/reports/${encodeURIComponent(cluster)}/${encodeURIComponent(reportType)}/${encodeURIComponent(namespace)}/${encodeURIComponent(name)}/notes`,
-                {
-                    method: 'PUT',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ notes: '' })
-                }
-            );
-
-            if (response.ok) {
-                const report = currentReports.find(r =>
-                    r.cluster === cluster &&
-                    r.namespace === namespace &&
-                    r.name === name
-                );
-                if (report) {
-                    report.notes = '';
-                    report.notes_created_at = null;
-                    report.notes_updated_at = null;
-                }
-                closeNotesPopup();
-                renderReports();
-            } else {
-                throw new Error('Failed to delete');
-            }
-        } catch (error) {
-            console.error('Failed to delete notes:', error);
-            btn.innerHTML = originalHtml;
-            btn.classList.remove('confirming');
-            btn.disabled = false;
-            confirmBtn.remove();
-            cancelBtn.remove();
-        }
-    });
-}
-
 // Filter Popup Functions
 function initFilterButtons() {
     const filterBtns = document.querySelectorAll('.filter-btn');
@@ -911,6 +823,9 @@ function showDetailView() {
 }
 
 // Show report detail (drill-down view)
+// Current detail report for notes
+let currentDetailReport = null;
+
 async function showReportDetail(report) {
     showDetailView();
     detailTitle.textContent = `${report.cluster} / ${report.namespace} / ${report.name}`;
@@ -926,15 +841,161 @@ async function showReportDetail(report) {
             : `/api/v1/sbomreports/${encodeURIComponent(report.cluster)}/${encodeURIComponent(report.namespace)}/${encodeURIComponent(report.name)}`;
 
         const data = await fetchApi(endpoint);
+        currentDetailReport = data;
 
         if (currentReportType === 'vulnerabilityreport') {
             renderVulnDetail(data);
         } else {
             renderSbomDetail(data);
         }
+
+        // Render notes section
+        renderNotesSection(data.meta);
     } catch (error) {
         console.error('Failed to load report detail:', error);
         detailSummary.innerHTML = '<p class="no-data">Error loading report details</p>';
+    }
+}
+
+// Render notes section in detail view (read-only mode)
+function renderNotesSection(meta) {
+    const display = document.getElementById('notes-display');
+    const textarea = document.getElementById('notes-textarea');
+    const footer = document.getElementById('notes-footer');
+    const actions = document.getElementById('notes-actions');
+
+    const notes = meta.notes || '';
+    textarea.value = notes;
+
+    // Show read-only display, hide textarea
+    display.classList.remove('hidden');
+    textarea.classList.add('hidden');
+
+    // Display notes or placeholder
+    if (notes.trim()) {
+        display.innerHTML = `<div class="notes-text">${escapeHtml(notes).replace(/\n/g, '<br>')}</div>`;
+    } else {
+        display.innerHTML = `<div class="notes-empty">No notes added</div>`;
+    }
+
+    // Footer with timestamps
+    const createdStr = meta.notes_created_at ? formatDate(meta.notes_created_at) : '';
+    const updatedStr = meta.notes_updated_at ? formatDate(meta.notes_updated_at) : '';
+
+    if (createdStr || updatedStr) {
+        footer.innerHTML = `
+            <div class="notes-timestamps-inline">
+                ${createdStr ? `<span>Created: ${createdStr}</span>` : ''}
+                ${updatedStr && updatedStr !== createdStr ? `<span>Updated: ${updatedStr}</span>` : ''}
+            </div>
+        `;
+    } else {
+        footer.innerHTML = '';
+    }
+
+    // Edit button
+    actions.innerHTML = `
+        <button class="btn-secondary btn-sm" id="btn-edit-notes"><i class="fa-solid fa-pen"></i> Edit</button>
+    `;
+
+    document.getElementById('btn-edit-notes').addEventListener('click', enterNotesEditMode);
+}
+
+// Enter edit mode for notes
+function enterNotesEditMode() {
+    const display = document.getElementById('notes-display');
+    const textarea = document.getElementById('notes-textarea');
+    const actions = document.getElementById('notes-actions');
+
+    // Hide display, show textarea
+    display.classList.add('hidden');
+    textarea.classList.remove('hidden');
+    textarea.focus();
+
+    // Save/Cancel buttons
+    actions.innerHTML = `
+        <button class="btn-secondary btn-sm" id="btn-cancel-notes"><i class="fa-solid fa-xmark"></i> Cancel</button>
+        <button class="btn-primary btn-sm" id="btn-save-notes"><i class="fa-solid fa-save"></i> Save</button>
+    `;
+
+    document.getElementById('btn-cancel-notes').addEventListener('click', cancelNotesEdit);
+    document.getElementById('btn-save-notes').addEventListener('click', saveDetailNotes);
+}
+
+// Cancel notes edit
+function cancelNotesEdit() {
+    if (currentDetailReport) {
+        renderNotesSection(currentDetailReport.meta);
+    }
+}
+
+// Save notes from detail view
+async function saveDetailNotes() {
+    if (!currentDetailReport) return;
+
+    const meta = currentDetailReport.meta;
+    const textarea = document.getElementById('notes-textarea');
+    const btn = document.getElementById('btn-save-notes');
+    const notes = textarea.value;
+
+    btn.disabled = true;
+    btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Saving...';
+
+    try {
+        const response = await fetch(
+            `/api/v1/reports/${encodeURIComponent(meta.cluster)}/${encodeURIComponent(currentReportType)}/${encodeURIComponent(meta.namespace)}/${encodeURIComponent(meta.name)}/notes`,
+            {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ notes })
+            }
+        );
+
+        if (response.ok) {
+            // Update local data
+            currentDetailReport.meta.notes = notes;
+            const now = new Date().toISOString();
+            if (!currentDetailReport.meta.notes_created_at && notes) {
+                currentDetailReport.meta.notes_created_at = now;
+            }
+            if (notes) {
+                currentDetailReport.meta.notes_updated_at = now;
+            } else {
+                currentDetailReport.meta.notes_created_at = null;
+                currentDetailReport.meta.notes_updated_at = null;
+            }
+
+            // Update the list data as well
+            const report = currentReports.find(r =>
+                r.cluster === meta.cluster &&
+                r.namespace === meta.namespace &&
+                r.name === meta.name
+            );
+            if (report) {
+                report.notes = notes;
+                report.notes_created_at = currentDetailReport.meta.notes_created_at;
+                report.notes_updated_at = currentDetailReport.meta.notes_updated_at;
+            }
+
+            // Re-render footer and list view (for notes indicator)
+            renderNotesSection(currentDetailReport.meta);
+            renderReports();
+
+            btn.innerHTML = '<i class="fa-solid fa-check"></i> Saved';
+            setTimeout(() => {
+                btn.disabled = false;
+                btn.innerHTML = '<i class="fa-solid fa-save"></i> Save';
+            }, 1500);
+        } else {
+            throw new Error('Failed to save');
+        }
+    } catch (error) {
+        console.error('Failed to save notes:', error);
+        btn.innerHTML = '<i class="fa-solid fa-xmark"></i> Error';
+        setTimeout(() => {
+            btn.disabled = false;
+            btn.innerHTML = '<i class="fa-solid fa-save"></i> Save';
+        }, 2000);
     }
 }
 
