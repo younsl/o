@@ -37,7 +37,7 @@ log = "0.4"
 indicatif = "0.18"
 
 # Table formatting
-tabled = "0.17"
+tabled = "0.20"
 
 # Time utilities
 chrono = "0.4"
