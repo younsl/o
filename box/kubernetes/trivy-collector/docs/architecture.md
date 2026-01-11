@@ -2,33 +2,9 @@
 
 ## Overview
 
-```
-┌─────────────────────┐     ┌─────────────────────┐
-│   Edge Cluster A    │     │   Edge Cluster B    │
-│  ┌───────────────┐  │     │  ┌───────────────┐  │
-│  │Trivy Operator │  │     │  │Trivy Operator │  │
-│  └───────┬───────┘  │     │  └───────┬───────┘  │
-│          │          │     │          │          │
-│  ┌───────▼───────┐  │     │  ┌───────▼───────┐  │
-│  │   Collector   │──┼─────┼──│   Collector   │  │
-│  └───────────────┘  │     │  └───────────────┘  │
-└─────────────────────┘     └─────────────────────┘
-           │                           │
-           └───────────┬───────────────┘
-                       │
-                       ▼
-          ┌────────────────────────┐
-          │    Central Cluster     │
-          │  ┌──────────────────┐  │
-          │  │      Server      │  │
-          │  │  ┌────────────┐  │  │
-          │  │  │  Web UI    │  │  │
-          │  │  │  REST API  │  │  │
-          │  │  │  SQLite DB │  │  │
-          │  │  └────────────┘  │  │
-          │  └──────────────────┘  │
-          └────────────────────────┘
-```
+trivy-collector uses a hub-and-spoke architecture. Collectors deployed on edge clusters watch Trivy Operator CRDs and forward reports to a central server, which aggregates data in SQLite and serves a unified Web UI for Security Engineers.
+
+![Architecture](assets/3-architecture.png)
 
 trivy-collector supports two deployment modes configured via `--mode` flag:
 

@@ -33,6 +33,12 @@ kubectl get vulnerabilityreports -A -o json | \
 
 ![trivy-collector sbom reports](docs/assets/2-demo-sbom.png)
 
+## Architecture
+
+![Architecture](docs/assets/3-architecture.png)
+
+For detailed architecture documentation, see [Architecture](docs/architecture.md).
+
 ## Features
 
 - **Multi-cluster support**: Collect reports from multiple Kubernetes clusters
