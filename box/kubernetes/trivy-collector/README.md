@@ -1,6 +1,7 @@
 # trivy-collector
 
 [![GitHub Container Registry](https://img.shields.io/badge/ghcr.io-trivy--collector-black?style=flat-square&logo=docker&logoColor=white)](https://github.com/younsl/o/pkgs/container/trivy-collector)
+[![Helm Chart](https://img.shields.io/badge/ghcr.io-charts%2Ftrivy--collector-black?style=flat-square&logo=helm&logoColor=white)](https://github.com/younsl/o/pkgs/container/charts%2Ftrivy-collector)
 [![Rust](https://img.shields.io/badge/rust-1.92-black?style=flat-square&logo=rust&logoColor=white)](https://www.rust-lang.org/)
 [![GitHub license](https://img.shields.io/github/license/younsl/o?style=flat-square&color=black)](https://github.com/younsl/o/blob/main/LICENSE)
 
@@ -100,13 +101,11 @@ rules:
 
 ## Documentation
 
-| Document | Description |
-|----------|-------------|
-| [Architecture](docs/architecture.md) | System architecture and deployment modes |
-| [Configuration](docs/configuration.md) | CLI options, environment variables, and API endpoints |
-| [Helm Chart](docs/helm-chart.md) | Helm values reference and installation examples |
-| [Development](docs/development.md) | Build commands, local testing, and release workflow |
-| [Troubleshooting](docs/troubleshooting.md) | Common issues and solutions |
+- [Architecture](docs/architecture.md): System architecture and deployment modes
+- [Configuration](docs/configuration.md): CLI options, environment variables, and API endpoints
+- [Helm Chart](docs/helm-chart.md): Helm values reference and installation examples
+- [Development](docs/development.md): Build commands, local testing, and release workflow
+- [Troubleshooting](docs/troubleshooting.md): Common issues and solutions
 
 ## License
 

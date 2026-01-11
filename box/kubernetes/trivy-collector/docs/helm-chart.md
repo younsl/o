@@ -1,5 +1,9 @@
 # Helm Chart
 
+This document provides Helm chart installation and configuration guide for trivy-collector. Helm chart is the officially recommended installation method for trivy-collector.
+
+**Target audience**: Platform Engineers and DevOps Engineers deploying trivy-collector to Kubernetes clusters.
+
 ## Values Reference
 
 ```yaml
