@@ -802,8 +802,17 @@ function openFilterPopup(filterKey, buttonElement) {
     const rect = buttonElement.getBoundingClientRect();
     const containerRect = reportsSection.getBoundingClientRect();
 
+    // Calculate popup position relative to container
+    const popupWidth = 220; // Approximate popup width
+    let left = rect.left - containerRect.left;
+
+    // Ensure popup doesn't overflow container right edge
+    if (left + popupWidth > containerRect.width) {
+        left = containerRect.width - popupWidth - 10;
+    }
+
     filterPopup.style.top = `${rect.bottom - containerRect.top + 5}px`;
-    filterPopup.style.left = `${Math.max(0, rect.left - containerRect.left - 100)}px`;
+    filterPopup.style.left = `${Math.max(10, left)}px`;
 
     // Set title
     const titles = { cluster: 'Cluster', namespace: 'Namespace', app: 'Application' };

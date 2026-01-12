@@ -463,6 +463,7 @@ main {
 
 /* Reports Table */
 .reports-container {
+    position: relative;
     background-color: var(--bg-secondary);
     border: 1px solid var(--border);
     border-radius: 8px;
