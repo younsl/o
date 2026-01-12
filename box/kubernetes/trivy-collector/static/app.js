@@ -910,6 +910,7 @@ function updateFilterButtonStates() {
 function showListView() {
     reportsSection.classList.remove('hidden');
     detailView.classList.add('hidden');
+    versionView.classList.add('hidden');
 
     // Show severity totals only for vuln reports, show SBOM help for SBOM reports
     const severityTotals = document.getElementById('severity-totals');
@@ -926,6 +927,7 @@ function showListView() {
 function showDetailView() {
     reportsSection.classList.add('hidden');
     detailView.classList.remove('hidden');
+    versionView.classList.add('hidden');
 }
 
 // Show report detail (drill-down view)
