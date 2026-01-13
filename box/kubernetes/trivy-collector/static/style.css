@@ -994,6 +994,7 @@ main {
 }
 
 .detail-header h2 {
+    flex-grow: 1;
     font-size: 14px;
     font-weight: 600;
     color: var(--text-primary);

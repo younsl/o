@@ -79,6 +79,7 @@ document.addEventListener('DOMContentLoaded', () => {
     btnSbom.addEventListener('click', () => switchReportType('sbomreport'));
     btnBack.addEventListener('click', showListView);
     btnExportCsv.addEventListener('click', exportToCsv);
+    document.getElementById('btn-export-detail').addEventListener('click', exportDetailToJson);
     document.getElementById('btn-version-back').addEventListener('click', hideVersionPage);
 
     // Scroll navigation
@@ -1850,4 +1851,170 @@ function downloadCsv(content, filename) {
     link.click();
     document.body.removeChild(link);
     URL.revokeObjectURL(link.href);
+}
+
+// Export detail to JSON (dispatches based on report type)
+function exportDetailToJson() {
+    if (currentReportType === 'vulnerabilityreport') {
+        exportVulnDetailToJson();
+    } else {
+        exportSbomDetailToJson();
+    }
+}
+
+// JSON Download helper
+function downloadJson(data, filename) {
+    const json = JSON.stringify(data, null, 2);
+    const blob = new Blob([json], { type: 'application/json' });
+    const link = document.createElement('a');
+    link.href = URL.createObjectURL(blob);
+    link.download = filename;
+    link.style.display = 'none';
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(link.href);
+}
+
+// Export vulnerability detail to JSON
+function exportVulnDetailToJson() {
+    if (!currentDetailReport) return;
+
+    const report = currentDetailReport;
+    const meta = report.meta;
+    const vulnerabilities = report.data?.report?.vulnerabilities || [];
+    const summary = report.data?.report?.summary || {};
+    const apiVersion = report.data?.apiVersion || 'aquasecurity.github.io/v1alpha1';
+    const kind = report.data?.kind || 'VulnerabilityReport';
+
+    // Sort vulnerabilities by severity
+    const severityOrder = { 'CRITICAL': 0, 'HIGH': 1, 'MEDIUM': 2, 'LOW': 3, 'UNKNOWN': 4 };
+    const sortedVulns = [...vulnerabilities].sort((a, b) => {
+        return (severityOrder[a.severity] || 5) - (severityOrder[b.severity] || 5);
+    });
+
+    const exportData = {
+        exported_at: new Date().toISOString(),
+        report_type: kind,
+        summary: {
+            api_version: apiVersion,
+            cluster: meta.cluster,
+            namespace: meta.namespace,
+            name: meta.name,
+            image: meta.image,
+            total_vulnerabilities: vulnerabilities.length,
+            critical: summary.criticalCount || 0,
+            high: summary.highCount || 0,
+            medium: summary.mediumCount || 0,
+            low: summary.lowCount || 0,
+            unknown: summary.unknownCount || 0
+        },
+        notes: {
+            content: meta.notes || null,
+            created_at: meta.notes_created_at || null,
+            updated_at: meta.notes_updated_at || null
+        },
+        vulnerabilities: sortedVulns.map((vuln, idx) => ({
+            index: idx + 1,
+            severity: vuln.severity || '',
+            vulnerability_id: vuln.vulnerabilityID || vuln.vulnerability_id || '',
+            score: vuln.score != null ? vuln.score : null,
+            resource: vuln.resource || '',
+            installed_version: vuln.installedVersion || vuln.installed_version || '',
+            fixed_version: vuln.fixedVersion || vuln.fixed_version || '',
+            title: vuln.title || '',
+            primary_link: vuln.primaryLink || vuln.primary_link || ''
+        }))
+    };
+
+    const filename = `trivy-vuln-${meta.cluster}-${meta.namespace}-${meta.name}-${formatDateForFilename()}.json`;
+    downloadJson(exportData, filename);
+}
+
+// Export SBOM detail to JSON
+function exportSbomDetailToJson() {
+    if (!currentDetailReport) return;
+
+    const report = currentDetailReport;
+    const meta = report.meta;
+    const componentsData = report.data?.report?.components || {};
+    const components = componentsData.components || [];
+    const dependencies = componentsData.dependencies
+        || report.data?.report?.dependencies
+        || report.data?.dependencies
+        || [];
+    const summary = report.data?.report?.summary || {};
+    const scanner = report.data?.report?.scanner || {};
+    const registry = report.data?.report?.registry || {};
+    const artifact = report.data?.report?.artifact || {};
+    const apiVersion = report.data?.apiVersion || 'aquasecurity.github.io/v1alpha1';
+    const kind = report.data?.kind || 'SbomReport';
+
+    // Get full image with registry
+    const fullImage = registry.server
+        ? `${registry.server}/${artifact.repository}:${artifact.tag}`
+        : meta.image;
+
+    // Calculate component distribution
+    const typeGroups = {};
+    components.forEach(comp => {
+        const type = comp.type || comp.component_type || 'unknown';
+        if (!typeGroups[type]) {
+            typeGroups[type] = 0;
+        }
+        typeGroups[type]++;
+    });
+
+    const totalComponents = components.length;
+    const componentDistribution = Object.entries(typeGroups)
+        .sort((a, b) => b[1] - a[1])
+        .map(([type, count]) => ({
+            type,
+            count,
+            percentage: totalComponents > 0 ? parseFloat(((count / totalComponents) * 100).toFixed(1)) : 0
+        }));
+
+    const exportData = {
+        exported_at: new Date().toISOString(),
+        report_type: kind,
+        summary: {
+            api_version: apiVersion,
+            cluster: meta.cluster,
+            namespace: meta.namespace,
+            name: meta.name,
+            image: fullImage,
+            bom_format: componentsData.bomFormat || null,
+            spec_version: componentsData.specVersion || null,
+            scanner: scanner.name ? {
+                name: scanner.name,
+                version: scanner.version || null
+            } : null,
+            total_components: totalComponents,
+            total_dependencies: summary.dependenciesCount || dependencies.length || 0
+        },
+        notes: {
+            content: meta.notes || null,
+            created_at: meta.notes_created_at || null,
+            updated_at: meta.notes_updated_at || null
+        },
+        component_distribution: componentDistribution,
+        components: components.map((comp, idx) => {
+            const licenses = (comp.licenses || [])
+                .map(l => l.license?.name || l.name || '')
+                .filter(Boolean);
+
+            return {
+                index: idx + 1,
+                name: comp.name || '',
+                version: comp.version || '',
+                type: comp.type || comp.component_type || '',
+                licenses: licenses.length > 0 ? licenses : null,
+                purl: comp.purl || null,
+                bom_ref: comp['bom-ref'] || comp.bomRef || comp.bom_ref || null
+            };
+        })
+    };
+
+    const filename = `trivy-sbom-${meta.cluster}-${meta.namespace}-${meta.name}-${formatDateForFilename()}.json`;
+    downloadJson(exportData, filename);
 }
