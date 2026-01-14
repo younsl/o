@@ -244,6 +244,7 @@ async function showVersionPage() {
     // Hide other views
     reportsSection.classList.add('hidden');
     detailView.classList.add('hidden');
+    dashboardView.classList.add('hidden');
     versionView.classList.remove('hidden');
 
     const commitShort = versionData.commit.substring(0, 7);
