@@ -195,6 +195,66 @@ pub struct ConfigResponse {
     pub items: Vec<ConfigItem>,
 }
 
+/// Query parameters for dashboard trend endpoint
+#[derive(Debug, Deserialize, IntoParams)]
+#[into_params(parameter_in = Query)]
+pub struct TrendQuery {
+    /// Time range: "1d", "7d", "30d", "all", or "YYYY-MM-DD:YYYY-MM-DD"
+    #[param(example = "30d")]
+    pub range: Option<String>,
+    /// Filter by cluster name
+    #[param(example = "prod-cluster")]
+    pub cluster: Option<String>,
+    /// Aggregation granularity: "daily" or "weekly"
+    #[param(example = "daily")]
+    pub granularity: Option<String>,
+}
+
+impl TrendQuery {
+    /// Parse range string to (start_date, end_date)
+    pub fn parse_range(&self) -> (String, String) {
+        let today = chrono::Utc::now().date_naive();
+        let range = self.range.as_deref().unwrap_or("30d");
+
+        if range.contains(':') {
+            // Custom range: "YYYY-MM-DD:YYYY-MM-DD"
+            let parts: Vec<&str> = range.split(':').collect();
+            if parts.len() == 2 {
+                return (parts[0].to_string(), parts[1].to_string());
+            }
+        }
+
+        // Handle "all" for all time data
+        if range == "all" {
+            // Use a very old date to get all data
+            return ("2000-01-01".to_string(), today.to_string());
+        }
+
+        // Relative range: 1d, 7d, 30d
+        let days: i64 = match range {
+            "1d" => 1,
+            "7d" => 7,
+            "30d" => 30,
+            _ => 30, // default
+        };
+
+        let start = today - chrono::Duration::days(days);
+        (start.to_string(), today.to_string())
+    }
+
+    /// Get granularity with default (auto-detect hourly for 1d range)
+    pub fn get_granularity(&self) -> &str {
+        if let Some(ref g) = self.granularity {
+            return g.as_str();
+        }
+        // Auto-detect: use hourly for 1d range
+        match self.range.as_deref() {
+            Some("1d") => "hourly",
+            _ => "daily",
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

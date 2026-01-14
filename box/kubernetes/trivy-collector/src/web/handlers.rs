@@ -11,12 +11,13 @@ use tracing::{debug, error, info};
 
 use crate::collector::types::{ReportEvent, ReportEventType};
 use crate::config::env;
-use crate::storage::{ClusterInfo, FullReport, ReportMeta, Stats};
+use crate::storage::{ClusterInfo, FullReport, ReportMeta, Stats, TrendResponse};
 
 use super::state::AppState;
 use super::types::{
     ConfigItem, ConfigResponse, ErrorResponse, HealthResponse, ListQuery, ListResponse,
-    StatusResponse, UpdateNotesRequest, VersionResponse, WatcherInfo, WatcherStatusResponse,
+    StatusResponse, TrendQuery, UpdateNotesRequest, VersionResponse, WatcherInfo,
+    WatcherStatusResponse,
 };
 
 /// Health check endpoint for collectors
@@ -618,4 +619,130 @@ pub async fn get_config(State(state): State<AppState>) -> impl IntoResponse {
     ];
 
     (StatusCode::OK, Json(ConfigResponse { items }))
+}
+
+/// Get dashboard trend data
+#[utoipa::path(
+    get,
+    path = "/api/v1/dashboard/trends",
+    tag = "Dashboard",
+    params(TrendQuery),
+    responses(
+        (status = 200, description = "Trend data for dashboard", body = TrendResponse),
+        (status = 500, description = "Internal server error", body = ErrorResponse)
+    )
+)]
+pub async fn get_dashboard_trends(
+    State(state): State<AppState>,
+    Query(query): Query<TrendQuery>,
+) -> impl IntoResponse {
+    let (start_date, end_date) = query.parse_range();
+    let granularity = query.get_granularity();
+
+    debug!(
+        start = %start_date,
+        end = %end_date,
+        cluster = ?query.cluster,
+        granularity = %granularity,
+        "Dashboard trends requested"
+    );
+
+    // Get data range for metadata from reports table (matches live trends data source)
+    let (actual_from, actual_to) = state.db.get_reports_data_range().unwrap_or((None, None));
+
+    // Always use live trends for consistent point-in-time (cumulative) values
+    debug!("Using live trends for {} granularity", granularity);
+    match state.db.get_live_trends(
+        &start_date,
+        &end_date,
+        query.cluster.as_deref(),
+        granularity,
+    ) {
+        Ok(mut live_trends) => {
+            live_trends.meta.data_from = actual_from;
+            live_trends.meta.data_to = actual_to;
+            (StatusCode::OK, Json(live_trends))
+        }
+        Err(e) => {
+            error!(error = %e, "Failed to get live trends");
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(TrendResponse {
+                    meta: crate::storage::TrendMeta {
+                        range_start: start_date,
+                        range_end: end_date,
+                        granularity: granularity.to_string(),
+                        clusters: vec![],
+                        data_from: actual_from,
+                        data_to: actual_to,
+                    },
+                    series: vec![],
+                }),
+            )
+        }
+    }
+}
+
+/// Trigger daily snapshot capture (admin endpoint)
+#[utoipa::path(
+    post,
+    path = "/api/v1/dashboard/snapshot",
+    tag = "Dashboard",
+    responses(
+        (status = 200, description = "Snapshot captured successfully"),
+        (status = 500, description = "Internal server error", body = ErrorResponse)
+    )
+)]
+pub async fn capture_dashboard_snapshot(State(state): State<AppState>) -> impl IntoResponse {
+    match state.db.capture_daily_snapshot() {
+        Ok(count) => {
+            info!(clusters_updated = count, "Manual snapshot captured");
+            (
+                StatusCode::OK,
+                Json(serde_json::json!({
+                    "status": "ok",
+                    "clusters_updated": count
+                })),
+            )
+        }
+        Err(e) => {
+            error!(error = %e, "Failed to capture snapshot");
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(serde_json::json!({"error": e.to_string()})),
+            )
+        }
+    }
+}
+
+/// Backfill historical data from received_at timestamps
+#[utoipa::path(
+    post,
+    path = "/api/v1/dashboard/backfill",
+    tag = "Dashboard",
+    responses(
+        (status = 200, description = "Backfill completed successfully"),
+        (status = 500, description = "Internal server error", body = ErrorResponse)
+    )
+)]
+pub async fn backfill_dashboard_data(State(state): State<AppState>) -> impl IntoResponse {
+    match state.db.backfill_from_received_at() {
+        Ok(count) => {
+            info!(rows_inserted = count, "Historical data backfilled");
+            (
+                StatusCode::OK,
+                Json(serde_json::json!({
+                    "status": "ok",
+                    "rows_inserted": count
+                })),
+            )
+        }
+        Err(e) => {
+            error!(error = %e, "Failed to backfill data");
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(serde_json::json!({"error": e.to_string()})),
+            )
+        }
+    }
 }

@@ -9,6 +9,7 @@
 //! - `operations`: CRUD and query operations
 //! - `extractors`: JSON metadata extraction helpers
 
+mod dashboard;
 mod database;
 mod extractors;
 mod models;
@@ -16,5 +17,6 @@ mod operations;
 mod schema;
 
 // Re-export public types
+pub use dashboard::{TrendDataPoint, TrendMeta, TrendResponse};
 pub use database::Database;
 pub use models::{ClusterInfo, FullReport, QueryParams, ReportMeta, Stats, VulnSummary};

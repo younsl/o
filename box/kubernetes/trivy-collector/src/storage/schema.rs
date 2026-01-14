@@ -56,6 +56,7 @@ pub fn init_schema(conn: &Connection) -> Result<()> {
         CREATE INDEX IF NOT EXISTS idx_reports_report_type ON reports(report_type);
         CREATE INDEX IF NOT EXISTS idx_reports_app ON reports(app);
         CREATE INDEX IF NOT EXISTS idx_reports_severity ON reports(critical_count, high_count);
+        CREATE INDEX IF NOT EXISTS idx_reports_received_at ON reports(received_at);
 
         -- Clusters view for quick cluster listing
         CREATE VIEW IF NOT EXISTS clusters_view AS

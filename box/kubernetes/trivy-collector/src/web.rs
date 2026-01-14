@@ -15,21 +15,26 @@ mod watcher;
 
 // Re-export public types
 pub use handlers::{
-    delete_report, get_config, get_sbom_report, get_stats, get_status, get_version,
+    backfill_dashboard_data, capture_dashboard_snapshot, delete_report, get_config,
+    get_dashboard_trends, get_sbom_report, get_stats, get_status, get_version,
     get_vulnerability_report, get_watcher_status, healthz, list_clusters, list_namespaces,
     list_sbom_reports, list_vulnerability_reports, receive_report, update_notes,
 };
 pub use state::{AppState, RuntimeInfo, WatcherStatus};
 pub use types::{
     ConfigItem, ConfigResponse, ErrorResponse, HealthResponse, ListQuery, ListResponse,
-    StatusResponse, UpdateNotesRequest, VersionResponse, WatcherInfo, WatcherStatusResponse,
+    StatusResponse, TrendQuery, UpdateNotesRequest, VersionResponse, WatcherInfo,
+    WatcherStatusResponse,
 };
 pub use watcher::LocalWatcher;
 
 use utoipa::OpenApi;
 
 use crate::collector::types::{ReportEvent, ReportEventType, ReportPayload};
-use crate::storage::{ClusterInfo, FullReport, ReportMeta, Stats, VulnSummary};
+use crate::storage::{
+    ClusterInfo, FullReport, ReportMeta, Stats, TrendDataPoint, TrendMeta, TrendResponse,
+    VulnSummary,
+};
 
 /// OpenAPI documentation
 #[derive(OpenApi)]
@@ -56,6 +61,9 @@ use crate::storage::{ClusterInfo, FullReport, ReportMeta, Stats, VulnSummary};
         handlers::get_version,
         handlers::get_status,
         handlers::get_config,
+        handlers::get_dashboard_trends,
+        handlers::capture_dashboard_snapshot,
+        handlers::backfill_dashboard_data,
     ),
     components(schemas(
         HealthResponse,
@@ -74,6 +82,9 @@ use crate::storage::{ClusterInfo, FullReport, ReportMeta, Stats, VulnSummary};
         ReportEvent,
         ReportEventType,
         ReportPayload,
+        TrendResponse,
+        TrendMeta,
+        TrendDataPoint,
     )),
     tags(
         (name = "Health", description = "Health check endpoints"),
@@ -87,6 +98,7 @@ use crate::storage::{ClusterInfo, FullReport, ReportMeta, Stats, VulnSummary};
         (name = "Version", description = "Build version information endpoints"),
         (name = "Status", description = "Server runtime status endpoints"),
         (name = "Config", description = "Configuration endpoints"),
+        (name = "Dashboard", description = "Dashboard trend analysis endpoints"),
     )
 )]
 pub struct ApiDoc;
@@ -127,6 +139,32 @@ pub async fn run(
     // Initialize database
     let db = Arc::new(Database::new(&config.get_db_path())?);
 
+    // Backfill historical data on startup (from received_at timestamps)
+    match db.backfill_from_received_at() {
+        Ok(count) if count > 0 => {
+            info!(
+                rows_inserted = count,
+                "Historical data backfilled on startup"
+            );
+        }
+        Err(e) => {
+            warn!(error = %e, "Failed to backfill historical data");
+        }
+        _ => {}
+    }
+
+    // Capture today's snapshot if not already done
+    if !db.has_today_snapshot().unwrap_or(false) {
+        match db.capture_daily_snapshot() {
+            Ok(count) => {
+                info!(clusters_updated = count, "Initial daily snapshot captured");
+            }
+            Err(e) => {
+                warn!(error = %e, "Failed to capture initial snapshot");
+            }
+        }
+    }
+
     // Initialize watcher status
     let watcher_status = Arc::new(WatcherStatus::new());
 
@@ -160,6 +198,13 @@ pub async fn run(
     } else {
         None
     };
+
+    // Start daily snapshot background task
+    let db_snapshot = db.clone();
+    let shutdown_snapshot = shutdown.clone();
+    let snapshot_handle = tokio::spawn(async move {
+        daily_snapshot_task(db_snapshot, shutdown_snapshot).await;
+    });
 
     let config_info = Arc::new(state::ConfigInfo::from(&config));
     let runtime_info = Arc::new(state::RuntimeInfo::new());
@@ -202,6 +247,13 @@ pub async fn run(
         .route("/api/v1/version", get(get_version))
         .route("/api/v1/status", get(get_status))
         .route("/api/v1/config", get(get_config))
+        // Dashboard endpoints
+        .route("/api/v1/dashboard/trends", get(get_dashboard_trends))
+        .route(
+            "/api/v1/dashboard/snapshot",
+            post(capture_dashboard_snapshot),
+        )
+        .route("/api/v1/dashboard/backfill", post(backfill_dashboard_data))
         .route(
             "/api/v1/reports/{cluster}/{report_type}/{namespace}/{name}",
             delete(delete_report),
@@ -243,6 +295,9 @@ pub async fn run(
     if let Some(handle) = watcher_handle {
         let _ = handle.await;
     }
+
+    // Wait for snapshot task to finish
+    let _ = snapshot_handle.await;
 
     Ok(())
 }
@@ -305,4 +360,49 @@ async fn serve_openapi() -> impl IntoResponse {
         [(header::CONTENT_TYPE, "application/json")],
         ApiDoc::openapi().to_json().unwrap_or_default(),
     )
+}
+
+/// Background task that captures daily snapshots at midnight UTC
+async fn daily_snapshot_task(db: Arc<Database>, mut shutdown: tokio::sync::watch::Receiver<bool>) {
+    use chrono::Utc;
+    use std::time::Duration;
+
+    info!("Daily snapshot task started");
+
+    loop {
+        // Calculate time until next midnight UTC
+        let now = Utc::now();
+        let tomorrow = (now + chrono::Duration::days(1))
+            .date_naive()
+            .and_hms_opt(0, 0, 0)
+            .unwrap();
+        let tomorrow_utc = tomorrow.and_utc();
+        let duration_until_midnight = (tomorrow_utc - now)
+            .to_std()
+            .unwrap_or(Duration::from_secs(3600));
+
+        info!(
+            next_snapshot_in = ?duration_until_midnight,
+            next_snapshot_at = %tomorrow_utc,
+            "Waiting for next daily snapshot"
+        );
+
+        tokio::select! {
+            _ = tokio::time::sleep(duration_until_midnight) => {
+                // Time to capture snapshot
+                match db.capture_daily_snapshot() {
+                    Ok(count) => {
+                        info!(clusters_updated = count, "Daily snapshot captured");
+                    }
+                    Err(e) => {
+                        error!(error = %e, "Failed to capture daily snapshot");
+                    }
+                }
+            }
+            _ = shutdown.changed() => {
+                info!("Daily snapshot task shutting down");
+                break;
+            }
+        }
+    }
 }

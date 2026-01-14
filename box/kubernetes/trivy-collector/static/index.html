@@ -12,6 +12,10 @@
     <script src="https://unpkg.com/layout-base/layout-base.js"></script>
     <script src="https://unpkg.com/cose-base/cose-base.js"></script>
     <script src="https://unpkg.com/cytoscape-fcose/cytoscape-fcose.js"></script>
+    <!-- Chart.js for trend analysis -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+    <!-- html2canvas for dashboard export -->
+    <script src="https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js"></script>
 </head>
 <body>
     <header>
@@ -39,6 +43,7 @@
             </div>
         </div>
         <nav>
+            <button id="btn-dashboard"><i class="fa-solid fa-chart-line"></i> Dashboard</button>
             <button id="btn-vuln" class="active">Vulnerabilities</button>
             <button id="btn-sbom">SBOM</button>
         </nav>
@@ -220,6 +225,152 @@
                     <h3 class="graph-title">Runtime Configuration</h3>
                 </div>
                 <div class="detail-summary vertical" id="version-config-info"></div>
+            </div>
+        </section>
+
+        <!-- Dashboard View -->
+        <section id="dashboard-view" class="detail-container hidden">
+            <div class="dashboard-header">
+                <button id="btn-dashboard-back" class="btn-back"><i class="fa-solid fa-arrow-left"></i> Back to List</button>
+                <div class="dashboard-title">
+                    <h2>Security Trends Dashboard</h2>
+                </div>
+                <div class="dashboard-controls">
+                    <div class="custom-dropdown" id="dropdown-range">
+                        <button class="dropdown-toggle" data-value="30d">
+                            <span class="dropdown-text">Last 30 Days</span>
+                            <i class="fa-solid fa-chevron-down"></i>
+                        </button>
+                        <div class="dropdown-menu hidden">
+                            <div class="dropdown-item" data-value="1d">Last 1 Day</div>
+                            <div class="dropdown-item" data-value="7d">Last 7 Days</div>
+                            <div class="dropdown-item selected" data-value="30d">Last 30 Days</div>
+                            <div class="dropdown-item" data-value="all">All Time</div>
+                        </div>
+                    </div>
+                    <div class="custom-dropdown" id="dropdown-cluster">
+                        <button class="dropdown-toggle" data-value="">
+                            <span class="dropdown-text">All Clusters</span>
+                            <i class="fa-solid fa-chevron-down"></i>
+                        </button>
+                        <div class="dropdown-menu hidden">
+                            <div class="dropdown-item selected" data-value="">All Clusters</div>
+                        </div>
+                    </div>
+                    <div class="refresh-controls">
+                        <button id="btn-refresh-now" class="btn-refresh" title="Refresh now">
+                            <i class="fa-solid fa-sync-alt"></i>
+                            <span>Refresh</span>
+                        </button>
+                        <button id="btn-refresh-toggle" class="btn-refresh-interval active" title="Toggle auto-refresh">
+                            <span class="refresh-interval-text" id="refresh-interval-text">30s</span>
+                        </button>
+                    </div>
+                    <button id="btn-export-png" class="btn-export" title="Export dashboard as PNG">
+                        <i class="fa-solid fa-camera"></i> Export PNG
+                    </button>
+                </div>
+            </div>
+
+            <!-- Dashboard Content (capture area) -->
+            <div id="dashboard-content" class="dashboard-content">
+                <div class="dashboard-content-header">
+                    <span class="data-range" id="data-range-info"></span>
+                </div>
+                <!-- Summary Cards -->
+                <div class="dashboard-summary-wrapper">
+                <!-- Overview Bar -->
+                <div class="overview-bar">
+                    <div class="overview-header">
+                        <span class="overview-title">Overview</span>
+                    </div>
+                    <div class="overview-segments">
+                        <div class="overview-segment">
+                            <span class="overview-segment-label">Collectors <button class="help-btn" data-tooltip="dash-collectors" title="Info"><i class="fa-solid fa-info"></i></button></span>
+                            <span class="overview-segment-value" id="dash-collectors">-</span>
+                        </div>
+                        <div class="overview-segment">
+                            <span class="overview-segment-label">Vuln Reports <button class="help-btn" data-tooltip="dash-vuln" title="Info"><i class="fa-solid fa-info"></i></button></span>
+                            <span class="overview-segment-value" id="dash-vuln-reports">-</span>
+                        </div>
+                        <div class="overview-segment">
+                            <span class="overview-segment-label">SBOM Reports <button class="help-btn" data-tooltip="dash-sbom" title="Info"><i class="fa-solid fa-info"></i></button></span>
+                            <span class="overview-segment-value" id="dash-sbom-reports">-</span>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- CVSS Score Bar -->
+                <div class="cvss-score-bar">
+                    <div class="cvss-header">
+                        <span class="cvss-title">CVSS Score</span>
+                    </div>
+                    <div class="cvss-bar">
+                        <div class="cvss-segment low">
+                            <span class="cvss-segment-label">Low</span>
+                            <span class="cvss-segment-value" id="dash-low">-</span>
+                            <div class="cvss-segment-scores">
+                                <span>0.1</span>
+                                <span>3.9</span>
+                            </div>
+                        </div>
+                        <div class="cvss-segment medium">
+                            <span class="cvss-segment-label">Medium</span>
+                            <span class="cvss-segment-value" id="dash-medium">-</span>
+                            <div class="cvss-segment-scores">
+                                <span>4.0</span>
+                                <span>6.9</span>
+                            </div>
+                        </div>
+                        <div class="cvss-segment high">
+                            <span class="cvss-segment-label">High</span>
+                            <span class="cvss-segment-value" id="dash-high">-</span>
+                            <div class="cvss-segment-scores">
+                                <span>7.0</span>
+                                <span>8.9</span>
+                            </div>
+                        </div>
+                        <div class="cvss-segment critical">
+                            <span class="cvss-segment-label">Critical</span>
+                            <span class="cvss-segment-value" id="dash-critical">-</span>
+                            <div class="cvss-segment-scores">
+                                <span>9.0</span>
+                                <span>10.0</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Charts Grid -->
+            <div class="dashboard-grid">
+                <div class="chart-section">
+                    <div class="section-bar">
+                        <h3 class="graph-title">Report Count Trends <button class="help-btn" data-tooltip="chart-report-trend" title="Info"><i class="fa-solid fa-info"></i></button></h3>
+                    </div>
+                    <div class="chart-container">
+                        <canvas id="report-trend-chart"></canvas>
+                    </div>
+                </div>
+
+                <div class="chart-section">
+                    <div class="section-bar">
+                        <h3 class="graph-title">Severity Distribution Over Time <button class="help-btn" data-tooltip="chart-severity-trend" title="Info"><i class="fa-solid fa-info"></i></button></h3>
+                    </div>
+                    <div class="chart-container">
+                        <canvas id="severity-trend-chart"></canvas>
+                    </div>
+                </div>
+
+                <div class="chart-section full-width">
+                    <div class="section-bar">
+                        <h3 class="graph-title">Vulnerabilities by Severity <button class="help-btn" data-tooltip="chart-severity-bar" title="Info"><i class="fa-solid fa-info"></i></button></h3>
+                    </div>
+                    <div class="chart-container">
+                        <canvas id="severity-bar-chart"></canvas>
+                    </div>
+                </div>
+            </div>
             </div>
         </section>
     </main>
