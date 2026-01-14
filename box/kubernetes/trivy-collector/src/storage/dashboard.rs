@@ -1,9 +1,7 @@
 //! Dashboard statistics and trend operations
 
 use anyhow::Result;
-use rusqlite::params;
 use serde::{Deserialize, Serialize};
-use tracing::{debug, info};
 use utoipa::ToSchema;
 
 use super::database::Database;
@@ -46,68 +44,6 @@ pub struct TrendResponse {
 }
 
 impl Database {
-    /// Capture daily snapshot of current statistics per cluster
-    pub fn capture_daily_snapshot(&self) -> Result<i64> {
-        let conn = self.conn.lock().unwrap();
-        let today = chrono::Utc::now().format("%Y-%m-%d").to_string();
-        let now = chrono::Utc::now().to_rfc3339();
-
-        // Insert or replace daily stats for each cluster
-        let affected = conn.execute(
-            r#"
-            INSERT OR REPLACE INTO daily_stats (
-                date, cluster, vuln_report_count, sbom_report_count,
-                critical_count, high_count, medium_count, low_count, unknown_count,
-                components_count, snapshot_at
-            )
-            SELECT
-                ?1 as date,
-                cluster,
-                SUM(CASE WHEN report_type = 'vulnerabilityreport' THEN 1 ELSE 0 END) as vuln_report_count,
-                SUM(CASE WHEN report_type = 'sbomreport' THEN 1 ELSE 0 END) as sbom_report_count,
-                SUM(CASE WHEN report_type = 'vulnerabilityreport' THEN critical_count ELSE 0 END) as critical_count,
-                SUM(CASE WHEN report_type = 'vulnerabilityreport' THEN high_count ELSE 0 END) as high_count,
-                SUM(CASE WHEN report_type = 'vulnerabilityreport' THEN medium_count ELSE 0 END) as medium_count,
-                SUM(CASE WHEN report_type = 'vulnerabilityreport' THEN low_count ELSE 0 END) as low_count,
-                SUM(CASE WHEN report_type = 'vulnerabilityreport' THEN unknown_count ELSE 0 END) as unknown_count,
-                SUM(COALESCE(components_count, 0)) as components_count,
-                ?2 as snapshot_at
-            FROM reports
-            GROUP BY cluster
-            "#,
-            params![today, now],
-        )?;
-
-        info!(date = %today, clusters_updated = affected, "Daily snapshot captured");
-        Ok(affected as i64)
-    }
-
-    /// Check if today's snapshot exists
-    pub fn has_today_snapshot(&self) -> Result<bool> {
-        let conn = self.conn.lock().unwrap();
-        let today = chrono::Utc::now().format("%Y-%m-%d").to_string();
-
-        let count: i64 = conn.query_row(
-            "SELECT COUNT(*) FROM daily_stats WHERE date = ?1",
-            params![today],
-            |row| row.get(0),
-        )?;
-
-        Ok(count > 0)
-    }
-
-    /// Get the date range of stored data in daily_stats
-    pub fn get_data_range(&self) -> Result<(Option<String>, Option<String>)> {
-        let conn = self.conn.lock().unwrap();
-
-        let result: (Option<String>, Option<String>) =
-            conn.query_row("SELECT MIN(date), MAX(date) FROM daily_stats", [], |row| {
-                Ok((row.get(0)?, row.get(1)?))
-            })?;
-
-        Ok(result)
-    }
-
     /// Get the date range of stored data from reports table
     pub fn get_reports_data_range(&self) -> Result<(Option<String>, Option<String>)> {
         let conn = self.conn.lock().unwrap();
@@ -121,147 +57,7 @@ impl Database {
         Ok(result)
     }
 
-    /// Get trend data for the specified date range
-    pub fn get_trends(
-        &self,
-        start_date: &str,
-        end_date: &str,
-        cluster: Option<&str>,
-        granularity: &str,
-    ) -> Result<TrendResponse> {
-        let conn = self.conn.lock().unwrap();
-
-        // Get list of clusters
-        let clusters: Vec<String> = if let Some(c) = cluster {
-            vec![c.to_string()]
-        } else {
-            let mut stmt = conn.prepare(
-                "SELECT DISTINCT cluster FROM daily_stats WHERE date >= ?1 AND date <= ?2 ORDER BY cluster",
-            )?;
-            let rows =
-                stmt.query_map(params![start_date, end_date], |row| row.get::<_, String>(0))?;
-            rows.filter_map(|r| r.ok()).collect()
-        };
-
-        // Build query based on granularity
-        let (date_expr, group_by) = match granularity {
-            "weekly" => ("strftime('%Y-W%W', date)", "strftime('%Y-W%W', date)"),
-            _ => ("date", "date"), // daily is default
-        };
-
-        let mut sql = format!(
-            r#"
-            SELECT
-                {} as period,
-                COUNT(DISTINCT cluster) as clusters_count,
-                SUM(vuln_report_count) as vuln_reports,
-                SUM(sbom_report_count) as sbom_reports,
-                SUM(critical_count) as critical,
-                SUM(high_count) as high,
-                SUM(medium_count) as medium,
-                SUM(low_count) as low,
-                SUM(unknown_count) as unknown,
-                SUM(components_count) as components
-            FROM daily_stats
-            WHERE date >= ?1 AND date <= ?2
-            "#,
-            date_expr
-        );
-
-        let mut sql_params: Vec<Box<dyn rusqlite::ToSql>> = vec![
-            Box::new(start_date.to_string()),
-            Box::new(end_date.to_string()),
-        ];
-
-        if let Some(c) = cluster {
-            sql.push_str(" AND cluster = ?3");
-            sql_params.push(Box::new(c.to_string()));
-        }
-
-        sql.push_str(&format!(" GROUP BY {} ORDER BY {} ASC", group_by, group_by));
-
-        let params_refs: Vec<&dyn rusqlite::ToSql> =
-            sql_params.iter().map(|p| p.as_ref()).collect();
-
-        let mut stmt = conn.prepare(&sql)?;
-        let rows = stmt.query_map(params_refs.as_slice(), |row| {
-            Ok(TrendDataPoint {
-                date: row.get(0)?,
-                clusters_count: row.get(1)?,
-                vuln_reports: row.get(2)?,
-                sbom_reports: row.get(3)?,
-                critical: row.get(4)?,
-                high: row.get(5)?,
-                medium: row.get(6)?,
-                low: row.get(7)?,
-                unknown: row.get(8)?,
-                components: row.get(9)?,
-            })
-        })?;
-
-        let series: Vec<TrendDataPoint> = rows.filter_map(|r| r.ok()).collect();
-
-        debug!(
-            start = %start_date,
-            end = %end_date,
-            granularity = %granularity,
-            points = series.len(),
-            "Trend data retrieved"
-        );
-
-        Ok(TrendResponse {
-            meta: TrendMeta {
-                range_start: start_date.to_string(),
-                range_end: end_date.to_string(),
-                granularity: granularity.to_string(),
-                clusters,
-                data_from: None,
-                data_to: None,
-            },
-            series,
-        })
-    }
-
-    /// Backfill historical data from received_at timestamps
-    pub fn backfill_from_received_at(&self) -> Result<i64> {
-        let conn = self.conn.lock().unwrap();
-        let now = chrono::Utc::now().to_rfc3339();
-
-        // Get distinct dates from received_at
-        let affected = conn.execute(
-            r#"
-            INSERT OR IGNORE INTO daily_stats (
-                date, cluster, vuln_report_count, sbom_report_count,
-                critical_count, high_count, medium_count, low_count, unknown_count,
-                components_count, snapshot_at
-            )
-            SELECT
-                date(received_at) as date,
-                cluster,
-                SUM(CASE WHEN report_type = 'vulnerabilityreport' THEN 1 ELSE 0 END),
-                SUM(CASE WHEN report_type = 'sbomreport' THEN 1 ELSE 0 END),
-                SUM(CASE WHEN report_type = 'vulnerabilityreport' THEN critical_count ELSE 0 END),
-                SUM(CASE WHEN report_type = 'vulnerabilityreport' THEN high_count ELSE 0 END),
-                SUM(CASE WHEN report_type = 'vulnerabilityreport' THEN medium_count ELSE 0 END),
-                SUM(CASE WHEN report_type = 'vulnerabilityreport' THEN low_count ELSE 0 END),
-                SUM(CASE WHEN report_type = 'vulnerabilityreport' THEN unknown_count ELSE 0 END),
-                SUM(COALESCE(components_count, 0)),
-                ?1
-            FROM reports
-            WHERE received_at IS NOT NULL
-            GROUP BY date(received_at), cluster
-            "#,
-            params![now],
-        )?;
-
-        info!(
-            rows_inserted = affected,
-            "Historical data backfilled from received_at"
-        );
-        Ok(affected as i64)
-    }
-
-    /// Get current live statistics (without daily_stats, directly from reports)
+    /// Get current live statistics (directly from reports table)
     pub fn get_live_trends(
         &self,
         start_date: &str,
@@ -435,9 +231,7 @@ impl Database {
                 LEFT JOIN daily_agg a ON d.day = a.day
                 ORDER BY d.day ASC
                 "#,
-                cluster_filter,
-                cluster_filter,
-                cluster_filter
+                cluster_filter, cluster_filter, cluster_filter
             );
             (sql, params)
         };
@@ -520,55 +314,6 @@ mod tests {
             }),
             received_at: chrono::Utc::now(),
         }
-    }
-
-    #[test]
-    fn test_capture_daily_snapshot() {
-        let db = Database::new(":memory:").expect("Failed to create database");
-
-        // Insert test reports
-        db.upsert_report(&create_test_payload(
-            "prod",
-            "default",
-            "app1",
-            "vulnerabilityreport",
-        ))
-        .unwrap();
-        db.upsert_report(&create_test_payload(
-            "staging",
-            "default",
-            "app2",
-            "vulnerabilityreport",
-        ))
-        .unwrap();
-        db.upsert_report(&create_test_payload(
-            "prod",
-            "default",
-            "app3",
-            "sbomreport",
-        ))
-        .unwrap();
-
-        // Capture snapshot
-        let count = db
-            .capture_daily_snapshot()
-            .expect("Failed to capture snapshot");
-        assert!(count >= 2); // At least 2 clusters
-
-        // Verify snapshot exists
-        assert!(db.has_today_snapshot().unwrap());
-    }
-
-    #[test]
-    fn test_get_trends_empty() {
-        let db = Database::new(":memory:").expect("Failed to create database");
-
-        let trends = db
-            .get_trends("2025-01-01", "2025-01-31", None, "daily")
-            .expect("Failed to get trends");
-
-        assert!(trends.series.is_empty());
-        assert!(trends.meta.clusters.is_empty());
     }
 
     #[test]
