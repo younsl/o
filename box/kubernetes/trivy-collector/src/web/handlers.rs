@@ -639,6 +639,9 @@ pub async fn get_dashboard_trends(
     let (start_date, end_date) = query.parse_range();
     let granularity = query.get_granularity();
 
+    // Get data range for metadata from reports table (matches live trends data source)
+    let (actual_from, actual_to) = state.db.get_reports_data_range().unwrap_or((None, None));
+
     debug!(
         start = %start_date,
         end = %end_date,
@@ -646,9 +649,6 @@ pub async fn get_dashboard_trends(
         granularity = %granularity,
         "Dashboard trends requested"
     );
-
-    // Get data range for metadata from reports table (matches live trends data source)
-    let (actual_from, actual_to) = state.db.get_reports_data_range().unwrap_or((None, None));
 
     // Always use live trends for consistent point-in-time (cumulative) values
     debug!("Using live trends for {} granularity", granularity);

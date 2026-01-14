@@ -199,7 +199,7 @@ pub struct ConfigResponse {
 #[derive(Debug, Deserialize, IntoParams)]
 #[into_params(parameter_in = Query)]
 pub struct TrendQuery {
-    /// Time range: "1d", "7d", "30d", "all", or "YYYY-MM-DD:YYYY-MM-DD"
+    /// Time range: "1d", "2d", "7d", "30d", or "YYYY-MM-DD:YYYY-MM-DD"
     #[param(example = "30d")]
     pub range: Option<String>,
     /// Filter by cluster name
@@ -224,15 +224,10 @@ impl TrendQuery {
             }
         }
 
-        // Handle "all" for all time data
-        if range == "all" {
-            // Use a very old date to get all data
-            return ("2000-01-01".to_string(), today.to_string());
-        }
-
-        // Relative range: 1d, 7d, 30d
+        // Relative range: 1d, 2d, 7d, 30d
         let days: i64 = match range {
             "1d" => 1,
+            "2d" => 2,
             "7d" => 7,
             "30d" => 30,
             _ => 30, // default
