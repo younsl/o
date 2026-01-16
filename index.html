@@ -16,56 +16,58 @@
             font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif;
             background: #0a0a0a;
             color: #e5e5e5;
-            line-height: 1.6;
-            padding: 48px 24px;
+            line-height: 1.4;
+            padding: 32px 24px;
             max-width: 720px;
             margin: 0 auto;
         }
 
         a {
-            color: #58a6ff;
-            text-decoration: none;
+            color: #fff;
+            text-decoration: underline;
+            text-decoration-color: #444;
         }
 
         a:hover {
-            text-decoration: underline;
+            opacity: 0.7;
         }
 
         header {
-            margin-bottom: 48px;
+            margin-bottom: 28px;
         }
 
         h1 {
-            font-size: 48px;
+            font-size: 36px;
             font-weight: 600;
             letter-spacing: -1px;
         }
 
         .tagline {
             color: #8b8b8b;
-            margin-top: 8px;
+            margin-top: 4px;
+            font-size: 14px;
         }
 
         .links {
-            margin-top: 16px;
-            font-size: 14px;
+            margin-top: 8px;
+            font-size: 13px;
         }
 
         .links a {
-            margin-right: 16px;
+            margin-right: 12px;
         }
 
         section {
-            margin-bottom: 40px;
+            margin-bottom: 24px;
         }
 
         h2 {
-            font-size: 14px;
+            font-size: 12px;
             font-weight: 600;
             text-transform: uppercase;
             letter-spacing: 0.5px;
             color: #8b8b8b;
-            margin-bottom: 16px;
+            margin-bottom: 8px;
         }
 
         ul {
@@ -73,7 +75,7 @@
         }
 
         li {
-            padding: 8px 0;
+            padding: 12px 0;
             border-bottom: 1px solid #2a2a2a;
         }
 
@@ -86,22 +88,33 @@
         }
 
         .tool-lang {
-            font-size: 12px;
-            color: #8b8b8b;
-            margin-left: 8px;
+            font-size: 11px;
+            color: #666;
+            margin-left: 6px;
         }
 
         .tool-desc {
             color: #8b8b8b;
-            font-size: 14px;
+            font-size: 13px;
+        }
+
+        .tool-link {
+            font-size: 12px;
+            color: #666;
+        }
+
+        .more {
+            margin-top: 12px;
+            font-size: 12px;
+            color: #666;
         }
 
         footer {
-            margin-top: 64px;
-            padding-top: 24px;
+            margin-top: 32px;
+            padding-top: 16px;
             border-top: 1px solid #2a2a2a;
-            font-size: 12px;
-            color: #8b8b8b;
+            font-size: 11px;
+            color: #666;
         }
     </style>
 </head>
@@ -116,73 +129,24 @@
     </header>
 
     <section>
-        <h2>Kubernetes Addons</h2>
+        <h2>Projects</h2>
         <ul>
-            <li>
-                <a href="https://github.com/younsl/o/tree/main/box/kubernetes/elasticache-backup" class="tool-name">elasticache-backup</a><span class="tool-lang">Rust</span>
-                <p class="tool-desc">ElastiCache snapshot automation for S3 export</p>
-            </li>
-            <li>
-                <a href="https://github.com/younsl/o/tree/main/box/kubernetes/redis-console" class="tool-name">redis-console</a><span class="tool-lang">Rust</span>
-                <p class="tool-desc">REPL for managing multiple Redis and ElastiCache clusters</p>
-            </li>
             <li>
                 <a href="https://github.com/younsl/o/tree/main/box/kubernetes/trivy-collector" class="tool-name">trivy-collector</a><span class="tool-lang">Rust</span>
                 <p class="tool-desc">Multi-cluster Trivy report collector with web UI</p>
+                <p class="tool-link"><a href="https://ghcr.io/younsl/trivy-collector">ghcr.io/younsl/trivy-collector</a></p>
+            </li>
+            <li>
+                <a href="https://github.com/younsl/o/tree/main/box/kubernetes/elasticache-backup" class="tool-name">elasticache-backup</a><span class="tool-lang">Rust</span>
+                <p class="tool-desc">ElastiCache snapshot automation for S3 export</p>
+                <p class="tool-link"><a href="https://ghcr.io/younsl/elasticache-backup">ghcr.io/younsl/elasticache-backup</a></p>
+            </li>
+            <li>
+                <a href="https://github.com/younsl/o/tree/main/box/kubernetes/dashboards" class="tool-name">dashboards</a><span class="tool-lang">Grafana</span>
+                <p class="tool-desc">Grafana dashboards for Kubernetes monitoring</p>
             </li>
         </ul>
-    </section>
-
-    <section>
-        <h2>CLI Tools</h2>
-        <ul>
-            <li>
-                <a href="https://github.com/younsl/o/tree/main/box/tools/cocd" class="tool-name">cocd</a><span class="tool-lang">Go</span>
-                <p class="tool-desc">TUI for monitoring GitHub Actions jobs waiting for approval</p>
-            </li>
-            <li>
-                <a href="https://github.com/younsl/o/tree/main/box/tools/ij" class="tool-name">ij</a><span class="tool-lang">Rust</span>
-                <p class="tool-desc">Interactive EC2 SSM connection with multi-region scanning</p>
-            </li>
-            <li>
-                <a href="https://github.com/younsl/o/tree/main/box/kubernetes/podver" class="tool-name">podver</a><span class="tool-lang">Rust</span>
-                <p class="tool-desc">Scans Java and Node.js versions in Kubernetes pods</p>
-            </li>
-            <li>
-                <a href="https://github.com/younsl/o/tree/main/box/kubernetes/promdrop" class="tool-name">promdrop</a><span class="tool-lang">Rust</span>
-                <p class="tool-desc">Prometheus metric drop config generator</p>
-            </li>
-            <li>
-                <a href="https://github.com/younsl/o/tree/main/box/tools/s3vget" class="tool-name">s3vget</a><span class="tool-lang">Rust</span>
-                <p class="tool-desc">S3 object version downloader with timezone support</p>
-            </li>
-        </ul>
-    </section>
-
-    <section>
-        <h2>Containers</h2>
-        <ul>
-            <li>
-                <a href="https://github.com/younsl/o/tree/main/box/containers/actions-runner" class="tool-name">actions-runner</a>
-                <p class="tool-desc">GitHub Actions self-hosted runner</p>
-            </li>
-            <li>
-                <a href="https://github.com/younsl/o/tree/main/box/containers/filesystem-cleaner" class="tool-name">filesystem-cleaner</a><span class="tool-lang">Rust</span>
-                <p class="tool-desc">Automatic filesystem cleanup for Kubernetes</p>
-            </li>
-            <li>
-                <a href="https://github.com/younsl/o/tree/main/box/containers/logstash-with-opensearch-plugin" class="tool-name">logstash-with-opensearch-plugin</a>
-                <p class="tool-desc">Logstash with OpenSearch plugin for ECK</p>
-            </li>
-            <li>
-                <a href="https://github.com/younsl/o/tree/main/box/containers/ab" class="tool-name">ab</a>
-                <p class="tool-desc">Apache Bench container</p>
-            </li>
-            <li>
-                <a href="https://github.com/younsl/o/tree/main/box/containers/mageai" class="tool-name">mageai</a>
-                <p class="tool-desc">Mage AI custom image</p>
-            </li>
-        </ul>
+        <p class="more">More projects on <a href="https://github.com/younsl/o">GitHub</a></p>
     </section>
 
     <footer>
