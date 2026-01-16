@@ -1,0 +1,192 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>o - Operation Essentials</title>
+    <meta name="description" content="Kubernetes addons and CLI tools for production operations.">
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif;
+            background: #0a0a0a;
+            color: #e5e5e5;
+            line-height: 1.6;
+            padding: 48px 24px;
+            max-width: 720px;
+            margin: 0 auto;
+        }
+
+        a {
+            color: #58a6ff;
+            text-decoration: none;
+        }
+
+        a:hover {
+            text-decoration: underline;
+        }
+
+        header {
+            margin-bottom: 48px;
+        }
+
+        h1 {
+            font-size: 48px;
+            font-weight: 600;
+            letter-spacing: -1px;
+        }
+
+        .tagline {
+            color: #8b8b8b;
+            margin-top: 8px;
+        }
+
+        .links {
+            margin-top: 16px;
+            font-size: 14px;
+        }
+
+        .links a {
+            margin-right: 16px;
+        }
+
+        section {
+            margin-bottom: 40px;
+        }
+
+        h2 {
+            font-size: 14px;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            color: #8b8b8b;
+            margin-bottom: 16px;
+        }
+
+        ul {
+            list-style: none;
+        }
+
+        li {
+            padding: 8px 0;
+            border-bottom: 1px solid #2a2a2a;
+        }
+
+        li:last-child {
+            border-bottom: none;
+        }
+
+        .tool-name {
+            font-weight: 500;
+        }
+
+        .tool-lang {
+            font-size: 12px;
+            color: #8b8b8b;
+            margin-left: 8px;
+        }
+
+        .tool-desc {
+            color: #8b8b8b;
+            font-size: 14px;
+        }
+
+        footer {
+            margin-top: 64px;
+            padding-top: 24px;
+            border-top: 1px solid #2a2a2a;
+            font-size: 12px;
+            color: #8b8b8b;
+        }
+    </style>
+</head>
+<body>
+    <header>
+        <h1>o</h1>
+        <p class="tagline">Operation Essentials &mdash; Kubernetes addons and CLI tools for production operations. Built with Rust and Go.</p>
+        <p class="links">
+            <a href="https://github.com/younsl/o">GitHub</a>
+            <a href="https://github.com/younsl/o/releases">Releases</a>
+        </p>
+    </header>
+
+    <section>
+        <h2>Kubernetes Addons</h2>
+        <ul>
+            <li>
+                <a href="https://github.com/younsl/o/tree/main/box/kubernetes/elasticache-backup" class="tool-name">elasticache-backup</a><span class="tool-lang">Rust</span>
+                <p class="tool-desc">ElastiCache snapshot automation for S3 export</p>
+            </li>
+            <li>
+                <a href="https://github.com/younsl/o/tree/main/box/kubernetes/redis-console" class="tool-name">redis-console</a><span class="tool-lang">Rust</span>
+                <p class="tool-desc">REPL for managing multiple Redis and ElastiCache clusters</p>
+            </li>
+            <li>
+                <a href="https://github.com/younsl/o/tree/main/box/kubernetes/trivy-collector" class="tool-name">trivy-collector</a><span class="tool-lang">Rust</span>
+                <p class="tool-desc">Multi-cluster Trivy report collector with web UI</p>
+            </li>
+        </ul>
+    </section>
+
+    <section>
+        <h2>CLI Tools</h2>
+        <ul>
+            <li>
+                <a href="https://github.com/younsl/o/tree/main/box/tools/cocd" class="tool-name">cocd</a><span class="tool-lang">Go</span>
+                <p class="tool-desc">TUI for monitoring GitHub Actions jobs waiting for approval</p>
+            </li>
+            <li>
+                <a href="https://github.com/younsl/o/tree/main/box/tools/ij" class="tool-name">ij</a><span class="tool-lang">Rust</span>
+                <p class="tool-desc">Interactive EC2 SSM connection with multi-region scanning</p>
+            </li>
+            <li>
+                <a href="https://github.com/younsl/o/tree/main/box/kubernetes/podver" class="tool-name">podver</a><span class="tool-lang">Rust</span>
+                <p class="tool-desc">Scans Java and Node.js versions in Kubernetes pods</p>
+            </li>
+            <li>
+                <a href="https://github.com/younsl/o/tree/main/box/kubernetes/promdrop" class="tool-name">promdrop</a><span class="tool-lang">Rust</span>
+                <p class="tool-desc">Prometheus metric drop config generator</p>
+            </li>
+            <li>
+                <a href="https://github.com/younsl/o/tree/main/box/tools/s3vget" class="tool-name">s3vget</a><span class="tool-lang">Rust</span>
+                <p class="tool-desc">S3 object version downloader with timezone support</p>
+            </li>
+        </ul>
+    </section>
+
+    <section>
+        <h2>Containers</h2>
+        <ul>
+            <li>
+                <a href="https://github.com/younsl/o/tree/main/box/containers/actions-runner" class="tool-name">actions-runner</a>
+                <p class="tool-desc">GitHub Actions self-hosted runner</p>
+            </li>
+            <li>
+                <a href="https://github.com/younsl/o/tree/main/box/containers/filesystem-cleaner" class="tool-name">filesystem-cleaner</a><span class="tool-lang">Rust</span>
+                <p class="tool-desc">Automatic filesystem cleanup for Kubernetes</p>
+            </li>
+            <li>
+                <a href="https://github.com/younsl/o/tree/main/box/containers/logstash-with-opensearch-plugin" class="tool-name">logstash-with-opensearch-plugin</a>
+                <p class="tool-desc">Logstash with OpenSearch plugin for ECK</p>
+            </li>
+            <li>
+                <a href="https://github.com/younsl/o/tree/main/box/containers/ab" class="tool-name">ab</a>
+                <p class="tool-desc">Apache Bench container</p>
+            </li>
+            <li>
+                <a href="https://github.com/younsl/o/tree/main/box/containers/mageai" class="tool-name">mageai</a>
+                <p class="tool-desc">Mage AI custom image</p>
+            </li>
+        </ul>
+    </section>
+
+    <footer>
+        MIT License
+    </footer>
+</body>
+</html>
