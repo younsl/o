@@ -112,8 +112,10 @@ impl Database {
                 hourly_agg AS (
                     -- Step 2: Aggregate increments within the 24-hour window
                     -- Use 'localtime' to convert received_at (UTC) to local timezone for grouping
+                    -- clusters_count: active clusters that sent reports in each hour (no correlated subquery)
                     SELECT
                         strftime('%Y-%m-%d %H:00', received_at, 'localtime') as hour,
+                        COUNT(DISTINCT cluster) as clusters_count,
                         SUM(CASE WHEN report_type = 'vulnerabilityreport' THEN 1 ELSE 0 END) as vuln,
                         SUM(CASE WHEN report_type = 'sbomreport' THEN 1 ELSE 0 END) as sbom,
                         SUM(CASE WHEN report_type = 'vulnerabilityreport' THEN critical_count ELSE 0 END) as critical,
@@ -138,9 +140,7 @@ impl Database {
                 -- Step 4: cumulative values for each hour
                 SELECT
                     strftime('%Y-%m-%d %H:00', h.hour) as period,
-                    -- Clusters: distinct count up to each hour (subquery for accurate cumulative)
-                    -- Use 'localtime' to convert received_at (UTC) to local timezone
-                    (SELECT COUNT(DISTINCT cluster) FROM reports WHERE strftime('%Y-%m-%d %H:00', received_at, 'localtime') <= strftime('%Y-%m-%d %H:00', h.hour){}) as clusters_count,
+                    COALESCE(a.clusters_count, 0) as clusters_count,
                     COALESCE((SELECT vuln FROM baseline), 0) + SUM(COALESCE(a.vuln, 0)) OVER (ORDER BY h.hour) as vuln_reports,
                     COALESCE((SELECT sbom FROM baseline), 0) + SUM(COALESCE(a.sbom, 0)) OVER (ORDER BY h.hour) as sbom_reports,
                     COALESCE((SELECT critical FROM baseline), 0) + SUM(COALESCE(a.critical, 0)) OVER (ORDER BY h.hour) as critical,
@@ -153,7 +153,7 @@ impl Database {
                 LEFT JOIN hourly_agg a ON strftime('%Y-%m-%d %H:00', h.hour) = a.hour
                 ORDER BY h.hour ASC
                 "#,
-                cluster_filter, cluster_filter, cluster_filter
+                cluster_filter, cluster_filter
             );
             (sql, params)
         } else {
@@ -191,8 +191,10 @@ impl Database {
                 ),
                 daily_agg AS (
                     -- Step 2: Aggregate increments within the date range
+                    -- clusters_count: active clusters that sent reports on each day (no correlated subquery)
                     SELECT
                         date(received_at, 'localtime') as day,
+                        COUNT(DISTINCT cluster) as clusters_count,
                         SUM(CASE WHEN report_type = 'vulnerabilityreport' THEN 1 ELSE 0 END) as vuln,
                         SUM(CASE WHEN report_type = 'sbomreport' THEN 1 ELSE 0 END) as sbom,
                         SUM(CASE WHEN report_type = 'vulnerabilityreport' THEN critical_count ELSE 0 END) as critical,
@@ -217,8 +219,7 @@ impl Database {
                 -- Step 4: cumulative values for each day
                 SELECT
                     d.day as period,
-                    -- Clusters: distinct count up to each day (subquery for accurate cumulative)
-                    (SELECT COUNT(DISTINCT cluster) FROM reports WHERE date(received_at, 'localtime') <= d.day{}) as clusters_count,
+                    COALESCE(a.clusters_count, 0) as clusters_count,
                     COALESCE((SELECT vuln FROM baseline), 0) + SUM(COALESCE(a.vuln, 0)) OVER (ORDER BY d.day) as vuln_reports,
                     COALESCE((SELECT sbom FROM baseline), 0) + SUM(COALESCE(a.sbom, 0)) OVER (ORDER BY d.day) as sbom_reports,
                     COALESCE((SELECT critical FROM baseline), 0) + SUM(COALESCE(a.critical, 0)) OVER (ORDER BY d.day) as critical,
@@ -231,7 +232,7 @@ impl Database {
                 LEFT JOIN daily_agg a ON d.day = a.day
                 ORDER BY d.day ASC
                 "#,
-                cluster_filter, cluster_filter, cluster_filter
+                cluster_filter, cluster_filter
             );
             (sql, params)
         };

@@ -2324,7 +2324,7 @@ async function populateDashboardClusters() {
 
 // Load Dashboard Data
 async function loadDashboardData() {
-    const range = getDropdownValue(dropdownRange) || '30d';
+    const range = getDropdownValue(dropdownRange) || '1d';
     const cluster = getDropdownValue(dropdownCluster);
 
     try {
@@ -2592,7 +2592,11 @@ function renderReportTrendChart(data) {
                         text: 'Collectors',
                         color: '#9ca3af'
                     },
-                    ticks: { color: '#9ca3af' },
+                    ticks: {
+                        color: '#9ca3af',
+                        stepSize: 1,
+                        precision: 0
+                    },
                     grid: { display: false }
                 }
             }
@@ -2851,7 +2855,7 @@ async function exportDashboardPng() {
         });
 
         // Generate filename with timestamp and filters
-        const rangeValue = getDropdownValue(dropdownRange) || '30d';
+        const rangeValue = getDropdownValue(dropdownRange) || '1d';
         const clusterValue = getDropdownValue(dropdownCluster) || 'all';
         const timestamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
         const filename = `trivy-dashboard_${rangeValue}_${clusterValue}_${timestamp}.png`;
