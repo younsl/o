@@ -1,0 +1,18 @@
+{{- if .Values.serviceAccount.create -}}
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: {{ include "trivy-collector.fullname" . }}
+  labels:
+    {{- include "trivy-collector.labels" . | nindent 4 }}
+rules:
+  - apiGroups:
+      - aquasecurity.github.io
+    resources:
+      - vulnerabilityreports
+      - sbomreports
+    verbs:
+      - get
+      - list
+      - watch
+{{- end }}
