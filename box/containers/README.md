@@ -6,7 +6,7 @@ Inspired by [bitnami/containers](https://github.com/bitnami/containers).
 
 ## Available Images
 
-Production-ready container images for DevOps automation, development tooling, and Kubernetes workloads. Published to [public ghcr.io](https://github.com/younsl?tab=packages) (GitHub Container Registry) or stored locally.
+Production-ready container images for DevOps automation, development tooling, and Kubernetes workloads. All images are hosted on [ghcr.io](https://github.com/younsl?tab=packages) (GitHub Container Registry).
 
 | # | Image Name | Description | Helm Chart | Remark |
 |---|------------|-------------|------------|--------|
