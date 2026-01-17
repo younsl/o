@@ -1,0 +1,18 @@
+apiVersion: v2
+name: grafana-dashboards
+description: Grafana dashboards as ConfigMaps for sidecar provisioning
+type: application
+version: 0.1.0
+appVersion: "1.0.0"
+keywords:
+  - grafana
+  - dashboard
+  - monitoring
+  - kubernetes
+maintainers:
+  - name: younsl
+    email: cysl@kakao.com
+    url: https://github.com/younsl
+home: https://github.com/younsl/o
+sources:
+  - https://github.com/younsl/o/tree/main/box/kubernetes/dashboards
