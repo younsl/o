@@ -42,7 +42,7 @@ make clean          # Remove build artifacts
 
 ### Rust Projects
 
-Standard Makefile patterns for Rust tools (ij, kk, qg, s3vget, podver, promdrop, filesystem-cleaner, elasticache-backup, redis-console):
+Standard Makefile patterns for Rust tools (ij, kk, qg, s3vget, podver, promdrop, filesystem-cleaner, elasticache-backup, redis-console, trivy-collector):
 
 ```bash
 # Core build commands
@@ -103,6 +103,32 @@ terraform destroy   # Destroy resources
 **Available Modules**:
 - `vault/irsa/` - Vault auto-unseal with AWS KMS integration
 
+### Helm Charts
+
+Standard Makefile patterns for Helm charts (grafana-dashboards, elasticache-backup, redis-console, trivy-collector):
+
+```bash
+# Development
+make lint       # Lint the chart (helm lint)
+make template   # Render templates locally
+make install    # Install to cluster
+make upgrade    # Upgrade release
+make uninstall  # Uninstall release
+
+# Packaging and distribution
+make package    # Package chart as tgz
+make push       # Push to OCI registry (GHCR)
+make clean      # Remove packaged chart
+
+# OCI registry usage (requires crane for version discovery)
+crane ls ghcr.io/younsl/charts/{chart-name}
+helm install {name} oci://ghcr.io/younsl/charts/{chart-name} --version x.y.z
+```
+
+**Chart Distribution**:
+- All charts are distributed via OCI registry at `ghcr.io/younsl/charts/`
+- Use [crane](https://github.com/google/go-containerregistry/blob/main/cmd/crane/README.md) instead of `helm search repo` to discover versions
+
 ## High-Level Architecture
 
 ### Repository Structure
@@ -111,6 +137,7 @@ terraform destroy   # Destroy resources
 box/
 ├── kubernetes/             # K8s controllers, policies, helm charts
 │   ├── elasticache-backup/# ElastiCache S3 backup automation (Rust, container)
+│   ├── grafana-dashboards/# Grafana dashboard ConfigMaps (Helm chart only)
 │   ├── podver/            # Pod Version Scanner (Rust, container)
 │   ├── promdrop/          # Prometheus metric filter generator (Rust, CLI + container)
 │   ├── redis-console/     # Interactive Redis cluster management CLI (Rust, CLI + container)
@@ -134,10 +161,8 @@ box/
 │   ├── aws/               # AWS resource management
 │   ├── github/            # Repository automation
 │   └── k8s-registry-io-stat/  # K8s connectivity testing
-├── terraform/             # Infrastructure as Code
-│   └── vault/irsa/        # Vault auto-unseal with AWS KMS
-├── actions/               # GitHub Actions reusable workflows
-└── note/                  # Engineering notes and learnings
+└── terraform/             # Infrastructure as Code
+    └── vault/irsa/        # Vault auto-unseal with AWS KMS
 ```
 
 ### Architectural Patterns
@@ -629,6 +654,36 @@ image: ghcr.io/younsl/logstash-with-opensearch-plugin:8.17.0
 
 **Why this exists**: Official Logstash image lacks the OpenSearch plugin; installing via initContainer causes 5+ minute startup delays.
 
+### grafana-dashboards - Grafana Dashboard ConfigMaps (Helm Chart)
+
+Helm chart that deploys Grafana dashboards as Kubernetes ConfigMaps for automatic provisioning via Grafana sidecar.
+
+```bash
+# Development commands
+make lint       # Lint the chart
+make template   # Render templates locally
+make install    # Install to cluster
+make upgrade    # Upgrade release
+make uninstall  # Uninstall release
+
+# OCI registry operations
+make package    # Package chart as tgz
+make push       # Push to GHCR OCI registry
+
+# List available versions (requires crane)
+crane ls ghcr.io/younsl/charts/grafana-dashboards
+
+# Install from OCI registry
+helm install grafana-dashboards oci://ghcr.io/younsl/charts/grafana-dashboards
+```
+
+**Technical Details**:
+- Helm chart only (no application code)
+- Distributed via OCI registry (GHCR)
+- Works with Grafana sidecar for automatic dashboard discovery
+- Per-dashboard folder, labels, and annotations configuration
+- Dashboard JSON files stored in `dashboards/` directory
+
 ## Performance & API Guidelines
 
 ### GitHub API Constraints
@@ -676,6 +731,7 @@ git tag logstash-with-opensearch-plugin/8.17.0 && git push --tags
 git tag elasticache-backup-chart/1.0.0 && git push --tags
 git tag redis-console-chart/1.0.0 && git push --tags
 git tag trivy-collector-chart/1.0.0 && git push --tags
+git tag grafana-dashboards-chart/1.0.0 && git push --tags
 
 # Available workflows:
 # - release-cocd.yml                         (Go CLI tool)
@@ -688,6 +744,7 @@ git tag trivy-collector-chart/1.0.0 && git push --tags
 # - release-redis-console-chart.yml          (Helm chart)
 # - release-trivy-collector.yml              (Rust container)
 # - release-trivy-collector-chart.yml        (Helm chart)
+# - release-grafana-dashboards-chart.yml     (Helm chart to OCI registry)
 # - release-logstash-with-opensearch-plugin.yml (Container image)
 # - release-actions-runner.yml               (Container image)
 # - release-backup-utils.yml                 (Workflow dispatch - builds from external source)

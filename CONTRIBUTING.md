@@ -10,7 +10,6 @@ This repository serves as a personal DevOps toolbox and learning space. It conta
 
 - Kubernetes utilities and automation scripts
 - Infrastructure code and configurations
-- Engineering documentation and notes
 - Personal tools and utilities
 
 ## Questions or Issues
