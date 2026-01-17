@@ -1,11 +1,11 @@
-# promdrop (Rust)
+# promdrop
 
 [![Release](https://img.shields.io/github/v/release/younsl/o?filter=promdrop*&style=flat-square&color=black)](https://github.com/younsl/o/releases?q=promdrop)
 [![GitHub Container Registry](https://img.shields.io/badge/ghcr.io-promdrop-black?style=flat-square&logo=docker&logoColor=white)](https://github.com/younsl/o/pkgs/container/promdrop)
 [![Rust](https://img.shields.io/badge/rust-1.91-black?style=flat-square&logo=rust&logoColor=white)](https://www.rust-lang.org/)
 [![GitHub license](https://img.shields.io/github/license/younsl/o?style=flat-square&color=black)](https://github.com/younsl/o/blob/main/LICENSE)
 
-A Rust implementation of promdrop - a CLI tool that generates Prometheus `metric_relabel_configs` to drop unused metrics, helping reduce monitoring costs.
+A CLI tool that generates Prometheus `metric_relabel_configs` to drop unused metrics, helping reduce monitoring costs.
 
 ## Features
 
@@ -174,26 +174,6 @@ metric_relabel_configs:
 - `unused/summary.txt` - Tabular summary of all jobs and metrics
 - `unused/<job>_unused_metrics.txt` - One metric per line for each job
 
-## Performance
-
-Rust implementation benefits:
-- **Fast parsing**: serde_json for efficient deserialization
-- **Memory efficient**: Iterators and references minimize allocations
-- **Type safety**: Compile-time guarantees prevent runtime errors
-- **Concurrent ready**: Thread-safe by default (though current impl is sequential)
-
-## Migration from Go
-
-This is a complete rewrite of the original Go implementation with these improvements:
-
-| Feature | Go | Rust |
-|---------|----|----- |
-| JSON parsing | encoding/json | serde_json (faster) |
-| CLI framework | cobra | clap (derives) |
-| YAML generation | gopkg.in/yaml.v3 | serde_yaml |
-| Error handling | error wrapping | anyhow + Result |
-| Testing | go test | cargo test + #[cfg(test)] |
-
 ## License
 
 MIT License - see LICENSE file for details.
@@ -201,4 +181,4 @@ MIT License - see LICENSE file for details.
 ## Related Tools
 
 - [Grafana Mimirtool](https://grafana.com/docs/mimir/latest/manage/tools/mimirtool/) - Analyze Prometheus metrics usage
-- Original Go implementation: `../promdrop/`
+- [Mimirtool로 미사용 메트릭 분석하기](https://younsl.github.io/blog/mimirtool-unused-metric/) - Blog post about analyzing unused metrics with Mimirtool
