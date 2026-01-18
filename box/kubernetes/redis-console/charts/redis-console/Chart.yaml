@@ -2,6 +2,7 @@ apiVersion: v2
 name: redis-console
 description: A Helm chart for Redis console container to manage multiple Redis clusters
 type: application
+deprecated: false
 version: 0.1.0
 appVersion: "0.1.0"
 home: https://github.com/younsl/o
