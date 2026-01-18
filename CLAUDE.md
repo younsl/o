@@ -153,7 +153,6 @@ box/
 │   ├── actions-runner/    # GitHub Actions runner
 │   ├── filesystem-cleaner/# File system cleanup tool (Rust)
 │   ├── logstash-with-opensearch-plugin/  # Logstash with OpenSearch plugin for ECK
-│   ├── ab/                # Apache Bench container
 │   ├── mageai/            # Mage AI custom image
 │   ├── yarn/              # Yarn package manager container
 │   └── terraform-console-machine/  # Terraform console container
