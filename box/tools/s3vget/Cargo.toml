@@ -9,7 +9,7 @@ license = "MIT"
 
 [dependencies]
 aws-config = "1.8"
-aws-sdk-s3 = "1.119"
+aws-sdk-s3 = "1.120"
 tokio = { version = "1.49", features = ["full"] }
 clap = { version = "4.5", features = ["derive"] }
 chrono = "0.4"
