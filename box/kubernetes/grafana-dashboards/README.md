@@ -78,7 +78,7 @@ The following table lists the configurable parameters and their default values.
 | sidecar | object | `{"folderAnnotation":"grafana_folder","labels":{"grafana_dashboard":"1"}}` | Grafana sidecar configuration for dashboard discovery |
 | sidecar.labels | map | `{"grafana_dashboard":"1"}` | Labels for Grafana sidecar to discover dashboards |
 | sidecar.folderAnnotation | string | `"grafana_folder"` | Annotation key for specifying dashboard folder |
-| dashboards | object | `{"node-problem-detector":{"annotations":{"grafana-dashboards/compatibility":"node-problem-detector v1.35.1","grafana-dashboards/metrics-source":"servicemonitor"},"enabled":true,"file":"nodes/node-problem-detector.json","folder":"","labels":{}}}` | Dashboard configurations |
+| dashboards | object | `{"istiod-control-plane":{"annotations":{"grafana-dashboards/compatibility":"istio v1.28.2","grafana-dashboards/metrics-source":"servicemonitor"},"enabled":true,"file":"istio/istiod-control-plane.json","folder":"Istio","labels":{}},"node-problem-detector":{"annotations":{"grafana-dashboards/compatibility":"node-problem-detector v1.35.1","grafana-dashboards/metrics-source":"servicemonitor"},"enabled":true,"file":"nodes/node-problem-detector.json","folder":"","labels":{}}}` | Dashboard configurations |
 | dashboards.node-problem-detector.enabled | bool | `true` | Enable or disable this dashboard |
 | dashboards.node-problem-detector.file | string | `"nodes/node-problem-detector.json"` | Dashboard JSON file path under dashboards/ |
 | dashboards.node-problem-detector.folder | string | `""` | Grafana folder name (empty = root folder) |

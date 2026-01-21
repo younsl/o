@@ -21,3 +21,12 @@ dashboards:
     annotations:
       grafana-dashboards/compatibility: node-problem-detector v1.35.1
       grafana-dashboards/metrics-source: servicemonitor
+
+  istiod-control-plane:
+    enabled: true
+    file: istio/istiod-control-plane.json
+    folder: "Istio"
+    labels: {}
+    annotations:
+      grafana-dashboards/compatibility: istio v1.28.2
+      grafana-dashboards/metrics-source: servicemonitor 
