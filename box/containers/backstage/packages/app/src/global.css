@@ -1,0 +1,64 @@
+/* ================================
+   Minimal Dark Theme
+   ================================ */
+
+/* Base dark background */
+html, body, #root {
+  background-color: #121212;
+  color: #ffffff;
+  overflow-x: hidden;
+}
+
+/* Fix horizontal overflow on main content */
+main {
+  min-width: 0;
+  overflow-x: hidden;
+}
+
+/* Fix horizontal overflow - account for sidebar (~250px) and padding */
+main > * {
+  max-width: calc(100vw - 280px);
+  overflow-x: hidden;
+}
+
+/* Sidebar */
+[class*="MuiDrawer-paper"] {
+  background-color: #0d0d0d;
+}
+
+/* Cards and Papers */
+[class*="MuiPaper-root"] {
+  background-color: #1a1a1a;
+  border: 1px solid #333333;
+}
+
+/* Input fields */
+[class*="MuiOutlinedInput-root"] {
+  background-color: #1e1e1e;
+}
+
+[class*="MuiOutlinedInput-notchedOutline"] {
+  border-color: #424242;
+}
+
+/* Dropdown menus */
+[class*="MuiMenu-paper"],
+[class*="MuiPopover-paper"],
+[class*="MuiAutocomplete-paper"] {
+  background-color: #1e1e1e;
+}
+
+/* Scrollbar */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: #1a1a1a;
+}
+
+::-webkit-scrollbar-thumb {
+  background: #424242;
+  border-radius: 4px;
+}

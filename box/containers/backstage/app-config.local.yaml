@@ -1,0 +1,25 @@
+# ==============================================================================
+# Backstage Local Configuration (for make run)
+# ==============================================================================
+# Uses SQLite for local container testing
+# ==============================================================================
+
+app:
+  baseUrl: http://localhost:7007
+
+backend:
+  baseUrl: http://localhost:7007
+  listen:
+    port: 7007
+  cors:
+    origin: http://localhost:7007
+  database:
+    client: better-sqlite3
+    connection: ':memory:'
+
+catalog:
+  locations:
+    - type: file
+      target: ./templates/register-component/template.yaml
+      rules:
+        - allow: [Template]
