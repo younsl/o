@@ -1,5 +1,5 @@
 # Multi-stage build for Rust application
-FROM rust:1.92-slim as builder
+FROM rust:1.93-slim as builder
 
 WORKDIR /app
 
