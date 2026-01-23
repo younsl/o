@@ -1,6 +1,13 @@
 # ij
 
-**I**nstance **J**ump - Interactive EC2 Session Manager connection tool. Scans AWS regions in parallel and connects via SSM. Inspired by [gossm](https://github.com/gjbae1212/gossm).
+**I**nstance **J**ump - Interactive EC2 Session Manager connection tool with fuzzy search. Scans AWS regions in parallel and connects via SSM. Inspired by [gossm](https://github.com/gjbae1212/gossm).
+
+## Features
+
+- Multi-region parallel scanning (22 AWS regions)
+- Fuzzy search with real-time filtering
+- Interactive instance selection
+- SSH-style escape sequences
 
 ## Usage
 
@@ -20,6 +27,21 @@ Requires AWS CLI v2 and Session Manager plugin.
 make install
 mv ~/.cargo/bin/ij /usr/local/bin/
 ```
+
+## Key Bindings
+
+Navigate and filter instances interactively.
+
+| Key | Action |
+|-----|--------|
+| `↑/↓` | Move selection |
+| `←/→` | Page up/down (10 items) |
+| `Page Up/Down` | Page up/down (10 items) |
+| `Home/End` | Jump to first/last |
+| `Enter` | Connect to selected instance |
+| `Esc` / `Ctrl+c` | Cancel |
+| `Backspace` | Delete search character |
+| `Ctrl+u` | Clear search query |
 
 ## Options
 

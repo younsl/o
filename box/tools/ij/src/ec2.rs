@@ -22,8 +22,8 @@ pub struct Instance {
     pub instance_type: String,
     #[tabled(rename = "PRIVATE IP")]
     pub private_ip: String,
-    #[tabled(rename = "STATE")]
-    pub state: String,
+    #[tabled(rename = "PLATFORM")]
+    pub platform: String,
 }
 
 impl Instance {
@@ -36,13 +36,13 @@ impl Instance {
             self.instance_id,
             self.instance_type,
             self.private_ip,
-            self.state,
+            self.platform,
             w0 = widths.region,
             w1 = widths.name,
             w2 = widths.instance_id,
             w3 = widths.instance_type,
             w4 = widths.private_ip,
-            w5 = widths.state,
+            w5 = widths.platform,
         )
     }
 }
@@ -55,7 +55,7 @@ pub struct ColumnWidths {
     pub instance_id: usize,
     pub instance_type: usize,
     pub private_ip: usize,
-    pub state: usize,
+    pub platform: usize,
 }
 
 impl ColumnWidths {
@@ -67,7 +67,7 @@ impl ColumnWidths {
             instance_id: instances.iter().map(|i| i.instance_id.len()).max().unwrap_or(11).max(11),
             instance_type: instances.iter().map(|i| i.instance_type.len()).max().unwrap_or(4).max(4),
             private_ip: instances.iter().map(|i| i.private_ip.len()).max().unwrap_or(10).max(10),
-            state: instances.iter().map(|i| i.state.len()).max().unwrap_or(5).max(5),
+            platform: instances.iter().map(|i| i.platform.len()).max().unwrap_or(8).max(8),
         }
     }
 
@@ -75,13 +75,13 @@ impl ColumnWidths {
     pub fn header(&self) -> String {
         format!(
             "{:<w0$}  {:<w1$}  {:<w2$}  {:<w3$}  {:<w4$}  {:<w5$}",
-            "REGION", "NAME", "INSTANCE ID", "TYPE", "PRIVATE IP", "STATE",
+            "REGION", "NAME", "INSTANCE ID", "TYPE", "PRIVATE IP", "PLATFORM",
             w0 = self.region,
             w1 = self.name,
             w2 = self.instance_id,
             w3 = self.instance_type,
             w4 = self.private_ip,
-            w5 = self.state,
+            w5 = self.platform,
         )
     }
 }
@@ -190,8 +190,8 @@ async fn fetch_region_instances(
             name: extract_name_tag(i).unwrap_or_else(|| "(no name)".to_string()),
             instance_id: i.instance_id().unwrap_or("N/A").to_string(),
             instance_type: i.instance_type().map(|t| t.as_str()).unwrap_or("N/A").to_string(),
-            state: i.state().and_then(|s| s.name()).map(|s| s.as_str()).unwrap_or("unknown").to_string(),
             private_ip: i.private_ip_address().unwrap_or("N/A").to_string(),
+            platform: i.platform().map(|p| p.as_str()).unwrap_or("Linux").to_string(),
         })
         .collect();
 

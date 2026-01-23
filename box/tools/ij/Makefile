@@ -1,4 +1,4 @@
-.PHONY: build release run dev test fmt lint clean install help deps
+.PHONY: build release run dev test fmt lint clean install install-local help deps
 
 # Binary name
 BINARY_NAME := ij
@@ -64,6 +64,12 @@ clean:
 install:
 	@echo "Installing $(BINARY_NAME)..."
 	@PATH="$(TOOLCHAIN_PATH):$$PATH" cargo install --path .
+
+## Build release and install to /usr/local/bin/
+install-local: release
+	@echo "Installing $(BINARY_NAME) to /usr/local/bin/..."
+	@sudo cp target/release/$(BINARY_NAME) /usr/local/bin/
+	@echo "Installed $(BINARY_NAME) to /usr/local/bin/$(BINARY_NAME)"
 
 ## Show this help message
 help:

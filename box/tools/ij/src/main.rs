@@ -38,7 +38,7 @@ impl App {
         self.print_summary(&instances);
 
         // Select instance
-        let selector = Selector::new(&instances);
+        let selector = Selector::new(&instances, &self.config);
         let selected = selector.select()?;
 
         self.print_selection(selected);
