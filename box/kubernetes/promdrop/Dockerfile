@@ -1,5 +1,5 @@
 # Build stage
-FROM rust:1.92-alpine as builder
+FROM rust:1.93-alpine as builder
 
 # Install build dependencies
 RUN apk add --no-cache musl-dev
