@@ -15,7 +15,7 @@
 # ------------------------------------------------------------------------------
 # Stage 1: Build the Backstage app
 # ------------------------------------------------------------------------------
-FROM node:24-bookworm-slim AS build
+FROM node:25-bookworm-slim AS build
 
 # Install build dependencies
 RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
@@ -57,7 +57,7 @@ RUN yarn tsc && \
 # ------------------------------------------------------------------------------
 # Stage 2: Production image (official Backstage pattern)
 # ------------------------------------------------------------------------------
-FROM node:24-bookworm-slim AS runner
+FROM node:25-bookworm-slim AS runner
 
 LABEL org.opencontainers.image.title="Backstage with GitLab Discovery" \
       org.opencontainers.image.description="Backstage instance with GitLab auto-discovery and API docs plugins" \
