@@ -6,7 +6,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 A monorepo serving as a DevOps toolbox containing Kubernetes utilities, automation scripts, infrastructure code, and engineering documentation.
 
-All applications in `kubernetes/`, `tools/`, and `containers/` are built with **[Rust](https://github.com/rust-lang/rust) 1.91+** (except `cocd` which uses Go). Rust provides key operational benefits: minimal container sizes, low memory footprint, single static binaries with no runtime dependencies, memory safety preventing null pointer and buffer overflow crashes, and compile-time guarantees ensuring system stability in production.
+All applications in `kubernetes/`, `tools/`, and `containers/` are built with **[Rust](https://github.com/rust-lang/rust) 1.92+** (except `cocd` which uses Go). Rust provides key operational benefits: minimal container sizes, low memory footprint, single static binaries with no runtime dependencies, memory safety preventing null pointer and buffer overflow crashes, and compile-time guarantees ensuring system stability in production.
 
 ## Design Philosophy
 
@@ -151,6 +151,7 @@ box/
 │   └── s3vget/            # S3 object version downloader (Rust)
 ├── containers/            # Custom container images
 │   ├── actions-runner/    # GitHub Actions runner
+│   ├── backstage/         # Backstage with GitLab Auto Discovery (Node.js)
 │   ├── filesystem-cleaner/# File system cleanup tool (Rust)
 │   ├── logstash-with-opensearch-plugin/  # Logstash with OpenSearch plugin for ECK
 │   ├── mageai/            # Mage AI custom image
