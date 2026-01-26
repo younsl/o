@@ -11,6 +11,10 @@ REGISTRY ?= ghcr.io/younsl
 # Override with: make build CONTAINER_RUNTIME=podman
 CONTAINER_RUNTIME ?= $(shell podman info >/dev/null 2>&1 && echo podman || echo docker)
 
+# .env file handling (use if exists, ignore if not)
+ENV_FILE := $(wildcard .env)
+ENV_FILE_OPT := $(if $(ENV_FILE),--env-file $(ENV_FILE),)
+
 .PHONY: help init build push run clean runtime-info
 
 help: ## Show this help
@@ -23,13 +27,16 @@ init: ## Initialize project (install dependencies)
 	yarn install
 
 dev: ## Run Backstage in development mode
-	yarn dev
+	@if [ -f .env ]; then set -a && . ./.env && set +a; fi && \
+		yarn dev
 
 build: ## Build container image
-	$(CONTAINER_RUNTIME) build -t $(IMAGE_NAME):$(IMAGE_TAG) .
+	$(CONTAINER_RUNTIME) build \
+		-t $(IMAGE_NAME):$(IMAGE_TAG) .
 
 build-nocache: ## Build container image without cache
-	$(CONTAINER_RUNTIME) build --no-cache -t $(IMAGE_NAME):$(IMAGE_TAG) .
+	$(CONTAINER_RUNTIME) build --no-cache \
+		-t $(IMAGE_NAME):$(IMAGE_TAG) .
 
 push: ## Push image to registry
 	$(CONTAINER_RUNTIME) tag $(IMAGE_NAME):$(IMAGE_TAG) $(REGISTRY)/$(IMAGE_NAME):$(IMAGE_TAG)
@@ -41,8 +48,7 @@ run: ## Run container locally (SQLite)
 		-v $(PWD)/app-config.yaml:/app/app-config.yaml:ro \
 		-v $(PWD)/app-config.local.yaml:/app/app-config.local.yaml:ro \
 		-v $(PWD)/templates:/app/templates:ro \
-		-e GITLAB_HOST=$${GITLAB_HOST} \
-		-e GITLAB_TOKEN=$${GITLAB_TOKEN} \
+		$(ENV_FILE_OPT) \
 		-e NODE_OPTIONS=--no-node-snapshot \
 		$(IMAGE_NAME):$(IMAGE_TAG) \
 		node packages/backend --config app-config.yaml --config app-config.local.yaml

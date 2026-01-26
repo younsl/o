@@ -74,8 +74,9 @@ catalog:
         entityFilename: catalog-info.yaml
         # Schedule for periodic discovery
         schedule:
-          frequency: { minutes: 30 }
+          frequency: { minutes: 1 }
           timeout: { minutes: 3 }
+          initialDelay: { seconds: 10 }
 
     # Discovers GitLab groups and users as org entities
     gitlabOrg:
@@ -88,6 +89,7 @@ catalog:
         schedule:
           frequency: { hours: 1 }
           timeout: { minutes: 5 }
+          initialDelay: { seconds: 30 }
 
   # Static locations (optional - for manual entity registration)
   locations:
@@ -136,6 +138,6 @@ search:
   collators:
     catalog:
       schedule:
-        frequency: { minutes: 10 }
+        frequency: { minutes: 1 }
         timeout: { minutes: 15 }
-        initialDelay: { seconds: 3 }
+        initialDelay: { seconds: 10 }

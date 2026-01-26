@@ -7,6 +7,7 @@ import CreateComponentIcon from '@material-ui/icons/AddCircleOutline';
 import SearchIcon from '@material-ui/icons/Search';
 import MenuBookIcon from '@material-ui/icons/MenuBook';
 import GroupIcon from '@material-ui/icons/Group';
+import HomeIcon from '@material-ui/icons/Home';
 import {
   Settings as SidebarSettings,
   UserSettingsSignInAvatar,
@@ -92,6 +93,7 @@ const CurrentUser = () => {
   );
 };
 
+
 export const Root = ({ children }: PropsWithChildren<{}>) => (
   <SidebarPage>
     <Sidebar>
@@ -101,6 +103,7 @@ export const Root = ({ children }: PropsWithChildren<{}>) => (
       </SidebarGroup>
       <SidebarDivider />
       <SidebarGroup label="Menu" icon={<MenuBookIcon />}>
+        <SidebarItem icon={HomeIcon} to="/" text="Home" />
         <SidebarItem icon={CategoryIcon} to="catalog" text="Catalog" />
         <SidebarItem icon={ExtensionIcon} to="api-docs" text="APIs" />
         <SidebarItem icon={LibraryBooks} to="docs" text="Docs" />

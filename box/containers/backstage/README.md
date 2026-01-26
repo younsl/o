@@ -1,12 +1,47 @@
 # Backstage with GitLab Discovery
 
-Backstage 커스텀 이미지로, GitLab Auto Discovery와 API Docs 플러그인이 포함되어 있습니다.
+[![GHCR](https://img.shields.io/badge/GHCR-ghcr.io%2Fyounsl%2Fbackstage-black?style=flat-square&logo=github&logoColor=white)](https://ghcr.io/younsl/backstage)
+[![Backstage](https://img.shields.io/badge/Backstage-1.47.1-black?style=flat-square&logo=backstage&logoColor=white)](https://backstage.io)
+
+Custom Backstage image with GitLab Auto Discovery, Home dashboard, and API Docs plugins.
+
+## Summary
+
+This is a production-ready Backstage container image designed for internal developer portals. It provides a centralized platform where developers can discover services, view API documentation, and access technical docs across your organization.
+
+### Key Highlights
+
+- **Service Catalog**: Auto-discover and register all services from GitLab repositories
+- **Home Dashboard**: Personalized landing page with quick access to frequently used resources
+- **API Documentation**: View OpenAPI, AsyncAPI, and GraphQL specs in one place
+- **TechDocs**: Markdown-based documentation rendered beautifully
+- **GitLab Integration**: Seamless sync with GitLab groups, users, and repositories
+
+### Architecture
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│                      Backstage                              │
+├─────────────────────────────────────────────────────────────┤
+│  Frontend (React)           │  Backend (Node.js)            │
+│  ├─ Home Dashboard          │  ├─ Catalog API               │
+│  ├─ Service Catalog         │  ├─ GitLab Discovery          │
+│  ├─ API Docs Viewer         │  ├─ Search Indexer            │
+│  ├─ TechDocs Reader         │  ├─ TechDocs Builder          │
+│  └─ Scaffolder UI           │  └─ Scaffolder Backend        │
+├─────────────────────────────────────────────────────────────┤
+│                     External Services                       │
+│  ├─ GitLab (source of truth)                                │
+│  ├─ PostgreSQL (catalog database)                           │
+│  └─ S3/GCS (TechDocs storage - optional)                    │
+└─────────────────────────────────────────────────────────────┘
+```
 
 ## Version
 
 | Component | Version |
 |-----------|---------|
-| Backstage | 1.47.0 |
+| [Backstage](https://github.com/backstage/backstage/releases/tag/v1.47.1) | 1.47.1 |
 | Node.js | 24.x |
 | Yarn | 4.x (Berry) |
 | @backstage/cli | 0.35.2 |
@@ -15,22 +50,36 @@ Backstage 커스텀 이미지로, GitLab Auto Discovery와 API Docs 플러그인
 
 | Feature | Plugin | Description |
 |---------|--------|-------------|
-| GitLab Auto Discovery | `plugin-catalog-backend-module-gitlab` | GitLab 저장소에서 `catalog-info.yaml` 자동 발견 |
-| GitLab Org Sync | `plugin-catalog-backend-module-gitlab-org` | GitLab 그룹/사용자를 Backstage에 동기화 |
-| API Docs | `plugin-api-docs` | OpenAPI, AsyncAPI, GraphQL 스펙 뷰어 |
-| TechDocs | `plugin-techdocs` | Markdown 기반 기술 문서 |
-| Scaffolder | `plugin-scaffolder` | 템플릿 기반 프로젝트 생성 |
-| Search | `plugin-search` | 카탈로그 전체 검색 |
+| Home Dashboard | `plugin-home` | Customizable home page with widgets |
+| GitLab Auto Discovery | `plugin-catalog-backend-module-gitlab` | Auto-discover `catalog-info.yaml` from GitLab repos |
+| GitLab Org Sync | `plugin-catalog-backend-module-gitlab-org` | Sync GitLab groups/users to Backstage |
+| API Docs | `plugin-api-docs` | OpenAPI, AsyncAPI, GraphQL spec viewer |
+| TechDocs | `plugin-techdocs` | Markdown-based technical documentation |
+| Scaffolder | `plugin-scaffolder` | Template-based project creation |
+| Search | `plugin-search` | Full-text search across catalog |
+
+### Home Dashboard Widgets
+
+| Widget | Description |
+|--------|-------------|
+| WelcomeTitle | Time-based greeting (Good morning/afternoon/evening) |
+| HeaderWorldClock | World clock (Seoul, UTC) |
+| SearchBar | Global search |
+| QuickLinks | Shortcuts to Catalog, APIs, Docs, Create |
+| StarredEntities | Bookmarked components |
+| RecentlyVisited | Recently visited entities |
+| TopVisited | Most frequently visited entities |
+| FeaturedDocsCard | Components with TechDocs |
 
 ## Quick Start
 
 ### Build
 
 ```bash
-# 컨테이너 런타임 자동 감지 (podman 우선, 없으면 docker)
+# Auto-detect container runtime (podman preferred, fallback to docker)
 make build
 
-# 명시적으로 런타임 지정
+# Explicitly specify runtime
 make build CONTAINER_RUNTIME=docker
 make build CONTAINER_RUNTIME=podman
 ```
@@ -38,11 +87,20 @@ make build CONTAINER_RUNTIME=podman
 ### Run Locally
 
 ```bash
-export GITLAB_TOKEN="glpat-xxxxxxxxxxxx"
+# Option 1: Using .env file
+cat > .env << EOF
+GITLAB_HOST=gitlab.com
+GITLAB_TOKEN=glpat-xxxxxxxxxxxx
+EOF
+make run
+
+# Option 2: Export environment variables
+export GITLAB_HOST=gitlab.com
+export GITLAB_TOKEN=glpat-xxxxxxxxxxxx
 make run
 ```
 
-브라우저에서 http://localhost:7007 접속
+Open http://localhost:7007 in your browser.
 
 ### Push to Registry (Manual)
 
@@ -52,22 +110,21 @@ make push REGISTRY=ghcr.io/your-org
 
 ### Release via GitHub Actions (Recommended)
 
-태그 푸시로 자동 릴리즈:
+Auto-release by pushing a tag:
 
 ```bash
-# 태그 생성 및 푸시
 git tag backstage/1.47.0
 git push origin backstage/1.47.0
 ```
 
-또는 GitHub Actions에서 `workflow_dispatch`로 수동 실행 가능.
+Or trigger manually via `workflow_dispatch` in GitHub Actions.
 
 ## Helm Chart Integration
 
-공식 [Backstage Helm Chart](https://github.com/backstage/charts)에서 이미지만 교체하여 사용합니다.
+This custom image is compatible with the official [Backstage Helm Chart](https://github.com/backstage/charts). Simply replace the image reference in your values file.
 
-> **Note**: 이 이미지는 설정 파일(app-config.yaml)을 포함하지 않습니다.
-> 공식 차트의 `appConfig`를 사용하여 설정을 주입하세요.
+> **Note**: This image does not include config files (app-config.yaml).
+> Inject configuration using the chart's `appConfig`.
 
 ```yaml
 # values.yaml
@@ -113,6 +170,7 @@ backstage:
             schedule:
               frequency: { minutes: 30 }
               timeout: { minutes: 3 }
+              initialDelay: { seconds: 10 }
 
   extraEnvVars:
     - name: GITLAB_HOST
@@ -140,23 +198,31 @@ backstage:
 
 ### Install with Helm
 
+Create namespace and secret for sensitive values (e.g., GitLab token, PostgreSQL credentials):
+
 ```bash
-# Secret 생성
+kubectl create namespace backstage
 kubectl create secret generic backstage-secrets \
+  --namespace backstage \
   --from-literal=gitlab-token=glpat-xxxxxxxxxxxx \
   --from-literal=postgres-user=backstage \
   --from-literal=postgres-password=changeme
+```
 
-# Helm 설치
+Install Backstage using the official Helm chart:
+
+```bash
 helm repo add backstage https://backstage.github.io/charts
-helm install backstage backstage/backstage -f values.yaml
+helm install backstage backstage/backstage \
+  --namespace backstage \
+  -f values.yaml
 ```
 
 ## Configuration
 
-### GitLab Discovery 설정
+### GitLab Discovery
 
-프로젝트 루트의 `app-config.yaml`에서 GitLab discovery 설정을 변경할 수 있습니다:
+Configure GitLab discovery in `app-config.yaml`:
 
 ```yaml
 catalog:
@@ -166,26 +232,27 @@ catalog:
         host: ${GITLAB_HOST}
         branch: main
         fallbackBranch: master
-        # 특정 그룹만 스캔
+        # Scan specific group only
         # group: my-team
         schedule:
-          frequency: { minutes: 30 }
+          frequency: { minutes: 1 }
           timeout: { minutes: 3 }
+          initialDelay: { seconds: 10 }
 ```
 
 ### Environment Variables
 
 | Variable | Required | Description |
 |----------|----------|-------------|
-| `GITLAB_HOST` | Yes | GitLab 호스트 (예: `gitlab.com`) |
-| `GITLAB_TOKEN` | Yes | GitLab Personal Access Token (api scope 필요) |
-| `BACKSTAGE_BASE_URL` | Production | Backstage 외부 URL |
+| `GITLAB_HOST` | Yes | GitLab host (e.g., `gitlab.com`) |
+| `GITLAB_TOKEN` | Yes | GitLab Personal Access Token (requires `api` scope) |
+| `BACKSTAGE_BASE_URL` | Production | External Backstage URL |
 
 ## GitLab Repository Setup
 
-GitLab 저장소에 `catalog-info.yaml` 파일을 추가하면 Backstage가 자동으로 발견합니다.
+Add `catalog-info.yaml` to your GitLab repositories for auto-discovery.
 
-### Component 예시
+### Component Example
 
 ```yaml
 apiVersion: backstage.io/v1alpha1
@@ -201,7 +268,7 @@ spec:
   owner: platform-team
 ```
 
-### API 스펙 포함 예시
+### API Spec Example
 
 ```yaml
 apiVersion: backstage.io/v1alpha1
@@ -229,7 +296,7 @@ spec:
     $text: ./openapi.yaml
 ```
 
-### 지원하는 API 타입
+### Supported API Types
 
 | Type | Spec Format |
 |------|-------------|
@@ -245,8 +312,8 @@ backstage/
 ├── Dockerfile
 ├── Makefile
 ├── package.json
-├── app-config.yaml              # 기본 설정
-├── app-config.production.yaml   # 프로덕션 오버라이드
+├── app-config.yaml              # Default config
+├── app-config.production.yaml   # Production overrides
 ├── tsconfig.json
 └── packages/
     ├── app/                     # Frontend
@@ -254,10 +321,12 @@ backstage/
     │   └── src/
     │       ├── App.tsx
     │       └── components/
+    │           ├── Root/
+    │           └── home/        # Home dashboard
     └── backend/                 # Backend
         ├── package.json
         └── src/
-            └── index.ts         # 플러그인 등록
+            └── index.ts         # Plugin registration
 ```
 
 ## Development
@@ -265,25 +334,25 @@ backstage/
 ### Local Development (without container)
 
 ```bash
-# 의존성 설치
+# Install dependencies
 make init
 
-# 개발 서버 실행
+# Run dev server
 make dev
 ```
 
 ### Available Make Targets
 
 ```bash
-make help           # 도움말 출력
-make runtime-info   # 감지된 컨테이너 런타임 확인
+make help           # Show help
+make runtime-info   # Show detected container runtime
 make init           # yarn install
-make dev            # 로컬 개발 서버
-make build          # 컨테이너 이미지 빌드
-make build-nocache  # 캐시 없이 빌드
-make push           # 레지스트리에 푸시
-make run            # 로컬에서 컨테이너 실행
-make clean          # 빌드 아티팩트 삭제
+make dev            # Local dev server
+make build          # Build container image
+make build-nocache  # Build without cache
+make push           # Push to registry
+make run            # Run container locally
+make clean          # Remove build artifacts
 ```
 
 ## Ports
@@ -293,4 +362,4 @@ make clean          # 빌드 아티팩트 삭제
 | 7007 | Backstage Backend (production) |
 | 3000 | Frontend dev server (development only) |
 
-프로덕션에서는 7007 포트만 노출하면 됩니다.
+In production, only expose port 7007.

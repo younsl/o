@@ -1,5 +1,3 @@
-# syntax=docker/dockerfile:1
-
 # ==============================================================================
 # Backstage Custom Image with GitLab Auto Discovery
 # ==============================================================================
@@ -18,9 +16,7 @@
 FROM node:25-bookworm-slim AS build
 
 # Install build dependencies
-RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
-    --mount=type=cache,target=/var/lib/apt,sharing=locked \
-    apt-get update && \
+RUN apt-get update && \
     apt-get install -y --no-install-recommends \
         python3 \
         g++ \
@@ -29,8 +25,8 @@ RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
         ca-certificates \
     && rm -rf /var/lib/apt/lists/*
 
-# Enable corepack for Yarn Berry
-RUN corepack enable
+# Install and enable corepack for Yarn Berry (not included in slim image)
+RUN npm install -g corepack --force && corepack enable
 
 WORKDIR /app
 
@@ -66,9 +62,7 @@ LABEL org.opencontainers.image.title="Backstage with GitLab Discovery" \
 # Install runtime dependencies and build tools for native modules
 # Build tools (python3, g++, build-essential) are needed for yarn workspaces focus
 # to compile native dependencies like better-sqlite3, tree-sitter, etc.
-RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
-    --mount=type=cache,target=/var/lib/apt,sharing=locked \
-    apt-get update && \
+RUN apt-get update && \
     apt-get install -y --no-install-recommends \
         ca-certificates \
         curl \
@@ -77,8 +71,8 @@ RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
         build-essential \
     && rm -rf /var/lib/apt/lists/*
 
-# Enable corepack for Yarn Berry
-RUN corepack enable
+# Install and enable corepack for Yarn Berry (not included in slim image)
+RUN npm install -g corepack --force && corepack enable
 
 # Set production environment
 ENV NODE_ENV=production
