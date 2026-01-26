@@ -64,7 +64,7 @@ jobs:
     if: ${{ needs.check.outputs.image_exists == 'false' }}
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
       - name: Login to GitHub Container Registry
         run: |
