@@ -36,7 +36,10 @@ COPY .yarnrc.yml ./
 
 # Copy package files for dependency caching
 COPY package.json yarn.lock ./
-COPY --parents packages/*/package.json plugins/*/package.json ./
+COPY packages/backend/package.json packages/backend/
+COPY packages/app/package.json packages/app/
+COPY plugins/openapi-registry/package.json plugins/openapi-registry/
+COPY plugins/openapi-registry-backend/package.json plugins/openapi-registry-backend/
 
 # Install all dependencies (including devDependencies for build)
 RUN yarn install --immutable
