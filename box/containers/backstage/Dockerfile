@@ -107,6 +107,10 @@ COPY --from=build --chown=node:node /app/.yarnrc.yml ./
 # plugin-app-backend uses resolvePackagePath('app') which requires this symlink
 COPY --from=build --chown=node:node /app/packages/app/package.json ./packages/app/
 
+# Copy plugins package.json for workspace resolution
+COPY --from=build --chown=node:node /app/plugins/openapi-registry/package.json ./plugins/openapi-registry/
+COPY --from=build --chown=node:node /app/plugins/openapi-registry-backend/package.json ./plugins/openapi-registry-backend/
+
 # Install production dependencies only (Yarn Berry feature)
 # Uses cached packages from .yarn/cache
 RUN yarn workspaces focus --all --production
