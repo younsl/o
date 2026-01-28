@@ -36,8 +36,7 @@ COPY .yarnrc.yml ./
 
 # Copy package files for dependency caching
 COPY package.json yarn.lock ./
-COPY packages/backend/package.json packages/backend/
-COPY packages/app/package.json packages/app/
+COPY --parents packages/*/package.json plugins/*/package.json ./
 
 # Install all dependencies (including devDependencies for build)
 RUN yarn install --immutable
