@@ -26,7 +26,7 @@ import { orgPlugin } from '@backstage/plugin-org';
 import { SearchPage } from '@backstage/plugin-search';
 import { TechDocsIndexPage, TechDocsReaderPage } from '@backstage/plugin-techdocs';
 import { UserSettingsPage } from '@backstage/plugin-user-settings';
-import { apis } from './apis';
+import { apis, keycloakOIDCAuthApiRef } from './apis';
 import { entityPage } from './components/catalog/EntityPage';
 import { searchPage } from './components/search/SearchPage';
 import { Root } from './components/Root';
@@ -70,8 +70,14 @@ const app = createApp({
     SignInPage: props => (
       <SignInPage
         {...props}
-        auto
-        providers={['guest']}
+        providers={[
+          {
+            id: 'keycloak',
+            title: 'Keycloak',
+            message: 'Sign in using Keycloak',
+            apiRef: keycloakOIDCAuthApiRef,
+          },
+        ]}
       />
     ),
   },

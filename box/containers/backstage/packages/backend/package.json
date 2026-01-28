@@ -18,6 +18,7 @@
     "@backstage/plugin-app-backend": "^0.5.10",
     "@backstage/plugin-auth-backend": "^0.26.0",
     "@backstage/plugin-auth-backend-module-guest-provider": "^0.2.15",
+    "@backstage/plugin-auth-backend-module-oidc-provider": "^0.4.4",
     "@backstage/plugin-catalog-backend": "^3.3.1",
     "@backstage/plugin-catalog-backend-module-gitlab": "^0.7.7",
     "@backstage/plugin-catalog-backend-module-gitlab-org": "^0.2.17",

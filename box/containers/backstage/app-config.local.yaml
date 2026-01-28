@@ -5,14 +5,14 @@
 # ==============================================================================
 
 app:
-  baseUrl: http://localhost:7007
+  baseUrl: http://localhost:3000
 
 backend:
   baseUrl: http://localhost:7007
   listen:
     port: 7007
   cors:
-    origin: http://localhost:7007
+    origin: http://localhost:3000
   database:
     client: better-sqlite3
     connection: ':memory:'

@@ -20,6 +20,7 @@ backend.add(import('@backstage/plugin-proxy-backend'));
 // Auth plugins
 backend.add(import('@backstage/plugin-auth-backend'));
 backend.add(import('@backstage/plugin-auth-backend-module-guest-provider'));
+backend.add(import('@backstage/plugin-auth-backend-module-oidc-provider'));
 
 // Catalog plugins
 backend.add(import('@backstage/plugin-catalog-backend'));

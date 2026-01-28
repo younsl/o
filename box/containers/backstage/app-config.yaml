@@ -102,11 +102,24 @@ catalog:
 # Auth Configuration
 # ------------------------------------------------------------------------------
 auth:
-  # For development, allow guest access
-  # In production, configure proper auth providers
+  environment: development
+  # Session secret is required for OIDC authentication
+  session:
+    secret: ${AUTH_SESSION_SECRET}
   providers:
-    guest:
-      dangerouslyAllowOutsideDevelopment: true
+    # Keycloak OIDC authentication
+    oidc:
+      development:
+        clientId: ${KEYCLOAK_CLIENT_ID}
+        clientSecret: ${KEYCLOAK_CLIENT_SECRET}
+        metadataUrl: ${KEYCLOAK_METADATA_URL}
+        # Example: https://keycloak.example.com/realms/your-realm/.well-known/openid-configuration
+        prompt: auto
+        signIn:
+          resolvers:
+            # Allow sign-in even without matching User entity in catalog
+            - resolver: emailLocalPartMatchingUserEntityName
+              dangerouslyAllowSignInWithoutUserInCatalog: true
 
 # ------------------------------------------------------------------------------
 # Scaffolder Configuration
