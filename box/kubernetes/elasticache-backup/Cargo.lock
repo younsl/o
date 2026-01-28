@@ -186,15 +186,16 @@ dependencies = [
 
 [[package]]
 name = "aws-sdk-elasticache"
-version = "1.97.0"
+version = "1.98.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "637544d278839d49d9a8370bb424526e1efa4f6bd87cdc2a4447197f14e5934d"
+checksum = "f57670cc0ff8c67d8cd492a17f1170fd37b0fa614034ad8ba44da8e555e54e46"
 dependencies = [
  "aws-credential-types",
  "aws-runtime",
  "aws-smithy-async",
  "aws-smithy-http",
  "aws-smithy-json",
+ "aws-smithy-observability",
  "aws-smithy-query",
  "aws-smithy-runtime",
  "aws-smithy-runtime-api",
