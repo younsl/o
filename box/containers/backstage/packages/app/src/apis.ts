@@ -58,6 +58,7 @@ export const apis: AnyApiFactory[] = [
           title: 'Keycloak',
           icon: () => null,
         },
+        environment: configApi.getOptionalString('auth.environment'),
         defaultScopes: ['openid', 'profile', 'email'],
       }),
   }),
