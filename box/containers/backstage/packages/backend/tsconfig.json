@@ -1,7 +1,7 @@
 {
   "extends": "../../tsconfig.json",
   "compilerOptions": {
-    "outDir": "../../dist-types/plugins/openapi-registry-backend",
+    "outDir": "../../dist-types/packages/backend",
     "rootDir": "src",
     "composite": true
   },
