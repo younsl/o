@@ -31,7 +31,7 @@ export class OpenApiRegistryClient implements OpenApiRegistryApi {
     });
 
     if (!response.ok) {
-      throw await ResponseError.fromResponse(response);
+      throw await ResponseError.fromResponse(response as any);
     }
 
     return response.json();
@@ -48,7 +48,7 @@ export class OpenApiRegistryClient implements OpenApiRegistryApi {
     });
 
     if (!response.ok) {
-      throw await ResponseError.fromResponse(response);
+      throw await ResponseError.fromResponse(response as any);
     }
 
     return response.json();
@@ -59,7 +59,7 @@ export class OpenApiRegistryClient implements OpenApiRegistryApi {
     const response = await this.fetchApi.fetch(`${baseUrl}/registrations`);
 
     if (!response.ok) {
-      throw await ResponseError.fromResponse(response);
+      throw await ResponseError.fromResponse(response as any);
     }
 
     return response.json();
@@ -70,7 +70,7 @@ export class OpenApiRegistryClient implements OpenApiRegistryApi {
     const response = await this.fetchApi.fetch(`${baseUrl}/registrations/${id}`);
 
     if (!response.ok) {
-      throw await ResponseError.fromResponse(response);
+      throw await ResponseError.fromResponse(response as any);
     }
 
     return response.json();
@@ -83,7 +83,7 @@ export class OpenApiRegistryClient implements OpenApiRegistryApi {
     });
 
     if (!response.ok) {
-      throw await ResponseError.fromResponse(response);
+      throw await ResponseError.fromResponse(response as any);
     }
 
     return response.json();
@@ -99,7 +99,7 @@ export class OpenApiRegistryClient implements OpenApiRegistryApi {
     );
 
     if (!response.ok) {
-      throw await ResponseError.fromResponse(response);
+      throw await ResponseError.fromResponse(response as any);
     }
   }
 }

@@ -47,7 +47,7 @@ import {
 } from '@backstage/theme';
 import { OpenApiRegistryPage } from '@internal/plugin-openapi-registry';
 
-const CustomSignInPage = (props: React.ComponentProps<typeof SignInPage>) => (
+const CustomSignInPage = (props: any) => (
   <SignInPage
     {...props}
     providers={[

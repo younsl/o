@@ -59,7 +59,7 @@ export const openApiRegistryPlugin = createBackendPlugin({
           logger,
         });
 
-        httpRouter.use(router);
+        httpRouter.use(router as any);
         httpRouter.addAuthPolicy({
           path: '/health',
           allow: 'unauthenticated',
