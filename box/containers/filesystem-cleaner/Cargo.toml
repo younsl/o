@@ -26,7 +26,7 @@ thiserror = "2.0"
 globset = "=0.4.18"
 
 # System information
-sysinfo = "0.37"
+sysinfo = "0.38"
 
 # Human-readable byte sizes
 bytesize = "2.3"
