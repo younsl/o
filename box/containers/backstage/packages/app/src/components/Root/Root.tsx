@@ -8,6 +8,7 @@ import SearchIcon from '@material-ui/icons/Search';
 import MenuBookIcon from '@material-ui/icons/MenuBook';
 import GroupIcon from '@material-ui/icons/Group';
 import HomeIcon from '@material-ui/icons/Home';
+import CloudUploadIcon from '@material-ui/icons/CloudUpload';
 import {
   Settings as SidebarSettings,
   UserSettingsSignInAvatar,
@@ -32,7 +33,6 @@ import LogoIcon from './LogoIcon';
 
 const useSidebarLogoStyles = makeStyles({
   root: {
-    width: sidebarConfig.drawerWidthClosed,
     height: 3 * sidebarConfig.logoHeight,
     display: 'flex',
     flexFlow: 'row nowrap',
@@ -40,7 +40,6 @@ const useSidebarLogoStyles = makeStyles({
     marginBottom: -14,
   },
   link: {
-    width: sidebarConfig.drawerWidthClosed,
     marginLeft: 24,
   },
 });
@@ -106,6 +105,7 @@ export const Root = ({ children }: PropsWithChildren<{}>) => (
         <SidebarItem icon={HomeIcon} to="/" text="Home" />
         <SidebarItem icon={CategoryIcon} to="catalog" text="Catalog" />
         <SidebarItem icon={ExtensionIcon} to="api-docs" text="APIs" />
+        <SidebarItem icon={CloudUploadIcon} to="openapi-registry" text="API Registry" />
         <SidebarItem icon={LibraryBooks} to="docs" text="Docs" />
         <SidebarItem icon={CreateComponentIcon} to="create" text="Create..." />
         <SidebarDivider />

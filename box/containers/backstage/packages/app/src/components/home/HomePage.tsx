@@ -23,6 +23,7 @@ import CategoryIcon from '@material-ui/icons/Category';
 import ExtensionIcon from '@material-ui/icons/Extension';
 import LibraryBooks from '@material-ui/icons/LibraryBooks';
 import CreateComponentIcon from '@material-ui/icons/AddCircleOutline';
+import CloudUploadIcon from '@material-ui/icons/CloudUpload';
 
 const useStyles = makeStyles(theme => ({
   searchBarInput: {
@@ -114,6 +115,11 @@ export const HomePage = () => {
                     url: '/api-docs',
                     label: 'APIs',
                     icon: <ExtensionIcon />,
+                  },
+                  {
+                    url: '/openapi-registry',
+                    label: 'API Registry',
+                    icon: <CloudUploadIcon />,
                   },
                   {
                     url: '/docs',

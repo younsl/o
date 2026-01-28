@@ -29,6 +29,7 @@
     "@backstage/plugin-search-backend": "^2.0.10",
     "@backstage/plugin-search-backend-module-catalog": "^0.3.11",
     "@backstage/plugin-techdocs-backend": "^2.1.4",
+    "@internal/plugin-openapi-registry-backend": "workspace:*",
     "better-sqlite3": "^12.6.2",
     "pg": "^8.11.3"
   },

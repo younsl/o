@@ -14,6 +14,7 @@ Custom Backstage image with GitLab Auto Discovery, Keycloak OIDC, and API Docs p
 | GitLab Org Sync | `plugin-catalog-backend-module-gitlab-org` | Yes | Sync GitLab groups/users to Backstage |
 | OIDC Authentication | `plugin-auth-backend-module-oidc-provider` | Yes | Keycloak/OIDC SSO authentication |
 | API Docs | `plugin-api-docs` | Yes | OpenAPI, AsyncAPI, GraphQL spec viewer |
+| OpenAPI Registry | `openapi-registry` | No | Register external OpenAPI specs by URL with search and filters |
 | TechDocs | `plugin-techdocs` | Yes | Markdown-based technical documentation |
 | Scaffolder | `plugin-scaffolder` | Yes | Template-based project creation |
 | Search | `plugin-search` | Yes | Full-text search across catalog |
@@ -78,6 +79,7 @@ git push origin backstage/1.48.0
 │  ├─ Home Dashboard          │  ├─ Catalog API               │
 │  ├─ Service Catalog         │  ├─ GitLab Discovery          │
 │  ├─ API Docs Viewer         │  ├─ Search Indexer            │
+│  ├─ OpenAPI Registry        │  ├─ OpenAPI Registry API      │
 │  ├─ TechDocs Reader         │  ├─ TechDocs Builder          │
 │  └─ Scaffolder UI           │  └─ Scaffolder Backend        │
 ├─────────────────────────────────────────────────────────────┤
@@ -101,11 +103,43 @@ backstage/
 ├── packages/
 │   ├── app/                     # Frontend
 │   └── backend/                 # Backend
+├── plugins/
+│   ├── openapi-registry/        # OpenAPI Registry frontend plugin
+│   └── openapi-registry-backend/# OpenAPI Registry backend plugin
+├── templates/
+│   └── register-component/      # Scaffolder template for catalog-info.yaml
 ├── app-config.yaml              # Default config
 ├── app-config.local.yaml        # Local overrides
+├── values.yaml                  # Helm chart values
 ├── Dockerfile
 └── Makefile
 ```
+
+## OpenAPI Registry
+
+Custom plugin for registering external OpenAPI specs without `catalog-info.yaml`.
+
+**Features:**
+- Protocol selection (https/http)
+- Spec preview before registration
+- Search by name, title, or owner
+- Filter by Lifecycle and Owner
+- Refresh spec from source URL
+- Delete registration
+
+**Workflow:**
+1. Enter OpenAPI spec URL → Preview
+2. Fill metadata (name, owner, lifecycle, tags)
+3. Register → Auto-sync to Catalog
+
+## Authentication
+
+Authentication is configured via Keycloak OIDC. Guest login is **disabled in production**.
+
+> **Note:** Backstage does not support dynamically enabling/disabling guest login via config.
+> The `guest` provider in `SignInPage` (`packages/app/src/App.tsx`) is hardcoded in frontend.
+> To enable guest login, add `'guest'` to the providers array and rebuild the image.
+> See [Guest Authentication Provider](https://backstage.io/docs/auth/guest/provider/) for details.
 
 ## Ports
 

@@ -76,6 +76,7 @@ RUN npm install -g corepack --force && corepack enable
 
 # Set production environment
 ENV NODE_ENV=production
+ENV NODE_OPTIONS=--no-node-snapshot
 
 # Use /app as working directory (required by official Helm chart)
 WORKDIR /app

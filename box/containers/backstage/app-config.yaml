@@ -34,6 +34,10 @@ backend:
     connection: ':memory:'
   auth:
     dangerouslyDisableDefaultAuthPolicy: true
+  # Allow reading from localhost URLs (for OpenAPI Registry plugin)
+  reading:
+    allow:
+      - host: localhost:7007
 
 # ------------------------------------------------------------------------------
 # GitLab Integration
@@ -107,6 +111,13 @@ auth:
   session:
     secret: ${AUTH_SESSION_SECRET}
   providers:
+    # Guest provider for local development/testing
+    # NOTE: Backstage does not support dynamically enabling/disabling guest login via config.
+    # The 'guest' provider in SignInPage (packages/app/src/App.tsx) is hardcoded in frontend.
+    # To disable guest login in production, remove 'guest' from providers array and rebuild the image.
+    # Reference: https://backstage.io/docs/auth/guest/provider/
+    guest:
+      dangerouslyAllowOutsideDevelopment: true
     # Keycloak OIDC authentication
     oidc:
       development:

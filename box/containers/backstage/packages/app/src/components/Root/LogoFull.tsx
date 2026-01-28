@@ -2,15 +2,23 @@ import React from 'react';
 import { makeStyles } from '@material-ui/core';
 
 const useStyles = makeStyles({
+  container: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: 12,
+  },
   svg: {
-    width: 'auto',
+    width: 24,
     height: 30,
+    flexShrink: 0,
   },
   text: {
-    fill: '#ffffff',
+    color: '#ffffff',
     fontFamily: 'Helvetica Neue, Arial, sans-serif',
     fontWeight: 700,
-    fontSize: '24px',
+    fontSize: '22px',
+    letterSpacing: '-0.5px',
+    whiteSpace: 'nowrap',
   },
 });
 
@@ -18,15 +26,19 @@ const LogoFull = () => {
   const classes = useStyles();
 
   return (
-    <svg
-      className={classes.svg}
-      xmlns="http://www.w3.org/2000/svg"
-      viewBox="0 0 180 40"
-    >
-      <text className={classes.text} x="10" y="28">
-        Backstage
-      </text>
-    </svg>
+    <div className={classes.container}>
+      <svg
+        className={classes.svg}
+        xmlns="http://www.w3.org/2000/svg"
+        viewBox="0 0 337.46 428.5"
+      >
+        <path
+          fill="#7df3e1"
+          d="M303,166.05a80.69,80.69,0,0,0,13.45-10.37c.79-.77,1.55-1.53,2.3-2.3a83.12,83.12,0,0,0,7.93-9.38A63.69,63.69,0,0,0,333,133.23a48.58,48.58,0,0,0,4.35-16.4c1.49-19.39-10-38.67-35.62-54.22L198.56,0,78.3,115.23,0,190.25l108.6,65.91a111.59,111.59,0,0,0,57.76,16.41c24.92,0,48.8-8.8,66.42-25.69,19.16-18.36,25.52-42.12,13.7-61.87a49.22,49.22,0,0,0-6.8-8.87A89.17,89.17,0,0,0,259,178.29h.15a85.08,85.08,0,0,0,31-5.79A80.88,80.88,0,0,0,303,166.05ZM202.45,225.86c-19.32,18.51-50.4,21.23-75.7,5.9L51.61,186.15l67.45-64.64l76.41,46.38C223,184.58,221.49,207.61,202.45,225.86Zm8.93-82.22l-70.65-42.89L205.14,39,274.51,81.1c25.94,15.72,29.31,37,10.55,55A60.69,60.69,0,0,1,211.38,143.64Zm29.86,190c-19.57,18.75-46.17,29.09-74.88,29.09a123.73,123.73,0,0,1-64.1-18.2L0,282.52v24.67L108.6,373.1a111.6,111.6,0,0,0,57.76,16.42c24.92,0,48.8-8.81,66.42-25.69,12.88-12.34,20-27.13,19.68-41.49v-1.79A87.27,87.27,0,0,1,241.24,333.68Z"
+        />
+      </svg>
+      <span className={classes.text}>Backstage</span>
+    </div>
   );
 };
 

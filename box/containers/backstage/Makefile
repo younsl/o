@@ -15,7 +15,7 @@ CONTAINER_RUNTIME ?= $(shell podman info >/dev/null 2>&1 && echo podman || echo 
 ENV_FILE := $(wildcard .env)
 ENV_FILE_OPT := $(if $(ENV_FILE),--env-file $(ENV_FILE),)
 
-.PHONY: help init build push run clean runtime-info
+.PHONY: help init build push run clean runtime-info dev dev-local
 
 help: ## Show this help
 	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | sort | awk 'BEGIN {FS = ":.*?## "}; {printf "\033[36m%-15s\033[0m %s\n", $$1, $$2}'
@@ -29,6 +29,9 @@ init: ## Initialize project (install dependencies)
 dev: ## Run Backstage in development mode
 	@if [ -f .env ]; then set -a && . ./.env && set +a; fi && \
 		yarn dev
+
+dev-local: ## Run Backstage locally without GitLab integration
+	@DISABLE_GITLAB=true yarn dev
 
 build: ## Build container image
 	$(CONTAINER_RUNTIME) build \

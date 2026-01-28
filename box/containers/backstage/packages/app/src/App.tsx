@@ -45,6 +45,21 @@ import {
   UnifiedThemeProvider,
   themes as builtinThemes,
 } from '@backstage/theme';
+import { OpenApiRegistryPage } from '@internal/plugin-openapi-registry';
+
+const CustomSignInPage = (props: React.ComponentProps<typeof SignInPage>) => (
+  <SignInPage
+    {...props}
+    providers={[
+      {
+        id: 'keycloak',
+        title: 'Keycloak',
+        message: 'Sign in using Keycloak',
+        apiRef: keycloakOIDCAuthApiRef,
+      },
+    ]}
+  />
+);
 
 const app = createApp({
   apis,
@@ -67,19 +82,7 @@ const app = createApp({
     },
   ],
   components: {
-    SignInPage: props => (
-      <SignInPage
-        {...props}
-        providers={[
-          {
-            id: 'keycloak',
-            title: 'Keycloak',
-            message: 'Sign in using Keycloak',
-            apiRef: keycloakOIDCAuthApiRef,
-          },
-        ]}
-      />
-    ),
+    SignInPage: CustomSignInPage,
   },
   bindRoutes({ bind }) {
     bind(catalogPlugin.externalRoutes, {
@@ -123,6 +126,7 @@ const routes = (
     </Route>
     <Route path="/catalog-import" element={<CatalogImportPage />} />
     <Route path="/catalog-graph" element={<CatalogGraphPage />} />
+    <Route path="/openapi-registry" element={<OpenApiRegistryPage />} />
     <Route path="/settings" element={<UserSettingsPage />} />
   </FlatRoutes>
 );
