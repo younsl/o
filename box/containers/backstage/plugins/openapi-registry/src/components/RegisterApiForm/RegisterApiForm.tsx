@@ -17,6 +17,21 @@ import { useApi } from '@backstage/core-plugin-api';
 import { openApiRegistryApiRef } from '../../api';
 import { PreviewResult, RegisterApiRequest } from '../../api/types';
 
+// Backstage entity name validation: lowercase, numbers, hyphens, underscores, dots
+// Must start and end with alphanumeric character
+const ENTITY_NAME_PATTERN = /^[a-z0-9]([a-z0-9\-_.]*[a-z0-9])?$/;
+
+const validateEntityName = (value: string): string | null => {
+  if (!value) return null;
+  if (value.length > 63) {
+    return 'Name must be 63 characters or less';
+  }
+  if (!ENTITY_NAME_PATTERN.test(value)) {
+    return 'Only lowercase letters, numbers, hyphens, underscores, and dots allowed';
+  }
+  return null;
+};
+
 const useStyles = makeStyles(theme => ({
   form: {
     width: '100%',
@@ -61,7 +76,7 @@ export const RegisterApiForm = ({ onSuccess }: RegisterApiFormProps) => {
   const [name, setName] = useState('');
   const [title, setTitle] = useState('');
   const [owner, setOwner] = useState('');
-  const [lifecycle, setLifecycle] = useState('production');
+  const [lifecycle, setLifecycle] = useState('development');
   const [tags, setTags] = useState<string[]>(['openapi', 'rest']);
   const [tagInput, setTagInput] = useState('');
 
@@ -69,6 +84,7 @@ export const RegisterApiForm = ({ onSuccess }: RegisterApiFormProps) => {
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
+  const [nameError, setNameError] = useState<string | null>(null);
 
   const getFullSpecUrl = () => `${protocol}${specUrl}`;
 
@@ -88,6 +104,7 @@ export const RegisterApiForm = ({ onSuccess }: RegisterApiFormProps) => {
 
       if (result.valid && result.name) {
         setName(result.name);
+        setNameError(validateEntityName(result.name));
         setTitle(result.title || '');
       }
     } catch (err) {
@@ -97,9 +114,20 @@ export const RegisterApiForm = ({ onSuccess }: RegisterApiFormProps) => {
     }
   };
 
+  const handleNameChange = (value: string) => {
+    setName(value);
+    setNameError(validateEntityName(value));
+  };
+
   const handleRegister = async () => {
     if (!specUrl || !name || !owner || !lifecycle) {
       setError('Please fill in all required fields');
+      return;
+    }
+
+    const validationError = validateEntityName(name);
+    if (validationError) {
+      setNameError(validationError);
       return;
     }
 
@@ -126,7 +154,7 @@ export const RegisterApiForm = ({ onSuccess }: RegisterApiFormProps) => {
       setName('');
       setTitle('');
       setOwner('');
-      setLifecycle('production');
+      setLifecycle('development');
       setTags(['openapi', 'rest']);
       setPreview(null);
 
@@ -252,10 +280,11 @@ export const RegisterApiForm = ({ onSuccess }: RegisterApiFormProps) => {
                 className={classes.formControl}
                 label="API Name"
                 value={name}
-                onChange={e => setName(e.target.value)}
+                onChange={e => handleNameChange(e.target.value)}
                 variant="outlined"
                 required
-                helperText="Unique identifier for this API (lowercase, dashes allowed)"
+                error={!!nameError}
+                helperText={nameError || 'Lowercase letters, numbers, hyphens, underscores only'}
               />
             </Grid>
 
@@ -291,9 +320,10 @@ export const RegisterApiForm = ({ onSuccess }: RegisterApiFormProps) => {
                   onChange={e => setLifecycle(e.target.value as string)}
                   label="Lifecycle"
                 >
-                  <MenuItem value="production">Production</MenuItem>
-                  <MenuItem value="staging">Staging</MenuItem>
                   <MenuItem value="development">Development</MenuItem>
+                  <MenuItem value="sandbox">Sandbox</MenuItem>
+                  <MenuItem value="staging">Staging</MenuItem>
+                  <MenuItem value="production">Production</MenuItem>
                   <MenuItem value="deprecated">Deprecated</MenuItem>
                 </Select>
               </FormControl>
@@ -327,7 +357,7 @@ export const RegisterApiForm = ({ onSuccess }: RegisterApiFormProps) => {
                   variant="contained"
                   color="primary"
                   onClick={handleRegister}
-                  disabled={isLoading || !name || !owner}
+                  disabled={isLoading || !name || !owner || !!nameError}
                 >
                   {isLoading ? <CircularProgress size={24} /> : 'Register API'}
                 </Button>
