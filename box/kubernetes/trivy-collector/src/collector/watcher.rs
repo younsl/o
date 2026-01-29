@@ -338,7 +338,13 @@ async fn handle_sbom_event(
             );
 
             sender
-                .send_report("sbomreport", namespace, name, data_json, ReportEventType::Apply)
+                .send_report(
+                    "sbomreport",
+                    namespace,
+                    name,
+                    data_json,
+                    ReportEventType::Apply,
+                )
                 .await?;
         }
         Event::InitApply(report) => {
@@ -360,7 +366,13 @@ async fn handle_sbom_event(
             );
 
             sender
-                .send_report("sbomreport", namespace, name, data_json, ReportEventType::Apply)
+                .send_report(
+                    "sbomreport",
+                    namespace,
+                    name,
+                    data_json,
+                    ReportEventType::Apply,
+                )
                 .await?;
 
             *sync_count += 1;

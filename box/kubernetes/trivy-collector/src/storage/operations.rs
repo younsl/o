@@ -19,7 +19,8 @@ impl Database {
 
         // Extract metadata from raw JSON string (parsed on-demand)
         let (app, image, registry) = extract_metadata_from_str(&payload.data_json);
-        let (critical, high, medium, low, unknown) = extract_vuln_summary_from_str(&payload.data_json);
+        let (critical, high, medium, low, unknown) =
+            extract_vuln_summary_from_str(&payload.data_json);
         let components_count = extract_components_count_from_str(&payload.data_json);
 
         let received_at = payload.received_at.to_rfc3339();

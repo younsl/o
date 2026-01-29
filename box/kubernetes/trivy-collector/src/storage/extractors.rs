@@ -202,7 +202,8 @@ mod tests {
             }
         });
 
-        let (critical, high, medium, low, unknown) = extract_vuln_summary_from_str(&data.to_string());
+        let (critical, high, medium, low, unknown) =
+            extract_vuln_summary_from_str(&data.to_string());
         assert_eq!(critical, 5);
         assert_eq!(high, 10);
         assert_eq!(medium, 20);
@@ -221,7 +222,8 @@ mod tests {
             }
         });
 
-        let (critical, high, medium, low, unknown) = extract_vuln_summary_from_str(&data.to_string());
+        let (critical, high, medium, low, unknown) =
+            extract_vuln_summary_from_str(&data.to_string());
         assert_eq!(critical, 2);
         assert_eq!(high, 5);
         assert_eq!(medium, 0);
@@ -233,7 +235,8 @@ mod tests {
     fn test_extract_vuln_summary_missing() {
         let data = json!({});
 
-        let (critical, high, medium, low, unknown) = extract_vuln_summary_from_str(&data.to_string());
+        let (critical, high, medium, low, unknown) =
+            extract_vuln_summary_from_str(&data.to_string());
         assert_eq!(critical, 0);
         assert_eq!(high, 0);
         assert_eq!(medium, 0);
