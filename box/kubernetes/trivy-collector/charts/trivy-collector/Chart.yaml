@@ -3,8 +3,8 @@ name: trivy-collector
 description: Multi-cluster Trivy report collector and viewer
 type: application
 deprecated: false
-version: 0.5.0
-appVersion: "1.3.0"
+version: 0.6.0
+appVersion: "1.4.0"
 keywords:
   - trivy
   - security
@@ -20,5 +20,5 @@ maintainers:
     url: https://github.com/younsl
 annotations:
   artifacthub.io/changes: |
-    - kind: added
-      description: "Bump image version to 1.3.0"
+    - kind: changed
+      description: "Optimize memory usage with lazy JSON loading and reduced page size"
