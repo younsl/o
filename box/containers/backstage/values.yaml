@@ -83,6 +83,10 @@ backstage:
         pullRequestBranchName: backstage-integration
       rules:
         - allow: [Component, System, API, Resource, Location, Domain, Group, User, Template]
+      # Allow catalog to read entity YAML from openapi-registry plugin
+      reading:
+        allow:
+          - host: localhost:7007
       providers:
         gitlab:
           yourProviderId:
