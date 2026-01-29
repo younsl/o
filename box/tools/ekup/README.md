@@ -7,6 +7,7 @@
 - Interactive cluster and version selection
 - Cluster Insights analysis (deprecated APIs, add-on compatibility)
 - Sequential control plane upgrades (1 minor version at a time)
+- **Sync mode**: Update only addons/nodegroups without control plane upgrade
 - Automatic add-on version upgrades
 - Node group rolling updates
 - Dry-run mode for planning
@@ -37,7 +38,7 @@ Step-by-step interactive upgrade process.
 ```
 Step 1: Select Cluster        → Choose from available EKS clusters
 Step 2: Check Insights        → Review upgrade readiness findings
-Step 3: Select Target Version → Pick target Kubernetes version
+Step 3: Select Target Version → Pick target version (or current for sync mode)
 Step 4: Review Plan           → Verify upgrade phases and timeline
 Step 5: Execute Upgrade       → Type 'Yes' to confirm and execute
 ```
@@ -83,6 +84,10 @@ ekup --dry-run
 # Non-interactive upgrade for CI/CD
 ekup -c prod-cluster -t 1.34 --yes
 
+# Sync mode: update addons/nodegroups only (select current version)
+# Useful when control plane upgrade completed but addons/nodegroups pending
+ekup                  # Select "(current)" in Step 3
+
 # Skip node group updates
 ekup --skip-nodegroups
 
@@ -116,6 +121,20 @@ EKS upgrade limitations to be aware of.
 - Control plane upgrades are limited to **1 minor version at a time**
 - Example: 1.28 → 1.30 requires two steps (1.28 → 1.29 → 1.30)
 - `ekup` automates this sequential upgrade process
+
+## Sync Mode
+
+When an upgrade is interrupted (e.g., control plane completed but addons/nodegroups pending), use sync mode to resume:
+
+1. Run `ekup` in interactive mode
+2. Select the cluster
+3. Choose **current version** `(current)` in Step 3
+4. Only addons and nodegroups will be upgraded to match the control plane
+
+This is useful for:
+- Recovering from interrupted upgrades
+- Updating addons/nodegroups after manual control plane upgrade
+- Synchronizing cluster components to current control plane version
 
 ## License
 
