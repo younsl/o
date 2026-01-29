@@ -1,0 +1,139 @@
+apiVersion: scaffolder.backstage.io/v1beta3
+kind: Template
+metadata:
+  name: register-component
+  title: Register Existing Component
+  description: Register an existing GitLab repository to Backstage catalog by creating a Merge Request that adds catalog-info.yaml file
+  tags:
+    - gitlab
+    - catalog
+    - register
+spec:
+  owner: user:default/guest
+  type: service
+
+  parameters:
+    - title: Component Information
+      required:
+        - name
+        - description
+        - type
+        - lifecycle
+      properties:
+        name:
+          title: Component Name
+          type: string
+          description: Unique name for this component
+          ui:autofocus: true
+        description:
+          title: Description
+          type: string
+          description: A brief description of this component
+        type:
+          title: Component Type
+          type: string
+          description: The type of component
+          default: service
+          enum:
+            - service
+            - website
+            - library
+            - documentation
+            - api
+          enumNames:
+            - Service
+            - Website
+            - Library
+            - Documentation
+            - API
+        lifecycle:
+          title: Lifecycle
+          type: string
+          description: The lifecycle stage of this component
+          default: production
+          enum:
+            - experimental
+            - development
+            - production
+            - deprecated
+          enumNames:
+            - Experimental
+            - Development
+            - Production
+            - Deprecated
+        owner:
+          title: Owner
+          type: string
+          description: Owner team or user (e.g., team-platform)
+          default: devops
+
+    - title: Repository Information
+      required:
+        - repoUrl
+      properties:
+        repoUrl:
+          title: Repository Location
+          type: string
+          ui:field: RepoUrlPicker
+          # allowedHosts is inherited from scaffolder.defaultScmIntegrations in app-config.yaml
+        branch:
+          title: Target Branch
+          type: string
+          description: Branch to commit the catalog-info.yaml
+          default: main
+
+    - title: Additional Metadata (Optional)
+      properties:
+        system:
+          title: System
+          type: string
+          description: The system this component belongs to
+        tags:
+          title: Tags
+          type: string
+          description: Comma-separated tags (e.g., java,spring,backend)
+        techDocs:
+          title: Enable TechDocs
+          type: boolean
+          description: Add TechDocs annotation for documentation
+          default: false
+
+  steps:
+    - id: fetch-base
+      name: Fetch Base
+      action: fetch:template
+      input:
+        url: ./skeleton
+        values:
+          name: ${{ parameters.name }}
+          description: ${{ parameters.description }}
+          type: ${{ parameters.type }}
+          lifecycle: ${{ parameters.lifecycle }}
+          owner: ${{ parameters.owner }}
+          system: ${{ parameters.system }}
+          tags: ${{ parameters.tags }}
+          techDocs: ${{ parameters.techDocs }}
+          repoOwner: ${{ (parameters.repoUrl | parseRepoUrl).owner }}
+          repo: ${{ (parameters.repoUrl | parseRepoUrl).repo }}
+
+    - id: publish
+      name: Create Pull Request
+      action: publish:gitlab:merge-request
+      input:
+        repoUrl: ${{ parameters.repoUrl }}
+        title: 'chore: Add catalog-info.yaml for Backstage'
+        description: |
+          This PR adds a `catalog-info.yaml` file to register this component in Backstage.
+
+          **Component Details:**
+          - Name: ${{ parameters.name }}
+          - Type: ${{ parameters.type }}
+          - Lifecycle: ${{ parameters.lifecycle }}
+          - Owner: ${{ parameters.owner }}
+        branchName: backstage-catalog-info
+        targetBranchName: ${{ parameters.branch }}
+
+  output:
+    links:
+      - title: View Merge Request
+        url: ${{ steps['publish'].output.mergeRequestUrl }}

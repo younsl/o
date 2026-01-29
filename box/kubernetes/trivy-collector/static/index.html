@@ -1,0 +1,384 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Trivy Collector</title>
+    <link rel="stylesheet" href="/style.css">
+    <!-- Font Awesome Icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
+    <!-- Cytoscape.js for dependency graph -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/cytoscape/3.30.4/cytoscape.min.js"></script>
+    <script src="https://unpkg.com/layout-base/layout-base.js"></script>
+    <script src="https://unpkg.com/cose-base/cose-base.js"></script>
+    <script src="https://unpkg.com/cytoscape-fcose/cytoscape-fcose.js"></script>
+    <!-- Chart.js for trend analysis -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+    <!-- html2canvas for dashboard export -->
+    <script src="https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js"></script>
+</head>
+<body>
+    <header>
+        <div class="header-left">
+            <div class="title-group">
+                <h1>Trivy Collector</h1>
+                <span class="subtitle">Powered by Trivy Operator</span>
+            </div>
+            <span class="version-info" id="version-info"></span>
+            <div class="watcher-status">
+                <span class="watcher-title">Status</span>
+                <div class="status-item">
+                    <span class="led" id="led-vuln"></span>
+                    <span class="status-label">VULN</span>
+                </div>
+                <div class="status-item">
+                    <span class="led" id="led-sbom"></span>
+                    <span class="status-label">SBOM</span>
+                </div>
+                <div class="status-item" id="db-status">
+                    <span class="led" id="led-db"></span>
+                    <span class="status-label">DB</span>
+                    <button class="help-btn" id="db-help-btn" data-tooltip="dbinfo" title="Database info"><i class="fa-solid fa-info"></i></button>
+                </div>
+            </div>
+        </div>
+        <nav>
+            <button id="btn-dashboard"><i class="fa-solid fa-chart-line"></i> Dashboard</button>
+            <button id="btn-vuln" class="active">Vulnerabilities</button>
+            <button id="btn-sbom">SBOM</button>
+        </nav>
+    </header>
+
+    <main>
+        <!-- Main Reports List View -->
+        <section id="reports" class="reports-container">
+            <div class="reports-toolbar">
+                <div class="toolbar-left">
+                    <span class="stat-item" id="stat-collectors">
+                        <span class="stat-label">Collectors</span>
+                        <span class="stat-value" id="stat-clusters">0</span>
+                    </span>
+                    <span class="stat-item" id="reports-count">
+                        <span class="stat-label"><span id="reports-type-label">Reports</span> <button class="help-btn toolbar-help hidden" id="sbom-help-btn" data-tooltip="sbom" title="What is SBOM?"><i class="fa-solid fa-info"></i></button></span>
+                        <span class="stat-value" id="reports-number">0</span>
+                    </span>
+                    <div class="severity-totals" id="severity-totals">
+                        <span class="severity-total critical">
+                            <span class="severity-label">Critical</span>
+                            <span class="severity-count" id="stat-critical">0</span>
+                        </span>
+                        <span class="severity-total high">
+                            <span class="severity-label">High</span>
+                            <span class="severity-count" id="stat-high">0</span>
+                        </span>
+                        <span class="severity-total medium">
+                            <span class="severity-label">Medium</span>
+                            <span class="severity-count" id="stat-medium">0</span>
+                        </span>
+                        <span class="severity-total low">
+                            <span class="severity-label">Low</span>
+                            <span class="severity-count" id="stat-low">0</span>
+                        </span>
+                        <span class="severity-total unknown">
+                            <span class="severity-label">Unknown</span>
+                            <span class="severity-count" id="stat-unknown">0</span>
+                        </span>
+                    </div>
+                </div>
+                <button id="btn-export-csv" class="btn-export" title="Export to CSV">
+                    <i class="fa-solid fa-arrow-down"></i> Export CSV
+                </button>
+            </div>
+            <table id="reports-table">
+                <thead id="reports-thead">
+                    <!-- Dynamic header rendered by JavaScript -->
+                </thead>
+                <tbody id="reports-body">
+                    <tr>
+                        <td colspan="10" class="loading">Loading...</td>
+                    </tr>
+                </tbody>
+            </table>
+
+            <!-- Filter Popup -->
+            <div id="filter-popup" class="filter-popup hidden">
+                <div class="filter-popup-header">
+                    <span id="filter-popup-title">Filter</span>
+                    <button id="filter-popup-close"><i class="fa-solid fa-xmark"></i></button>
+                </div>
+                <div class="filter-popup-body" id="filter-popup-body">
+                    <!-- Dynamic content -->
+                </div>
+                <div class="filter-popup-footer">
+                    <button id="filter-apply" class="btn-primary">Apply</button>
+                    <button id="filter-clear" class="btn-secondary">Clear</button>
+                </div>
+            </div>
+
+            <!-- Scroll Navigation Buttons -->
+            <div class="scroll-nav">
+                <button id="btn-scroll-top" class="scroll-btn" title="Scroll to Top"><i class="fa-solid fa-chevron-up"></i></button>
+                <button id="btn-scroll-bottom" class="scroll-btn" title="Scroll to Bottom"><i class="fa-solid fa-chevron-down"></i></button>
+            </div>
+        </section>
+
+        <!-- Detail Drill-down View -->
+        <section id="detail-view" class="detail-container hidden">
+            <div class="detail-header">
+                <button id="btn-back" class="btn-back"><i class="fa-solid fa-arrow-left"></i> Back to List</button>
+                <h2 id="detail-title">Report Details</h2>
+                <button id="btn-export-detail" class="btn-export" title="Export to JSON">
+                    <i class="fa-solid fa-arrow-down"></i> Export JSON
+                </button>
+            </div>
+            <div class="graph-section" id="summary-section">
+                <div class="section-bar">
+                    <h3 class="graph-title">Summary</h3>
+                </div>
+                <div class="detail-summary" id="detail-summary"></div>
+            </div>
+            <div class="graph-section" id="notes-section">
+                <div class="section-bar">
+                    <h3 class="graph-title">Notes</h3>
+                    <div class="notes-actions" id="notes-actions"></div>
+                </div>
+                <div class="notes-content" id="notes-content">
+                    <div class="notes-display" id="notes-display"></div>
+                    <textarea class="notes-textarea hidden" id="notes-textarea" placeholder="Add notes about this report..."></textarea>
+                    <div class="notes-footer" id="notes-footer"></div>
+                </div>
+            </div>
+            <div class="dependency-graph-container hidden" id="dependency-graph-container">
+                <div class="graph-section">
+                    <div class="section-bar">
+                        <h3 class="graph-title">Component Distribution</h3>
+                    </div>
+                    <div class="section-content">
+                        <div class="dependency-graph" id="dependency-graph"></div>
+                    </div>
+                </div>
+                <div class="graph-section" id="dependency-tree-section">
+                    <div class="section-bar">
+                        <h3 class="graph-title">Dependency Graph <a href="https://js.cytoscape.org" target="_blank" rel="noopener noreferrer" class="powered-by">Powered by Cytoscape.js</a></h3>
+                        <div class="graph-controls">
+                            <button id="graph-zoom-in" class="graph-btn" title="Zoom In"><i class="fa-solid fa-plus"></i></button>
+                            <button id="graph-zoom-out" class="graph-btn" title="Zoom Out"><i class="fa-solid fa-minus"></i></button>
+                            <button id="graph-fit" class="graph-btn" title="Fit to View"><i class="fa-solid fa-expand"></i></button>
+                            <button id="graph-save" class="graph-btn" title="Save as PNG"><i class="fa-solid fa-camera"></i></button>
+                        </div>
+                    </div>
+                    <div class="section-content">
+                        <div class="cytoscape-container" id="cytoscape-graph"></div>
+                    </div>
+                </div>
+            </div>
+            <div class="graph-section" id="vuln-table-section">
+                <div class="section-bar">
+                    <h3 class="graph-title">Vulnerabilities <span class="section-count" id="vuln-count"></span></h3>
+                </div>
+                <div class="detail-table-container">
+                    <table id="vuln-detail-table">
+                        <thead id="vuln-detail-thead"></thead>
+                        <tbody id="vuln-detail-tbody"></tbody>
+                    </table>
+                </div>
+            </div>
+            <div class="graph-section" id="sbom-table-section">
+                <div class="section-bar">
+                    <h3 class="graph-title">SBOM Components <span class="section-count" id="sbom-count"></span></h3>
+                </div>
+                <div class="detail-table-container">
+                    <table id="sbom-detail-table">
+                        <thead id="sbom-detail-thead"></thead>
+                        <tbody id="sbom-detail-tbody"></tbody>
+                    </table>
+                </div>
+            </div>
+        </section>
+
+        <!-- Version Info Page -->
+        <section id="version-view" class="detail-container hidden">
+            <div class="detail-header">
+                <button id="btn-version-back" class="btn-back"><i class="fa-solid fa-arrow-left"></i> Back to List</button>
+                <h2>Version Information</h2>
+            </div>
+            <div class="graph-section">
+                <div class="section-bar">
+                    <h3 class="graph-title">Application</h3>
+                </div>
+                <div class="detail-summary" id="version-app-info"></div>
+            </div>
+            <div class="graph-section">
+                <div class="section-bar">
+                    <h3 class="graph-title">Build Environment</h3>
+                </div>
+                <div class="detail-summary" id="version-build-info"></div>
+            </div>
+            <div class="graph-section">
+                <div class="section-bar">
+                    <h3 class="graph-title">Server Status</h3>
+                </div>
+                <div class="detail-summary" id="version-server-status"></div>
+            </div>
+            <div class="graph-section">
+                <div class="section-bar">
+                    <h3 class="graph-title">Runtime Configuration</h3>
+                </div>
+                <div class="detail-summary vertical" id="version-config-info"></div>
+            </div>
+        </section>
+
+        <!-- Dashboard View -->
+        <section id="dashboard-view" class="detail-container hidden">
+            <div class="dashboard-header">
+                <button id="btn-dashboard-back" class="btn-back"><i class="fa-solid fa-arrow-left"></i> Back to List</button>
+                <div class="dashboard-title">
+                    <h2>Security Trends Dashboard</h2>
+                </div>
+                <div class="dashboard-controls">
+                    <div class="custom-dropdown" id="dropdown-range">
+                        <button class="dropdown-toggle" data-value="1d">
+                            <span class="dropdown-text">Last 1 Day</span>
+                            <i class="fa-solid fa-chevron-down"></i>
+                        </button>
+                        <div class="dropdown-menu hidden">
+                            <div class="dropdown-item selected" data-value="1d">Last 1 Day</div>
+                            <div class="dropdown-item" data-value="2d">Last 2 Days</div>
+                            <div class="dropdown-item" data-value="7d">Last 7 Days</div>
+                            <div class="dropdown-item" data-value="30d">Last 30 Days</div>
+                        </div>
+                    </div>
+                    <div class="custom-dropdown" id="dropdown-cluster">
+                        <button class="dropdown-toggle" data-value="">
+                            <span class="dropdown-text">All Clusters</span>
+                            <i class="fa-solid fa-chevron-down"></i>
+                        </button>
+                        <div class="dropdown-menu hidden">
+                            <div class="dropdown-item selected" data-value="">All Clusters</div>
+                        </div>
+                    </div>
+                    <div class="refresh-controls">
+                        <button id="btn-refresh-now" class="btn-refresh" title="Refresh now">
+                            <i class="fa-solid fa-sync-alt"></i>
+                            <span>Refresh</span>
+                        </button>
+                        <button id="btn-refresh-toggle" class="btn-refresh-interval active" title="Toggle auto-refresh">
+                            <span class="refresh-interval-text" id="refresh-interval-text">30s</span>
+                        </button>
+                    </div>
+                    <button id="btn-export-png" class="btn-export" title="Export dashboard as PNG">
+                        <i class="fa-solid fa-camera"></i> Export PNG
+                    </button>
+                </div>
+            </div>
+
+            <!-- Dashboard Content (capture area) -->
+            <div id="dashboard-content" class="dashboard-content">
+                <div class="dashboard-content-header">
+                    <span class="data-range" id="data-range-info"></span>
+                </div>
+                <!-- Summary Cards -->
+                <div class="dashboard-summary-wrapper">
+                <!-- Overview Bar -->
+                <div class="overview-bar">
+                    <div class="overview-header">
+                        <span class="overview-title">Overview</span>
+                    </div>
+                    <div class="overview-segments">
+                        <div class="overview-segment">
+                            <span class="overview-segment-label">Collectors <button class="help-btn" data-tooltip="dash-collectors" title="Info"><i class="fa-solid fa-info"></i></button></span>
+                            <span class="overview-segment-value" id="dash-collectors">-</span>
+                        </div>
+                        <div class="overview-segment">
+                            <span class="overview-segment-label">Vuln Reports <button class="help-btn" data-tooltip="dash-vuln" title="Info"><i class="fa-solid fa-info"></i></button></span>
+                            <span class="overview-segment-value" id="dash-vuln-reports">-</span>
+                        </div>
+                        <div class="overview-segment">
+                            <span class="overview-segment-label">SBOM Reports <button class="help-btn" data-tooltip="dash-sbom" title="Info"><i class="fa-solid fa-info"></i></button></span>
+                            <span class="overview-segment-value" id="dash-sbom-reports">-</span>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- CVSS Score Bar -->
+                <div class="cvss-score-bar">
+                    <div class="cvss-header">
+                        <span class="cvss-title">CVSS Score</span>
+                    </div>
+                    <div class="cvss-bar">
+                        <div class="cvss-segment low">
+                            <span class="cvss-segment-label">Low</span>
+                            <span class="cvss-segment-value" id="dash-low">-</span>
+                            <div class="cvss-segment-scores">
+                                <span>0.1</span>
+                                <span>3.9</span>
+                            </div>
+                        </div>
+                        <div class="cvss-segment medium">
+                            <span class="cvss-segment-label">Medium</span>
+                            <span class="cvss-segment-value" id="dash-medium">-</span>
+                            <div class="cvss-segment-scores">
+                                <span>4.0</span>
+                                <span>6.9</span>
+                            </div>
+                        </div>
+                        <div class="cvss-segment high">
+                            <span class="cvss-segment-label">High</span>
+                            <span class="cvss-segment-value" id="dash-high">-</span>
+                            <div class="cvss-segment-scores">
+                                <span>7.0</span>
+                                <span>8.9</span>
+                            </div>
+                        </div>
+                        <div class="cvss-segment critical">
+                            <span class="cvss-segment-label">Critical</span>
+                            <span class="cvss-segment-value" id="dash-critical">-</span>
+                            <div class="cvss-segment-scores">
+                                <span>9.0</span>
+                                <span>10.0</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Charts Grid -->
+            <div class="dashboard-grid">
+                <div class="chart-section">
+                    <div class="section-bar">
+                        <h3 class="graph-title">Report Count Trends <button class="help-btn" data-tooltip="chart-report-trend" title="Info"><i class="fa-solid fa-info"></i></button></h3>
+                    </div>
+                    <div class="chart-container">
+                        <canvas id="report-trend-chart"></canvas>
+                    </div>
+                </div>
+
+                <div class="chart-section">
+                    <div class="section-bar">
+                        <h3 class="graph-title">Severity Distribution Over Time <button class="help-btn" data-tooltip="chart-severity-trend" title="Info"><i class="fa-solid fa-info"></i></button></h3>
+                    </div>
+                    <div class="chart-container">
+                        <canvas id="severity-trend-chart"></canvas>
+                    </div>
+                </div>
+
+                <div class="chart-section full-width">
+                    <div class="section-bar">
+                        <h3 class="graph-title">Vulnerabilities by Severity <button class="help-btn" data-tooltip="chart-severity-bar" title="Info"><i class="fa-solid fa-info"></i></button></h3>
+                    </div>
+                    <div class="chart-container">
+                        <canvas id="severity-bar-chart"></canvas>
+                    </div>
+                </div>
+            </div>
+            </div>
+        </section>
+    </main>
+
+    <footer>
+        <p>Trivy Collector &mdash; Multi-cluster security report aggregator</p>
+    </footer>
+
+    <script src="/app.js"></script>
+</body>
+</html>

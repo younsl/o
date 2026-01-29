@@ -1,0 +1,32 @@
+apiVersion: v2
+name: grafana-dashboards
+description: |
+  Helm chart that deploys Grafana dashboards as Kubernetes ConfigMaps.
+  Works with Grafana sidecar to automatically provision dashboards.
+  Supports per-dashboard folder, labels, and annotations configuration.
+type: application
+deprecated: false
+version: 0.1.0
+appVersion: "1.0.0"
+keywords:
+  - observability
+  - grafana
+  - dashboard
+  - monitoring
+  - kubernetes
+  - configmap
+  - sidecar
+maintainers:
+  - name: younsl
+    email: cysl@kakao.com
+    url: https://github.com/younsl
+home: https://github.com/younsl/o
+sources:
+  - https://github.com/younsl/o/tree/main/box/kubernetes/grafana-dashboards
+annotations:
+  artifacthub.io/changes: |
+    - kind: added
+      description: Initial release with node-problem-detector dashboard
+    - kind: added
+      description: Support per-dashboard folder, labels, and annotations
+  artifacthub.io/license: MIT
