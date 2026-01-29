@@ -5,6 +5,7 @@ use aws_sdk_eks::Client;
 use std::collections::HashMap;
 use tracing::{debug, info, warn};
 
+use super::types::{PlanResult, VersionedResource};
 use crate::error::EkupError;
 
 /// Progress context for addon upgrade tracking.
@@ -21,12 +22,28 @@ pub struct AddonInfo {
     pub current_version: String,
 }
 
+impl VersionedResource for AddonInfo {
+    fn name(&self) -> &str {
+        &self.name
+    }
+
+    fn current_version(&self) -> &str {
+        &self.current_version
+    }
+}
+
 /// Add-on version information.
 #[derive(Debug, Clone)]
 pub struct AddonVersionInfo {
     pub version: String,
     pub default_version: bool,
 }
+
+/// Type alias for addon upgrade item (addon info + target version).
+pub type AddonUpgrade = (AddonInfo, String);
+
+/// Type alias for addon plan result.
+pub type AddonPlanResult = PlanResult<AddonInfo, AddonUpgrade>;
 
 /// List all add-ons installed on a cluster.
 pub async fn list_addons(client: &Client, cluster_name: &str) -> Result<Vec<AddonInfo>> {
@@ -171,10 +188,10 @@ pub async fn plan_addon_upgrades(
     cluster_name: &str,
     target_k8s_version: &str,
     specified_versions: &HashMap<String, String>,
-) -> Result<Vec<(AddonInfo, String)>> {
+) -> Result<AddonPlanResult> {
     let current_addons = list_addons(client, cluster_name).await?;
     let addon_count = current_addons.len();
-    let mut upgrade_plan = Vec::new();
+    let mut result = AddonPlanResult::new();
 
     for addon in current_addons {
         // Check if user specified a version for this add-on
@@ -189,29 +206,36 @@ pub async fn plan_addon_upgrades(
                         "No compatible version found for {} with K8s {}",
                         addon.name, target_k8s_version
                     );
+                    result.add_skipped(
+                        addon,
+                        format!("no compatible version for K8s {}", target_k8s_version),
+                    );
                     continue;
                 }
             }
         };
 
         if target_version != addon.current_version {
-            upgrade_plan.push((addon, target_version));
+            result.add_upgrade((addon, target_version));
+        } else {
+            result.add_skipped(addon, "already at compatible version");
         }
     }
 
     info!(
-        "Found {} add-ons ({} to upgrade)",
+        "Found {} add-ons ({} to upgrade, {} skipped)",
         addon_count,
-        upgrade_plan.len()
+        result.upgrade_count(),
+        result.skipped_count()
     );
-    Ok(upgrade_plan)
+    Ok(result)
 }
 
 /// Execute add-on upgrades sequentially with real-time status.
 pub async fn execute_addon_upgrades(
     client: &Client,
     cluster_name: &str,
-    upgrades: &[(AddonInfo, String)],
+    upgrades: &[AddonUpgrade],
     timeout_minutes: u64,
     check_interval_seconds: u64,
 ) -> Result<()> {

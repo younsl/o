@@ -4,6 +4,7 @@ use anyhow::Result;
 use aws_sdk_eks::Client;
 use tracing::{debug, info};
 
+use super::types::{PlanResult, VersionedResource};
 use crate::error::EkupError;
 
 /// Node group information.
@@ -12,6 +13,19 @@ pub struct NodeGroupInfo {
     pub name: String,
     pub version: Option<String>,
 }
+
+impl VersionedResource for NodeGroupInfo {
+    fn name(&self) -> &str {
+        &self.name
+    }
+
+    fn current_version(&self) -> &str {
+        self.version.as_deref().unwrap_or("unknown")
+    }
+}
+
+/// Type alias for nodegroup plan result.
+pub type NodeGroupPlanResult = PlanResult<NodeGroupInfo, NodeGroupInfo>;
 
 /// List all node groups in a cluster.
 pub async fn list_nodegroups(client: &Client, cluster_name: &str) -> Result<Vec<NodeGroupInfo>> {
@@ -172,24 +186,26 @@ pub async fn plan_nodegroup_upgrades(
     client: &Client,
     cluster_name: &str,
     target_version: &str,
-) -> Result<Vec<NodeGroupInfo>> {
+) -> Result<NodeGroupPlanResult> {
     let nodegroups = list_nodegroups(client, cluster_name).await?;
     let ng_count = nodegroups.len();
-    let mut upgrade_plan = Vec::new();
+    let mut result = NodeGroupPlanResult::new();
 
     for ng in nodegroups {
-        // Check if node group needs upgrade
         if ng.version.as_deref() != Some(target_version) {
-            upgrade_plan.push(ng);
+            result.add_upgrade(ng);
+        } else {
+            result.add_skipped(ng, "already at target version");
         }
     }
 
     info!(
-        "Found {} node groups ({} to upgrade)",
+        "Found {} node groups ({} to upgrade, {} skipped)",
         ng_count,
-        upgrade_plan.len()
+        result.upgrade_count(),
+        result.skipped_count()
     );
-    Ok(upgrade_plan)
+    Ok(result)
 }
 
 /// Execute node group upgrades (parallel or sequential).

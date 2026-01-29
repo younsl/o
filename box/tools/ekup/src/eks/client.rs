@@ -256,6 +256,8 @@ pub fn parse_k8s_version(version: &str) -> Result<(u32, u32)> {
 }
 
 /// Calculate the upgrade path from current to target version.
+/// Returns empty Vec if target equals current (sync mode).
+/// Returns error if target is lower than current (downgrade not supported).
 pub fn calculate_upgrade_path(current: &str, target: &str) -> Result<Vec<String>> {
     let (curr_major, curr_minor) = parse_k8s_version(current)?;
     let (target_major, target_minor) = parse_k8s_version(target)?;
@@ -267,9 +269,15 @@ pub fn calculate_upgrade_path(current: &str, target: &str) -> Result<Vec<String>
         .into());
     }
 
-    if target_minor <= curr_minor {
+    // Same version: sync mode - return empty path (no CP upgrade needed)
+    if target_minor == curr_minor {
+        return Ok(Vec::new());
+    }
+
+    // Downgrade not supported
+    if target_minor < curr_minor {
         return Err(EkupError::UpgradeNotPossible(format!(
-            "Target version {} is not higher than current version {}",
+            "Target version {} is lower than current version {} (downgrade not supported)",
             target, current
         ))
         .into());
@@ -302,6 +310,17 @@ mod tests {
         let path = calculate_upgrade_path("1.32", "1.34").unwrap();
         assert_eq!(path, vec!["1.33", "1.34"]);
 
+        // Downgrade not supported
         assert!(calculate_upgrade_path("1.30", "1.28").is_err());
+    }
+
+    #[test]
+    fn test_calculate_upgrade_path_same_version() {
+        // Sync mode: same version returns empty path
+        let path = calculate_upgrade_path("1.32", "1.32").unwrap();
+        assert!(path.is_empty());
+
+        let path = calculate_upgrade_path("1.33", "1.33").unwrap();
+        assert!(path.is_empty());
     }
 }

@@ -125,32 +125,33 @@ async fn run_interactive(client: &EksClient, config: &Config) -> Result<()> {
     let available_versions = client
         .get_available_versions(&selected_cluster.name)
         .await?;
-    if available_versions.is_empty() {
-        println!("Cluster is already at the latest supported version.");
-        return Ok(());
-    }
 
-    let version_items: Vec<String> = available_versions
-        .iter()
-        .enumerate()
-        .map(|(i, v)| {
-            let steps = calculate_steps(&selected_cluster.version, v);
-            let label = if i == 0 { "(latest)" } else { "" };
-            let step_word = if steps == 1 { "step" } else { "steps" };
-            format!("{:<5} {:<8}  +{} {}", v, label, steps, step_word)
-        })
-        .collect();
+    // Build version items with current version (sync only) option first
+    let mut version_items: Vec<String> = vec![format!(
+        "{:<5} {:<10} (sync addons/nodegroups only)",
+        selected_cluster.version, "(current)"
+    )];
+
+    version_items.extend(available_versions.iter().enumerate().map(|(i, v)| {
+        let steps = calculate_steps(&selected_cluster.version, v);
+        let label = if i == 0 { "(latest)" } else { "" };
+        let step_word = if steps == 1 { "step" } else { "steps" };
+        format!("{:<5} {:<10} +{} {}", v, label, steps, step_word)
+    }));
 
     println!("Select target version ({}):", selected_cluster.name);
-    println!(
-        "  {:<5} {}",
-        selected_cluster.version.dimmed(),
-        "(current)".dimmed()
-    );
     let version_idx = Select::new().items(&version_items).default(0).interact()?;
 
-    let target_version = &available_versions[version_idx];
-    info!("Selected target version: {}", target_version);
+    // First option (index 0) is current version (sync mode)
+    let (target_version, skip_control_plane) = if version_idx == 0 {
+        (selected_cluster.version.clone(), true)
+    } else {
+        (available_versions[version_idx - 1].clone(), false)
+    };
+    info!(
+        "Selected target version: {} (skip_control_plane: {})",
+        target_version, skip_control_plane
+    );
 
     // Step 4: Review Plan
     println!();
@@ -159,12 +160,12 @@ async fn run_interactive(client: &EksClient, config: &Config) -> Result<()> {
     let plan = upgrade::create_upgrade_plan(
         client,
         &selected_cluster.name,
-        target_version,
+        &target_version,
         &config.addon_versions,
     )
     .await?;
 
-    upgrade::print_upgrade_plan(&plan);
+    upgrade::print_upgrade_plan(&plan, skip_control_plane);
 
     // Step 5: Confirm and Execute
     if config.dry_run {
@@ -179,10 +180,9 @@ async fn run_interactive(client: &EksClient, config: &Config) -> Result<()> {
             .yellow()
             .bold()
     );
-    println!("Type {} to proceed:", "Yes".green().bold());
 
     let confirmation: String = Input::new()
-        .with_prompt("Confirm upgrade")
+        .with_prompt(format!("Type {} to confirm", "Yes".green().bold()))
         .interact_text()?;
 
     if confirmation != "Yes" {
@@ -199,6 +199,7 @@ async fn run_interactive(client: &EksClient, config: &Config) -> Result<()> {
     let upgrade_config = UpgradeConfig {
         skip_addons: config.skip_addons,
         skip_nodegroups: config.skip_nodegroups,
+        skip_control_plane,
         dry_run: config.dry_run,
         ..Default::default()
     };
@@ -257,7 +258,7 @@ async fn run_noninteractive(client: &EksClient, config: &Config) -> Result<()> {
         upgrade::create_upgrade_plan(client, cluster_name, target_version, &config.addon_versions)
             .await?;
 
-    upgrade::print_upgrade_plan(&plan);
+    upgrade::print_upgrade_plan(&plan, false);
 
     if !config.yes && !config.dry_run {
         println!("{}", "Use --yes to proceed without confirmation.".yellow());
