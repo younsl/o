@@ -108,7 +108,8 @@ async fn watch_vulnerability_reports(
         Api::all(client)
     };
 
-    let watcher_config = WatcherConfig::default();
+    // Use smaller page size for memory optimization (default is 500)
+    let watcher_config = WatcherConfig::default().page_size(50);
     let mut stream = watcher(api, watcher_config).boxed();
 
     info!("VulnerabilityReport watcher started");
@@ -154,7 +155,8 @@ async fn watch_sbom_reports(
     // Watch all namespaces and filter later
     let api: Api<SbomReport> = Api::all(client);
 
-    let watcher_config = WatcherConfig::default();
+    // Use smaller page size for memory optimization (default is 500)
+    let watcher_config = WatcherConfig::default().page_size(50);
     let mut stream = watcher(api, watcher_config).boxed();
 
     info!("SbomReport watcher started");
@@ -210,7 +212,7 @@ async fn handle_vuln_event(
                 return Ok(());
             }
 
-            let data = serde_json::to_value(&report)?;
+            let data_json = serde_json::to_string(&report)?;
             // Apply after initial sync - log at info level
             info!(
                 namespace = %namespace,
@@ -225,7 +227,7 @@ async fn handle_vuln_event(
                     "vulnerabilityreport",
                     namespace,
                     name,
-                    data,
+                    data_json,
                     ReportEventType::Apply,
                 )
                 .await?;
@@ -240,7 +242,7 @@ async fn handle_vuln_event(
                 return Ok(());
             }
 
-            let data = serde_json::to_value(&report)?;
+            let data_json = serde_json::to_string(&report)?;
             // Initial sync - log at debug level
             debug!(
                 namespace = %namespace,
@@ -255,7 +257,7 @@ async fn handle_vuln_event(
                     "vulnerabilityreport",
                     namespace,
                     name,
-                    data,
+                    data_json,
                     ReportEventType::Apply,
                 )
                 .await?;
@@ -281,7 +283,7 @@ async fn handle_vuln_event(
                     "vulnerabilityreport",
                     namespace,
                     name,
-                    serde_json::json!({}),
+                    "{}".to_string(),
                     ReportEventType::Delete,
                 )
                 .await?;
@@ -326,7 +328,7 @@ async fn handle_sbom_event(
                 return Ok(());
             }
 
-            let data = serde_json::to_value(&report)?;
+            let data_json = serde_json::to_string(&report)?;
             // Apply after initial sync - log at info level
             info!(
                 namespace = %namespace,
@@ -336,7 +338,7 @@ async fn handle_sbom_event(
             );
 
             sender
-                .send_report("sbomreport", namespace, name, data, ReportEventType::Apply)
+                .send_report("sbomreport", namespace, name, data_json, ReportEventType::Apply)
                 .await?;
         }
         Event::InitApply(report) => {
@@ -348,7 +350,7 @@ async fn handle_sbom_event(
                 return Ok(());
             }
 
-            let data = serde_json::to_value(&report)?;
+            let data_json = serde_json::to_string(&report)?;
             // Initial sync - log at debug level
             debug!(
                 namespace = %namespace,
@@ -358,7 +360,7 @@ async fn handle_sbom_event(
             );
 
             sender
-                .send_report("sbomreport", namespace, name, data, ReportEventType::Apply)
+                .send_report("sbomreport", namespace, name, data_json, ReportEventType::Apply)
                 .await?;
 
             *sync_count += 1;
@@ -382,7 +384,7 @@ async fn handle_sbom_event(
                     "sbomreport",
                     namespace,
                     name,
-                    serde_json::json!({}),
+                    "{}".to_string(),
                     ReportEventType::Delete,
                 )
                 .await?;

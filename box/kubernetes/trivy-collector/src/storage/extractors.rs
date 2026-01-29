@@ -2,8 +2,17 @@
 
 use serde_json::Value;
 
-/// Extract app, image, and registry from report JSON data
-pub fn extract_metadata(data: &Value) -> (String, String, String) {
+/// Extract app, image, and registry from report JSON string
+/// Parses JSON on-demand and extracts only necessary fields
+pub fn extract_metadata_from_str(data_json: &str) -> (String, String, String) {
+    match serde_json::from_str::<Value>(data_json) {
+        Ok(data) => extract_metadata_from_value(&data),
+        Err(_) => (String::new(), String::new(), String::new()),
+    }
+}
+
+/// Extract app, image, and registry from report JSON Value
+fn extract_metadata_from_value(data: &Value) -> (String, String, String) {
     let app = data
         .get("metadata")
         .and_then(|m| m.get("labels"))
@@ -40,8 +49,16 @@ pub fn extract_metadata(data: &Value) -> (String, String, String) {
     (app, image, registry)
 }
 
-/// Extract vulnerability summary counts from report JSON data
-pub fn extract_vuln_summary(data: &Value) -> (i64, i64, i64, i64, i64) {
+/// Extract vulnerability summary counts from report JSON string
+pub fn extract_vuln_summary_from_str(data_json: &str) -> (i64, i64, i64, i64, i64) {
+    match serde_json::from_str::<Value>(data_json) {
+        Ok(data) => extract_vuln_summary_from_value(&data),
+        Err(_) => (0, 0, 0, 0, 0),
+    }
+}
+
+/// Extract vulnerability summary counts from report JSON Value
+fn extract_vuln_summary_from_value(data: &Value) -> (i64, i64, i64, i64, i64) {
     let summary = data.get("report").and_then(|r| r.get("summary"));
     if let Some(s) = summary {
         (
@@ -56,8 +73,16 @@ pub fn extract_vuln_summary(data: &Value) -> (i64, i64, i64, i64, i64) {
     }
 }
 
-/// Extract components count from SBOM report JSON data
-pub fn extract_components_count(data: &Value) -> i64 {
+/// Extract components count from SBOM report JSON string
+pub fn extract_components_count_from_str(data_json: &str) -> i64 {
+    match serde_json::from_str::<Value>(data_json) {
+        Ok(data) => extract_components_count_from_value(&data),
+        Err(_) => 0,
+    }
+}
+
+/// Extract components count from SBOM report JSON Value
+fn extract_components_count_from_value(data: &Value) -> i64 {
     data.get("report")
         .and_then(|r| r.get("summary"))
         .and_then(|s| s.get("componentsCount"))
@@ -89,7 +114,7 @@ mod tests {
             }
         });
 
-        let (app, image, registry) = extract_metadata(&data);
+        let (app, image, registry) = extract_metadata_from_str(&data.to_string());
         assert_eq!(app, "nginx-deployment");
         assert_eq!(image, "nginx:1.25");
         assert_eq!(registry, "docker.io");
@@ -114,7 +139,7 @@ mod tests {
             }
         });
 
-        let (app, image, registry) = extract_metadata(&data);
+        let (app, image, registry) = extract_metadata_from_str(&data.to_string());
         assert_eq!(app, "my-app");
         assert_eq!(image, "my-repo/my-app:v1.0.0");
         assert_eq!(registry, "ghcr.io");
@@ -139,7 +164,7 @@ mod tests {
             }
         });
 
-        let (app, image, registry) = extract_metadata(&data);
+        let (app, image, registry) = extract_metadata_from_str(&data.to_string());
         assert_eq!(app, "legacy-app");
         assert_eq!(image, "legacy/app");
         assert_eq!(registry, "ecr.aws");
@@ -149,7 +174,15 @@ mod tests {
     fn test_extract_metadata_missing_fields() {
         let data = json!({});
 
-        let (app, image, registry) = extract_metadata(&data);
+        let (app, image, registry) = extract_metadata_from_str(&data.to_string());
+        assert_eq!(app, "");
+        assert_eq!(image, "");
+        assert_eq!(registry, "");
+    }
+
+    #[test]
+    fn test_extract_metadata_invalid_json() {
+        let (app, image, registry) = extract_metadata_from_str("invalid json");
         assert_eq!(app, "");
         assert_eq!(image, "");
         assert_eq!(registry, "");
@@ -169,7 +202,7 @@ mod tests {
             }
         });
 
-        let (critical, high, medium, low, unknown) = extract_vuln_summary(&data);
+        let (critical, high, medium, low, unknown) = extract_vuln_summary_from_str(&data.to_string());
         assert_eq!(critical, 5);
         assert_eq!(high, 10);
         assert_eq!(medium, 20);
@@ -188,7 +221,7 @@ mod tests {
             }
         });
 
-        let (critical, high, medium, low, unknown) = extract_vuln_summary(&data);
+        let (critical, high, medium, low, unknown) = extract_vuln_summary_from_str(&data.to_string());
         assert_eq!(critical, 2);
         assert_eq!(high, 5);
         assert_eq!(medium, 0);
@@ -200,7 +233,7 @@ mod tests {
     fn test_extract_vuln_summary_missing() {
         let data = json!({});
 
-        let (critical, high, medium, low, unknown) = extract_vuln_summary(&data);
+        let (critical, high, medium, low, unknown) = extract_vuln_summary_from_str(&data.to_string());
         assert_eq!(critical, 0);
         assert_eq!(high, 0);
         assert_eq!(medium, 0);
@@ -218,12 +251,12 @@ mod tests {
             }
         });
 
-        assert_eq!(extract_components_count(&data), 150);
+        assert_eq!(extract_components_count_from_str(&data.to_string()), 150);
     }
 
     #[test]
     fn test_extract_components_count_missing() {
         let data = json!({});
-        assert_eq!(extract_components_count(&data), 0);
+        assert_eq!(extract_components_count_from_str(&data.to_string()), 0);
     }
 }

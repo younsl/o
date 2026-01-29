@@ -36,10 +36,24 @@ pub async fn healthz(
         remote_addr = %addr,
         "Health check request received"
     );
+
+    // Read memory usage from /proc/self/statm (Linux only)
+    // Format: size resident shared text lib data dt (all in pages)
+    // We use the second field (resident) which is RSS in pages
+    let memory_mb = std::fs::read_to_string("/proc/self/statm")
+        .ok()
+        .and_then(|s| {
+            let parts: Vec<&str> = s.split_whitespace().collect();
+            // Second field is RSS (Resident Set Size) in pages
+            parts.get(1).and_then(|rss| rss.parse::<u64>().ok())
+        })
+        .map(|pages| pages * 4096 / 1024 / 1024); // Convert pages to MB (4KB page size)
+
     (
         StatusCode::OK,
         Json(HealthResponse {
             status: "ok".to_string(),
+            memory_mb,
         }),
     )
 }

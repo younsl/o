@@ -10,7 +10,7 @@ repository = "https://github.com/younsl/o"
 
 [dependencies]
 # Async runtime
-tokio = { version = "1.41", features = ["full"] }
+tokio = { version = "1.41", features = ["rt-multi-thread", "macros", "signal", "sync", "time", "net"] }
 
 # Kubernetes (collector mode)
 kube = { version = "0.98", features = ["runtime", "derive", "client"] }

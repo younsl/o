@@ -68,13 +68,31 @@ pub struct ReportMeta {
     pub notes_updated_at: Option<String>,
 }
 
-/// Full report with data
-#[derive(Debug, Clone, serde::Serialize, ToSchema)]
+/// Full report with data (lazy loading)
+/// Data is stored as raw JSON string and parsed only when serialized
+#[derive(Debug, Clone, ToSchema)]
 pub struct FullReport {
     /// Report metadata
     pub meta: ReportMeta,
-    /// Full report data (JSON)
-    pub data: serde_json::Value,
+    /// Full report data as raw JSON string (parsed lazily on serialization)
+    #[schema(value_type = serde_json::Value)]
+    pub data_json: String,
+}
+
+impl serde::Serialize for FullReport {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        use serde::ser::SerializeStruct;
+        let mut state = serializer.serialize_struct("FullReport", 2)?;
+        state.serialize_field("meta", &self.meta)?;
+        // Parse JSON string to Value only during serialization (lazy loading)
+        let data: serde_json::Value =
+            serde_json::from_str(&self.data_json).unwrap_or(serde_json::Value::Null);
+        state.serialize_field("data", &data)?;
+        state.end()
+    }
 }
 
 /// Cluster info

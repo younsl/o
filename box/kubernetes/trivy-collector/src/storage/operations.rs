@@ -7,7 +7,9 @@ use tracing::debug;
 use crate::collector::types::ReportPayload;
 
 use super::database::Database;
-use super::extractors::{extract_components_count, extract_metadata, extract_vuln_summary};
+use super::extractors::{
+    extract_components_count_from_str, extract_metadata_from_str, extract_vuln_summary_from_str,
+};
 use super::models::{ClusterInfo, FullReport, QueryParams, ReportMeta, Stats, VulnSummary};
 
 impl Database {
@@ -15,12 +17,11 @@ impl Database {
     pub fn upsert_report(&self, payload: &ReportPayload) -> Result<()> {
         let conn = self.conn.lock().unwrap();
 
-        // Extract metadata from data
-        let (app, image, registry) = extract_metadata(&payload.data);
-        let (critical, high, medium, low, unknown) = extract_vuln_summary(&payload.data);
-        let components_count = extract_components_count(&payload.data);
+        // Extract metadata from raw JSON string (parsed on-demand)
+        let (app, image, registry) = extract_metadata_from_str(&payload.data_json);
+        let (critical, high, medium, low, unknown) = extract_vuln_summary_from_str(&payload.data_json);
+        let components_count = extract_components_count_from_str(&payload.data_json);
 
-        let data_json = serde_json::to_string(&payload.data)?;
         let received_at = payload.received_at.to_rfc3339();
         let updated_at = chrono::Utc::now().to_rfc3339();
 
@@ -58,7 +59,7 @@ impl Database {
                 low,
                 unknown,
                 components_count,
-                data_json,
+                payload.data_json,
                 received_at,
                 updated_at,
             ],
@@ -275,8 +276,8 @@ impl Database {
         )?;
 
         let result = stmt.query_row(params![cluster, namespace, name, report_type], |row| {
-            let data_str: String = row.get(15)?;
-            let data: serde_json::Value = serde_json::from_str(&data_str).unwrap_or_default();
+            // Store raw JSON string - parsing deferred to serialization time (lazy loading)
+            let data_json: String = row.get(15)?;
 
             Ok(FullReport {
                 meta: ReportMeta {
@@ -301,7 +302,7 @@ impl Database {
                     notes_created_at: row.get(17)?,
                     notes_updated_at: row.get(18)?,
                 },
-                data,
+                data_json,
             })
         });
 
@@ -420,7 +421,7 @@ mod tests {
             namespace: namespace.to_string(),
             name: name.to_string(),
             report_type: report_type.to_string(),
-            data: json!({
+            data_json: json!({
                 "metadata": {
                     "labels": {
                         "trivy-operator.resource.name": "test-app"
@@ -443,7 +444,8 @@ mod tests {
                         "componentsCount": 50
                     }
                 }
-            }),
+            })
+            .to_string(),
             received_at: chrono::Utc::now(),
         }
     }
@@ -477,7 +479,7 @@ mod tests {
         db.upsert_report(&payload).expect("Failed to insert");
 
         // Update with new data
-        payload.data = json!({
+        payload.data_json = json!({
             "metadata": {
                 "labels": {
                     "trivy-operator.resource.name": "updated-app"
@@ -496,7 +498,8 @@ mod tests {
                     "highCount": 2
                 }
             }
-        });
+        })
+        .to_string();
 
         db.upsert_report(&payload).expect("Failed to update");
 

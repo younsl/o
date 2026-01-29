@@ -115,7 +115,8 @@ async fn watch_vulnerability_reports(
     watcher_status: Arc<WatcherStatus>,
 ) -> Result<()> {
     let api: Api<VulnerabilityReport> = Api::all(client);
-    let watcher_config = WatcherConfig::default();
+    // Use smaller page size for memory optimization (default is 500)
+    let watcher_config = WatcherConfig::default().page_size(50);
     let mut stream = watcher(api, watcher_config).boxed();
 
     watcher_status.set_vuln_running(true);
@@ -248,14 +249,14 @@ async fn handle_vuln_event(
                 return Ok(());
             }
 
-            let data = serde_json::to_value(&report)?;
+            let data_json = serde_json::to_string(&report)?;
 
             let payload = ReportPayload {
                 cluster: cluster_name.to_string(),
                 report_type: "vulnerabilityreport".to_string(),
                 namespace: namespace.to_string(),
                 name: name.to_string(),
-                data,
+                data_json,
                 received_at: chrono::Utc::now(),
             };
 
@@ -324,14 +325,14 @@ async fn handle_sbom_event(
                 return Ok(());
             }
 
-            let data = serde_json::to_value(&report)?;
+            let data_json = serde_json::to_string(&report)?;
 
             let payload = ReportPayload {
                 cluster: cluster_name.to_string(),
                 report_type: "sbomreport".to_string(),
                 namespace: namespace.to_string(),
                 name: name.to_string(),
-                data,
+                data_json,
                 received_at: chrono::Utc::now(),
             };
 

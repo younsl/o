@@ -39,7 +39,7 @@ impl ReportSender {
         report_type: &str,
         namespace: &str,
         name: &str,
-        data: serde_json::Value,
+        data_json: String,
         event_type: ReportEventType,
     ) -> Result<()> {
         let payload = ReportPayload {
@@ -47,7 +47,7 @@ impl ReportSender {
             report_type: report_type.to_string(),
             namespace: namespace.to_string(),
             name: name.to_string(),
-            data,
+            data_json,
             received_at: chrono::Utc::now(),
         };
 

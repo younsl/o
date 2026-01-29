@@ -69,12 +69,15 @@ pub struct ErrorResponse {
     pub error: String,
 }
 
-/// Health response
+/// Health response with memory info for monitoring
 #[derive(Serialize, ToSchema)]
 pub struct HealthResponse {
     /// Health status
     #[schema(example = "ok")]
     pub status: String,
+    /// Memory usage in MB (Linux only, reads from /proc/self/statm)
+    #[schema(example = 128)]
+    pub memory_mb: Option<u64>,
 }
 
 /// Update notes request

@@ -316,8 +316,8 @@ pub struct ReportPayload {
     pub namespace: String,
     /// Report name
     pub name: String,
-    /// Full report data (JSON)
-    pub data: serde_json::Value,
+    /// Full report data as raw JSON string (avoids double parsing overhead)
+    pub data_json: String,
     /// Received timestamp
     pub received_at: chrono::DateTime<chrono::Utc>,
 }

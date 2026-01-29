@@ -289,7 +289,7 @@ mod tests {
             namespace: namespace.to_string(),
             name: name.to_string(),
             report_type: report_type.to_string(),
-            data: json!({
+            data_json: json!({
                 "metadata": {
                     "labels": {
                         "trivy-operator.resource.name": "test-app"
@@ -312,7 +312,8 @@ mod tests {
                         "componentsCount": 50
                     }
                 }
-            }),
+            })
+            .to_string(),
             received_at: chrono::Utc::now(),
         }
     }
