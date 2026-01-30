@@ -24,7 +24,7 @@ export interface Config {
        * Platform URL
        * @visibility frontend
        */
-      url: string;
+      url?: string;
       /**
        * Logo URL
        * @visibility frontend

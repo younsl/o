@@ -56,6 +56,7 @@ backstage:
         port: 7007
       csp:
         connect-src: ["'self'", "http:", "https:"]
+        img-src: ["'self'", "data:", "https:"]
       cors:
         origin: https://backstage.example.com
         methods: [GET, HEAD, PATCH, POST, PUT, DELETE]

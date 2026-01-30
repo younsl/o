@@ -18,6 +18,8 @@ app:
   # Internal platform services for developers
   # Override in app-config.local.yaml or via Helm chart values
   # Example configuration (customize URLs in app-config.local.yaml):
+  # - Single URL: use 'url' field
+  # - Multiple URLs: use 'urls' field with key-value pairs
   platforms:
     - name: Grafana
       category: Observability
@@ -31,6 +33,19 @@ app:
       url: https://argocd.example.com
       logo: https://argo-cd.readthedocs.io/en/stable/assets/logo.png
       tags: shared
+    # Example: Environment-specific platforms (create separate cards per environment)
+    - name: QueryPie (nonprd)
+      category: Data
+      description: Data access governance platform
+      url: https://querypie-nonprd.example.com
+      logo: https://backstage.io/logo_assets/svg/Icon_Teal.svg
+      tags: nonprd
+    - name: QueryPie (prd)
+      category: Data
+      description: Data access governance platform
+      url: https://querypie-prd.example.com
+      logo: https://backstage.io/logo_assets/svg/Icon_Teal.svg
+      tags: prd
 
 organization:
   name: DevOps Portal
