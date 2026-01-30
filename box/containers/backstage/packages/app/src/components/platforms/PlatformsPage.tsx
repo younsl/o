@@ -10,19 +10,34 @@ import {
   InputAdornment,
   IconButton,
   makeStyles,
+  FormControl,
+  InputLabel,
+  Select,
+  MenuItem,
+  Checkbox,
+  ListItemText,
+  Button,
+  Collapse,
 } from '@material-ui/core';
-import { Page, Header, Content } from '@backstage/core-components';
+import { Header } from '@backstage/core-components';
+import { Container } from '@backstage/ui';
 import { configApiRef, useApi } from '@backstage/core-plugin-api';
 import SearchIcon from '@material-ui/icons/Search';
 import OpenInNewIcon from '@material-ui/icons/OpenInNew';
 import WarningIcon from '@material-ui/icons/Warning';
 import StarIcon from '@material-ui/icons/Star';
 import StarBorderIcon from '@material-ui/icons/StarBorder';
+import ExpandMoreIcon from '@material-ui/icons/ExpandMore';
+import ExpandLessIcon from '@material-ui/icons/ExpandLess';
 
 const FALLBACK_LOGO = 'https://backstage.io/logo_assets/svg/Icon_Teal.svg';
 const FAVORITES_STORAGE_KEY = 'backstage-platforms-favorites';
 
 const useStyles = makeStyles(theme => ({
+  content: {
+    paddingLeft: theme.spacing(3),
+    paddingRight: theme.spacing(3),
+  },
   searchContainer: {
     marginBottom: theme.spacing(3),
   },
@@ -35,43 +50,71 @@ const useStyles = makeStyles(theme => ({
     alignItems: 'center',
     flexWrap: 'wrap',
     gap: theme.spacing(2),
-    marginBottom: theme.spacing(2),
-  },
-  filterSection: {
-    display: 'flex',
-    alignItems: 'center',
-    flexWrap: 'wrap',
-    gap: theme.spacing(1),
+    marginTop: theme.spacing(3),
     marginBottom: theme.spacing(3),
   },
-  filterLabel: {
-    fontSize: '0.875rem',
-    color: theme.palette.text.secondary,
-    marginRight: theme.spacing(1),
+  filterControls: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: theme.spacing(2),
   },
-  filterChip: {
-    cursor: 'pointer',
-    transition: 'all 0.2s',
+  tagSelect: {
+    minWidth: 200,
   },
-  filterChipSelected: {
-    backgroundColor: theme.palette.primary.main,
-    color: theme.palette.primary.contrastText,
-    '&:hover': {
-      backgroundColor: theme.palette.primary.dark,
-    },
+  selectedTagsChips: {
+    display: 'flex',
+    flexWrap: 'wrap',
+    gap: theme.spacing(0.5),
+  },
+  tagChipInSelect: {
+    margin: 2,
   },
   categorySection: {
-    marginBottom: theme.spacing(4),
+    marginBottom: theme.spacing(3),
+  },
+  categoryHeader: {
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    cursor: 'pointer',
+    padding: theme.spacing(1.5, 2),
+    marginBottom: theme.spacing(1),
+    borderRadius: theme.shape.borderRadius,
+    backgroundColor: theme.palette.type === 'dark'
+      ? 'rgba(255, 255, 255, 0.05)'
+      : 'rgba(0, 0, 0, 0.02)',
+    '&:hover': {
+      backgroundColor: theme.palette.type === 'dark'
+        ? 'rgba(255, 255, 255, 0.08)'
+        : 'rgba(0, 0, 0, 0.04)',
+    },
+  },
+  categoryTitleRow: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: theme.spacing(1),
   },
   categoryTitle: {
-    marginBottom: theme.spacing(0.5),
     fontWeight: 500,
     color: theme.palette.text.primary,
   },
+  categoryCount: {
+    fontSize: '1.1rem',
+    fontWeight: 500,
+    color: theme.palette.text.secondary,
+  },
   categoryDescription: {
     marginBottom: theme.spacing(2),
+    marginLeft: theme.spacing(2),
     color: theme.palette.text.secondary,
     fontSize: '0.875rem',
+  },
+  expandIcon: {
+    color: theme.palette.text.secondary,
+  },
+  categoryContent: {
+    paddingLeft: theme.spacing(1),
+    paddingRight: theme.spacing(1),
   },
   card: {
     height: '100%',
@@ -213,6 +256,20 @@ export const PlatformsPage = () => {
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedTags, setSelectedTags] = useState<string[]>([]);
   const [favorites, setFavorites] = useState<string[]>([]);
+  const [tagDropdownOpen, setTagDropdownOpen] = useState(false);
+  const [expandedSections, setExpandedSections] = useState<Record<string, boolean>>({});
+
+  // Close tag dropdown on scroll
+  useEffect(() => {
+    if (!tagDropdownOpen) return;
+
+    const handleScroll = () => {
+      setTagDropdownOpen(false);
+    };
+
+    window.addEventListener('scroll', handleScroll, true);
+    return () => window.removeEventListener('scroll', handleScroll, true);
+  }, [tagDropdownOpen]);
 
   // Load favorites from localStorage on mount
   useEffect(() => {
@@ -282,6 +339,19 @@ export const PlatformsPage = () => {
     setSelectedTags([]);
   };
 
+  // Toggle section expansion
+  const toggleSection = (sectionName: string) => {
+    setExpandedSections(prev => ({
+      ...prev,
+      [sectionName]: prev[sectionName] === undefined ? false : !prev[sectionName],
+    }));
+  };
+
+  // Check if section is expanded (default: true)
+  const isSectionExpanded = (sectionName: string) => {
+    return expandedSections[sectionName] === undefined ? true : expandedSections[sectionName];
+  };
+
   // Filter platforms based on search query and selected tags
   const filteredPlatforms = allPlatforms.filter(platform => {
     // Tag filter
@@ -311,7 +381,7 @@ export const PlatformsPage = () => {
   // Group by category (only non-favorites)
   const categoryOrder = ['Developer Portal', 'Observability', 'CI/CD', 'Security', 'Infrastructure', 'Data', 'Registry', 'Documentation'];
   const categoryDescriptions: Record<string, string> = {
-    'Developer Portal': '개발자 경험 향상을 위한 통합 포털 및 플랫폼',
+    'Developer Portal': '개발자 경험(Developer Experience) 향상을 위한 통합 포털 및 플랫폼',
     'Observability': '시스템 상태를 모니터링하고 문제를 신속하게 파악하기 위한 도구',
     'CI/CD': '코드 변경사항을 자동으로 빌드, 테스트, 배포하기 위한 도구',
     'Security': '보안 취약점 분석 및 접근 제어를 위한 도구',
@@ -340,56 +410,69 @@ export const PlatformsPage = () => {
   const hasActiveFilters = searchQuery || selectedTags.length > 0;
 
   return (
-    <Page themeId="tool">
-      <Header title="Platforms" subtitle="Internal platform services for developers" />
-      <Content>
+    <>
+      <Header title="Platforms" subtitle="Internal tech stack and platform services for developers" />
+      <Container className={classes.content}>
         <div className={classes.headerRow}>
           <Typography variant="h4" style={{ fontWeight: 500 }}>
             {hasActiveFilters ? `${filteredCount} / ${totalPlatforms}` : totalPlatforms} Platforms
           </Typography>
-          <TextField
-            className={classes.searchField}
-            variant="outlined"
-            size="small"
-            placeholder="Search platforms..."
-            value={searchQuery}
-            onChange={e => setSearchQuery(e.target.value)}
-            InputProps={{
-              startAdornment: (
-                <InputAdornment position="start">
-                  <SearchIcon color="action" />
-                </InputAdornment>
-              ),
-            }}
-          />
-        </div>
-
-        {allTags.length > 0 && (
-          <div className={classes.filterSection}>
-            <Typography className={classes.filterLabel}>Tags:</Typography>
-            {allTags.map(tag => (
-              <Chip
-                key={tag}
-                label={tag}
-                size="small"
-                onClick={() => handleTagToggle(tag)}
-                className={`${classes.filterChip} ${
-                  selectedTags.includes(tag) ? classes.filterChipSelected : ''
-                }`}
-                variant={selectedTags.includes(tag) ? 'default' : 'outlined'}
-              />
-            ))}
+          <div className={classes.filterControls}>
+            <TextField
+              className={classes.searchField}
+              variant="outlined"
+              size="small"
+              placeholder="Search platforms..."
+              value={searchQuery}
+              onChange={e => setSearchQuery(e.target.value)}
+              InputProps={{
+                startAdornment: (
+                  <InputAdornment position="start">
+                    <SearchIcon color="action" />
+                  </InputAdornment>
+                ),
+              }}
+            />
+            {allTags.length > 0 && (
+              <FormControl variant="outlined" size="small" className={classes.tagSelect}>
+                <InputLabel>Tags ({allTags.length})</InputLabel>
+                <Select
+                  multiple
+                  open={tagDropdownOpen}
+                  onOpen={() => setTagDropdownOpen(true)}
+                  onClose={() => setTagDropdownOpen(false)}
+                  value={selectedTags}
+                  onChange={(e) => setSelectedTags(e.target.value as string[])}
+                  label={`Tags (${allTags.length})`}
+                  renderValue={(selected) => (
+                    <div className={classes.selectedTagsChips}>
+                      {(selected as string[]).map(tag => (
+                        <Chip key={tag} label={tag} size="small" className={classes.tagChipInSelect} />
+                      ))}
+                    </div>
+                  )}
+                >
+                  {allTags.map(tag => (
+                    <MenuItem key={tag} value={tag}>
+                      <Checkbox checked={selectedTags.includes(tag)} color="primary" />
+                      <ListItemText primary={tag} />
+                    </MenuItem>
+                  ))}
+                </Select>
+              </FormControl>
+            )}
             {hasActiveFilters && (
-              <Chip
-                label="Clear"
+              <Button
                 size="small"
-                onClick={handleClearFilters}
-                onDelete={handleClearFilters}
+                variant="outlined"
                 color="secondary"
-              />
+                onClick={handleClearFilters}
+              >
+                Clear
+              </Button>
             )}
           </div>
-        )}
+        </div>
 
         {categories.length === 0 && favoritePlatforms.length === 0 ? (
           <Typography className={classes.noResults}>
@@ -478,14 +561,34 @@ export const PlatformsPage = () => {
             {/* Categories */}
             {categories.map(category => (
             <div key={category.name} className={classes.categorySection}>
-              <Typography variant="h5" className={classes.categoryTitle}>
-                {category.name} ({category.platforms.length})
-              </Typography>
-              <Typography className={classes.categoryDescription}>
-                {categoryDescriptions[category.name]}
-              </Typography>
-              <Grid container spacing={3}>
-                {category.platforms.map(platform => (
+              <div
+                className={classes.categoryHeader}
+                onClick={() => toggleSection(category.name)}
+                role="button"
+                tabIndex={0}
+                onKeyDown={e => e.key === 'Enter' && toggleSection(category.name)}
+              >
+                <div className={classes.categoryTitleRow}>
+                  <Typography variant="h6" className={classes.categoryTitle}>
+                    {category.name}
+                  </Typography>
+                  <Typography className={classes.categoryCount}>
+                    ({category.platforms.length})
+                  </Typography>
+                </div>
+                {isSectionExpanded(category.name) ? (
+                  <ExpandLessIcon className={classes.expandIcon} />
+                ) : (
+                  <ExpandMoreIcon className={classes.expandIcon} />
+                )}
+              </div>
+              <Collapse in={isSectionExpanded(category.name)}>
+                <Typography className={classes.categoryDescription}>
+                  {categoryDescriptions[category.name]}
+                </Typography>
+                <div className={classes.categoryContent}>
+                  <Grid container spacing={3}>
+                    {category.platforms.map(platform => (
                   <Grid item xs={12} sm={6} md={4} lg={3} key={platform.name}>
                     <Card className={`${classes.card} ${classes.cardWrapper}`}>
                       <IconButton
@@ -552,12 +655,14 @@ export const PlatformsPage = () => {
                     </Card>
                   </Grid>
                 ))}
-              </Grid>
+                  </Grid>
+                </div>
+              </Collapse>
             </div>
           ))}
           </>
         )}
-      </Content>
-    </Page>
+      </Container>
+    </>
   );
 };

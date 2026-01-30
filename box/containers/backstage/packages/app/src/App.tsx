@@ -30,7 +30,6 @@ import { apis, keycloakOIDCAuthApiRef } from './apis';
 import { entityPage } from './components/catalog/EntityPage';
 import { searchPage } from './components/search/SearchPage';
 import { Root } from './components/Root';
-import { CreatePage } from './components/create/CreatePage';
 import { HomePage } from './components/home/HomePage';
 import { PlatformsPage } from './components/platforms';
 
@@ -121,8 +120,7 @@ const routes = (
       path="/docs/:namespace/:kind/:name/*"
       element={<TechDocsReaderPage />}
     />
-    <Route path="/create" element={<CreatePage />} />
-    <Route path="/create/templates" element={<ScaffolderPage />} />
+    <Route path="/create" element={<ScaffolderPage />} />
     <Route path="/search" element={<SearchPage />}>
       {searchPage}
     </Route>

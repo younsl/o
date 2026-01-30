@@ -13,12 +13,7 @@ html, body, #root {
 main {
   min-width: 0;
   overflow-x: hidden;
-}
-
-/* Fix horizontal overflow - account for sidebar (~250px) and padding */
-main > * {
-  max-width: calc(100vw - 280px);
-  overflow-x: hidden;
+  width: 100%;
 }
 
 /* Sidebar */
@@ -61,4 +56,15 @@ main > * {
 ::-webkit-scrollbar-thumb {
   background: #424242;
   border-radius: 4px;
+}
+
+/* @backstage/ui and legacy layout fixes - unified width */
+[class*="bui-container"],
+[class*="bui-Container"],
+[class*="BackstagePage-root"],
+[class*="BackstageContent-root"],
+article[class*="Page"],
+article[class*="Content"] {
+  max-width: 100% !important;
+  box-sizing: border-box !important;
 }

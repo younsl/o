@@ -28,3 +28,4 @@ app-config.local.yaml
 
 # Logs
 *.log
+dist-types/

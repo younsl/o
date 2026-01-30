@@ -1,10 +1,17 @@
 import React from 'react';
-import { Grid, makeStyles } from '@material-ui/core';
+import {
+  Grid,
+  makeStyles,
+  Card,
+  CardContent,
+  Typography,
+  Tooltip,
+} from '@material-ui/core';
+import { Link } from 'react-router-dom';
 import {
   HomePageStarredEntities,
   HomePageRecentlyVisited,
   HomePageTopVisited,
-  HomePageToolkit,
   HeaderWorldClock,
   ClockConfig,
   FeaturedDocsCard,
@@ -12,18 +19,15 @@ import {
 import { identityApiRef, useApi } from '@backstage/core-plugin-api';
 import { useEffect, useState } from 'react';
 import { SearchContextProvider } from '@backstage/plugin-search-react';
-import {
-  Content,
-  Page,
-  InfoCard,
-  Header,
-} from '@backstage/core-components';
+import { Header } from '@backstage/core-components';
+import { Container } from '@backstage/ui';
 import { HomePageSearchBar } from '@backstage/plugin-search';
 import CategoryIcon from '@material-ui/icons/Category';
 import ExtensionIcon from '@material-ui/icons/Extension';
 import LibraryBooks from '@material-ui/icons/LibraryBooks';
 import CreateComponentIcon from '@material-ui/icons/AddCircleOutline';
 import CloudUploadIcon from '@material-ui/icons/CloudUpload';
+import DashboardIcon from '@material-ui/icons/Dashboard';
 
 const useStyles = makeStyles(theme => ({
   searchBarInput: {
@@ -42,6 +46,46 @@ const useStyles = makeStyles(theme => ({
   logo: {
     width: 'auto',
     height: 100,
+  },
+  quickLinksCard: {
+    height: '100%',
+  },
+  quickLinksTitle: {
+    fontWeight: 500,
+    marginBottom: theme.spacing(2),
+  },
+  quickLinksGrid: {
+    display: 'grid',
+    gridTemplateColumns: 'repeat(3, 1fr)',
+    gap: theme.spacing(2),
+  },
+  quickLinkItem: {
+    display: 'flex',
+    flexDirection: 'column',
+    alignItems: 'center',
+    textAlign: 'center',
+    padding: theme.spacing(2),
+    borderRadius: theme.shape.borderRadius,
+    textDecoration: 'none',
+    color: 'inherit',
+    transition: 'background-color 0.2s',
+    '&:hover': {
+      backgroundColor: theme.palette.action.hover,
+    },
+  },
+  quickLinkIcon: {
+    fontSize: 32,
+    marginBottom: theme.spacing(1),
+    color: theme.palette.primary.main,
+  },
+  quickLinkLabel: {
+    fontSize: '0.875rem',
+    fontWeight: 500,
+  },
+  tooltip: {
+    fontSize: '0.875rem',
+    fontWeight: 500,
+    padding: theme.spacing(1, 1.5),
   },
 }));
 
@@ -82,11 +126,11 @@ export const HomePage = () => {
 
   return (
     <SearchContextProvider>
-      <Page themeId="home">
+      <>
         <Header title={<CustomWelcomeTitle />} pageTitleOverride="Home">
           <HeaderWorldClock clockConfigs={clockConfigs} />
         </Header>
-        <Content>
+        <Container>
           <Grid container justifyContent="center" spacing={6}>
             {/* Search Bar */}
             <Grid item xs={12} md={8}>
@@ -103,36 +147,68 @@ export const HomePage = () => {
 
             {/* Quick Links */}
             <Grid item xs={12} md={6}>
-              <HomePageToolkit
-                title="Quick Links"
-                tools={[
-                  {
-                    url: '/catalog',
-                    label: 'Catalog',
-                    icon: <CategoryIcon />,
-                  },
-                  {
-                    url: '/api-docs',
-                    label: 'APIs',
-                    icon: <ExtensionIcon />,
-                  },
-                  {
-                    url: '/openapi-registry',
-                    label: 'API Registry',
-                    icon: <CloudUploadIcon />,
-                  },
-                  {
-                    url: '/docs',
-                    label: 'TechDocs',
-                    icon: <LibraryBooks />,
-                  },
-                  {
-                    url: '/create',
-                    label: 'Create',
-                    icon: <CreateComponentIcon />,
-                  },
-                ]}
-              />
+              <Card className={classes.quickLinksCard}>
+                <CardContent>
+                  <Typography variant="h6" className={classes.quickLinksTitle}>
+                    Quick Links
+                  </Typography>
+                  <div className={classes.quickLinksGrid}>
+                    {[
+                      {
+                        url: '/platforms',
+                        label: 'Platforms',
+                        icon: <DashboardIcon className={classes.quickLinkIcon} />,
+                        description: 'Internal platform services',
+                      },
+                      {
+                        url: '/catalog',
+                        label: 'Catalog',
+                        icon: <CategoryIcon className={classes.quickLinkIcon} />,
+                        description: 'Browse all registered entities',
+                      },
+                      {
+                        url: '/api-docs',
+                        label: 'APIs',
+                        icon: <ExtensionIcon className={classes.quickLinkIcon} />,
+                        description: 'Explore API documentation',
+                      },
+                      {
+                        url: '/openapi-registry',
+                        label: 'API Registry',
+                        icon: <CloudUploadIcon className={classes.quickLinkIcon} />,
+                        description: 'Upload and manage OpenAPI specs',
+                      },
+                      {
+                        url: '/docs',
+                        label: 'Docs',
+                        icon: <LibraryBooks className={classes.quickLinkIcon} />,
+                        description: 'Technical documentation',
+                      },
+                      {
+                        url: '/create',
+                        label: 'Create...',
+                        icon: <CreateComponentIcon className={classes.quickLinkIcon} />,
+                        description: 'Create new components from templates',
+                      },
+                    ].map(link => (
+                      <Tooltip
+                        key={link.url}
+                        title={link.description}
+                        arrow
+                        placement="top"
+                        classes={{ tooltip: classes.tooltip }}
+                      >
+                        <Link to={link.url} className={classes.quickLinkItem}>
+                          {link.icon}
+                          <Typography className={classes.quickLinkLabel}>
+                            {link.label}
+                          </Typography>
+                        </Link>
+                      </Tooltip>
+                    ))}
+                  </div>
+                </CardContent>
+              </Card>
             </Grid>
 
             {/* Starred Entities */}
@@ -159,8 +235,8 @@ export const HomePage = () => {
               />
             </Grid>
           </Grid>
-        </Content>
-      </Page>
+        </Container>
+      </>
     </SearchContextProvider>
   );
 };

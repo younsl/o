@@ -20,7 +20,6 @@ import {
   Header,
   Page,
 } from '@backstage/core-components';
-import { useApi } from '@backstage/core-plugin-api';
 
 export const searchPage = (
   <Page themeId="home">
