@@ -825,3 +825,39 @@ When creating pull requests, follow the template structure in `.github/pull_requ
 | Remove CSS | Original layout preserved | Announcements plugin unstyled |
 
 **Workaround**: If you need the Announcements plugin with proper styling, import the CSS and add custom CSS overrides to fix the layout issues. Alternatively, avoid the CSS import and accept unstyled Announcements pages.
+
+### Enabling Guest Login
+
+Guest login requires configuration in **both** backend config and frontend code.
+
+**1. Backend Configuration** (`app-config.yaml`):
+```yaml
+auth:
+  providers:
+    guest:
+      dangerouslyAllowOutsideDevelopment: true  # Allow guest in production
+```
+
+**2. Frontend Configuration** (`packages/app/src/App.tsx`):
+```tsx
+const CustomSignInPage = (props: any) => (
+  <SignInPage
+    {...props}
+    providers={[
+      'guest',  // Add this line to enable guest login button
+      {
+        id: 'keycloak',
+        title: 'Keycloak',
+        message: 'Sign in using Keycloak',
+        apiRef: keycloakOIDCAuthApiRef,
+      },
+    ]}
+  />
+);
+```
+
+**Important Notes**:
+- Backstage does NOT support dynamically enabling/disabling guest login via config alone
+- The `'guest'` provider in SignInPage is hardcoded in the frontend
+- To disable guest login in production, remove `'guest'` from the providers array and rebuild the container image
+- Reference: https://backstage.io/docs/auth/guest/provider/
