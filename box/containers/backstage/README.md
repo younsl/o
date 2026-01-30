@@ -9,16 +9,16 @@ Custom Backstage image with GitLab Auto Discovery, Keycloak OIDC, and API Docs p
 
 | Feature | Plugin | Native | Description |
 |---------|--------|:------:|-------------|
-| Home Dashboard | `plugin-home` | Yes | Customizable home page with widgets |
+| Home Dashboard | [`@backstage/plugin-home`](https://www.npmjs.com/package/@backstage/plugin-home) | Yes | Customizable home page with widgets |
 | Platforms | - | No | Internal platform services link cards with search and tag filtering |
-| GitLab Auto Discovery | `plugin-catalog-backend-module-gitlab` | Yes | Auto-discover `catalog-info.yaml` from GitLab repos |
-| GitLab Org Sync | `plugin-catalog-backend-module-gitlab-org` | Yes | Sync GitLab groups/users to Backstage |
-| OIDC Authentication | `plugin-auth-backend-module-oidc-provider` | Yes | Keycloak/OIDC SSO authentication |
-| API Docs | `plugin-api-docs` | Yes | OpenAPI, AsyncAPI, GraphQL spec viewer |
+| GitLab Auto Discovery | [`@backstage/plugin-catalog-backend-module-gitlab`](https://www.npmjs.com/package/@backstage/plugin-catalog-backend-module-gitlab) | Yes | Auto-discover `catalog-info.yaml` from GitLab repos |
+| GitLab Org Sync | [`@backstage/plugin-catalog-backend-module-gitlab-org`](https://www.npmjs.com/package/@backstage/plugin-catalog-backend-module-gitlab-org) | Yes | Sync GitLab groups/users to Backstage |
+| OIDC Authentication | [`@backstage/plugin-auth-backend-module-oidc-provider`](https://www.npmjs.com/package/@backstage/plugin-auth-backend-module-oidc-provider) | Yes | Keycloak/OIDC SSO authentication |
+| API Docs | [`@backstage/plugin-api-docs`](https://www.npmjs.com/package/@backstage/plugin-api-docs) | Yes | OpenAPI, AsyncAPI, GraphQL spec viewer |
 | OpenAPI Registry | `openapi-registry` | No | Register external OpenAPI specs by URL with search and filters |
-| TechDocs | `plugin-techdocs` | Yes | Markdown-based technical documentation |
-| Scaffolder | `plugin-scaffolder` | Yes | Template-based project creation |
-| Search | `plugin-search` | Yes | Full-text search across catalog |
+| TechDocs | [`@backstage/plugin-techdocs`](https://www.npmjs.com/package/@backstage/plugin-techdocs) | Yes | Markdown-based technical documentation |
+| Scaffolder | [`@backstage/plugin-scaffolder`](https://www.npmjs.com/package/@backstage/plugin-scaffolder) | Yes | Template-based project creation |
+| Search | [`@backstage/plugin-search`](https://www.npmjs.com/package/@backstage/plugin-search) | Yes | Full-text search across catalog |
 
 ## Quick Start
 
