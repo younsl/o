@@ -122,10 +122,12 @@ Internal platform services page for developers to discover tools and services.
 
 **Features:**
 - Card-based UI with platform logos
-- Category grouping (Observability, CI/CD, Security, Infrastructure, Data, Registry, Documentation)
-- Text search across name, description, category
+- Category grouping (Developer Portal, Observability, CI/CD, Security, Infrastructure, Data, Registry, Documentation)
+- Favorites (즐겨찾기) - starred platforms appear at the top, persisted in localStorage
+- Text search across name, description, category, tags
 - Tag-based filtering (multi-select)
 - Clickable cards open in new tab
+- VPN warning badge for platforms with `prd` tag
 
 **Configuration:**
 
