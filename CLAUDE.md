@@ -807,3 +807,21 @@ When creating pull requests, follow the template structure in `.github/pull_requ
 - What this PR does / why we need it
 - Which issue(s) this PR fixes (use `Fixes #issue_number` format)
 - Testing done (unit tests, integration tests, manual verification)
+
+## Backstage Troubleshooting
+
+### @backstage/ui CSS Causes Layout Issues
+
+**Problem**: Importing `@backstage/ui/css/styles.css` causes right-side whitespace/margin issues in the main content area.
+
+**Root Cause**: The `@backstage/ui` CSS overrides existing Backstage layout styles, breaking the default page layout.
+
+**Context**: The `@backstage-community/plugin-announcements` plugin (v2.0.0+) uses `@backstage/ui` components (`HeaderPage`, `Container`, `Flex`) internally. Without the CSS import, the Announcements page renders as unstyled text only.
+
+**Trade-off**:
+| Option | Pros | Cons |
+|--------|------|------|
+| Import CSS | Announcements plugin styled correctly | Layout breaks (right whitespace) |
+| Remove CSS | Original layout preserved | Announcements plugin unstyled |
+
+**Workaround**: If you need the Announcements plugin with proper styling, import the CSS and add custom CSS overrides to fix the layout issues. Alternatively, avoid the CSS import and accept unstyled Announcements pages.
