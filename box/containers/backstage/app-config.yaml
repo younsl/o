@@ -1,25 +1,8 @@
-# ==============================================================================
-# Backstage Configuration
-# ==============================================================================
-# This configuration file sets up Backstage with GitLab integration
-# for auto-discovery of catalog entities (components, APIs, etc.)
-#
-# Environment variables required:
-#   - GITLAB_TOKEN: GitLab personal access token with api scope
-#   - GITLAB_HOST: GitLab host (e.g., gitlab.com or self-hosted GitLab URL)
-# ==============================================================================
-
 app:
   title: Backstage
   baseUrl: http://localhost:3000
-  # Frontend-accessible GitLab configuration
   gitlab:
     host: ${GITLAB_HOST}
-  # Internal platform services for developers
-  # Override in app-config.local.yaml or via Helm chart values
-  # Example configuration (customize URLs in app-config.local.yaml):
-  # - Single URL: use 'url' field
-  # - Multiple URLs: use 'urls' field with key-value pairs
   platforms:
     - name: Grafana
       category: Observability
@@ -33,7 +16,6 @@ app:
       url: https://argocd.example.com
       logo: https://argo-cd.readthedocs.io/en/stable/assets/logo.png
       tags: shared
-    # Example: Environment-specific platforms (create separate cards per environment)
     - name: QueryPie (nonprd)
       category: Data
       description: Data access governance platform
@@ -65,114 +47,68 @@ backend:
     connection: ':memory:'
   auth:
     dangerouslyDisableDefaultAuthPolicy: true
-  # Allow reading from localhost URLs (for OpenAPI Registry plugin)
   reading:
     allow:
       - host: localhost:7007
 
-# ------------------------------------------------------------------------------
-# GitLab Integration
-# ------------------------------------------------------------------------------
 integrations:
   gitlab:
     - host: ${GITLAB_HOST}
       token: ${GITLAB_TOKEN}
       apiBaseUrl: https://${GITLAB_HOST}/api/v4
 
-# ------------------------------------------------------------------------------
-# Catalog Configuration with GitLab Auto Discovery
-# ------------------------------------------------------------------------------
 catalog:
-  # Import rules for discovered entities
   import:
     entityFilename: catalog-info.yaml
     pullRequestBranchName: backstage-integration
-
   rules:
     - allow: [Component, System, API, Resource, Location, Domain, Group, User, Template]
-
-  # GitLab discovery providers
   providers:
-    # Discovers catalog-info.yaml files from GitLab repositories
     gitlab:
       yourProviderId:
         host: ${GITLAB_HOST}
-        # Discover from specific group (optional)
-        # group: my-group
-        # Branch to scan (default: main)
         branch: main
-        # Fallback branch if main doesn't exist
         fallbackBranch: master
-        # Skip projects that are forks
         skipForkedRepos: false
-        # Entity filename to discover
         entityFilename: catalog-info.yaml
-        # Schedule for periodic discovery
         schedule:
           frequency: { minutes: 1 }
           timeout: { minutes: 3 }
           initialDelay: { seconds: 10 }
-
-    # Discovers GitLab groups and users as org entities
     gitlabOrg:
       yourOrgProviderId:
         host: ${GITLAB_HOST}
-        # Specific group ID to discover (optional - discovers all if not set)
-        # id: 12345
-        # Group pattern to match (optional)
-        # groupPattern: ^my-org-.*
         schedule:
           frequency: { hours: 1 }
           timeout: { minutes: 5 }
           initialDelay: { seconds: 30 }
-
-  # Static locations (optional - for manual entity registration)
   locations:
     - type: file
       target: ../../templates/register-component/template.yaml
       rules:
         - allow: [Template]
 
-# ------------------------------------------------------------------------------
-# Auth Configuration
-# ------------------------------------------------------------------------------
 auth:
   environment: development
-  # Session secret is required for OIDC authentication
   session:
     secret: ${AUTH_SESSION_SECRET}
   providers:
-    # Guest provider for local development/testing
-    # NOTE: Backstage does not support dynamically enabling/disabling guest login via config.
-    # The 'guest' provider in SignInPage (packages/app/src/App.tsx) is hardcoded in frontend.
-    # To disable guest login in production, remove 'guest' from providers array and rebuild the image.
-    # Reference: https://backstage.io/docs/auth/guest/provider/
     guest:
       dangerouslyAllowOutsideDevelopment: true
-    # Keycloak OIDC authentication
     oidc:
       development:
         clientId: ${KEYCLOAK_CLIENT_ID}
         clientSecret: ${KEYCLOAK_CLIENT_SECRET}
         metadataUrl: ${KEYCLOAK_METADATA_URL}
-        # Example: https://keycloak.example.com/realms/your-realm/.well-known/openid-configuration
         prompt: auto
         signIn:
           resolvers:
-            # Allow sign-in even without matching User entity in catalog
             - resolver: emailLocalPartMatchingUserEntityName
               dangerouslyAllowSignInWithoutUserInCatalog: true
 
-# ------------------------------------------------------------------------------
-# Scaffolder Configuration
-# ------------------------------------------------------------------------------
 scaffolder:
-  # Use hosts from integrations.gitlab as default allowedHosts for RepoUrlPicker
   defaultScmIntegrations: true
 
-# ------------------------------------------------------------------------------
-# TechDocs Configuration
-# ------------------------------------------------------------------------------
 techdocs:
   builder: 'local'
   generator:
@@ -180,15 +116,16 @@ techdocs:
   publisher:
     type: 'local'
 
-# ------------------------------------------------------------------------------
-# Proxy Configuration (optional)
-# ------------------------------------------------------------------------------
+gitlab:
+  defaultCodeOwnersPath: CODEOWNERS
+  defaultReadmePath: README.md
+  allowedKinds:
+    - Component
+    - Resource
+
 proxy:
   endpoints: {}
 
-# ------------------------------------------------------------------------------
-# Search Configuration
-# ------------------------------------------------------------------------------
 search:
   collators:
     catalog:

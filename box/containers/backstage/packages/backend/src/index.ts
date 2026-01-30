@@ -4,6 +4,7 @@
  * This backend includes:
  * - GitLab catalog discovery (auto-discovers catalog-info.yaml files)
  * - GitLab org discovery (discovers users/groups from GitLab)
+ * - GitLab CI/CD plugin (pipelines, MRs, releases)
  * - TechDocs for documentation
  * - Search functionality
  * - Scaffolder for templates
@@ -13,6 +14,10 @@
  */
 
 import { createBackend } from '@backstage/backend-defaults';
+import {
+  gitlabPlugin,
+  catalogPluginGitlabFillerProcessorModule,
+} from '@immobiliarelabs/backstage-plugin-gitlab-backend';
 
 const backend = createBackend();
 
@@ -37,6 +42,15 @@ backend.add(import('@backstage/plugin-catalog-backend-module-scaffolder-entity-m
 if (!disableGitlab) {
   backend.add(import('@backstage/plugin-catalog-backend-module-gitlab'));
   backend.add(import('@backstage/plugin-catalog-backend-module-gitlab-org'));
+}
+
+// GitLab CI/CD plugin - pipelines, MRs, releases, etc.
+// Provides API endpoints for the frontend GitLab plugin
+if (!disableGitlab) {
+  backend.add(gitlabPlugin);
+  // Auto-fills gitlab.com/project-id and gitlab.com/project-slug annotations
+  // for entities discovered from GitLab
+  backend.add(catalogPluginGitlabFillerProcessorModule);
 }
 
 // Scaffolder for creating new components from templates

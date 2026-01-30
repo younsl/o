@@ -1,5 +1,5 @@
 import React from 'react';
-import { Button, Grid } from '@material-ui/core';
+import { Grid } from '@material-ui/core';
 import {
   EntityApiDefinitionCard,
   EntityConsumedApisCard,
@@ -34,6 +34,11 @@ import {
   EntityTechdocsContent,
   isTechDocsAvailable,
 } from '@backstage/plugin-techdocs';
+import {
+  isGitlabAvailable,
+  EntityGitlabContent,
+} from '@immobiliarelabs/backstage-plugin-gitlab';
+import { EntityGitlabReadmeCardWithStatus } from './EntityGitlabReadmeCardWithStatus';
 
 const techdocsContent = (
   <EntityTechdocsContent>
@@ -80,6 +85,13 @@ const overviewContent = (
     <Grid item md={6} xs={12}>
       <EntityHasSubcomponentsCard variant="gridItem" />
     </Grid>
+    <EntitySwitch>
+      <EntitySwitch.Case if={isGitlabAvailable}>
+        <Grid item xs={12}>
+          <EntityGitlabReadmeCardWithStatus />
+        </Grid>
+      </EntitySwitch.Case>
+    </EntitySwitch>
   </Grid>
 );
 
@@ -114,6 +126,10 @@ const serviceEntityPage = (
     <EntityLayout.Route if={isTechDocsAvailable} path="/docs" title="Docs">
       {techdocsContent}
     </EntityLayout.Route>
+
+    <EntityLayout.Route if={isGitlabAvailable} path="/gitlab" title="GitLab">
+      <EntityGitlabContent />
+    </EntityLayout.Route>
   </EntityLayout>
 );
 
@@ -137,6 +153,10 @@ const websiteEntityPage = (
     <EntityLayout.Route if={isTechDocsAvailable} path="/docs" title="Docs">
       {techdocsContent}
     </EntityLayout.Route>
+
+    <EntityLayout.Route if={isGitlabAvailable} path="/gitlab" title="GitLab">
+      <EntityGitlabContent />
+    </EntityLayout.Route>
   </EntityLayout>
 );
 
@@ -148,6 +168,10 @@ const defaultEntityPage = (
 
     <EntityLayout.Route if={isTechDocsAvailable} path="/docs" title="Docs">
       {techdocsContent}
+    </EntityLayout.Route>
+
+    <EntityLayout.Route if={isGitlabAvailable} path="/gitlab" title="GitLab">
+      <EntityGitlabContent />
     </EntityLayout.Route>
   </EntityLayout>
 );
