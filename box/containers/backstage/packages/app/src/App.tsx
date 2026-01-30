@@ -32,6 +32,7 @@ import { searchPage } from './components/search/SearchPage';
 import { Root } from './components/Root';
 import { CreatePage } from './components/create/CreatePage';
 import { HomePage } from './components/home/HomePage';
+import { PlatformsPage } from './components/platforms';
 
 import {
   AlertDisplay,
@@ -106,6 +107,7 @@ const app = createApp({
 const routes = (
   <FlatRoutes>
     <Route path="/" element={<HomePage />} />
+    <Route path="/platforms" element={<PlatformsPage />} />
     <Route path="/catalog" element={<CatalogIndexPage />} />
     <Route
       path="/catalog/:namespace/:kind/:name"

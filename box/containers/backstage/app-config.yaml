@@ -15,6 +15,22 @@ app:
   # Frontend-accessible GitLab configuration
   gitlab:
     host: ${GITLAB_HOST}
+  # Internal platform services for developers
+  # Override in app-config.local.yaml or via Helm chart values
+  # Example configuration (customize URLs in app-config.local.yaml):
+  platforms:
+    - name: Grafana
+      category: Observability
+      description: Metrics visualization and dashboards
+      url: https://grafana.example.com
+      logo: https://cdn.jsdelivr.net/gh/grafana/grafana@main/public/img/grafana_icon.svg
+      tags: shared
+    - name: ArgoCD
+      category: CI/CD
+      description: GitOps continuous delivery
+      url: https://argocd.example.com
+      logo: https://argo-cd.readthedocs.io/en/stable/assets/logo.png
+      tags: shared
 
 organization:
   name: DevOps Portal

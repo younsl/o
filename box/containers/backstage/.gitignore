@@ -15,6 +15,9 @@ packages/*/dist/
 .env
 .env.local
 
+# Local config overrides (contains real URLs/credentials)
+app-config.local.yaml
+
 # IDE
 .idea/
 .vscode/

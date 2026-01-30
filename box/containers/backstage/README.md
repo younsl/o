@@ -10,6 +10,7 @@ Custom Backstage image with GitLab Auto Discovery, Keycloak OIDC, and API Docs p
 | Feature | Plugin | Native | Description |
 |---------|--------|:------:|-------------|
 | Home Dashboard | `plugin-home` | Yes | Customizable home page with widgets |
+| Platforms | - | No | Internal platform services link cards with search and tag filtering |
 | GitLab Auto Discovery | `plugin-catalog-backend-module-gitlab` | Yes | Auto-discover `catalog-info.yaml` from GitLab repos |
 | GitLab Org Sync | `plugin-catalog-backend-module-gitlab-org` | Yes | Sync GitLab groups/users to Backstage |
 | OIDC Authentication | `plugin-auth-backend-module-oidc-provider` | Yes | Keycloak/OIDC SSO authentication |
@@ -114,6 +115,34 @@ backstage/
 ├── Dockerfile
 └── Makefile
 ```
+
+## Platforms
+
+Internal platform services page for developers to discover tools and services.
+
+**Features:**
+- Card-based UI with platform logos
+- Category grouping (Observability, CI/CD, Security, Infrastructure, Data, Registry, Documentation)
+- Text search across name, description, category
+- Tag-based filtering (multi-select)
+- Clickable cards open in new tab
+
+**Configuration:**
+
+Platforms are configured via `app-config.yaml` or Helm values:
+
+```yaml
+app:
+  platforms:
+    - name: Grafana
+      category: Observability
+      description: 메트릭 시각화 및 대시보드
+      url: https://grafana.example.com
+      logo: https://cdn.jsdelivr.net/gh/grafana/grafana@main/public/img/grafana_icon.svg
+      tags: shared,kubernetes
+```
+
+For local development, override in `app-config.local.yaml` (gitignored).
 
 ## OpenAPI Registry
 
