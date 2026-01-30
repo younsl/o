@@ -122,6 +122,10 @@ RUN tar xzf bundle.tar.gz && rm bundle.tar.gz
 # Copy frontend build (served by plugin-app-backend)
 COPY --from=build --chown=node:node /app/packages/app/dist ./packages/app/dist
 
+# Copy config schema for Backstage config-loader
+# Required: package.json references configSchema: "config.d.ts"
+COPY --from=build --chown=node:node /app/packages/app/config.d.ts ./packages/app/
+
 # Copy templates for scaffolder
 COPY --from=build --chown=node:node /app/templates ./templates
 
