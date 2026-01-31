@@ -4,7 +4,7 @@
 //! - Cluster Insights analysis
 //! - Sequential control plane upgrades
 //! - Add-on compatibility checks
-//! - Node group rolling updates
+//! - Managed node group rolling updates
 
 mod config;
 mod eks;
@@ -14,8 +14,8 @@ mod output;
 use anyhow::Result;
 use clap::Parser;
 use colored::Colorize;
-use dialoguer::{Confirm, Input, Select};
-use tracing::info;
+use dialoguer::{Confirm, Input, Select, theme::ColorfulTheme};
+use tracing::{debug, error};
 
 use config::{Args, Config};
 use eks::client::EksClient;
@@ -25,22 +25,33 @@ use error::KupError;
 use output::print_insights_summary;
 
 #[tokio::main]
-async fn main() -> Result<()> {
+async fn main() {
     let args = Args::parse();
     let config = Config::from_args(args);
 
     // Initialize logging
-    init_tracing(&config.log_level)?;
+    if let Err(e) = init_tracing(&config.log_level) {
+        eprintln!("Failed to initialize logging: {}", e);
+        std::process::exit(1);
+    }
 
-    info!("Starting kup - EKS Upgrade Support Tool");
+    debug!("Starting kup - EKS Upgrade Support Tool");
 
+    if let Err(e) = run(&config).await {
+        error!("{}", e);
+        std::process::exit(1);
+    }
+}
+
+/// Main application logic.
+async fn run(config: &Config) -> Result<()> {
     // Create EKS client
     let client = EksClient::new(config.profile.as_deref(), config.region.as_deref()).await?;
 
     if config.is_interactive() {
-        run_interactive(&client, &config).await
+        run_interactive(&client, config).await
     } else {
-        run_noninteractive(&client, &config).await
+        run_noninteractive(&client, config).await
     }
 }
 
@@ -63,11 +74,30 @@ fn init_tracing(log_level: &str) -> Result<()> {
     Ok(())
 }
 
+/// Interactive mode step names.
+const STEPS: &[&str] = &[
+    "Select Cluster",
+    "Check Insights",
+    "Select Target Version",
+    "Review Plan",
+    "Execute Upgrade",
+];
+
+/// Prints a step header in "Phase [current/total]: name" format.
+fn print_step(index: usize) {
+    println!();
+    println!(
+        "{}",
+        format!("Phase [{}/{}]: {}", index + 1, STEPS.len(), STEPS[index])
+            .cyan()
+            .bold()
+    );
+}
+
 /// Run in interactive mode.
 async fn run_interactive(client: &EksClient, config: &Config) -> Result<()> {
     // Step 1: Select Cluster
-    println!();
-    println!("{}", "=== Step 1: Select Cluster ===".cyan().bold());
+    print_step(0);
 
     let clusters = client.list_clusters().await?;
     if clusters.is_empty() {
@@ -79,18 +109,17 @@ async fn run_interactive(client: &EksClient, config: &Config) -> Result<()> {
         .map(|c| format!("{} ({}) - {}", c.name, c.version, c.region))
         .collect();
 
-    let cluster_idx = Select::new()
+    let cluster_idx = Select::with_theme(&ColorfulTheme::default())
         .with_prompt(format!("Select EKS cluster ({} found)", clusters.len()))
         .items(&cluster_items)
         .default(0)
         .interact()?;
 
     let selected_cluster = &clusters[cluster_idx];
-    info!("Selected cluster: {}", selected_cluster.name);
+    debug!("Selected cluster: {}", selected_cluster.name);
 
     // Step 2: Check Insights
-    println!();
-    println!("{}", "=== Step 2: Check Insights ===".cyan().bold());
+    print_step(1);
     println!(
         "Fetching Cluster Insights for {}...",
         selected_cluster.name.bold()
@@ -119,8 +148,7 @@ async fn run_interactive(client: &EksClient, config: &Config) -> Result<()> {
     }
 
     // Step 3: Select Target Version
-    println!();
-    println!("{}", "=== Step 3: Select Target Version ===".cyan().bold());
+    print_step(2);
 
     let available_versions = client
         .get_available_versions(&selected_cluster.name)
@@ -140,7 +168,10 @@ async fn run_interactive(client: &EksClient, config: &Config) -> Result<()> {
     }));
 
     println!("Select target version ({}):", selected_cluster.name);
-    let version_idx = Select::new().items(&version_items).default(0).interact()?;
+    let version_idx = Select::with_theme(&ColorfulTheme::default())
+        .items(&version_items)
+        .default(0)
+        .interact()?;
 
     // First option (index 0) is current version (sync mode)
     let (target_version, skip_control_plane) = if version_idx == 0 {
@@ -148,14 +179,13 @@ async fn run_interactive(client: &EksClient, config: &Config) -> Result<()> {
     } else {
         (available_versions[version_idx - 1].clone(), false)
     };
-    info!(
+    debug!(
         "Selected target version: {} (skip_control_plane: {})",
         target_version, skip_control_plane
     );
 
     // Step 4: Review Plan
-    println!();
-    println!("{}", "=== Step 4: Review Plan ===".cyan().bold());
+    print_step(3);
 
     let plan = upgrade::create_upgrade_plan(
         client,
@@ -173,7 +203,17 @@ async fn run_interactive(client: &EksClient, config: &Config) -> Result<()> {
         return Ok(());
     }
 
-    println!();
+    // Skip confirmation if nothing to upgrade
+    if plan.is_empty() {
+        println!(
+            "{}",
+            "All components are already at target version. Nothing to upgrade."
+                .green()
+                .bold()
+        );
+        return Ok(());
+    }
+
     println!(
         "{}",
         "This will upgrade your EKS cluster. This action cannot be undone."
@@ -193,8 +233,8 @@ async fn run_interactive(client: &EksClient, config: &Config) -> Result<()> {
         return Err(KupError::UserCancelled.into());
     }
 
-    println!();
-    println!("{}", "=== Step 5: Execute Upgrade ===".cyan().bold());
+    // Step 5: Execute Upgrade
+    print_step(4);
 
     let upgrade_config = UpgradeConfig {
         skip_addons: config.skip_addons,
@@ -221,7 +261,7 @@ async fn run_noninteractive(client: &EksClient, config: &Config) -> Result<()> {
         .as_ref()
         .ok_or_else(|| anyhow::anyhow!("--target is required in non-interactive mode"))?;
 
-    info!(
+    debug!(
         "Non-interactive mode: upgrading {} to {}",
         cluster_name, target_version
     );
@@ -259,6 +299,17 @@ async fn run_noninteractive(client: &EksClient, config: &Config) -> Result<()> {
             .await?;
 
     upgrade::print_upgrade_plan(&plan, false);
+
+    // Skip execution if nothing to upgrade
+    if plan.is_empty() {
+        println!(
+            "{}",
+            "All components are already at target version. Nothing to upgrade."
+                .green()
+                .bold()
+        );
+        return Ok(());
+    }
 
     if !config.yes && !config.dry_run {
         println!("{}", "Use --yes to proceed without confirmation.".yellow());

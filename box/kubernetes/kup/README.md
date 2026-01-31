@@ -1,6 +1,8 @@
 # kup
 
-**K**8s **Up**grade - Interactive EKS cluster upgrade CLI tool. Analyzes cluster insights, plans sequential control plane upgrades, and updates add-ons and managed node groups. Inspired by [clowdhaus/eksup](https://github.com/clowdhaus/eksup).
+<img src="https://cdn.jsdelivr.net/gh/devicons/devicon/icons/kubernetes/kubernetes-plain.svg" width="40" height="40"/>
+
+[**K**ubernetes](https://github.com/kubernetes/kubernetes) **Up**grade - Interactive EKS cluster upgrade CLI tool. Analyzes cluster insights, plans sequential control plane upgrades, and updates add-ons and managed node groups. Inspired by [clowdhaus/eksup](https://github.com/clowdhaus/eksup).
 
 ## Features
 

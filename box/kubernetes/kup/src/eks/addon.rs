@@ -54,7 +54,7 @@ pub async fn list_addons(client: &Client, cluster_name: &str) -> Result<Vec<Addo
         .cluster_name(cluster_name)
         .send()
         .await
-        .map_err(KupError::aws)?;
+        .map_err(|e| KupError::aws(module_path!(), e))?;
 
     let mut addons = Vec::new();
 
@@ -82,7 +82,7 @@ pub async fn describe_addon(
         .addon_name(addon_name)
         .send()
         .await
-        .map_err(KupError::aws)?;
+        .map_err(|e| KupError::aws(module_path!(), e))?;
 
     if let Some(addon) = response.addon() {
         let info = AddonInfo {
@@ -112,7 +112,7 @@ pub async fn get_compatible_versions(
         .kubernetes_version(k8s_version)
         .send()
         .await
-        .map_err(KupError::aws)?;
+        .map_err(|e| KupError::aws(module_path!(), e))?;
 
     let mut versions = Vec::new();
 
@@ -170,7 +170,7 @@ pub async fn update_addon(
         .resolve_conflicts(aws_sdk_eks::types::ResolveConflicts::Overwrite)
         .send()
         .await
-        .map_err(KupError::aws)?;
+        .map_err(|e| KupError::aws(module_path!(), e))?;
 
     let update_id = response
         .update()
@@ -318,7 +318,7 @@ async fn wait_for_addon_update_with_progress(
             .addon_name(&addon_name)
             .send()
             .await
-            .map_err(KupError::aws)?;
+            .map_err(|e| KupError::aws(module_path!(), e))?;
 
         if let Some(addon) = response.addon() {
             let status = addon.status().map(|s| s.as_str()).unwrap_or("Unknown");

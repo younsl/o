@@ -1,8 +1,9 @@
 //! AWS EKS SDK client wrapper.
 
 use anyhow::Result;
+use aws_sdk_autoscaling::Client as AsgClient;
 use aws_sdk_eks::Client;
-use tracing::{debug, info};
+use tracing::debug;
 
 use crate::error::KupError;
 
@@ -24,6 +25,7 @@ impl std::fmt::Display for ClusterInfo {
 #[derive(Clone)]
 pub struct EksClient {
     client: Client,
+    asg_client: AsgClient,
     region: String,
 }
 
@@ -49,18 +51,28 @@ impl EksClient {
             .unwrap_or_else(|| "unknown".to_string());
 
         let client = Client::new(&config);
+        let asg_client = AsgClient::new(&config);
 
-        Ok(Self { client, region })
+        Ok(Self {
+            client,
+            asg_client,
+            region,
+        })
     }
 
-    /// Get the underlying AWS SDK client.
+    /// Get the underlying AWS SDK EKS client.
     pub fn inner(&self) -> &Client {
         &self.client
     }
 
+    /// Get the underlying AWS SDK Auto Scaling client.
+    pub fn asg(&self) -> &AsgClient {
+        &self.asg_client
+    }
+
     /// List all EKS clusters in the region.
     pub async fn list_clusters(&self) -> Result<Vec<ClusterInfo>> {
-        info!("Listing EKS clusters in region: {}", self.region);
+        debug!("Listing EKS clusters in region: {}", self.region);
 
         let mut clusters = Vec::new();
         let mut next_token: Option<String> = None;
@@ -72,7 +84,10 @@ impl EksClient {
                 request = request.next_token(token);
             }
 
-            let response = request.send().await.map_err(KupError::aws)?;
+            let response = request
+                .send()
+                .await
+                .map_err(|e| KupError::aws(module_path!(), e))?;
 
             for cluster_name in response.clusters() {
                 if let Some(info) = self.describe_cluster(cluster_name).await? {
@@ -100,7 +115,7 @@ impl EksClient {
             .name(cluster_name)
             .send()
             .await
-            .map_err(KupError::aws)?;
+            .map_err(|e| KupError::aws(module_path!(), e))?;
 
         if let Some(cluster) = response.cluster() {
             let info = ClusterInfo {
@@ -120,7 +135,7 @@ impl EksClient {
         cluster_name: &str,
         target_version: &str,
     ) -> Result<String> {
-        info!(
+        debug!(
             "Updating cluster {} control plane to version {}",
             cluster_name, target_version
         );
@@ -132,7 +147,7 @@ impl EksClient {
             .version(target_version)
             .send()
             .await
-            .map_err(KupError::aws)?;
+            .map_err(|e| KupError::aws(module_path!(), e))?;
 
         let update_id = response
             .update()
@@ -140,7 +155,7 @@ impl EksClient {
             .map(|s| s.to_string())
             .unwrap_or_default();
 
-        info!("Control plane update initiated: {}", update_id);
+        debug!("Control plane update initiated: {}", update_id);
         Ok(update_id)
     }
 
@@ -177,7 +192,7 @@ impl EksClient {
                 .update_id(update_id)
                 .send()
                 .await
-                .map_err(KupError::aws)?;
+                .map_err(|e| KupError::aws(module_path!(), e))?;
 
             if let Some(update) = response.update() {
                 let status = update.status().map(|s| s.as_str()).unwrap_or("Unknown");
@@ -185,7 +200,7 @@ impl EksClient {
 
                 match status {
                     "Successful" => {
-                        info!("Cluster update completed successfully");
+                        debug!("Cluster update completed successfully");
                         return Ok(());
                     }
                     "Failed" | "Cancelled" => {

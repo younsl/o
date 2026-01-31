@@ -9,7 +9,7 @@ const BUILD_DATE: &str = env!("BUILD_DATE");
 /// EKS cluster upgrade support CLI tool.
 ///
 /// Analyzes API deprecations, recommends upgrade paths, and executes
-/// sequential control plane upgrades with add-on and node group updates.
+/// sequential control plane upgrades with add-on and managed node group updates.
 #[derive(Parser, Debug, Clone)]
 #[command(name = "ekup")]
 #[command(about = "EKS cluster upgrade support CLI tool")]
@@ -46,7 +46,7 @@ pub struct Args {
     #[arg(long, default_value = "false")]
     pub skip_addons: bool,
 
-    /// Skip node group upgrades
+    /// Skip managed node group upgrades
     #[arg(long, default_value = "false")]
     pub skip_nodegroups: bool,
 
@@ -55,7 +55,7 @@ pub struct Args {
     pub addon_versions: Vec<String>,
 
     /// Log level (trace, debug, info, warn, error)
-    #[arg(long, default_value = "info", env = "EKUP_LOG_LEVEL")]
+    #[arg(long, default_value = "warn", env = "EKUP_LOG_LEVEL")]
     pub log_level: String,
 }
 
@@ -129,7 +129,7 @@ mod tests {
             skip_addons: false,
             skip_nodegroups: false,
             addon_versions: addon_versions.iter().map(|s| s.to_string()).collect(),
-            log_level: "info".to_string(),
+            log_level: "warn".to_string(),
         }
     }
 

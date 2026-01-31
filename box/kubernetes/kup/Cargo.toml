@@ -13,6 +13,7 @@ readme = "README.md"
 # AWS SDK
 aws-config = "1.8"
 aws-sdk-eks = "1.97"
+aws-sdk-autoscaling = "1.97"
 
 # CLI and interaction
 clap = { version = "4.5", features = ["derive", "env"] }

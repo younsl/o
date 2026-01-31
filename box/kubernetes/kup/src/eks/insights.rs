@@ -51,7 +51,7 @@ pub async fn list_insights(client: &Client, cluster_name: &str) -> Result<Insigh
         .cluster_name(cluster_name)
         .send()
         .await
-        .map_err(KupError::aws)?;
+        .map_err(|e| KupError::aws(module_path!(), e))?;
 
     let mut findings = Vec::new();
     let mut critical_count = 0;
@@ -109,7 +109,7 @@ pub async fn describe_insight(
         .id(insight_id)
         .send()
         .await
-        .map_err(KupError::aws)?;
+        .map_err(|e| KupError::aws(module_path!(), e))?;
 
     if let Some(insight) = response.insight() {
         let resources: Vec<InsightResource> = insight

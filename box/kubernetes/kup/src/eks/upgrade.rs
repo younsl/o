@@ -9,7 +9,7 @@ use tracing::info;
 
 use super::addon::{self, AddonInfo, AddonUpgrade};
 use super::client::{EksClient, calculate_upgrade_path};
-use super::nodegroup::{self, NodeGroupInfo};
+use super::nodegroup::{self, NodeGroupInfo, format_rolling_strategy};
 use super::types::{Skipped, VersionedResource};
 
 // Re-export for backward compatibility
@@ -27,6 +27,15 @@ pub struct UpgradePlan {
     pub skipped_addons: Vec<SkippedAddon>,
     pub nodegroup_upgrades: Vec<NodeGroupInfo>,
     pub skipped_nodegroups: Vec<SkippedNodeGroup>,
+}
+
+impl UpgradePlan {
+    /// Returns true if there's nothing to upgrade (all components already at target version).
+    pub fn is_empty(&self) -> bool {
+        self.upgrade_path.is_empty()
+            && self.addon_upgrades.is_empty()
+            && self.nodegroup_upgrades.is_empty()
+    }
 }
 
 /// Configuration for upgrade execution.
@@ -51,7 +60,7 @@ impl Default for UpgradeConfig {
             control_plane_timeout_minutes: 30,
             addon_timeout_minutes: 15,
             nodegroup_timeout_minutes: 60,
-            check_interval_seconds: 30,
+            check_interval_seconds: 10,
         }
     }
 }
@@ -160,13 +169,37 @@ fn print_skipped<T: VersionedResource>(skipped: &[Skipped<T>], dimmed: bool) {
     }
 }
 
+/// Print skipped managed node groups with rolling strategy info.
+fn print_skipped_nodegroups(skipped: &[SkippedNodeGroup], dimmed: bool) {
+    for item in skipped {
+        let rolling_strategy = format_rolling_strategy(&item.info);
+        if dimmed {
+            println!(
+                "  {}: {} {} {}",
+                item.info.name.dimmed(),
+                item.info.current_version().dimmed(),
+                format!("({})", item.reason).dimmed(),
+                format!("[{}]", rolling_strategy).dimmed()
+            );
+        } else {
+            println!(
+                "  {} {}: {} ({}) [{}]",
+                "→".cyan(),
+                item.info.name,
+                item.info.current_version(),
+                item.reason,
+                rolling_strategy
+            );
+        }
+    }
+}
+
 // ============================================================================
 // Print Upgrade Plan
 // ============================================================================
 
 /// Print the upgrade plan to console.
 pub fn print_upgrade_plan(plan: &UpgradePlan, skip_control_plane: bool) {
-    println!();
     println!(
         "{}",
         format!(
@@ -178,7 +211,6 @@ pub fn print_upgrade_plan(plan: &UpgradePlan, skip_control_plane: bool) {
     println!("{}", "=".repeat(60));
 
     // Phase 1: Control Plane
-    println!();
     if skip_control_plane {
         println!(
             "{}",
@@ -205,7 +237,12 @@ pub fn print_upgrade_plan(plan: &UpgradePlan, skip_control_plane: bool) {
     // Phase 2: Add-ons
     println!();
     let addon_skipped = plan.addon_upgrades.is_empty();
-    print_phase_header(2, "Add-on Upgrade [sequential]", &plan.target_version, addon_skipped);
+    print_phase_header(
+        2,
+        "Add-on Upgrade [sequential]",
+        &plan.target_version,
+        addon_skipped,
+    );
 
     for (addon, target_version) in &plan.addon_upgrades {
         let label = if target_version.contains("eksbuild") {
@@ -220,20 +257,28 @@ pub fn print_upgrade_plan(plan: &UpgradePlan, skip_control_plane: bool) {
     }
     print_skipped(&plan.skipped_addons, true);
 
-    // Phase 3: Node Groups
+    // Phase 3: Managed Node Groups
     println!();
     let ng_skipped = plan.nodegroup_upgrades.is_empty();
-    print_phase_header(3, "Node Group Upgrade", &plan.target_version, ng_skipped);
+    print_phase_header(
+        3,
+        "Managed Node Group Upgrade",
+        &plan.target_version,
+        ng_skipped,
+    );
 
     for ng in &plan.nodegroup_upgrades {
+        let rolling_strategy = format_rolling_strategy(ng);
         println!(
-            "  {}: {} -> {} (~20 min)",
+            "  {}: {} -> {} ({} nodes, {})",
             ng.name,
             ng.current_version(),
-            plan.target_version
+            plan.target_version,
+            ng.desired_size,
+            rolling_strategy
         );
     }
-    print_skipped(&plan.skipped_nodegroups, true);
+    print_skipped_nodegroups(&plan.skipped_nodegroups, true);
 
     // Estimated time
     let estimated_time = calculate_estimated_time(plan, skip_control_plane);
@@ -270,7 +315,7 @@ pub async fn execute_upgrade(
     // Phase 2: Add-ons
     execute_addon_phase(client, plan, config).await?;
 
-    // Phase 3: Node Groups
+    // Phase 3: Managed Node Groups
     execute_nodegroup_phase(client, plan, config).await?;
 
     // Summary
@@ -359,7 +404,12 @@ async fn execute_addon_phase(
     println!();
 
     let should_upgrade = !config.skip_addons && !plan.addon_upgrades.is_empty();
-    print_exec_phase_header(2, "Add-on Upgrade [sequential]", &plan.target_version, !should_upgrade);
+    print_exec_phase_header(
+        2,
+        "Add-on Upgrade [sequential]",
+        &plan.target_version,
+        !should_upgrade,
+    );
 
     if should_upgrade {
         for (addon, target_version) in &plan.addon_upgrades {
@@ -396,16 +446,30 @@ async fn execute_nodegroup_phase(
     println!();
 
     let should_upgrade = !config.skip_nodegroups && !plan.nodegroup_upgrades.is_empty();
-    print_exec_phase_header(3, "Node Group Rolling Update", &plan.target_version, !should_upgrade);
+    print_exec_phase_header(
+        3,
+        "Managed Node Group Rolling Update",
+        &plan.target_version,
+        !should_upgrade,
+    );
 
     if should_upgrade {
         for ng in &plan.nodegroup_upgrades {
-            println!("  {}: {} -> {}", ng.name, ng.current_version(), plan.target_version);
+            let rolling_strategy = format_rolling_strategy(ng);
+            println!(
+                "  {}: {} -> {} ({} nodes, {})",
+                ng.name,
+                ng.current_version(),
+                plan.target_version,
+                ng.desired_size,
+                rolling_strategy
+            );
         }
         println!();
 
         nodegroup::execute_nodegroup_upgrades(
             client.inner(),
+            client.asg(),
             &plan.cluster_name,
             &plan.nodegroup_upgrades,
             &plan.target_version,
@@ -413,10 +477,8 @@ async fn execute_nodegroup_phase(
             config.check_interval_seconds,
         )
         .await?;
-
-        println!("  {} Node groups upgraded!", "✓".green());
     } else {
-        print_skipped(&plan.skipped_nodegroups, false);
+        print_skipped_nodegroups(&plan.skipped_nodegroups, false);
     }
 
     Ok(())
@@ -475,7 +537,7 @@ mod tests {
         assert_eq!(config.control_plane_timeout_minutes, 30);
         assert_eq!(config.addon_timeout_minutes, 15);
         assert_eq!(config.nodegroup_timeout_minutes, 60);
-        assert_eq!(config.check_interval_seconds, 30);
+        assert_eq!(config.check_interval_seconds, 10);
     }
 
     #[test]
@@ -548,10 +610,56 @@ mod tests {
         let ng = NodeGroupInfo {
             name: "ng-system".to_string(),
             version: Some("1.32".to_string()),
+            desired_size: 3,
+            max_unavailable: None,
+            max_unavailable_percentage: Some(25),
+            asg_name: None,
         };
         let skipped = SkippedNodeGroup::new(ng, "already at target version");
 
         assert_eq!(skipped.info.name(), "ng-system");
         assert_eq!(skipped.reason, "already at target version");
+    }
+
+    #[test]
+    fn test_format_rolling_strategy_percentage() {
+        let ng = NodeGroupInfo {
+            name: "ng-test".to_string(),
+            version: Some("1.32".to_string()),
+            desired_size: 10,
+            max_unavailable: None,
+            max_unavailable_percentage: Some(25),
+            asg_name: None,
+        };
+        let strategy = format_rolling_strategy(&ng);
+        assert_eq!(strategy, "25% = 2 at a time");
+    }
+
+    #[test]
+    fn test_format_rolling_strategy_count() {
+        let ng = NodeGroupInfo {
+            name: "ng-test".to_string(),
+            version: Some("1.32".to_string()),
+            desired_size: 10,
+            max_unavailable: Some(3),
+            max_unavailable_percentage: None,
+            asg_name: None,
+        };
+        let strategy = format_rolling_strategy(&ng);
+        assert_eq!(strategy, "3 at a time");
+    }
+
+    #[test]
+    fn test_format_rolling_strategy_default() {
+        let ng = NodeGroupInfo {
+            name: "ng-test".to_string(),
+            version: Some("1.32".to_string()),
+            desired_size: 10,
+            max_unavailable: None,
+            max_unavailable_percentage: None,
+            asg_name: None,
+        };
+        let strategy = format_rolling_strategy(&ng);
+        assert_eq!(strategy, "1 at a time (default)");
     }
 }
