@@ -1,4 +1,4 @@
-//! ekup - EKS cluster upgrade support CLI tool.
+//! kup - EKS cluster upgrade support CLI tool.
 //!
 //! Interactive tool for upgrading EKS clusters with:
 //! - Cluster Insights analysis
@@ -21,7 +21,7 @@ use config::{Args, Config};
 use eks::client::EksClient;
 use eks::insights;
 use eks::upgrade::{self, UpgradeConfig};
-use error::EkupError;
+use error::KupError;
 use output::print_insights_summary;
 
 #[tokio::main]
@@ -32,7 +32,7 @@ async fn main() -> Result<()> {
     // Initialize logging
     init_tracing(&config.log_level)?;
 
-    info!("Starting ekup - EKS Upgrade Support Tool");
+    info!("Starting kup - EKS Upgrade Support Tool");
 
     // Create EKS client
     let client = EksClient::new(config.profile.as_deref(), config.region.as_deref()).await?;
@@ -71,7 +71,7 @@ async fn run_interactive(client: &EksClient, config: &Config) -> Result<()> {
 
     let clusters = client.list_clusters().await?;
     if clusters.is_empty() {
-        return Err(EkupError::NoClustersFound.into());
+        return Err(KupError::NoClustersFound.into());
     }
 
     let cluster_items: Vec<String> = clusters
@@ -114,7 +114,7 @@ async fn run_interactive(client: &EksClient, config: &Config) -> Result<()> {
             .default(false)
             .interact()?
         {
-            return Err(EkupError::UserCancelled.into());
+            return Err(KupError::UserCancelled.into());
         }
     }
 
@@ -190,7 +190,7 @@ async fn run_interactive(client: &EksClient, config: &Config) -> Result<()> {
             "{}",
             "Upgrade cancelled. You must type 'Yes' to proceed.".red()
         );
-        return Err(EkupError::UserCancelled.into());
+        return Err(KupError::UserCancelled.into());
     }
 
     println!();
@@ -230,7 +230,7 @@ async fn run_noninteractive(client: &EksClient, config: &Config) -> Result<()> {
     let cluster = client
         .describe_cluster(cluster_name)
         .await?
-        .ok_or_else(|| EkupError::ClusterNotFound(cluster_name.clone()))?;
+        .ok_or_else(|| KupError::ClusterNotFound(cluster_name.clone()))?;
 
     println!(
         "Cluster: {} (current: {}, target: {})",
@@ -250,7 +250,7 @@ async fn run_noninteractive(client: &EksClient, config: &Config) -> Result<()> {
                 .red()
                 .bold()
         );
-        return Err(EkupError::UpgradeNotPossible("Critical blockers found".to_string()).into());
+        return Err(KupError::UpgradeNotPossible("Critical blockers found".to_string()).into());
     }
 
     // Create and execute plan

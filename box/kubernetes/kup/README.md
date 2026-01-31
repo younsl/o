@@ -1,6 +1,6 @@
-# ekup
+# kup
 
-**EK**S **Up**grade - Interactive EKS cluster upgrade CLI tool. Analyzes cluster insights, plans sequential control plane upgrades, and updates add-ons and node groups.
+**K**8s **Up**grade - Interactive EKS cluster upgrade CLI tool. Analyzes cluster insights, plans sequential control plane upgrades, and updates add-ons and node groups. Inspired by [clowdhaus/eksup](https://github.com/clowdhaus/eksup).
 
 ## Features
 
@@ -17,9 +17,9 @@
 Run interactive upgrade workflow.
 
 ```bash
-ekup                              # Interactive mode
-ekup --dry-run                    # Plan only, no execution
-ekup -c my-cluster -t 1.34 --yes  # Non-interactive mode
+kup                              # Interactive mode
+kup --dry-run                    # Plan only, no execution
+kup -c my-cluster -t 1.34 --yes  # Non-interactive mode
 ```
 
 ## Installation
@@ -28,7 +28,7 @@ Requires AWS CLI v2 and valid credentials.
 
 ```bash
 make install
-mv ~/.cargo/bin/ekup /usr/local/bin/
+mv ~/.cargo/bin/kup /usr/local/bin/
 ```
 
 ## Workflow
@@ -76,28 +76,28 @@ Common usage patterns.
 
 ```bash
 # Interactive upgrade with specific region
-ekup -r ap-northeast-2
+kup -r ap-northeast-2
 
 # Plan upgrade without execution
-ekup --dry-run
+kup --dry-run
 
 # Non-interactive upgrade for CI/CD
-ekup -c prod-cluster -t 1.34 --yes
+kup -c prod-cluster -t 1.34 --yes
 
 # Sync mode: update addons/nodegroups only (select current version)
 # Useful when control plane upgrade completed but addons/nodegroups pending
-ekup                  # Select "(current)" in Step 3
+kup                  # Select "(current)" in Step 3
 
 # Skip node group updates
-ekup --skip-nodegroups
+kup --skip-nodegroups
 
 # Specify add-on version
-ekup --addon-version kube-proxy=v1.34.0-eksbuild.1
+kup --addon-version kube-proxy=v1.34.0-eksbuild.1
 ```
 
 ## Requirements
 
-IAM permissions needed for ekup to work.
+IAM permissions needed for kup to work.
 
 **User/Role:**
 - `eks:ListClusters`
@@ -120,13 +120,13 @@ EKS upgrade limitations to be aware of.
 
 - Control plane upgrades are limited to **1 minor version at a time**
 - Example: 1.28 → 1.30 requires two steps (1.28 → 1.29 → 1.30)
-- `ekup` automates this sequential upgrade process
+- `kup` automates this sequential upgrade process
 
 ## Sync Mode
 
 When an upgrade is interrupted (e.g., control plane completed but addons/nodegroups pending), use sync mode to resume:
 
-1. Run `ekup` in interactive mode
+1. Run `kup` in interactive mode
 2. Select the cluster
 3. Choose **current version** `(current)` in Step 3
 4. Only addons and nodegroups will be upgraded to match the control plane

@@ -4,7 +4,7 @@ use anyhow::Result;
 use aws_sdk_eks::Client;
 use tracing::{debug, info};
 
-use crate::error::EkupError;
+use crate::error::KupError;
 
 /// Insight finding information.
 #[derive(Debug, Clone)]
@@ -51,7 +51,7 @@ pub async fn list_insights(client: &Client, cluster_name: &str) -> Result<Insigh
         .cluster_name(cluster_name)
         .send()
         .await
-        .map_err(EkupError::aws)?;
+        .map_err(KupError::aws)?;
 
     let mut findings = Vec::new();
     let mut critical_count = 0;
@@ -109,7 +109,7 @@ pub async fn describe_insight(
         .id(insight_id)
         .send()
         .await
-        .map_err(EkupError::aws)?;
+        .map_err(KupError::aws)?;
 
     if let Some(insight) = response.insight() {
         let resources: Vec<InsightResource> = insight

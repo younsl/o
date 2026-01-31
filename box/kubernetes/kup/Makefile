@@ -1,7 +1,7 @@
 .PHONY: build release run dev test fmt lint clean install install-local help deps
 
 # Binary name
-BINARY_NAME := ekup
+BINARY_NAME := kup
 
 # Setup Rust toolchain path
 RUSTUP := $(shell command -v rustup 2>/dev/null || echo "/opt/homebrew/bin/rustup")
@@ -22,12 +22,12 @@ release:
 
 ## Build and run in interactive mode
 run:
-	@echo "Running ekup in interactive mode..."
+	@echo "Running kup in interactive mode..."
 	@PATH="$(TOOLCHAIN_PATH):$$PATH" cargo run
 
 ## Run with debug logging
 dev:
-	@echo "Running ekup with debug logging..."
+	@echo "Running kup with debug logging..."
 	@PATH="$(TOOLCHAIN_PATH):$$PATH" cargo run -- --log-level debug
 
 ## Run tests

@@ -4,7 +4,7 @@ use anyhow::Result;
 use aws_sdk_eks::Client;
 use tracing::{debug, info};
 
-use crate::error::EkupError;
+use crate::error::KupError;
 
 /// Cluster information.
 #[derive(Debug, Clone)]
@@ -72,7 +72,7 @@ impl EksClient {
                 request = request.next_token(token);
             }
 
-            let response = request.send().await.map_err(EkupError::aws)?;
+            let response = request.send().await.map_err(KupError::aws)?;
 
             for cluster_name in response.clusters() {
                 if let Some(info) = self.describe_cluster(cluster_name).await? {
@@ -100,7 +100,7 @@ impl EksClient {
             .name(cluster_name)
             .send()
             .await
-            .map_err(EkupError::aws)?;
+            .map_err(KupError::aws)?;
 
         if let Some(cluster) = response.cluster() {
             let info = ClusterInfo {
@@ -132,7 +132,7 @@ impl EksClient {
             .version(target_version)
             .send()
             .await
-            .map_err(EkupError::aws)?;
+            .map_err(KupError::aws)?;
 
         let update_id = response
             .update()
@@ -160,7 +160,7 @@ impl EksClient {
 
         loop {
             if start.elapsed() > timeout {
-                return Err(EkupError::Timeout {
+                return Err(KupError::Timeout {
                     operation: "cluster update".to_string(),
                     details: format!(
                         "Update {} did not complete within {} minutes",
@@ -177,7 +177,7 @@ impl EksClient {
                 .update_id(update_id)
                 .send()
                 .await
-                .map_err(EkupError::aws)?;
+                .map_err(KupError::aws)?;
 
             if let Some(update) = response.update() {
                 let status = update.status().map(|s| s.as_str()).unwrap_or("Unknown");
@@ -194,7 +194,7 @@ impl EksClient {
                             .iter()
                             .filter_map(|e| e.error_message().map(|s| s.to_string()))
                             .collect();
-                        return Err(EkupError::UpgradeNotPossible(format!(
+                        return Err(KupError::UpgradeNotPossible(format!(
                             "Update {}: {}",
                             status,
                             errors.join(", ")
@@ -220,7 +220,7 @@ impl EksClient {
         let cluster = self
             .describe_cluster(cluster_name)
             .await?
-            .ok_or_else(|| EkupError::ClusterNotFound(cluster_name.to_string()))?;
+            .ok_or_else(|| KupError::ClusterNotFound(cluster_name.to_string()))?;
 
         let current_version = parse_k8s_version(&cluster.version)?;
         let mut available = Vec::new();
@@ -242,15 +242,15 @@ impl EksClient {
 pub fn parse_k8s_version(version: &str) -> Result<(u32, u32)> {
     let parts: Vec<&str> = version.split('.').collect();
     if parts.len() < 2 {
-        return Err(EkupError::InvalidVersion(version.to_string()).into());
+        return Err(KupError::InvalidVersion(version.to_string()).into());
     }
 
     let major: u32 = parts[0]
         .parse()
-        .map_err(|_| EkupError::InvalidVersion(version.to_string()))?;
+        .map_err(|_| KupError::InvalidVersion(version.to_string()))?;
     let minor: u32 = parts[1]
         .parse()
-        .map_err(|_| EkupError::InvalidVersion(version.to_string()))?;
+        .map_err(|_| KupError::InvalidVersion(version.to_string()))?;
 
     Ok((major, minor))
 }
@@ -263,7 +263,7 @@ pub fn calculate_upgrade_path(current: &str, target: &str) -> Result<Vec<String>
     let (target_major, target_minor) = parse_k8s_version(target)?;
 
     if curr_major != target_major {
-        return Err(EkupError::UpgradeNotPossible(
+        return Err(KupError::UpgradeNotPossible(
             "Cross-major version upgrades are not supported".to_string(),
         )
         .into());
@@ -276,7 +276,7 @@ pub fn calculate_upgrade_path(current: &str, target: &str) -> Result<Vec<String>
 
     // Downgrade not supported
     if target_minor < curr_minor {
-        return Err(EkupError::UpgradeNotPossible(format!(
+        return Err(KupError::UpgradeNotPossible(format!(
             "Target version {} is lower than current version {} (downgrade not supported)",
             target, current
         ))

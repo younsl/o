@@ -72,7 +72,7 @@ pub async fn create_upgrade_plan(
     let cluster = client
         .describe_cluster(cluster_name)
         .await?
-        .ok_or_else(|| crate::error::EkupError::ClusterNotFound(cluster_name.to_string()))?;
+        .ok_or_else(|| crate::error::KupError::ClusterNotFound(cluster_name.to_string()))?;
 
     // Calculate upgrade path
     let upgrade_path = calculate_upgrade_path(&cluster.version, target_version)?;

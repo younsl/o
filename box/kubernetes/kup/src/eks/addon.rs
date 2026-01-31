@@ -6,7 +6,7 @@ use std::collections::HashMap;
 use tracing::{debug, info, warn};
 
 use super::types::{PlanResult, VersionedResource};
-use crate::error::EkupError;
+use crate::error::KupError;
 
 /// Progress context for addon upgrade tracking.
 struct ProgressContext {
@@ -54,7 +54,7 @@ pub async fn list_addons(client: &Client, cluster_name: &str) -> Result<Vec<Addo
         .cluster_name(cluster_name)
         .send()
         .await
-        .map_err(EkupError::aws)?;
+        .map_err(KupError::aws)?;
 
     let mut addons = Vec::new();
 
@@ -82,7 +82,7 @@ pub async fn describe_addon(
         .addon_name(addon_name)
         .send()
         .await
-        .map_err(EkupError::aws)?;
+        .map_err(KupError::aws)?;
 
     if let Some(addon) = response.addon() {
         let info = AddonInfo {
@@ -112,7 +112,7 @@ pub async fn get_compatible_versions(
         .kubernetes_version(k8s_version)
         .send()
         .await
-        .map_err(EkupError::aws)?;
+        .map_err(KupError::aws)?;
 
     let mut versions = Vec::new();
 
@@ -170,7 +170,7 @@ pub async fn update_addon(
         .resolve_conflicts(aws_sdk_eks::types::ResolveConflicts::Overwrite)
         .send()
         .await
-        .map_err(EkupError::aws)?;
+        .map_err(KupError::aws)?;
 
     let update_id = response
         .update()
@@ -302,7 +302,7 @@ async fn wait_for_addon_update_with_progress(
                 "[{}/{}] {}: timeout",
                 ctx.index, ctx.total, addon_name
             ));
-            return Err(EkupError::Timeout {
+            return Err(KupError::Timeout {
                 operation: format!("add-on {} update", addon_name),
                 details: format!(
                     "Update {} did not complete within {} minutes",
@@ -318,7 +318,7 @@ async fn wait_for_addon_update_with_progress(
             .addon_name(&addon_name)
             .send()
             .await
-            .map_err(EkupError::aws)?;
+            .map_err(KupError::aws)?;
 
         if let Some(addon) = response.addon() {
             let status = addon.status().map(|s| s.as_str()).unwrap_or("Unknown");
@@ -340,7 +340,7 @@ async fn wait_for_addon_update_with_progress(
                         "[{}/{}] {}: failed",
                         ctx.index, ctx.total, addon_name
                     ));
-                    return Err(EkupError::AddonError(format!(
+                    return Err(KupError::AddonError(format!(
                         "Add-on {} update failed with status: {}",
                         addon_name, status
                     ))

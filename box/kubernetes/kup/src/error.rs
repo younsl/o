@@ -1,10 +1,10 @@
-//! Custom error types for ekup.
+//! Custom error types for kup.
 
 use thiserror::Error;
 
 /// Errors that can occur during EKS upgrade operations.
 #[derive(Error, Debug)]
-pub enum EkupError {
+pub enum KupError {
     #[error("AWS SDK error: {0}")]
     AwsSdk(String),
 
@@ -33,10 +33,10 @@ pub enum EkupError {
     NodeGroupError(String),
 }
 
-impl EkupError {
+impl KupError {
     /// Create an AWS SDK error from any error type.
     pub fn aws<E: std::fmt::Display>(err: E) -> Self {
-        EkupError::AwsSdk(err.to_string())
+        KupError::AwsSdk(err.to_string())
     }
 }
 
@@ -46,19 +46,19 @@ mod tests {
 
     #[test]
     fn test_error_display_cluster_not_found() {
-        let err = EkupError::ClusterNotFound("my-cluster".to_string());
+        let err = KupError::ClusterNotFound("my-cluster".to_string());
         assert_eq!(err.to_string(), "Cluster not found: my-cluster");
     }
 
     #[test]
     fn test_error_display_invalid_version() {
-        let err = EkupError::InvalidVersion("invalid".to_string());
+        let err = KupError::InvalidVersion("invalid".to_string());
         assert_eq!(err.to_string(), "Invalid version format: invalid");
     }
 
     #[test]
     fn test_error_display_timeout() {
-        let err = EkupError::Timeout {
+        let err = KupError::Timeout {
             operation: "cluster update".to_string(),
             details: "exceeded 30 minutes".to_string(),
         };
@@ -70,13 +70,13 @@ mod tests {
 
     #[test]
     fn test_error_aws_helper() {
-        let err = EkupError::aws("connection failed");
+        let err = KupError::aws("connection failed");
         assert_eq!(err.to_string(), "AWS SDK error: connection failed");
     }
 
     #[test]
     fn test_error_display_user_cancelled() {
-        let err = EkupError::UserCancelled;
+        let err = KupError::UserCancelled;
         assert_eq!(err.to_string(), "Operation cancelled by user");
     }
 }

@@ -5,7 +5,7 @@ use aws_sdk_eks::Client;
 use tracing::{debug, info};
 
 use super::types::{PlanResult, VersionedResource};
-use crate::error::EkupError;
+use crate::error::KupError;
 
 /// Node group information.
 #[derive(Debug, Clone)]
@@ -36,7 +36,7 @@ pub async fn list_nodegroups(client: &Client, cluster_name: &str) -> Result<Vec<
         .cluster_name(cluster_name)
         .send()
         .await
-        .map_err(EkupError::aws)?;
+        .map_err(KupError::aws)?;
 
     let mut nodegroups = Vec::new();
 
@@ -64,7 +64,7 @@ pub async fn describe_nodegroup(
         .nodegroup_name(nodegroup_name)
         .send()
         .await
-        .map_err(EkupError::aws)?;
+        .map_err(KupError::aws)?;
 
     if let Some(ng) = response.nodegroup() {
         let info = NodeGroupInfo {
@@ -96,7 +96,7 @@ pub async fn update_nodegroup_version(
         .version(target_version)
         .send()
         .await
-        .map_err(EkupError::aws)?;
+        .map_err(KupError::aws)?;
 
     let update_id = response
         .update()
@@ -125,7 +125,7 @@ pub async fn wait_for_nodegroup_update(
 
     loop {
         if start.elapsed() > timeout {
-            return Err(EkupError::Timeout {
+            return Err(KupError::Timeout {
                 operation: format!("node group {} update", nodegroup_name),
                 details: format!(
                     "Update {} did not complete within {} minutes",
@@ -142,7 +142,7 @@ pub async fn wait_for_nodegroup_update(
             .update_id(update_id)
             .send()
             .await
-            .map_err(EkupError::aws)?;
+            .map_err(KupError::aws)?;
 
         if let Some(update) = response.update() {
             let status = update.status().map(|s| s.as_str()).unwrap_or("Unknown");
@@ -162,7 +162,7 @@ pub async fn wait_for_nodegroup_update(
                         .iter()
                         .filter_map(|e| e.error_message().map(|s| s.to_string()))
                         .collect();
-                    return Err(EkupError::NodeGroupError(format!(
+                    return Err(KupError::NodeGroupError(format!(
                         "Node group {} update {}: {}",
                         nodegroup_name,
                         status,
