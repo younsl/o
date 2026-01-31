@@ -2,6 +2,7 @@
 
 use anyhow::Result;
 use aws_sdk_eks::Client;
+use futures::future::join_all;
 use std::collections::HashMap;
 use tracing::{debug, info, warn};
 
@@ -56,13 +57,19 @@ pub async fn list_addons(client: &Client, cluster_name: &str) -> Result<Vec<Addo
         .await
         .map_err(|e| KupError::aws(module_path!(), e))?;
 
-    let mut addons = Vec::new();
+    // Parallel describe_addon calls for better performance
+    let futures: Vec<_> = response
+        .addons()
+        .iter()
+        .map(|addon_name| describe_addon(client, cluster_name, addon_name))
+        .collect();
 
-    for addon_name in response.addons() {
-        if let Some(info) = describe_addon(client, cluster_name, addon_name).await? {
-            addons.push(info);
-        }
-    }
+    let results = join_all(futures).await;
+
+    let addons: Vec<AddonInfo> = results
+        .into_iter()
+        .filter_map(|r| r.ok().flatten())
+        .collect();
 
     debug!("Found {} add-ons", addons.len());
     Ok(addons)

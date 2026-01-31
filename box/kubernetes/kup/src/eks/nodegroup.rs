@@ -4,6 +4,7 @@ use anyhow::Result;
 use aws_sdk_autoscaling::Client as AsgClient;
 use aws_sdk_eks::Client;
 use colored::Colorize;
+use futures::future::join_all;
 use indicatif::{ProgressBar, ProgressStyle};
 use std::time::Duration;
 use tracing::{debug, info};
@@ -59,13 +60,19 @@ pub async fn list_nodegroups(client: &Client, cluster_name: &str) -> Result<Vec<
         .await
         .map_err(|e| KupError::aws(module_path!(), e))?;
 
-    let mut nodegroups = Vec::new();
+    // Parallel describe_nodegroup calls for better performance
+    let futures: Vec<_> = response
+        .nodegroups()
+        .iter()
+        .map(|ng_name| describe_nodegroup(client, cluster_name, ng_name))
+        .collect();
 
-    for ng_name in response.nodegroups() {
-        if let Some(info) = describe_nodegroup(client, cluster_name, ng_name).await? {
-            nodegroups.push(info);
-        }
-    }
+    let results = join_all(futures).await;
+
+    let nodegroups: Vec<NodeGroupInfo> = results
+        .into_iter()
+        .filter_map(|r| r.ok().flatten())
+        .collect();
 
     debug!("Found {} managed node groups", nodegroups.len());
     Ok(nodegroups)
