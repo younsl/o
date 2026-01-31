@@ -42,7 +42,7 @@ make clean          # Remove build artifacts
 
 ### Rust Projects
 
-Standard Makefile patterns for Rust tools (ij, kk, qg, s3vget, promdrop, filesystem-cleaner, elasticache-backup, redis-console, trivy-collector):
+Standard Makefile patterns for Rust tools (ij, kk, kup, qg, s3vget, promdrop, filesystem-cleaner, elasticache-backup, redis-console, trivy-collector):
 
 ```bash
 # Core build commands
@@ -138,6 +138,7 @@ box/
 ├── kubernetes/             # K8s controllers, policies, helm charts
 │   ├── elasticache-backup/# ElastiCache S3 backup automation (Rust, container)
 │   ├── grafana-dashboards/# Grafana dashboard ConfigMaps (Helm chart only)
+│   ├── kup/               # EKS cluster upgrade CLI tool (Rust)
 │   ├── promdrop/          # Prometheus metric filter generator (Rust, CLI + container)
 │   ├── redis-console/     # Interactive Redis cluster management CLI (Rust, CLI + container)
 │   ├── trivy-collector/   # Multi-cluster Trivy report collector/viewer (Rust, container)
@@ -263,19 +264,13 @@ export COCD_CONFIG_PATH="./config.yaml"
 
 ### ij - Interactive EC2 Session Manager Connection Tool (Rust)
 
-Interactive CLI tool for connecting to EC2 instances via AWS SSM Session Manager with multi-region scanning and SSH-style escape sequence support.
+Interactive CLI tool for connecting to EC2 instances via AWS SSM Session Manager with multi-region scanning and SSH-style escape sequence support. Inspired by [gossm](https://github.com/gjbae1212/gossm).
 
 ```bash
 # Connect using AWS profile (scans all regions)
-ij dev
-ij stg
-ij prod
-
-# Specify region for faster connection
-ij --region ap-northeast-2 dev
-
-# Filter by tag
-ij -t Environment=production dev
+ij prod                        # Use AWS profile
+ij -r ap-northeast-2 prod      # Specific region (faster)
+ij -t Environment=production   # Filter by tag
 
 # Build commands
 make build      # Debug build
@@ -284,43 +279,42 @@ make install    # Install to ~/.cargo/bin/
 ```
 
 **Features**:
-- Interactive instance selection with arrow keys
 - Multi-region parallel scanning (22 AWS regions)
+- Interactive instance selection with fuzzy search
 - Tag-based filtering (`-t Key=Value`)
-- AWS profile support (positional arg, `--profile`, or `AWS_PROFILE` env)
+- SSH-style escape sequences (`Enter ~ .` to disconnect stuck sessions)
 
-**Escape Sequences** (SSH-style):
+**AWS Permissions Required**: `ec2:DescribeInstances`, `ssm:StartSession` (EC2 instances need `AmazonSSMManagedInstanceCore` policy)
 
-When connected to an SSM session, you can use escape sequences to control the connection:
+### kup - EKS Cluster Upgrade CLI Tool (Rust)
 
-| Key Sequence | Action |
-|--------------|--------|
-| `Enter ~ .` | Disconnect from session (useful when session is stuck) |
+Interactive EKS cluster upgrade tool. Analyzes cluster insights, plans sequential control plane upgrades, and updates add-ons and managed node groups. Inspired by [clowdhaus/eksup](https://github.com/clowdhaus/eksup).
 
-**Usage Example** (stuck session):
 ```bash
-$ ij dev
-# (session becomes unresponsive)
-# Press: Enter, then ~, then .
-Connection closed by escape sequence.
+kup                              # Interactive mode
+kup --dry-run                    # Plan only, no execution
+kup -c my-cluster -t 1.34 --yes  # Non-interactive mode
+kup -r ap-northeast-2            # Specific region
+
+# Build commands
+make build      # Debug build
+make release    # Optimized release build
+make install    # Install to ~/.cargo/bin/
 ```
 
-**Technical Details**:
-- Uses PTY (pseudo-terminal) to intercept I/O between user and SSM session
-- Escape sequence detection without affecting normal input
-- Proper terminal state restoration on exit
-- Signal handling (Ctrl+C passed to SSM session, not to ij)
+**Features**:
+- Interactive cluster and version selection
+- Cluster Insights analysis (deprecated APIs, add-on compatibility)
+- Sequential control plane upgrades (1 minor version at a time)
+- Sync mode: Update only addons/nodegroups without control plane upgrade
+- Automatic add-on version upgrades
+- Managed node group rolling updates
 
-**Comparison with gossm**:
+**Constraints**:
+- Control plane upgrades limited to 1 minor version at a time (e.g., 1.28 → 1.30 requires two steps)
+- Managed Node Groups only (self-managed and Karpenter nodes not supported)
 
-| Feature | ij | gossm |
-|---------|-----|-------|
-| Language | Rust | Go |
-| Multi-region scan | ✅ Parallel (22 regions) | ❌ Single region |
-| Escape sequence | ✅ `Enter ~ .` | ✅ (ottramst fork only) |
-| SSH tunneling | ❌ | ✅ |
-| SCP file transfer | ❌ | ✅ |
-| Port forwarding | ❌ | ✅ |
+**AWS Permissions Required**: `eks:ListClusters`, `eks:DescribeCluster`, `eks:UpdateClusterVersion`, `eks:DescribeUpdate`, `eks:ListInsights`, `eks:DescribeInsight`, `eks:ListAddons`, `eks:DescribeAddon`, `eks:DescribeAddonVersions`, `eks:UpdateAddon`, `eks:ListNodegroups`, `eks:DescribeNodegroup`, `eks:UpdateNodegroupVersion`, `autoscaling:DescribeAutoScalingGroups`
 
 ### kk - Domain Connectivity Checker (Rust)
 
@@ -724,6 +718,8 @@ git tag grafana-dashboards-chart/1.0.0 && git push --tags
 # - release-hugo.yml                         (Workflow dispatch)
 
 # Rust tools without automated releases (manual release required):
+# - ij (Interactive EC2 SSM connection tool)
+# - kup (EKS cluster upgrade CLI tool)
 # - qg (QR code generator)
 # - s3vget (S3 object version downloader)
 ```
