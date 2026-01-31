@@ -42,7 +42,7 @@ make clean          # Remove build artifacts
 
 ### Rust Projects
 
-Standard Makefile patterns for Rust tools (ij, kk, qg, s3vget, podver, promdrop, filesystem-cleaner, elasticache-backup, redis-console, trivy-collector):
+Standard Makefile patterns for Rust tools (ij, kk, qg, s3vget, promdrop, filesystem-cleaner, elasticache-backup, redis-console, trivy-collector):
 
 ```bash
 # Core build commands
@@ -138,7 +138,6 @@ box/
 ├── kubernetes/             # K8s controllers, policies, helm charts
 │   ├── elasticache-backup/# ElastiCache S3 backup automation (Rust, container)
 │   ├── grafana-dashboards/# Grafana dashboard ConfigMaps (Helm chart only)
-│   ├── podver/            # Pod Version Scanner (Rust, container)
 │   ├── promdrop/          # Prometheus metric filter generator (Rust, CLI + container)
 │   ├── redis-console/     # Interactive Redis cluster management CLI (Rust, CLI + container)
 │   ├── trivy-collector/   # Multi-cluster Trivy report collector/viewer (Rust, container)
@@ -409,32 +408,6 @@ s3vget -b my-bucket -k path/to/file.json -s 2025-10-01 -e now
 - Pagination support for large version lists
 
 **AWS Permissions Required**: `s3:GetObject`, `s3:GetObjectVersion`, `s3:ListBucket`, `s3:ListBucketVersions`
-
-### podver - Pod Version Scanner (Rust)
-
-Scans Java and Node.js versions in Kubernetes pods.
-
-```bash
-# Scan Java and Node.js versions in Kubernetes pods
-podver --namespaces production,staging
-
-# Export to CSV
-podver --namespaces production --output results.csv
-
-# Increase concurrency and timeout
-podver -n production -c 50 -t 60
-
-# Include DaemonSet pods and enable verbose logging
-podver --skip-daemonset=false --verbose -n default
-```
-
-**Technical Details**:
-- Built with Tokio for async/concurrent pod scanning
-- Executes `kubectl exec -- java -version` and `kubectl exec -- node --version` in parallel
-- Parses Java version from stderr and Node.js version from stdout using regex
-- Real-time multi-level progress bars (namespace + pod level)
-- Generates kubectl-style tables and per-namespace statistics
-- Configurable concurrency, timeouts, and DaemonSet filtering
 
 ### promdrop - Prometheus Metric Filter Generator (Rust)
 
@@ -753,7 +726,6 @@ git tag grafana-dashboards-chart/1.0.0 && git push --tags
 # Rust tools without automated releases (manual release required):
 # - qg (QR code generator)
 # - s3vget (S3 object version downloader)
-# - podver (Pod version scanner - has Makefile docker-build/push targets)
 ```
 
 ## Testing Guidelines
