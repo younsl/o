@@ -1,6 +1,6 @@
 # kup
 
-**K**8s **Up**grade - Interactive EKS cluster upgrade CLI tool. Analyzes cluster insights, plans sequential control plane upgrades, and updates add-ons and node groups. Inspired by [clowdhaus/eksup](https://github.com/clowdhaus/eksup).
+**K**8s **Up**grade - Interactive EKS cluster upgrade CLI tool. Analyzes cluster insights, plans sequential control plane upgrades, and updates add-ons and managed node groups. Inspired by [clowdhaus/eksup](https://github.com/clowdhaus/eksup).
 
 ## Features
 
@@ -9,7 +9,7 @@
 - Sequential control plane upgrades (1 minor version at a time)
 - **Sync mode**: Update only addons/nodegroups without control plane upgrade
 - Automatic add-on version upgrades
-- Node group rolling updates
+- Managed node group rolling updates
 - Dry-run mode for planning
 
 ## Usage
@@ -51,7 +51,7 @@ EKS upgrades are executed in three phases.
 |-------|-------------|----------------|
 | 1. Control Plane | Sequential minor version upgrades | ~10 min/step |
 | 2. Add-ons | Update to compatible versions | ~10 min |
-| 3. Node Groups | Rolling update to new AMI | ~20 min/group |
+| 3. Managed Node Groups | Rolling update to new AMI | ~20 min/group |
 
 ## Options
 
@@ -121,6 +121,7 @@ EKS upgrade limitations to be aware of.
 - Control plane upgrades are limited to **1 minor version at a time**
 - Example: 1.28 → 1.30 requires two steps (1.28 → 1.29 → 1.30)
 - `kup` automates this sequential upgrade process
+- **[Managed Node Groups](https://docs.aws.amazon.com/eks/latest/userguide/managed-node-groups.html) only**: Self-managed node groups and Karpenter nodes are not supported. Managed node groups are EC2 instances whose lifecycle (provisioning, updating, terminating) is managed by AWS EKS.
 
 ## Sync Mode
 
