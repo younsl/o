@@ -21,7 +21,6 @@ Kubernetes tools, policy resources, and architecture documentation organized by 
 | Kubernetes Addon | [trivy-collector](./trivy-collector/) | [Rust](./trivy-collector/Cargo.toml) | Active | Multi-cluster [Trivy Operator](https://github.com/aquasecurity/trivy-operator) report collector and viewer running as Kubernetes [Deployment](https://kubernetes.io/docs/concepts/workloads/controllers/deployment/) with Web UI (Helm chart available) |
 | Helm Chart | [grafana-dashboards](./grafana-dashboards/) | [Helm](./grafana-dashboards/Chart.yaml) | Active | Helm chart that deploys Grafana dashboards as Kubernetes [ConfigMaps](https://kubernetes.io/docs/concepts/configuration/configmap/) for sidecar provisioning |
 | Tools | [kup](./kup/) | [Rust](./kup/Cargo.toml) | Active | Interactive EKS cluster upgrade CLI with Insights analysis, sequential control plane upgrades, and addon/nodegroup updates |
-| Tools | [podver](./podver/) | [Rust](./podver/Cargo.toml) | Active | CLI tool that scans and reports Java and Node.js runtime versions across pods in a cluster |
 | Tools | [promdrop](./promdrop/) | [Rust](./promdrop/Cargo.toml) | Active | Prometheus scrape config generator to drop unused metrics analyzed by [mimirtool](https://grafana.com/docs/mimir/latest/manage/tools/mimirtool/) |
 
 ## License

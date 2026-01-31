@@ -56,7 +56,6 @@ updates:
       - "/box/tools/qg"
       - "/box/tools/s3vget"
       - "/box/kubernetes/promdrop"
-      - "/box/kubernetes/podver"
       - "/box/kubernetes/elasticache-backup"
       - "/box/containers/filesystem-cleaner"
     schedule:
