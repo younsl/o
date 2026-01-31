@@ -11,7 +11,7 @@ const BUILD_DATE: &str = env!("BUILD_DATE");
 /// Analyzes API deprecations, recommends upgrade paths, and executes
 /// sequential control plane upgrades with add-on and managed node group updates.
 #[derive(Parser, Debug, Clone)]
-#[command(name = "ekup")]
+#[command(name = "kup")]
 #[command(about = "EKS cluster upgrade support CLI tool")]
 #[command(version = const_format::formatcp!(
     "{} (commit: {}, build date: {})",
