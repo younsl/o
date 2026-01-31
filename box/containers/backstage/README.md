@@ -7,21 +7,21 @@ Custom Backstage image with GitLab Auto Discovery, Keycloak OIDC, and API Docs p
 
 ## Features
 
-| Feature | Plugin | Native | Description |
-|---------|--------|:------:|-------------|
-| Home Dashboard | [`@backstage/plugin-home`](https://www.npmjs.com/package/@backstage/plugin-home) | Yes | Customizable home page with widgets |
-| Platforms | - | No[^1] | Internal platform services link cards with search and tag filtering |
-| GitLab Auto Discovery | [`@backstage/plugin-catalog-backend-module-gitlab`](https://www.npmjs.com/package/@backstage/plugin-catalog-backend-module-gitlab) | Yes | Auto-discover `catalog-info.yaml` from GitLab repos |
-| GitLab Org Sync | [`@backstage/plugin-catalog-backend-module-gitlab-org`](https://www.npmjs.com/package/@backstage/plugin-catalog-backend-module-gitlab-org) | Yes | Sync GitLab groups/users to Backstage |
-| GitLab CI/CD | [`@immobiliarelabs/backstage-plugin-gitlab`](https://www.npmjs.com/package/@immobiliarelabs/backstage-plugin-gitlab) | No | View pipelines, MRs, releases, README on Entity page |
-| OIDC Authentication | [`@backstage/plugin-auth-backend-module-oidc-provider`](https://www.npmjs.com/package/@backstage/plugin-auth-backend-module-oidc-provider) | Yes | Keycloak/OIDC SSO authentication |
-| API Docs | [`@backstage/plugin-api-docs`](https://www.npmjs.com/package/@backstage/plugin-api-docs) | Yes | OpenAPI, AsyncAPI, GraphQL spec viewer |
-| OpenAPI Registry | `openapi-registry` | No[^1] | Register external OpenAPI specs by URL with search and filters |
-| TechDocs | [`@backstage/plugin-techdocs`](https://www.npmjs.com/package/@backstage/plugin-techdocs) | Yes | Markdown-based technical documentation |
-| Scaffolder | [`@backstage/plugin-scaffolder`](https://www.npmjs.com/package/@backstage/plugin-scaffolder) | Yes | Template-based project creation |
-| Search | [`@backstage/plugin-search`](https://www.npmjs.com/package/@backstage/plugin-search) | Yes | Full-text search across catalog |
+| Feature | Plugin | Type | Description |
+|---------|--------|:----:|-------------|
+| Home Dashboard | [`@backstage/plugin-home`](https://www.npmjs.com/package/@backstage/plugin-home) | Native | Customizable home page with widgets |
+| Platforms | - | Custom† | Internal platform services link cards with search and tag filtering |
+| GitLab Auto Discovery | [`@backstage/plugin-catalog-backend-module-gitlab`](https://www.npmjs.com/package/@backstage/plugin-catalog-backend-module-gitlab) | Native | Auto-discover `catalog-info.yaml` from GitLab repos |
+| GitLab Org Sync | [`@backstage/plugin-catalog-backend-module-gitlab-org`](https://www.npmjs.com/package/@backstage/plugin-catalog-backend-module-gitlab-org) | Native | Sync GitLab groups/users to Backstage |
+| GitLab CI/CD | [`@immobiliarelabs/backstage-plugin-gitlab`](https://www.npmjs.com/package/@immobiliarelabs/backstage-plugin-gitlab) | Community | View pipelines, MRs, releases, README on Entity page |
+| OIDC Authentication | [`@backstage/plugin-auth-backend-module-oidc-provider`](https://www.npmjs.com/package/@backstage/plugin-auth-backend-module-oidc-provider) | Native | Keycloak/OIDC SSO authentication |
+| API Docs | [`@backstage/plugin-api-docs`](https://www.npmjs.com/package/@backstage/plugin-api-docs) | Native | OpenAPI, AsyncAPI, GraphQL spec viewer |
+| OpenAPI Registry | `openapi-registry` | Custom† | Register external OpenAPI specs by URL with search and filters |
+| TechDocs | [`@backstage/plugin-techdocs`](https://www.npmjs.com/package/@backstage/plugin-techdocs) | Native | Markdown-based technical documentation |
+| Scaffolder | [`@backstage/plugin-scaffolder`](https://www.npmjs.com/package/@backstage/plugin-scaffolder) | Native | Template-based project creation |
+| Search | [`@backstage/plugin-search`](https://www.npmjs.com/package/@backstage/plugin-search) | Native | Full-text search across catalog |
 
-[^1]: Custom plugins currently use legacy `@backstage/core-components` with Material-UI v4. Migration to [`@backstage/ui`](https://www.npmjs.com/package/@backstage/ui) is recommended as `@backstage/core-components` will be deprecated in favor of the new design system.
+† Custom plugins currently use legacy `@backstage/core-components` with Material-UI v4. Migration to [`@backstage/ui`](https://www.npmjs.com/package/@backstage/ui) is recommended as `@backstage/core-components` will be deprecated in favor of the new design system.
 
 ## Quick Start
 
