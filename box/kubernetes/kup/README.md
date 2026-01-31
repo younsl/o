@@ -115,6 +115,7 @@ IAM permissions needed for kup to work.
 - `eks:ListNodegroups`
 - `eks:DescribeNodegroup`
 - `eks:UpdateNodegroupVersion`
+- `autoscaling:DescribeAutoScalingGroups`
 
 ## Constraints
 
