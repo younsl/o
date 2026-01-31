@@ -101,21 +101,62 @@ kup --addon-version kube-proxy=v1.34.0-eksbuild.1
 
 IAM permissions needed for kup to work.
 
-**User/Role:**
-- `eks:ListClusters`
-- `eks:DescribeCluster`
-- `eks:UpdateClusterVersion`
-- `eks:DescribeUpdate`
-- `eks:ListInsights`
-- `eks:DescribeInsight`
-- `eks:ListAddons`
-- `eks:DescribeAddon`
-- `eks:DescribeAddonVersions`
-- `eks:UpdateAddon`
-- `eks:ListNodegroups`
-- `eks:DescribeNodegroup`
-- `eks:UpdateNodegroupVersion`
-- `autoscaling:DescribeAutoScalingGroups`
+```json
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Sid": "EKSClusterReadWrite",
+      "Effect": "Allow",
+      "Action": [
+        "eks:ListClusters",
+        "eks:DescribeCluster",
+        "eks:UpdateClusterVersion",
+        "eks:DescribeUpdate"
+      ],
+      "Resource": "*"
+    },
+    {
+      "Sid": "EKSInsightsRead",
+      "Effect": "Allow",
+      "Action": [
+        "eks:ListInsights",
+        "eks:DescribeInsight"
+      ],
+      "Resource": "*"
+    },
+    {
+      "Sid": "EKSAddonsReadWrite",
+      "Effect": "Allow",
+      "Action": [
+        "eks:ListAddons",
+        "eks:DescribeAddon",
+        "eks:DescribeAddonVersions",
+        "eks:UpdateAddon"
+      ],
+      "Resource": "*"
+    },
+    {
+      "Sid": "EKSNodegroupsReadWrite",
+      "Effect": "Allow",
+      "Action": [
+        "eks:ListNodegroups",
+        "eks:DescribeNodegroup",
+        "eks:UpdateNodegroupVersion"
+      ],
+      "Resource": "*"
+    },
+    {
+      "Sid": "AutoScalingRead",
+      "Effect": "Allow",
+      "Action": [
+        "autoscaling:DescribeAutoScalingGroups"
+      ],
+      "Resource": "*"
+    }
+  ]
+}
+```
 
 ## Constraints
 
