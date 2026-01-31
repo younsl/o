@@ -33,27 +33,24 @@ make install
 mv ~/.cargo/bin/kup /usr/local/bin/
 ```
 
-## Workflow
-
-Step-by-step interactive upgrade process.
+## How It Works
 
 ```
-Step 1: Select Cluster        → Choose from available EKS clusters
-Step 2: Check Insights        → Review upgrade readiness findings
-Step 3: Select Target Version → Pick target version (or current for sync mode)
-Step 4: Review Plan           → Verify upgrade phases and timeline
-Step 5: Execute Upgrade       → Type 'Yes' to confirm and execute
+┌──────────────┐     ┌──────────────┐     ┌──────────────┐
+│ Control Plane│     │   Add-ons    │     │ Node Groups  │
+│              │     │              │     │              │
+│  1.32 → 1.33 │────▶│ Update to    │────▶│ Rolling AMI  │
+│  ~10 min/step│     │ compatible   │     │ update       │
+└──────────────┘     └──────────────┘     └──────────────┘
 ```
 
-## Upgrade Phases
+**Interactive workflow steps:**
 
-EKS upgrades are executed in three phases.
-
-| Phase | Description | Estimated Time |
-|-------|-------------|----------------|
-| 1. Control Plane | Sequential minor version upgrades | ~10 min/step |
-| 2. Add-ons | Update to compatible versions | ~10 min |
-| 3. Managed Node Groups | Rolling update to new AMI | ~20 min/group |
+1. Select cluster from available EKS clusters
+2. Review upgrade readiness findings (Cluster Insights)
+3. Pick target version (or current for sync mode)
+4. Verify upgrade plan and estimated timeline
+5. Type 'Yes' to confirm and execute
 
 ## Options
 
