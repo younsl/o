@@ -26,18 +26,6 @@ updates:
     labels:
       - "docker-dependencies"
 
-  - package-ecosystem: "gomod"
-    directories:
-      - "/box/tools/*"
-      - "/box/kubernetes/*"
-    schedule:
-      interval: "weekly"
-      day: "monday"
-      time: "10:00"
-      timezone: "Asia/Seoul"
-    labels:
-      - "go-dependencies"
-
   - package-ecosystem: "terraform"
     directories:
       - "/box/terraform/*"
@@ -52,12 +40,9 @@ updates:
 
   - package-ecosystem: "cargo"
     directories:
-      - "/box/tools/kk"
-      - "/box/tools/qg"
-      - "/box/tools/s3vget"
-      - "/box/kubernetes/promdrop"
-      - "/box/kubernetes/elasticache-backup"
-      - "/box/containers/filesystem-cleaner"
+      - "/box/tools/*"
+      - "/box/kubernetes/*"
+      - "/box/containers/*"
     schedule:
       interval: "weekly"
       day: "monday"
