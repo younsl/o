@@ -16,7 +16,7 @@ anyhow = "1.0"
 thiserror = "1.0"
 clap = { version = "4.5", features = ["derive"] }
 rustyline = "14.0"
-colored = "2.1"
+colored = "3.1"
 tabled = "0.20"
 aws-config = "1.5"
 aws-sdk-elasticache = "1.45"
