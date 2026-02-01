@@ -21,7 +21,7 @@ dialoguer = "0.12"
 
 # Terminal UI
 colored = "3.1"
-tabled = "0.17"
+tabled = "0.20"
 indicatif = "0.18"
 
 # Async runtime
