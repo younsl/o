@@ -52,22 +52,38 @@ echo "$PRS"
 echo
 echo "---"
 
-# Process each PR
-echo "$PRS" | while IFS=$'\t' read -r PR_NUMBER PR_TITLE; do
+# Count totals
+TOTAL_PRS=$(echo "$PRS" | wc -l | tr -d ' ')
+MERGED_COUNT=0
+FAILED_COUNT=0
+
+# Process each PR (use process substitution to avoid subshell)
+while IFS=$'\t' read -r PR_NUMBER PR_TITLE; do
     echo
     echo "Processing PR #${PR_NUMBER}: ${PR_TITLE}"
 
     if [[ "$DRY_RUN" == "true" ]]; then
         echo "  [DRY-RUN] Would merge PR #${PR_NUMBER}"
+        ((MERGED_COUNT++))
     else
         if gh pr merge "$PR_NUMBER" --repo "$REPO" --squash --delete-branch; then
             echo "  Merged PR #${PR_NUMBER}"
+            ((MERGED_COUNT++))
             sleep 2  # Rate limit
         else
             echo "  Failed to merge PR #${PR_NUMBER} (may need CI to pass first)"
+            ((FAILED_COUNT++))
         fi
     fi
-done
+done <<< "$PRS"
 
 echo
+echo "---"
+echo "Summary: ${MERGED_COUNT}/${TOTAL_PRS} PRs merged"
+if [[ "$FAILED_COUNT" -gt 0 ]]; then
+    echo "         ${FAILED_COUNT} PRs failed to merge"
+fi
+if [[ "$DRY_RUN" == "true" ]]; then
+    echo "         (dry-run mode - no actual merges performed)"
+fi
 echo "Done."
