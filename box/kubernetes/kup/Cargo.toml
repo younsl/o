@@ -12,7 +12,7 @@ readme = "README.md"
 [dependencies]
 # AWS SDK
 aws-config = "1.8"
-aws-sdk-eks = "1.97"
+aws-sdk-eks = "1.119"
 aws-sdk-autoscaling = "1.97"
 
 # CLI and interaction
