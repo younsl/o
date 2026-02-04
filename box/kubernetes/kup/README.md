@@ -1,5 +1,9 @@
 # kup
 
+[![GitHub release](https://img.shields.io/github/v/release/younsl/o?filter=kup*&style=flat-square&color=black)](https://github.com/younsl/o/releases?q=kup&expanded=true)
+[![Rust](https://img.shields.io/badge/rust-1.92-black?style=flat-square&logo=rust&logoColor=white)](https://www.rust-lang.org/)
+[![GitHub license](https://img.shields.io/github/license/younsl/o?style=flat-square&color=black)](https://github.com/younsl/o/blob/main/LICENSE)
+
 <img src="https://cdn.jsdelivr.net/gh/devicons/devicon/icons/kubernetes/kubernetes-plain.svg" width="40" height="40"/>
 
 [**K**ubernetes](https://github.com/kubernetes/kubernetes) **Up**grade - Interactive EKS cluster upgrade CLI tool. Analyzes cluster insights, plans sequential control plane upgrades, and updates add-ons and managed node groups. Inspired by [clowdhaus/eksup](https://github.com/clowdhaus/eksup).
