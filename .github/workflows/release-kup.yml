@@ -32,7 +32,7 @@ jobs:
           echo "Extracted version: ${VERSION}"
 
   build-binaries:
-    needs: [extract-version]
+    needs: [extract-version, test]
     runs-on: ${{ matrix.os }}
     permissions:
       contents: read
