@@ -39,6 +39,8 @@ import {
   EntityGitlabContent,
 } from '@immobiliarelabs/backstage-plugin-gitlab';
 import { EntityGitlabReadmeCardWithStatus } from './EntityGitlabReadmeCardWithStatus';
+import { isSonarQubeAvailable } from '@backstage-community/plugin-sonarqube';
+import { EntitySonarQubeCardWithStatus } from './EntitySonarQubeCardWithStatus';
 
 const techdocsContent = (
   <EntityTechdocsContent>
@@ -95,6 +97,14 @@ const overviewContent = (
   </Grid>
 );
 
+const sonarQubeContent = (
+  <Grid container spacing={3}>
+    <Grid item xs={12}>
+      <EntitySonarQubeCardWithStatus />
+    </Grid>
+  </Grid>
+);
+
 const serviceEntityPage = (
   <EntityLayout>
     <EntityLayout.Route path="/" title="Overview">
@@ -130,6 +140,10 @@ const serviceEntityPage = (
     <EntityLayout.Route if={isGitlabAvailable} path="/gitlab" title="GitLab">
       <EntityGitlabContent />
     </EntityLayout.Route>
+
+    <EntityLayout.Route if={isSonarQubeAvailable} path="/sonarqube" title="SonarQube">
+      {sonarQubeContent}
+    </EntityLayout.Route>
   </EntityLayout>
 );
 
@@ -157,6 +171,10 @@ const websiteEntityPage = (
     <EntityLayout.Route if={isGitlabAvailable} path="/gitlab" title="GitLab">
       <EntityGitlabContent />
     </EntityLayout.Route>
+
+    <EntityLayout.Route if={isSonarQubeAvailable} path="/sonarqube" title="SonarQube">
+      {sonarQubeContent}
+    </EntityLayout.Route>
   </EntityLayout>
 );
 
@@ -172,6 +190,10 @@ const defaultEntityPage = (
 
     <EntityLayout.Route if={isGitlabAvailable} path="/gitlab" title="GitLab">
       <EntityGitlabContent />
+    </EntityLayout.Route>
+
+    <EntityLayout.Route if={isSonarQubeAvailable} path="/sonarqube" title="SonarQube">
+      {sonarQubeContent}
     </EntityLayout.Route>
   </EntityLayout>
 );

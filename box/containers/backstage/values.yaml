@@ -10,6 +10,7 @@
 # Prerequisites:
 #   kubectl create secret generic backstage-secrets -n backstage \
 #     --from-literal=GITLAB_TOKEN=glpat-xxxxxxxxxxxx \
+#     --from-literal=SONARQUBE_TOKEN=squ_xxxxxxxxxxxx \
 #     --from-literal=POSTGRES_PASSWORD=your-password
 # ==============================================================================
 
@@ -39,6 +40,11 @@ backstage:
         secretKeyRef:
           name: backstage-secrets
           key: POSTGRES_PASSWORD
+    - name: SONARQUBE_TOKEN
+      valueFrom:
+        secretKeyRef:
+          name: backstage-secrets
+          key: SONARQUBE_TOKEN
 
   appConfig:
     app:
@@ -129,6 +135,10 @@ backstage:
         runIn: local
       publisher:
         type: local
+
+    sonarqube:
+      baseUrl: https://sonarqube.example.com
+      apiKey: ${SONARQUBE_TOKEN}
 
     proxy:
       endpoints: {}

@@ -18,6 +18,7 @@ import {
   gitlabPlugin,
   catalogPluginGitlabFillerProcessorModule,
 } from '@immobiliarelabs/backstage-plugin-gitlab-backend';
+import { catalogModuleSonarQubeAnnotationProcessor } from './processors';
 
 const backend = createBackend();
 
@@ -53,6 +54,9 @@ if (!disableGitlab) {
   backend.add(catalogPluginGitlabFillerProcessorModule);
 }
 
+// Auto-fills sonarqube.org/project-key annotation based on GitLab project slug or entity name
+backend.add(catalogModuleSonarQubeAnnotationProcessor);
+
 // Scaffolder for creating new components from templates
 backend.add(import('@backstage/plugin-scaffolder-backend'));
 if (!disableGitlab) {
@@ -68,5 +72,8 @@ backend.add(import('@backstage/plugin-search-backend-module-catalog'));
 
 // OpenAPI Registry plugin for registering external API specs
 backend.add(import('@internal/plugin-openapi-registry-backend'));
+
+// SonarQube plugin for code quality metrics
+backend.add(import('@backstage-community/plugin-sonarqube-backend'));
 
 backend.start();

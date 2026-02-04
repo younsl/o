@@ -13,6 +13,7 @@
     "clean": "backstage-cli package clean"
   },
   "dependencies": {
+    "@backstage-community/plugin-sonarqube-backend": "^0.17.0",
     "@backstage/backend-defaults": "^0.14.1",
     "@backstage/backend-plugin-api": "^1.6.1",
     "@backstage/plugin-app-backend": "^0.5.10",

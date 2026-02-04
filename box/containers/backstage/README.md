@@ -14,6 +14,7 @@ Custom Backstage image with GitLab Auto Discovery, Keycloak OIDC, and API Docs p
 | GitLab Auto Discovery | [`@backstage/plugin-catalog-backend-module-gitlab`](https://www.npmjs.com/package/@backstage/plugin-catalog-backend-module-gitlab) | Native | Auto-discover `catalog-info.yaml` from GitLab repos |
 | GitLab Org Sync | [`@backstage/plugin-catalog-backend-module-gitlab-org`](https://www.npmjs.com/package/@backstage/plugin-catalog-backend-module-gitlab-org) | Native | Sync GitLab groups/users to Backstage |
 | GitLab CI/CD | [`@immobiliarelabs/backstage-plugin-gitlab`](https://www.npmjs.com/package/@immobiliarelabs/backstage-plugin-gitlab) | Community | View pipelines, MRs, releases, README on Entity page |
+| SonarQube | [`@backstage-community/plugin-sonarqube`](https://www.npmjs.com/package/@backstage-community/plugin-sonarqube) | Community | Code quality metrics with auto annotation injection |
 | OIDC Authentication | [`@backstage/plugin-auth-backend-module-oidc-provider`](https://www.npmjs.com/package/@backstage/plugin-auth-backend-module-oidc-provider) | Native | Keycloak/OIDC SSO authentication |
 | API Docs | [`@backstage/plugin-api-docs`](https://www.npmjs.com/package/@backstage/plugin-api-docs) | Native | OpenAPI, AsyncAPI, GraphQL spec viewer |
 | OpenAPI Registry | `openapi-registry` | Custom† | Register external OpenAPI specs by URL with search and filters |
@@ -61,6 +62,8 @@ git push origin backstage/1.48.0
 |----------|----------|-------------|
 | `GITLAB_HOST` | Yes | GitLab host |
 | `GITLAB_TOKEN` | Yes | GitLab Personal Access Token |
+| `SONARQUBE_URL` | SonarQube | SonarQube server URL |
+| `SONARQUBE_TOKEN` | SonarQube | SonarQube API token |
 | `KEYCLOAK_CLIENT_ID` | OIDC | Keycloak client ID |
 | `KEYCLOAK_CLIENT_SECRET` | OIDC | Keycloak client secret |
 | `KEYCLOAK_METADATA_URL` | OIDC | OIDC metadata URL |
@@ -167,6 +170,37 @@ Custom plugin for registering external OpenAPI specs without `catalog-info.yaml`
 1. Enter OpenAPI spec URL → Preview
 2. Fill metadata (name, owner, lifecycle, tags)
 3. Register → Auto-sync to Catalog
+
+## SonarQube
+
+Code quality integration with automatic annotation injection.
+
+**Features:**
+- Auto-inject `sonarqube.org/project-key` from GitLab project slug or entity name
+- Auto-inject `sonarqube.org/base-url` from app-config.yaml
+- Real-time connection status badge (Connected/Not connected)
+- Source indicator badge (AUTO/MANUAL)
+- YAML-formatted annotation viewer
+
+**Auto Annotation Injection:**
+
+The `SonarQubeAnnotationProcessor` automatically adds SonarQube annotations to Component entities:
+
+| Annotation | Source | Description |
+|------------|--------|-------------|
+| `sonarqube.org/project-key` | GitLab slug or entity name | SonarQube project key |
+| `sonarqube.org/project-key-source` | `auto-injected` or `manual` | How the key was set |
+| `sonarqube.org/base-url` | app-config.yaml | SonarQube server URL |
+| `sonarqube.org/base-url-source` | `auto-injected` or `manual` | How the URL was set |
+
+**Configuration:**
+
+```yaml
+# app-config.yaml
+sonarqube:
+  baseUrl: https://sonarqube.example.com
+  apiKey: ${SONARQUBE_TOKEN}
+```
 
 ## Authentication
 

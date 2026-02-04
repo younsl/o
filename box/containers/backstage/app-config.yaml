@@ -123,6 +123,10 @@ gitlab:
     - Component
     - Resource
 
+sonarqube:
+  baseUrl: ${SONARQUBE_BASE_URL}
+  apiKey: ${SONARQUBE_API_KEY}
+
 proxy:
   endpoints: {}
 
