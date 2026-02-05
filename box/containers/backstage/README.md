@@ -1,7 +1,7 @@
 # Backstage with GitLab Discovery
 
 [![GHCR](https://img.shields.io/badge/GHCR-ghcr.io%2Fyounsl%2Fbackstage-black?style=flat-square&logo=github&logoColor=white)](https://ghcr.io/younsl/backstage)
-[![Backstage](https://img.shields.io/badge/Backstage-1.47.1-black?style=flat-square&logo=backstage&logoColor=white)](https://backstage.io)
+[![Backstage](https://img.shields.io/badge/Backstage-1.47.3-black?style=flat-square&logo=backstage&logoColor=white)](https://backstage.io)
 
 Custom Backstage image with GitLab Auto Discovery, Keycloak OIDC, and API Docs plugins.
 
