@@ -165,11 +165,22 @@ Custom plugin for registering external OpenAPI specs without `catalog-info.yaml`
 - Filter by Lifecycle and Owner
 - Refresh spec from source URL
 - Delete registration
+- Audit logging via Backstage Auditor Service
 
 **Workflow:**
 1. Enter OpenAPI spec URL → Preview
 2. Fill metadata (name, owner, lifecycle, tags)
 3. Register → Auto-sync to Catalog
+
+**Audit Logging:**
+
+Data-modifying operations are logged via Backstage's built-in Auditor Service.
+
+Audit target criteria:
+- **Audited**: Data-modifying operations (Create, Update, Delete)
+- **Not audited**: Read-only operations (List, Get, Health check)
+
+Audit logs include `isAuditEvent=true` for easy filtering and capture actor info (IP, User-Agent), request details, and success/failure status.
 
 ## SonarQube
 

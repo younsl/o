@@ -1,17 +1,18 @@
 import { Router } from 'express';
 import express from 'express';
-import { LoggerService } from '@backstage/backend-plugin-api';
+import { LoggerService, AuditorService } from '@backstage/backend-plugin-api';
 import { OpenApiRegistryService } from './OpenApiRegistryService';
 import { RegisterApiRequest } from './types';
 
 export interface RouterOptions {
   service: OpenApiRegistryService;
   logger: LoggerService;
+  auditor: AuditorService;
   baseUrl?: string;
 }
 
 export async function createRouter(options: RouterOptions): Promise<Router> {
-  const { service, logger } = options;
+  const { service, logger, auditor } = options;
 
   const router = Router();
   router.use(express.json());
@@ -74,11 +75,25 @@ export async function createRouter(options: RouterOptions): Promise<Router> {
       return;
     }
 
+    const auditorEvent = await auditor.createEvent({
+      eventId: 'api-register',
+      request: req,
+      severityLevel: 'medium',
+      meta: {
+        actionType: 'create',
+        apiName: request.name,
+        specUrl: request.specUrl,
+        owner: request.owner,
+      },
+    });
+
     try {
       const registration = await service.registerApi(request);
+      await auditorEvent.success({ meta: { registrationId: registration.id } });
       res.status(201).json(registration);
     } catch (error) {
       logger.error(`Failed to register API: ${error}`);
+      await auditorEvent.fail({ error: error as Error });
       const message = error instanceof Error ? error.message : 'Unknown error';
       if (message.includes('already registered') || message.includes('already exists')) {
         res.status(409).json({ error: message });
@@ -124,13 +139,25 @@ export async function createRouter(options: RouterOptions): Promise<Router> {
   router.post('/refresh/:id', async (req, res) => {
     const { id } = req.params;
 
+    const auditorEvent = await auditor.createEvent({
+      eventId: 'api-refresh',
+      request: req,
+      severityLevel: 'low',
+      meta: {
+        actionType: 'refresh',
+        registrationId: id,
+      },
+    });
+
     try {
       const registration = await service.refreshApi(id);
+      await auditorEvent.success();
       res.json(registration);
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Unknown error';
       const stack = error instanceof Error ? error.stack : undefined;
       logger.error(`Failed to refresh API: ${message}`, { stack });
+      await auditorEvent.fail({ error: error as Error });
       if (message.includes('not found')) {
         res.status(404).json({ error: message });
       } else {
@@ -143,11 +170,23 @@ export async function createRouter(options: RouterOptions): Promise<Router> {
   router.delete('/registrations/:id', async (req, res) => {
     const { id } = req.params;
 
+    const auditorEvent = await auditor.createEvent({
+      eventId: 'api-delete',
+      request: req,
+      severityLevel: 'medium',
+      meta: {
+        actionType: 'delete',
+        registrationId: id,
+      },
+    });
+
     try {
       await service.deleteRegistration(id);
+      await auditorEvent.success();
       res.status(204).send();
     } catch (error) {
       logger.error(`Failed to delete registration: ${error}`);
+      await auditorEvent.fail({ error: error as Error });
       const message = error instanceof Error ? error.message : 'Unknown error';
       if (message.includes('not found')) {
         res.status(404).json({ error: message });

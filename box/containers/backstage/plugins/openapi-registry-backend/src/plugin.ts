@@ -28,8 +28,9 @@ export const openApiRegistryPlugin = createBackendPlugin({
         database: coreServices.database,
         discovery: coreServices.discovery,
         auth: coreServices.auth,
+        auditor: coreServices.auditor,
       },
-      async init({ httpRouter, logger, database, discovery, auth }) {
+      async init({ httpRouter, logger, database, discovery, auth, auditor }) {
         logger.info('Initializing OpenAPI Registry backend plugin');
 
         // Get database client
@@ -57,6 +58,7 @@ export const openApiRegistryPlugin = createBackendPlugin({
         const router = await createRouter({
           service,
           logger,
+          auditor,
         });
 
         httpRouter.use(router as any);

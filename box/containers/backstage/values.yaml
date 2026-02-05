@@ -77,6 +77,12 @@ backstage:
           database: backstage
       auth:
         dangerouslyDisableDefaultAuthPolicy: true
+      auditor:
+        severityLogLevelMappings:
+          low: debug
+          medium: info
+          high: info
+          critical: error
 
     integrations:
       gitlab:
