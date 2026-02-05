@@ -77,7 +77,7 @@ export async function createRouter(options: RouterOptions): Promise<Router> {
 
     const auditorEvent = await auditor.createEvent({
       eventId: 'api-register',
-      request: req,
+      request: req as any,
       severityLevel: 'medium',
       meta: {
         actionType: 'create',
@@ -141,7 +141,7 @@ export async function createRouter(options: RouterOptions): Promise<Router> {
 
     const auditorEvent = await auditor.createEvent({
       eventId: 'api-refresh',
-      request: req,
+      request: req as any,
       severityLevel: 'low',
       meta: {
         actionType: 'refresh',
@@ -172,7 +172,7 @@ export async function createRouter(options: RouterOptions): Promise<Router> {
 
     const auditorEvent = await auditor.createEvent({
       eventId: 'api-delete',
-      request: req,
+      request: req as any,
       severityLevel: 'medium',
       meta: {
         actionType: 'delete',
