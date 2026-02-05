@@ -39,7 +39,7 @@ import {
   SignInPage,
 } from '@backstage/core-components';
 import { createApp } from '@backstage/app-defaults';
-import { AppRouter, FlatRoutes } from '@backstage/core-app-api';
+import { FlatRoutes } from '@backstage/core-app-api';
 import { CatalogGraphPage } from '@backstage/plugin-catalog-graph';
 import {
   UnifiedThemeProvider,
@@ -131,12 +131,17 @@ const routes = (
   </FlatRoutes>
 );
 
-export default app.createRoot(
-  <>
-    <AlertDisplay />
-    <OAuthRequestDialog />
-    <AppRouter>
-      <Root>{routes}</Root>
-    </AppRouter>
-  </>,
-);
+const AppProvider = app.getProvider();
+const AppRouter = app.getRouter();
+
+export default function App() {
+  return (
+    <AppProvider>
+      <AlertDisplay />
+      <OAuthRequestDialog />
+      <AppRouter>
+        <Root>{routes}</Root>
+      </AppRouter>
+    </AppProvider>
+  );
+}
