@@ -608,23 +608,19 @@ git tag trivy-collector/1.0.0 && git push --tags
 git tag actions-runner/1.0.0 && git push --tags
 git tag logstash-with-opensearch-plugin/8.17.0 && git push --tags
 
-# Helm chart releases (pattern: {chart}-chart/x.y.z)
-git tag elasticache-backup-chart/1.0.0 && git push --tags
-git tag redis-console-chart/1.0.0 && git push --tags
-git tag trivy-collector-chart/1.0.0 && git push --tags
-git tag grafana-dashboards-chart/1.0.0 && git push --tags
+# Helm chart releases (pattern: {chart}/charts/x.y.z)
+git tag elasticache-backup/charts/1.0.0 && git push --tags
+git tag redis-console/charts/1.0.0 && git push --tags
+git tag trivy-collector/charts/1.0.0 && git push --tags
+git tag grafana-dashboards/charts/1.0.0 && git push --tags
 
 # Available workflows:
 # - release-kk.yml                           (Rust CLI + container)
 # - release-promdrop.yml                     (Rust CLI + container)
-# - release-filesystem-cleaner.yml           (Rust container)
-# - release-elasticache-backup.yml           (Rust container)
-# - release-elasticache-backup-chart.yml     (Helm chart)
-# - release-redis-console.yml                (Rust container)
-# - release-redis-console-chart.yml          (Helm chart)
+# - release-rust-containers.yml              (Unified Rust container release: filesystem-cleaner, elasticache-backup, redis-console)
 # - release-trivy-collector.yml              (Rust container)
-# - release-trivy-collector-chart.yml        (Helm chart)
-# - release-grafana-dashboards-chart.yml     (Helm chart to OCI registry)
+# - release-helm-chart.yml                   (Unified Helm chart release to OCI registry)
+# - lint-helm-chart.yml                      (PR lint for Helm charts)
 # - release-logstash-with-opensearch-plugin.yml (Container image)
 # - release-actions-runner.yml               (Container image)
 # - release-backup-utils.yml                 (Workflow dispatch - builds from external source)
