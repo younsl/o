@@ -1,5 +1,7 @@
 # GHES Schedule Scanner (GSS)
 
+[![Container Image](https://img.shields.io/badge/ghcr.io-younsl%2Fgss-000000?style=flat-square&logo=github&logoColor=white)](https://github.com/younsl/o/pkgs/container/gss)
+[![Helm Chart](https://img.shields.io/badge/helm_chart-ghcr.io%2Fyounsl%2Fcharts%2Fgss-000000?style=flat-square&logo=helm&logoColor=white)](https://github.com/younsl/o/pkgs/container/charts%2Fgss)
 [![Rust Version](https://img.shields.io/badge/rust-1.90+-000000?style=flat-square&logo=rust&logoColor=white)](https://www.rust-lang.org/)
 [![License](https://img.shields.io/github/license/younsl/o?style=flat-square&color=black&logo=github&logoColor=white)](https://github.com/younsl/o/blob/main/box/kubernetes/gss/LICENSE)
 
@@ -199,23 +201,18 @@ docker run --rm \
 
 ## Kubernetes Deployment
 
+This chart is distributed as an [OCI](https://helm.sh/docs/topics/registries/) artifact via [GHCR](https://ghcr.io). The recommended installation method is `helm install` directly from the OCI registry.
+
 ```bash
-# Install using Helm
-helm install gss \
-  ./charts/gss \
-  --set image.repository=ghcr.io/younsl/gss \
-  --set image.tag=latest
+# Pull chart from OCI registry and untar
+helm pull oci://ghcr.io/younsl/charts/gss --version 0.1.0 --untar
+
+# Edit values.yaml to configure environment variables, image tag, etc.
+vi gss/values.yaml
+
+# Install using the local chart with custom values
+helm install gss ./gss -n gss --create-namespace -f gss/values.yaml
 ```
-
-## Performance
-
-| Metric                | Value            |
-| --------------------- | ---------------- |
-| Binary Size           | 3.8MB (stripped) |
-| Memory Usage          | ~40MB            |
-| Startup Time          | ~50ms            |
-| Scan Time (100 repos) | ~18s             |
-| Scan Time (900 repos) | ~35s             |
 
 ## License
 
