@@ -24,6 +24,10 @@ Kubernetes tools, policy resources, and architecture documentation organized by 
 | Tools | [kup](./kup/) | [Rust](./kup/Cargo.toml) | Active | Interactive EKS cluster upgrade CLI with Insights analysis, sequential control plane upgrades, and addon/nodegroup updates |
 | Tools | [promdrop](./promdrop/) | [Rust](./promdrop/Cargo.toml) | Active | Prometheus scrape config generator to drop unused metrics analyzed by [mimirtool](https://grafana.com/docs/mimir/latest/manage/tools/mimirtool/) |
 
+## Related
+
+Standalone Helm charts are also hosted in [younsl/charts](https://github.com/younsl/charts), a separate OCI-based Helm chart repository independent from this monorepo.
+
 ## License
 
 All tools and resources in this directory are licensed under the repository's main [MIT License](../../LICENSE).
