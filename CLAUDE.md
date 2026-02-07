@@ -16,7 +16,7 @@ Kubernetes addons and tools follow the [Unix philosophy](https://en.wikipedia.or
 
 ### Rust Projects
 
-Standard Makefile patterns for Rust tools (ij, kk, kup, qg, s3vget, promdrop, filesystem-cleaner, elasticache-backup, redis-console, trivy-collector):
+Standard Makefile patterns for Rust tools (ij, kk, kup, qg, s3vget, promdrop, gss, filesystem-cleaner, elasticache-backup, redis-console, trivy-collector):
 
 ```bash
 # Core build commands
@@ -79,7 +79,7 @@ terraform destroy   # Destroy resources
 
 ### Helm Charts
 
-Standard Makefile patterns for Helm charts (grafana-dashboards, elasticache-backup, redis-console, trivy-collector):
+Standard Makefile patterns for Helm charts (grafana-dashboards, gss, elasticache-backup, redis-console, trivy-collector):
 
 ```bash
 # Development
@@ -112,6 +112,7 @@ box/
 ├── kubernetes/             # K8s controllers, policies, helm charts
 │   ├── elasticache-backup/# ElastiCache S3 backup automation (Rust, container)
 │   ├── grafana-dashboards/# Grafana dashboard ConfigMaps (Helm chart only)
+│   ├── gss/               # GHES scheduled workflow scanner (Rust, container)
 │   ├── kup/               # EKS cluster upgrade CLI tool (Rust)
 │   ├── promdrop/          # Prometheus metric filter generator (Rust, CLI + container)
 │   ├── redis-console/     # Interactive Redis cluster management CLI (Rust, CLI + container)
@@ -561,6 +562,48 @@ image: ghcr.io/younsl/logstash-with-opensearch-plugin:8.17.0
 
 **Why this exists**: Official Logstash image lacks the OpenSearch plugin; installing via initContainer causes 5+ minute startup delays.
 
+### gss - GHES Schedule Scanner (Rust)
+
+Kubernetes add-on for monitoring and analyzing CI/CD scheduled workflows in GitHub Enterprise Server. Runs as a CronJob with Slack Canvas integration.
+
+```bash
+# Build commands
+make build      # Debug build
+make release    # Optimized release build
+make run        # Build and run
+make dev        # Run with debug logging
+make install    # Install to ~/.cargo/bin/
+
+# Container usage
+docker run --rm \
+  -e GITHUB_TOKEN=ghp_xxxx \
+  -e GITHUB_ORG=my-org \
+  -e GITHUB_BASE_URL=https://github.example.com \
+  ghcr.io/younsl/gss:latest
+
+# Kubernetes deployment via Helm
+helm install gss ./charts/gss \
+  --set configMap.data.GITHUB_BASE_URL=https://github.example.com \
+  --set configMap.data.GITHUB_ORG=my-org
+```
+
+**Technical Details**:
+- Scans GitHub Enterprise Server organizations for scheduled workflows
+- Async concurrent scanning with configurable parallelism
+- Multiple publishers: console output and Slack Canvas
+- UTC/KST timezone conversion for schedule visibility
+- Exclude repos via ConfigMap-mounted exclude-repos.txt
+- Helm chart for Kubernetes CronJob deployment
+- IRSA-compatible for AWS environments
+
+**Environment Variables**:
+- `GITHUB_TOKEN`: GitHub Personal Access Token (required)
+- `GITHUB_ORG`: Target GitHub organization (required)
+- `GITHUB_BASE_URL`: GitHub Enterprise Server URL (required)
+- `PUBLISHER_TYPE`: Output format (`console` or `slack-canvas`, default: `console`)
+- `CONCURRENT_SCANS`: Max parallel repository scans (default: `10`)
+- `SLACK_TOKEN`, `SLACK_CHANNEL_ID`, `SLACK_CANVAS_ID`: For Slack Canvas publisher
+
 ### grafana-dashboards - Grafana Dashboard ConfigMaps (Helm Chart)
 
 Helm chart that deploys Grafana dashboards as Kubernetes ConfigMaps for automatic provisioning via Grafana sidecar.
@@ -604,6 +647,7 @@ git tag kk/1.0.0 && git push --tags        # Rust
 git tag filesystem-cleaner/1.0.0 && git push --tags
 git tag elasticache-backup/1.0.0 && git push --tags
 git tag redis-console/1.0.0 && git push --tags
+git tag gss/1.0.0 && git push --tags
 git tag trivy-collector/1.0.0 && git push --tags
 git tag actions-runner/1.0.0 && git push --tags
 git tag logstash-with-opensearch-plugin/8.17.0 && git push --tags
@@ -612,12 +656,13 @@ git tag logstash-with-opensearch-plugin/8.17.0 && git push --tags
 git tag elasticache-backup/charts/1.0.0 && git push --tags
 git tag redis-console/charts/1.0.0 && git push --tags
 git tag trivy-collector/charts/1.0.0 && git push --tags
+git tag gss/charts/1.0.0 && git push --tags
 git tag grafana-dashboards/charts/1.0.0 && git push --tags
 
 # Available workflows:
 # - release-kk.yml                           (Rust CLI + container)
 # - release-promdrop.yml                     (Rust CLI + container)
-# - release-rust-containers.yml              (Unified Rust container release: filesystem-cleaner, elasticache-backup, redis-console)
+# - release-rust-containers.yml              (Unified Rust container release: filesystem-cleaner, elasticache-backup, redis-console, gss)
 # - release-trivy-collector.yml              (Rust container)
 # - release-helm-chart.yml                   (Unified Helm chart release to OCI registry)
 # - lint-helm-chart.yml                      (PR lint for Helm charts)

@@ -8,6 +8,7 @@ on:
       - 'redis-console/charts/[0-9]+.[0-9]+.[0-9]+'
       - 'trivy-collector/charts/[0-9]+.[0-9]+.[0-9]+'
       - 'grafana-dashboards/charts/[0-9]+.[0-9]+.[0-9]+'
+      - 'gss/charts/[0-9]+.[0-9]+.[0-9]+'
 
 env:
   REGISTRY: ghcr.io

@@ -1,0 +1,219 @@
+# -- (string) Override the chart name
+nameOverride: ""
+# -- (string) Override the full name template
+fullnameOverride: ""
+
+# -- (object) Container image configuration
+image:
+  # -- (string) Container image repository
+  # This value is used to specify the container image repository.
+  repository: ghcr.io/younsl/gss
+  # -- (string) Image pull policy (Available values: Always, IfNotPresent, Never)
+  pullPolicy: IfNotPresent
+  # -- (string) Container image tag (If not set, will use Chart's appVersion by default.)
+  tag: null
+
+# -- (list) Image pull secrets for private container registries
+imagePullSecrets: []
+  # - name: regcred
+  # - name: github-registry
+
+# -- (string) Restart policy. Available values: Always, Never, OnFailure (default: Never)
+restartPolicy: Never
+
+# -- (bool) Suspend the CronJob execution
+# When set to true, all subsequent executions are suspended.
+# This setting does not apply to already started executions.
+suspend: false
+
+# -- (string) CronJob schedule in Cron format (UTC)
+# This value is used to configure the schedule for the CronJob.
+# Cron expression details:
+# minute (0-59), hour (0-23), day of month (1-31), month (1-12), day of week (0-7), `*` means all
+schedule: "0 1 * * *"
+
+# -- (string) Concurrency policy for CronJob (Available values: Allow, Forbid, Replace)
+concurrencyPolicy: Forbid
+
+# -- (string) Timezone for the CronJob
+# This value is used to configure the timezone for the CronJob.
+# Available timezone list: https://en.wikipedia.org/wiki/List_of_tz_database_time_zones
+timeZone: "Etc/UTC"
+
+# -- (int) TTL in seconds for finished jobs
+# This value is used to delete finished jobs after a certain period of time.
+# This helps to reduce the number of old job pods that are kept in the cluster.
+ttlSecondsAfterFinished: 3600
+
+# -- (int) Number of successful jobs to keep in history
+# This value is used to limit the number of successful jobs
+successfulJobsHistoryLimit: 3
+
+# -- (int) Number of failed jobs to keep in history
+# This value is used to limit the number of failed jobs
+failedJobsHistoryLimit: 1
+
+# -- (object) DNS config for the CronJob pod
+dnsConfig: {}
+  # Example:
+  # options:
+  #   - name: ndots
+  #     value: "2"
+
+# -- (object) CronJob annotations
+# annotations are used to configure additional CronJob settings
+annotations: {}
+
+# -- (object) Pod annotations
+# annotations are used to configure additional pod settings
+podAnnotations: {}
+  # linkerd.io/inject: disabled
+  # karpenter.sh/do-not-disrupt: true
+
+# -- (object) ConfigMap data containing application configuration
+configMap:
+  # -- (bool) Enable ConfigMap creation
+  enabled: true
+  # -- (string) External ConfigMap name (used when enabled=false)
+  # Set this to use an existing ConfigMap instead of creating one.
+  # When configMap.enabled=false, this field is required.
+  name: ""
+  data:
+    # -- (string) GitHub Enterprise organization name
+    # Organization name is used to scan all repositories for the given organization
+    GITHUB_ORG: example-org
+
+    # -- (string) GitHub Enterprise base URL
+    # The API endpoint will be automatically appended with '/api/v3'
+    # For example: https://github.example.com/api/v3
+    GITHUB_BASE_URL: https://github.example.com
+
+    # -- (string) Application log level
+    LOG_LEVEL: INFO
+
+    # -- (string) Timeout in seconds for GitHub API requests during repository scanning
+    # This applies to all GitHub API calls made while scanning repositories and fetching workflow files.
+    # If a request takes longer than this timeout, it will be cancelled and an error will be logged.
+    # Recommended value: 30-120 seconds depending on:
+    # - GitHub Enterprise Server performance
+    # - Repository size (large repos with many workflow files take longer)
+    # - Network latency between cluster and GitHub Enterprise Server
+    REQUEST_TIMEOUT: "60"
+
+    # -- (string) Number of concurrent repository scans
+    # This value is used to limit the number of concurrent goroutines
+    # that are scanning repositories.
+    # Recommended CONCURRENT_SCANS value depends on several factors:
+    # - GitHub API rate limits
+    # - GitHub API response time (latency)
+    # - Network conditions between your cluster and GitHub Enterprise
+    # Typical values range from 10-50, but can be higher if needed.
+    CONCURRENT_SCANS: "10"
+
+    # -- (string) Slack Bot Token to create a canvas page in Slack channel. Do not use a slack app token.
+    # How to get:
+    # 1. Go to https://api.slack.com/apps
+    # 2. Select your app > "OAuth & Permissions"
+    # 3. Copy "Bot User OAuth Token" starting with `xoxb-`
+    SLACK_TOKEN: null
+
+    # -- (string) Slack Channel ID to create a canvas page in Slack channel
+    # How to get:
+    # 1. Click channel name in Slack
+    # 2. Click "View channel details"
+    # 3. Scroll to bottom and copy Channel ID starting with `C`
+    SLACK_CHANNEL_ID: null
+
+    # -- (string) Slack Canvas ID to update a canvas page in Slack channel.
+    # Slack Canvas URL have the following format:
+    # https://<WORKSPACE>.slack.com/docs/<CHANNEL_ID>/<CANVAS_ID>
+    # How to get:
+    # 1. Copy the last part from Canvas URL you want to update
+    # Canvas URL format: https://workspace.slack.com/docs/CHANNEL_ID/CANVAS_ID
+    SLACK_CANVAS_ID: null
+
+    # -- (string) Publisher type to use (Available values: console, slack-canvas)
+    # This value determines which publisher will be used to output scan results
+    PUBLISHER_TYPE: slack-canvas
+
+# -- (string) Name of the secret containing sensitive data
+# This secret is used to store the GitHub access token with permissions
+# to scan repositories.
+secretName: gss-secret
+
+# -- (object) Container resource requirements
+resources:
+  limits:
+    cpu: "100m"
+    memory: "128Mi"
+  requests:
+    cpu: "50m"
+    memory: "64Mi"
+
+# -- (object) Pod-level security context
+# This applies to all containers in the pod
+podSecurityContext:
+  runAsUser: 1000
+  runAsGroup: 1000
+  fsGroup: 1000
+  runAsNonRoot: true
+
+# -- (object) Container-level security context
+# This applies to the specific container
+securityContext:
+  allowPrivilegeEscalation: false
+  readOnlyRootFilesystem: false
+  runAsNonRoot: true
+  runAsUser: 1000
+  runAsGroup: 1000
+  capabilities:
+    drop:
+      - ALL
+
+# -- (object) Node selector for pod assignment
+# nodeSelector is used to configure additional pod settings
+nodeSelector: {}
+# Example:
+#   kubernetes.io/os: linux
+#   node-type: worker
+
+# -- (list) Pod tolerations
+# tolerations are used to configure additional pod settings
+tolerations: []
+# Example:
+# - key: "node-role"
+#   operator: "Equal"
+#   value: "worker"
+#   effect: "NoSchedule"
+
+# -- (object) Pod affinity settings
+# affinity is used to configure additional pod settings
+affinity: {}
+# Example:
+#   nodeAffinity:
+#     requiredDuringSchedulingIgnoredDuringExecution:
+#       nodeSelectorTerms:
+#       - matchExpressions:
+#         - key: kubernetes.io/e2e-az-name
+#           operator: In
+#           values:
+#           - e2e-az1
+#           - e2e-az2
+
+# -- (list) Pod scheduling constraints for spreading pods across nodes or zones
+# topologySpreadConstraints are used to configure additional pod settings
+topologySpreadConstraints: []
+# Example:
+# - maxSkew: 1
+#   topologyKey: kubernetes.io/hostname
+#   whenUnsatisfiable: ScheduleAnyway
+#   labelSelector:
+#     matchLabels:
+#       app.kubernetes.io/name: gss
+
+# -- (list) List of repositories to exclude from the scan
+# Note: Please exclude the organization name, only the repository name.
+excludedRepositoriesList: []
+  # - infra-repo
+  # - important-repo
+  # - another-repo
