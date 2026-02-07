@@ -2,15 +2,22 @@
 
 한국의 핀테크 회사 목록을 정리한 문서입니다.
 
-## 회사 등록 기준
+## RAMPS 프레임워크
 
-고용주 평가의 5가지 기준
+RAMP 내재적 동기부여 모델에 실무적 지속가능성 차원(**S**ustainability)을 추가하여 직접 설계한 조직 평가 프레임워크. Andrzej Marczewski의 RAMP 이론(Self-Determination Theory 기반)을 토대로, 조직의 동기부여 환경과 현실적 조건을 동시에 평가한다.
 
-1. 적정한 급여를 제공하는가?: 시장 평균 이상의 급여를 제시하지 않는다면 서로 시간 낭비. 급여 정보는 솔직하게 파악해야 함.
-2. 직원을 존중하고 잘 대우하는가?: Glassdoor나 트위터 등에서 리뷰와 경험담을 분석. 일관된 부정적 리뷰가 있다면 그 이유를 파악하고 회사 측의 대응 여부 확인.
-3. 재정적으로 안정적인가?: 스타트업이라면 특히 중요. 기업 공개 자료, 재무 상태, 생존 가능성(runway)을 조사해야 함. 재정 정보를 공개하지 않으려는 회사는 즉시 거절하는 것이 바람직.
-4. 새로운 시도에 개방적인가?: 변화에 대한 유연성이 없으면 채용이나 성장도 한계가 있음. 기존 방식에만 고집하는 회사는 지양.
-5. 쿠버네티스(혹은 유사 오케스트레이션 도구)를 사용하는가?: 현대적인 클라우드 네이티브 기술 스택과 인프라에 대한 투자를 보여주는 지표임. 쿠버네티스 사용은 기술적 성숙도, 확장성, 자동화에 대한 회사의 의지를 나타낼 수 있음. 관련 기술 경험을 쌓고 싶은 엔지니어에게 중요한 요소. 반대로, 사용하지 않는다면 레거시 시스템에 머물러 있거나 인프라 현대화에 소극적일 수 있으며, 이는 장기적으로 비즈니스 민첩성, 효율성, 그리고 경쟁 우위를 잃을 수 있다는 위험 신호일 수 있음.
+| 항목 | 핵심 개념 | 평가 포인트 |
+|------|----------|-----------|
+| **R**elatedness (관계) | 타인과 연결되고 싶은 욕구. 조직의 장기적 결속력을 유지하는 핵심 요소 | 소속감, 동료 간 신뢰, 피드백 문화, 포용적 환경. Glassdoor나 트위터 등에서 리뷰와 경험담을 분석하고, 일관된 부정적 리뷰가 있다면 그 이유와 회사 측의 대응 여부를 확인 |
+| **A**utonomy (자율성) | 업무 방식에 대한 자유와 의미 있는 선택권. 새로운 시도에 대한 개방성 포함 | 마이크로매니지먼트 부재, 의사결정 참여, 업무 방식의 재량권. 변화에 대한 유연성이 없으면 채용이나 성장도 한계가 있으므로 기존 방식에만 고집하는 회사는 지양 |
+| **M**astery (숙련) | 역량 수준에 맞는 지속적인 도전을 통해 숙련되는 과정. 기술스택의 현대성이 성장 기회를 결정 | 체계적 온보딩, 역량에 비례하는 도전 기회, 장기 성장 경로. 쿠버네티스 등 클라우드 네이티브 기술 사용 여부는 기술적 성숙도와 확장성에 대한 투자 의지를 나타내는 지표이며, 레거시 시스템에 머물러 있는 조직은 장기적으로 비즈니스 민첩성과 경쟁 우위를 잃을 위험 |
+| **P**urpose (목적) | 자신의 행동에 의미를 부여하려는 욕구 | 미션/비전의 명확성, 개인 기여와 조직 목표의 연결성 |
+| **S**ustainability (지속가능성) | 조직의 재정 건전성과 공정한 보상. 내재적 동기가 유지되려면 외적 기반이 안정적이어야 함 | 시장 평균 이상의 적정 급여 제공 여부(미달 시 서로 시간 낭비), 기업 공개 자료와 재무 상태 및 생존 가능성(runway) 확인. 재정 정보를 공개하지 않으려는 회사는 즉시 거절하는 것이 바람직 |
+
+**참고자료**:
+- [The Intrinsic Motivation RAMP](https://www.gamified.uk/gamification-framework/the-intrinsic-motivation-ramp/) @gamified.uk
+- [RAMP: A Model of Intrinsic Motivation](https://ofm.wa.gov/wp-content/uploads/sites/default/files/public/shr/RAMP%20Handout.pdf) @ofm.wa.gov
+- [On loyalty to your employer](https://medium.com/hackernoon/on-loyalty-to-your-employer-c674c4b06b3a) @medium
 
 ## 회사 목록
 
@@ -24,10 +31,11 @@
 | Payment | 카카오페이 | On-premise, AWS, Kubernetes | On-site | [채용](https://kakaopay.career.greetinghr.com/) | - |
 | Payment | 페이히어 | AWS, Kubernetes, Istio | 확인필요 | [채용](https://careers.payhere.in/recruit) | - |
 | Payment | 쿠팡페이 | AWS, Azure, Kubernetes | 확인필요 | [채용](https://www.coupang.jobs/kr/jobs/?department=Coupang+Pay&department=Coupang+Pay+Tech) | - |
-| Payment | 무신사페이먼츠 | AWS, Kubernetes | On-site | [채용](https://www.musinsacareers.com/ko/home?subsidiaries=%EB%AC%B4%EC%8B%A0%EC%82%AC%ED%8E%98%EC%9D%B4%EB%A8%BC%EC%B8%A0) | - |
+| Payment | 무신사페이먼츠 | AWS, Kubernetes | On-site & Remote[^2] | [채용](https://www.musinsacareers.com/ko/home?subsidiaries=%EB%AC%B4%EC%8B%A0%EC%82%AC%ED%8E%98%EC%9D%B4%EB%A8%BC%EC%B8%A0) | - |
 | Payment | 크림페이 | On-premise, Kubernetes | On-site | [채용](https://recruit.kreampaycorp.com/main.do) | - |
 
 [^1]: 2025년 10월부터는 주 5일 오피스 근무로 변경될 예정
+[^2]: 주 2회 재택근무 가능
 
 ## 관련자료
 
