@@ -1,44 +1,56 @@
-name: Release grafana-dashboards Helm Chart
-run-name: 📦 Release grafana-dashboards chart ${{ github.ref_name }}
+name: Release Helm Chart
+run-name: "📦 Release helm chart ${{ github.ref_name }}"
 
 on:
   push:
     tags:
+      - 'elasticache-backup/charts/[0-9]+.[0-9]+.[0-9]+'
+      - 'redis-console/charts/[0-9]+.[0-9]+.[0-9]+'
+      - 'trivy-collector/charts/[0-9]+.[0-9]+.[0-9]+'
       - 'grafana-dashboards/charts/[0-9]+.[0-9]+.[0-9]+'
-  workflow_dispatch:
-    inputs:
-      version:
-        description: "Chart version to release (e.g. 1.0.0)"
-        required: true
-        default: "x.y.z"
 
 env:
-  CHART_NAME: grafana-dashboards
-  CHART_PATH: box/kubernetes/grafana-dashboards
   REGISTRY: ghcr.io
   REGISTRY_PATH: ghcr.io/younsl/charts
 
 jobs:
-  extract-version:
+  extract-info:
     runs-on: ubuntu-24.04
     outputs:
-      version: ${{ steps.get-version.outputs.version }}
+      chart_name: ${{ steps.parse.outputs.chart_name }}
+      version: ${{ steps.parse.outputs.version }}
+      chart_path: ${{ steps.parse.outputs.chart_path }}
+      chart_dirs: ${{ steps.parse.outputs.chart_dirs }}
     steps:
-      - name: Extract version from tag or input
-        id: get-version
+      - name: Extract chart info from tag
+        id: parse
         run: |
-          if [ "${{ github.event_name }}" = "push" ]; then
-            # Extract version from tag (grafana-dashboards/charts/1.0.0 -> 1.0.0)
-            VERSION="${GITHUB_REF#refs/tags/grafana-dashboards/charts/}"
-          else
-            # Use manual input version
-            VERSION="${{ inputs.version }}"
+          TAG="${GITHUB_REF#refs/tags/}"
+          CHART_NAME="${TAG%%/charts/*}"
+          VERSION="${TAG##*/}"
+
+          # Default convention: box/kubernetes/{name}/charts/{name}
+          CHART_PATH="box/kubernetes/${CHART_NAME}/charts/${CHART_NAME}"
+          CHART_DIRS="box/kubernetes/${CHART_NAME}/charts"
+
+          # grafana-dashboards has no nested charts/ subdirectory
+          if [ "${CHART_NAME}" = "grafana-dashboards" ]; then
+            CHART_PATH="box/kubernetes/${CHART_NAME}"
+            CHART_DIRS="box/kubernetes"
           fi
+
+          echo "chart_name=${CHART_NAME}" >> $GITHUB_OUTPUT
           echo "version=${VERSION}" >> $GITHUB_OUTPUT
-          echo "Extracted version: ${VERSION}"
+          echo "chart_path=${CHART_PATH}" >> $GITHUB_OUTPUT
+          echo "chart_dirs=${CHART_DIRS}" >> $GITHUB_OUTPUT
+
+          echo "Chart: ${CHART_NAME}"
+          echo "Version: ${VERSION}"
+          echo "Path: ${CHART_PATH}"
+          echo "Dirs: ${CHART_DIRS}"
 
   check:
-    needs: extract-version
+    needs: extract-info
     runs-on: ubuntu-24.04
     permissions:
       packages: read
@@ -50,7 +62,7 @@ jobs:
         run: |
           ENCODED_TOKEN=$(echo -n "${{ secrets.GITHUB_TOKEN }}" | base64)
           TAGS=$(curl -s -H "Authorization: Bearer ${ENCODED_TOKEN}" \
-            https://ghcr.io/v2/younsl/charts/${{ env.CHART_NAME }}/tags/list)
+            https://ghcr.io/v2/younsl/charts/${{ needs.extract-info.outputs.chart_name }}/tags/list)
           echo "TAGS: $TAGS"
 
           ## Check if TAGS is empty or null
@@ -59,17 +71,17 @@ jobs:
             echo "chart_exists=false" >> $GITHUB_OUTPUT
           else
             ## Check if the specific version already exists
-            if echo "$TAGS" | jq -e --arg TAG "${{ needs.extract-version.outputs.version }}" '.tags | index($TAG)'; then
-              echo "Chart with version ${{ needs.extract-version.outputs.version }} already exists."
+            if echo "$TAGS" | jq -e --arg TAG "${{ needs.extract-info.outputs.version }}" '.tags | index($TAG)'; then
+              echo "Chart with version ${{ needs.extract-info.outputs.version }} already exists."
               echo "chart_exists=true" >> $GITHUB_OUTPUT
             else
-              echo "Chart with version ${{ needs.extract-version.outputs.version }} not found."
+              echo "Chart with version ${{ needs.extract-info.outputs.version }} not found."
               echo "chart_exists=false" >> $GITHUB_OUTPUT
             fi
           fi
 
   lint:
-    needs: [extract-version, check]
+    needs: [extract-info, check]
     if: ${{ needs.check.outputs.chart_exists == 'false' }}
     runs-on: ubuntu-24.04
     permissions:
@@ -97,13 +109,13 @@ jobs:
       - name: Run chart-testing (lint)
         run: |
           ct lint --target-branch ${{ github.event.repository.default_branch }} \
-            --chart-dirs box/kubernetes \
-            --charts ${{ env.CHART_PATH }}
+            --chart-dirs ${{ needs.extract-info.outputs.chart_dirs }} \
+            --charts ${{ needs.extract-info.outputs.chart_path }}
 
       - name: Validate chart version matches release version
         run: |
-          CHART_VERSION=$(helm show chart ${{ env.CHART_PATH }} | grep '^version:' | awk '{print $2}')
-          RELEASE_VERSION="${{ needs.extract-version.outputs.version }}"
+          CHART_VERSION=$(helm show chart ${{ needs.extract-info.outputs.chart_path }} | grep '^version:' | awk '{print $2}')
+          RELEASE_VERSION="${{ needs.extract-info.outputs.version }}"
 
           echo "Chart version: ${CHART_VERSION}"
           echo "Release version: ${RELEASE_VERSION}"
@@ -115,7 +127,7 @@ jobs:
           fi
 
   package-and-publish:
-    needs: [extract-version, check, lint]
+    needs: [extract-info, check, lint]
     if: ${{ needs.check.outputs.chart_exists == 'false' }}
     runs-on: ubuntu-24.04
     permissions:
@@ -126,7 +138,7 @@ jobs:
         uses: actions/checkout@v6
 
       - name: Set up Helm
-        uses: azure/setup-helm@v4
+        uses: azure/setup-helm@v4.3.1
         with:
           version: v3.19.0
 
@@ -136,8 +148,8 @@ jobs:
 
       - name: Package Helm chart
         run: |
-          helm package ${{ env.CHART_PATH }} --version ${{ needs.extract-version.outputs.version }}
+          helm package ${{ needs.extract-info.outputs.chart_path }} --version ${{ needs.extract-info.outputs.version }}
 
       - name: Push Helm chart to OCI registry
         run: |
-          helm push ${{ env.CHART_NAME }}-${{ needs.extract-version.outputs.version }}.tgz oci://${{ env.REGISTRY_PATH }}
+          helm push ${{ needs.extract-info.outputs.chart_name }}-${{ needs.extract-info.outputs.version }}.tgz oci://${{ env.REGISTRY_PATH }}
