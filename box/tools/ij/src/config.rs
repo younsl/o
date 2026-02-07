@@ -38,6 +38,10 @@ pub struct Args {
     /// Log level (trace, debug, info, warn, error)
     #[arg(long, default_value = "info", env = "IJ_LOG_LEVEL")]
     pub log_level: String,
+
+    /// Port forwarding spec (e.g., 80, 8080:80, host:3306, 3306:host:3306)
+    #[arg(short = 'L', long = "forward", value_name = "SPEC")]
+    pub forward: Option<String>,
 }
 
 /// Application configuration derived from CLI args.
@@ -48,6 +52,7 @@ pub struct Config {
     pub tag_filters: Vec<String>,
     pub running_only: bool,
     pub log_level: String,
+    pub forward: Option<String>,
 }
 
 impl Config {
@@ -64,6 +69,7 @@ impl Config {
             tag_filters: args.tag_filter,
             running_only: args.running_only,
             log_level: args.log_level,
+            forward: args.forward,
         }
     }
 
@@ -75,10 +81,26 @@ impl Config {
 
 /// AWS regions to scan.
 pub const AWS_REGIONS: &[&str] = &[
-    "us-east-1", "us-east-2", "us-west-1", "us-west-2",
-    "ap-south-1", "ap-northeast-1", "ap-northeast-2", "ap-northeast-3",
-    "ap-southeast-1", "ap-southeast-2", "ap-southeast-3", "ap-east-1",
+    "us-east-1",
+    "us-east-2",
+    "us-west-1",
+    "us-west-2",
+    "ap-south-1",
+    "ap-northeast-1",
+    "ap-northeast-2",
+    "ap-northeast-3",
+    "ap-southeast-1",
+    "ap-southeast-2",
+    "ap-southeast-3",
+    "ap-east-1",
     "ca-central-1",
-    "eu-central-1", "eu-west-1", "eu-west-2", "eu-west-3", "eu-south-1", "eu-north-1",
-    "me-south-1", "sa-east-1", "af-south-1",
+    "eu-central-1",
+    "eu-west-1",
+    "eu-west-2",
+    "eu-west-3",
+    "eu-south-1",
+    "eu-north-1",
+    "me-south-1",
+    "sa-east-1",
+    "af-south-1",
 ];

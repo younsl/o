@@ -5,16 +5,16 @@ use std::io::{self, Stdout};
 use crossterm::{
     event::{self, Event, KeyCode, KeyEventKind, KeyModifiers},
     execute,
-    terminal::{disable_raw_mode, enable_raw_mode, EnterAlternateScreen, LeaveAlternateScreen},
+    terminal::{EnterAlternateScreen, LeaveAlternateScreen, disable_raw_mode, enable_raw_mode},
 };
 use nucleo::{Config as NucleoConfig, Matcher, Utf32Str};
 use ratatui::{
+    Frame, Terminal,
     backend::CrosstermBackend,
     layout::{Constraint, Direction, Layout},
     style::{Color, Modifier, Style},
     text::{Line, Span},
     widgets::{List, ListItem, ListState, Paragraph},
-    Frame, Terminal,
 };
 
 use crate::config::Config;
@@ -118,12 +118,16 @@ impl<'a> Selector<'a> {
 
     fn restore_terminal(&self, terminal: &mut Terminal<CrosstermBackend<Stdout>>) -> Result<()> {
         disable_raw_mode().map_err(|e| Error::Other(e.into()))?;
-        execute!(terminal.backend_mut(), LeaveAlternateScreen).map_err(|e| Error::Other(e.into()))?;
+        execute!(terminal.backend_mut(), LeaveAlternateScreen)
+            .map_err(|e| Error::Other(e.into()))?;
         terminal.show_cursor().map_err(|e| Error::Other(e.into()))?;
         Ok(())
     }
 
-    fn run_picker(&self, terminal: &mut Terminal<CrosstermBackend<Stdout>>) -> Result<&'a Instance> {
+    fn run_picker(
+        &self,
+        terminal: &mut Terminal<CrosstermBackend<Stdout>>,
+    ) -> Result<&'a Instance> {
         let mut state = PickerState::new(self.items.len());
         let mut matcher = Matcher::new(NucleoConfig::DEFAULT);
 
@@ -275,7 +279,9 @@ impl<'a> Selector<'a> {
             .map(|(i, &(idx, _))| {
                 let content = &self.items[idx];
                 let style = if i == state.selected {
-                    Style::default().fg(Color::Cyan).add_modifier(Modifier::BOLD)
+                    Style::default()
+                        .fg(Color::Cyan)
+                        .add_modifier(Modifier::BOLD)
                 } else {
                     Style::default()
                 };

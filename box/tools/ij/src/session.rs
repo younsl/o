@@ -5,6 +5,7 @@ use tracing::debug;
 
 use crate::ec2::Instance;
 use crate::error::{Error, Result};
+use crate::forward::PortForward;
 
 #[cfg(unix)]
 mod pty;
@@ -62,5 +63,47 @@ impl SessionManager {
             }
             Ok(())
         }
+    }
+
+    /// Start a port forwarding session via SSM.
+    pub fn port_forward(&self, instance: &Instance, pf: &PortForward) -> Result<()> {
+        debug!(
+            "Port forwarding via {} in {}: {}",
+            instance.instance_id,
+            instance.region,
+            pf.display_info(),
+        );
+
+        let mut cmd = Command::new("aws");
+        cmd.args([
+            "ssm",
+            "start-session",
+            "--target",
+            &instance.instance_id,
+            "--region",
+            &instance.region,
+            "--document-name",
+            pf.document_name(),
+            "--parameters",
+            &pf.parameters_json(),
+        ]);
+
+        if let Some(ref profile) = self.profile {
+            cmd.args(["--profile", profile]);
+        }
+
+        debug!("Executing: {:?}", cmd);
+
+        let status = cmd
+            .status()
+            .map_err(|e| Error::Session(format!("Failed to execute aws ssm: {}", e)))?;
+
+        if !status.success() {
+            return Err(Error::Session(format!(
+                "Port forwarding session failed with status: {}",
+                status
+            )));
+        }
+        Ok(())
     }
 }

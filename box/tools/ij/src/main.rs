@@ -1,6 +1,7 @@
 mod config;
 mod ec2;
 mod error;
+mod forward;
 mod session;
 mod ui;
 
@@ -11,6 +12,7 @@ use tracing::debug;
 use config::{Args, Config};
 use ec2::Scanner;
 use error::Error;
+use forward::PortForward;
 use session::SessionManager;
 use ui::Selector;
 
@@ -31,6 +33,14 @@ impl App {
             debug!("Using AWS profile: {}", profile);
         }
 
+        // Parse port forward spec early to fail fast
+        let port_forward = self
+            .config
+            .forward
+            .as_deref()
+            .map(PortForward::parse)
+            .transpose()?;
+
         // Scan for instances
         let scanner = Scanner::new(self.config.clone());
         let instances = scanner.fetch_instances().await?;
@@ -43,15 +53,20 @@ impl App {
 
         self.print_selection(selected);
 
-        // Connect to instance
         let session = SessionManager::new(self.config.profile.clone());
-        session.connect(selected)?;
+
+        if let Some(ref pf) = port_forward {
+            self.print_forward_info(selected, pf);
+            session.port_forward(selected, pf)?;
+        } else {
+            session.connect(selected)?;
+        }
 
         Ok(())
     }
 
     fn init_logging(&self) {
-        let filter = format!("warn,ij={}", self.config.log_level);
+        let filter = format!("error,ij={}", self.config.log_level);
         tracing_subscriber::fmt()
             .with_env_filter(
                 tracing_subscriber::EnvFilter::try_from_default_env()
@@ -63,7 +78,7 @@ impl App {
 
     fn print_summary(&self, instances: &[ec2::Instance]) {
         println!(
-            "\n{} {} instances (profile: {})\n",
+            "{} {} instances (profile: {})",
             "Found".bright_blue().bold(),
             instances.len().to_string().bright_yellow().bold(),
             self.config.profile_display().bright_cyan()
@@ -72,11 +87,26 @@ impl App {
 
     fn print_selection(&self, instance: &ec2::Instance) {
         println!(
-            "\n{} {} ({})",
+            "{} {} ({})",
             "Selected:".bright_blue(),
             instance.name.bright_cyan().bold(),
             instance.region.bright_blue()
         );
+    }
+
+    fn print_forward_info(&self, instance: &ec2::Instance, pf: &PortForward) {
+        println!(
+            "{} {}",
+            "Port forwarding:".bright_blue(),
+            pf.display_info().bright_yellow().bold(),
+        );
+        println!(
+            "{} {} ({})",
+            "Via:".bright_blue(),
+            instance.name.bright_cyan(),
+            instance.instance_id.bright_blue(),
+        );
+        println!("{}", "Press Ctrl+C to stop the tunnel.".bright_black());
     }
 }
 

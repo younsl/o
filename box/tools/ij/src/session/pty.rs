@@ -34,16 +34,14 @@ pub fn connect_with_pty(mut cmd: Command) -> Result<()> {
     if let Some(ref orig) = original_termios {
         let mut raw = orig.clone();
         termios::cfmakeraw(&mut raw);
-        termios::tcsetattr(&stdin, SetArg::TCSANOW, &raw)
-            .context("Failed to set raw mode")?;
+        termios::tcsetattr(&stdin, SetArg::TCSANOW, &raw).context("Failed to set raw mode")?;
     }
 
     // Configure child process
     let slave_fd = slave.as_raw_fd();
     unsafe {
         cmd.pre_exec(move || {
-            unistd::setsid()
-                .map_err(std::io::Error::other)?;
+            unistd::setsid().map_err(std::io::Error::other)?;
             libc::ioctl(slave_fd, libc::TIOCSCTTY as libc::c_ulong, 0);
             libc::dup2(slave_fd, 0);
             libc::dup2(slave_fd, 1);
@@ -52,14 +50,20 @@ pub fn connect_with_pty(mut cmd: Command) -> Result<()> {
         });
     }
 
-    let mut child = cmd.spawn().context("Failed to spawn aws ssm start-session")?;
+    let mut child = cmd
+        .spawn()
+        .context("Failed to spawn aws ssm start-session")?;
     drop(slave);
 
     // Ignore signals in parent (except SIGWINCH)
     unsafe {
         signal::signal(Signal::SIGINT, signal::SigHandler::SigIgn).ok();
         signal::signal(Signal::SIGTSTP, signal::SigHandler::SigIgn).ok();
-        signal::signal(Signal::SIGWINCH, signal::SigHandler::Handler(handle_sigwinch)).ok();
+        signal::signal(
+            Signal::SIGWINCH,
+            signal::SigHandler::Handler(handle_sigwinch),
+        )
+        .ok();
     }
 
     // Reset WINCH flag before starting
@@ -187,7 +191,10 @@ fn run_io_loop(master: &OwnedFd, child: &mut std::process::Child, stdin_fd: i32)
                         for &byte in &stdin_buf[..n] {
                             if detector.process(byte) {
                                 info!("Escape sequence detected, disconnecting...");
-                                eprintln!("\r\n{}", "Connection closed by escape sequence.".yellow());
+                                eprintln!(
+                                    "\r\n{}",
+                                    "Connection closed by escape sequence.".yellow()
+                                );
                                 let _ = child.kill();
                                 let _ = child.wait();
                                 return Ok(());

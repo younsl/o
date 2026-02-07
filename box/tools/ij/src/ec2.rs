@@ -6,7 +6,7 @@ use colored::Colorize;
 use tabled::Tabled;
 use tracing::{debug, warn};
 
-use crate::config::{Config, AWS_REGIONS};
+use crate::config::{AWS_REGIONS, Config};
 use crate::error::{Error, Result};
 
 /// EC2 instance information.
@@ -62,12 +62,42 @@ impl ColumnWidths {
     /// Calculate widths from instances.
     pub fn from_instances(instances: &[Instance]) -> Self {
         Self {
-            region: instances.iter().map(|i| i.region.len()).max().unwrap_or(6).max(6),
-            name: instances.iter().map(|i| i.name.len()).max().unwrap_or(4).max(4),
-            instance_id: instances.iter().map(|i| i.instance_id.len()).max().unwrap_or(11).max(11),
-            instance_type: instances.iter().map(|i| i.instance_type.len()).max().unwrap_or(4).max(4),
-            private_ip: instances.iter().map(|i| i.private_ip.len()).max().unwrap_or(10).max(10),
-            platform: instances.iter().map(|i| i.platform.len()).max().unwrap_or(8).max(8),
+            region: instances
+                .iter()
+                .map(|i| i.region.len())
+                .max()
+                .unwrap_or(6)
+                .max(6),
+            name: instances
+                .iter()
+                .map(|i| i.name.len())
+                .max()
+                .unwrap_or(4)
+                .max(4),
+            instance_id: instances
+                .iter()
+                .map(|i| i.instance_id.len())
+                .max()
+                .unwrap_or(11)
+                .max(11),
+            instance_type: instances
+                .iter()
+                .map(|i| i.instance_type.len())
+                .max()
+                .unwrap_or(4)
+                .max(4),
+            private_ip: instances
+                .iter()
+                .map(|i| i.private_ip.len())
+                .max()
+                .unwrap_or(10)
+                .max(10),
+            platform: instances
+                .iter()
+                .map(|i| i.platform.len())
+                .max()
+                .unwrap_or(8)
+                .max(8),
         }
     }
 
@@ -75,7 +105,12 @@ impl ColumnWidths {
     pub fn header(&self) -> String {
         format!(
             "{:<w0$}  {:<w1$}  {:<w2$}  {:<w3$}  {:<w4$}  {:<w5$}",
-            "REGION", "NAME", "INSTANCE ID", "TYPE", "PRIVATE IP", "PLATFORM",
+            "REGION",
+            "NAME",
+            "INSTANCE ID",
+            "TYPE",
+            "PRIVATE IP",
+            "PLATFORM",
             w0 = self.region,
             w1 = self.name,
             w2 = self.instance_id,
@@ -116,7 +151,8 @@ impl Scanner {
                 let running_only = self.config.running_only;
 
                 tokio::spawn(async move {
-                    fetch_region_instances(&region, profile.as_deref(), &tag_filters, running_only).await
+                    fetch_region_instances(&region, profile.as_deref(), &tag_filters, running_only)
+                        .await
                 })
             })
             .collect();
@@ -130,9 +166,7 @@ impl Scanner {
             }
         }
 
-        instances.sort_by(|a, b| {
-            a.region.cmp(&b.region).then_with(|| a.name.cmp(&b.name))
-        });
+        instances.sort_by(|a, b| a.region.cmp(&b.region).then_with(|| a.name.cmp(&b.name)));
 
         if instances.is_empty() {
             return Err(Error::NoInstances);
@@ -189,9 +223,17 @@ async fn fetch_region_instances(
             region: region.to_string(),
             name: extract_name_tag(i).unwrap_or_else(|| "(no name)".to_string()),
             instance_id: i.instance_id().unwrap_or("N/A").to_string(),
-            instance_type: i.instance_type().map(|t| t.as_str()).unwrap_or("N/A").to_string(),
+            instance_type: i
+                .instance_type()
+                .map(|t| t.as_str())
+                .unwrap_or("N/A")
+                .to_string(),
             private_ip: i.private_ip_address().unwrap_or("N/A").to_string(),
-            platform: i.platform().map(|p| p.as_str()).unwrap_or("Linux").to_string(),
+            platform: i
+                .platform()
+                .map(|p| p.as_str())
+                .unwrap_or("Linux")
+                .to_string(),
         })
         .collect();
 
@@ -219,7 +261,10 @@ fn build_filters(tag_filters: &[String], running_only: bool) -> Vec<Filter> {
                     .build(),
             );
         } else {
-            warn!("Invalid tag filter format '{}', expected Key=Value", tag_filter);
+            warn!(
+                "Invalid tag filter format '{}', expected Key=Value",
+                tag_filter
+            );
         }
     }
 

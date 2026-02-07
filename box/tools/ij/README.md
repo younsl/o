@@ -8,6 +8,7 @@
 - Fuzzy search with real-time filtering
 - Interactive instance selection
 - SSH-style escape sequences
+- SSM port forwarding (`-L` flag, SSH-style syntax)
 
 ## Usage
 
@@ -18,6 +19,36 @@ ij prod                        # Use AWS profile
 ij -r ap-northeast-2 prod      # Specific region (faster)
 ij -t Environment=production   # Filter by tag
 ```
+
+## Port Forwarding
+
+Forward local ports to instances or remote hosts through SSM.
+
+```bash
+# Instance port forwarding (localhost:80 -> instance:80)
+ij -L 80 prod
+
+# Different local port (localhost:8080 -> instance:80)
+ij -L 8080:80 prod
+
+# Remote host forwarding via bastion (localhost:3306 -> rds.example.com:3306)
+ij -L rds.example.com:3306 prod
+
+# Custom local port for remote host (localhost:5432 -> rds.example.com:3306)
+ij -L 5432:rds.example.com:3306 prod
+
+# Combine with region and tag filters
+ij -L 3306:rds.example.com:3306 -r ap-northeast-2 -t Role=bastion prod
+```
+
+| Format | Tunnel | SSM Document |
+|--------|--------|--------------|
+| `80` | localhost:80 → instance:80 | `AWS-StartPortForwardingSession` |
+| `8080:80` | localhost:8080 → instance:80 | `AWS-StartPortForwardingSession` |
+| `host:3306` | localhost:3306 → host:3306 | `AWS-StartPortForwardingSessionToRemoteHost` |
+| `3306:host:3306` | localhost:3306 → host:3306 | `AWS-StartPortForwardingSessionToRemoteHost` |
+
+Press `Ctrl+C` to stop the tunnel.
 
 ## Installation
 
@@ -52,6 +83,7 @@ CLI flags to customize instance selection.
 | `--profile`, `-p` | AWS profile name |
 | `--region`, `-r` | Limit to single region |
 | `--tag-filter`, `-t` | Filter by tag (`Key=Value`) |
+| `--forward`, `-L` | Port forwarding spec |
 | `--log-level` | Log verbosity (default: `info`) |
 
 ## Escape Sequence
