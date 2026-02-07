@@ -1,5 +1,9 @@
 # ij
 
+[![GitHub release](https://img.shields.io/github/v/release/younsl/o?filter=ij*&style=flat-square&color=black)](https://github.com/younsl/o/releases?q=ij&expanded=true)
+[![Rust](https://img.shields.io/badge/rust-1.91-black?style=flat-square&logo=rust&logoColor=white)](https://www.rust-lang.org/)
+[![GitHub license](https://img.shields.io/github/license/younsl/o?style=flat-square&color=black)](https://github.com/younsl/o/blob/main/LICENSE)
+
 **I**nstance **J**ump - Interactive EC2 Session Manager connection tool with fuzzy search. Scans AWS regions in parallel and connects via SSM. Inspired by [gossm](https://github.com/gjbae1212/gossm).
 
 ## Features
