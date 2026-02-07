@@ -1,5 +1,5 @@
 name: Release elasticache-backup Helm Chart
-run-name: Release elasticache-backup chart ${{ github.ref_name }}
+run-name: 📦 Release elasticache-backup chart ${{ github.ref_name }}
 
 on:
   push:

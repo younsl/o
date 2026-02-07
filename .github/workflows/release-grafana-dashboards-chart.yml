@@ -1,5 +1,5 @@
 name: Release grafana-dashboards Helm Chart
-run-name: Release grafana-dashboards chart ${{ github.ref_name }}
+run-name: 📦 Release grafana-dashboards chart ${{ github.ref_name }}
 
 on:
   push:

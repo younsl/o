@@ -1,5 +1,5 @@
 name: Release promdrop
-run-name: Release promdrop ${{ github.ref_name }}
+run-name: 📦 Release promdrop ${{ github.ref_name }}
 
 on:
   push:

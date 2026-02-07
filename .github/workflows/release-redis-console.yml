@@ -1,5 +1,5 @@
 name: Release redis-console
-run-name: Release redis-console ${{ github.ref_name }}
+run-name: 📦 Release redis-console ${{ github.ref_name }}
 
 on:
   push:

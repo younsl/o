@@ -1,5 +1,5 @@
 name: Release ij
-run-name: Release ij ${{ github.ref_name }}
+run-name: 📦 Release ij ${{ github.ref_name }}
 
 on:
   push:

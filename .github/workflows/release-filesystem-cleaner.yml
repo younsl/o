@@ -1,5 +1,5 @@
 name: Release filesystem-cleaner
-run-name: Release filesystem-cleaner ${{ github.ref_name }}
+run-name: 📦 Release filesystem-cleaner ${{ github.ref_name }}
 
 on:
   push:

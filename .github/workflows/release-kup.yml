@@ -1,5 +1,5 @@
 name: Release kup
-run-name: Release kup ${{ github.ref_name }}
+run-name: 📦 Release kup ${{ github.ref_name }}
 
 on:
   push:

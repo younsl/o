@@ -1,5 +1,5 @@
 name: Release trivy-collector
-run-name: Release trivy-collector ${{ github.ref_name }}
+run-name: 📦 Release trivy-collector ${{ github.ref_name }}
 
 on:
   push:

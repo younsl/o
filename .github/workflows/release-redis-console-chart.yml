@@ -1,5 +1,5 @@
 name: Release redis-console Helm Chart
-run-name: Release redis-console chart ${{ github.ref_name }}
+run-name: 📦 Release redis-console chart ${{ github.ref_name }}
 
 on:
   push:
