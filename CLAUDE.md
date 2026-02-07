@@ -6,39 +6,13 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 A monorepo serving as a DevOps toolbox containing Kubernetes utilities, automation scripts, infrastructure code, and engineering documentation.
 
-All applications in `kubernetes/`, `tools/`, and `containers/` are built with **[Rust](https://github.com/rust-lang/rust) 1.92+** (except `cocd` which uses Go). Rust provides key operational benefits: minimal container sizes, low memory footprint, single static binaries with no runtime dependencies, memory safety preventing null pointer and buffer overflow crashes, and compile-time guarantees ensuring system stability in production.
+All applications in `kubernetes/`, `tools/`, and `containers/` are built with **[Rust](https://github.com/rust-lang/rust) 1.92+**. Rust provides key operational benefits: minimal container sizes, low memory footprint, single static binaries with no runtime dependencies, memory safety preventing null pointer and buffer overflow crashes, and compile-time guarantees ensuring system stability in production.
 
 ## Design Philosophy
 
 Kubernetes addons and tools follow the [Unix philosophy](https://en.wikipedia.org/wiki/Unix_philosophy) of "Do One Thing and Do It Well". Rather than building monolithic solutions, each component is designed to solve specific operational problems with focus and simplicity.
 
 ## Development Commands
-
-### Go Projects
-
-Standard Makefile patterns for Go tools (cocd):
-
-```bash
-# Core build commands
-make build          # Build binary
-make build-all      # Build for all platforms (linux/darwin, amd64/arm64, windows)
-make run            # Run application
-make install        # Install to system
-
-# Testing
-make test           # Run tests (go test -v ./...)
-go test -v ./...                    # Run all tests
-go test -v ./pkg/specific/package   # Run tests for specific package
-go test -v -run TestFunctionName    # Run specific test function
-
-# Code quality
-make fmt            # Format code
-make lint           # golangci-lint (if installed)
-make mod            # go mod tidy + vendor
-make clean          # Remove build artifacts
-```
-
-**Note**: cocd uses `make mod` instead of `make deps` for module management.
 
 ### Rust Projects
 
@@ -144,7 +118,6 @@ box/
 │   ├── trivy-collector/   # Multi-cluster Trivy report collector/viewer (Rust, container)
 │   └── policies/          # Kyverno and CEL admission policies
 ├── tools/                 # CLI utilities
-│   ├── cocd/              # GitHub Actions deployment monitor (Go, TUI)
 │   ├── ij/                # Interactive EC2 SSM connection tool (Rust)
 │   ├── kk/                # Domain connectivity checker (Rust)
 │   ├── qg/                # QR code generator (Rust)
@@ -173,13 +146,6 @@ box/
 - IRSA for AWS API authentication
 - Health endpoints on port 8080
 - Graceful shutdown handling with signal handling
-
-**Go Application Structure** (cocd):
-- `cmd/` - Application entry points
-- `pkg/` or `internal/` - Reusable packages
-- Version embedding via ldflags: `-ldflags "-X main.version=$(VERSION) -X main.commit=$(COMMIT) -X main.date=$(DATE)"`
-- Environment-based configuration
-- Structured logging (logrus/zap)
 
 **Rust Application Structure**:
 - `src/main.rs` - CLI entry point with Clap argument parsing
@@ -235,32 +201,6 @@ See `.github/workflows/release-promdrop.yml` for complete ARM64 cross-compilatio
 Configure AWS credentials via environment variables or IAM instance profiles.
 
 ## Tool-Specific Notes
-
-### cocd - GitHub Actions Monitor
-
-A TUI (Terminal User Interface) application for monitoring GitHub Actions jobs waiting for approval, inspired by k9s.
-
-```bash
-# Environment configuration
-export COCD_GITHUB_TOKEN="ghp_..."
-export COCD_GITHUB_ORG="your-org"
-export COCD_CONFIG_PATH="./config.yaml"
-
-# Authentication hierarchy (first available wins):
-# 1. Config file: github.token field
-# 2. Environment: GITHUB_TOKEN or COCD_GITHUB_TOKEN
-# 3. GitHub CLI: gh auth token
-
-# Repository scanning limitation
-# ⚠️ No org-level workflow API exists
-# Must iterate repositories individually
-```
-
-**Features**:
-- Monitor jobs waiting for approval
-- View recent workflow runs
-- Approve/cancel jobs from TUI
-- Real-time updates with configurable refresh
 
 ### ij - Interactive EC2 Session Manager Connection Tool (Rust)
 
@@ -651,38 +591,12 @@ helm install grafana-dashboards oci://ghcr.io/younsl/charts/grafana-dashboards
 - Per-dashboard folder, labels, and annotations configuration
 - Dashboard JSON files stored in `dashboards/` directory
 
-## Performance & API Guidelines
-
-### GitHub API Constraints
-
-**Critical**: `/orgs/{org}/actions/runs` does NOT exist. Must use:
-1. List repos: `/orgs/{org}/repos`
-2. Per-repo runs: `/repos/{owner}/{repo}/actions/runs`
-3. Aggregate results manually
-
-### Performance Anti-Patterns
-
-Avoid:
-- Complex adaptive delays without measurement
-- Backpressure multipliers >1.5x
-- Response time thresholds <2s for "slow"
-- Dynamic behavior that confuses users
-
-Prefer:
-- Fixed, predictable delays
-- Simple rate limiting
-- Measurement before optimization
-- User experience over theoretical efficiency
-
-See `box/tools/cocd/docs/performance-optimization-lessons.md` for detailed case study (Korean).
-
 ## Release Workflow
 
 GitHub Actions automatically builds and releases on tag push:
 
 ```bash
 # CLI tool releases (pattern: {tool}/x.y.z)
-git tag cocd/1.0.0 && git push --tags      # Go
 git tag promdrop/1.0.0 && git push --tags  # Rust
 git tag kk/1.0.0 && git push --tags        # Rust
 
@@ -701,7 +615,6 @@ git tag trivy-collector-chart/1.0.0 && git push --tags
 git tag grafana-dashboards-chart/1.0.0 && git push --tags
 
 # Available workflows:
-# - release-cocd.yml                         (Go CLI tool)
 # - release-kk.yml                           (Rust CLI + container)
 # - release-promdrop.yml                     (Rust CLI + container)
 # - release-filesystem-cleaner.yml           (Rust container)
@@ -730,13 +643,6 @@ git tag grafana-dashboards-chart/1.0.0 && git push --tags
 
 **When Adding Tests**:
 
-Go projects (cocd):
-- Place unit tests alongside source files (`*_test.go`)
-- Use table-driven tests for multiple scenarios
-- Mock AWS API calls using interfaces
-- Follow Go's standard testing package conventions
-- Test core logic in `internal/` and `pkg/` packages
-
 Rust projects:
 - Place unit tests in same file using `#[cfg(test)]` module
 - Integration tests in `tests/` directory
@@ -748,22 +654,19 @@ Rust projects:
 ## Common Patterns
 
 **Version Embedding**:
-- Go: ldflags injection in Makefile
-- Rust: Build-time environment variables or `build.rs` scripts
+- Build-time environment variables or `build.rs` scripts
 
 **Logging**:
-- Go: logrus or zap
-- Rust: tracing crate with configurable format (JSON/pretty)
+- tracing crate with configurable format (JSON/pretty)
 
 **Configuration**:
-- Both: Environment variables with CLI flag overrides via Clap (Rust) or standard libraries (Go)
+- Environment variables with CLI flag overrides via Clap
 
 **Async/Concurrency**:
-- Go: Goroutines and channels
-- Rust: Tokio async runtime with `async/await`
+- Tokio async runtime with `async/await`
 
 **Graceful Shutdown**:
-- Both: Signal handling (SIGTERM, SIGINT) with cleanup logic
+- Signal handling (SIGTERM, SIGINT) with cleanup logic
 
 ## Pull Request Guidelines
 

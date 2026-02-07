@@ -2,7 +2,7 @@
 
 **o** stands for **operation essentials** — a collection of essential Kubernetes addons and CLI tools for cluster operations.
 
-Built primarily with [Rust](https://github.com/rust-lang/rust) 1.92+ (except `cocd` in Go), these tools deliver operational advantages: minimal container sizes, low memory footprint, static binaries with no runtime dependencies, memory safety, and compile-time guarantees for production stability.
+Built with [Rust](https://github.com/rust-lang/rust) 1.92+, these tools deliver operational advantages: minimal container sizes, low memory footprint, static binaries with no runtime dependencies, memory safety, and compile-time guarantees for production stability.
 
 ## Featured content
 
