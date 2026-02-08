@@ -227,25 +227,61 @@ impl EksClient {
         }
     }
 
-    /// Get available Kubernetes versions for upgrade.
+    /// Get available Kubernetes versions for upgrade from EKS API.
+    ///
+    /// Discovers supported versions by querying `DescribeAddonVersions` for the
+    /// `kube-proxy` addon (present on all EKS clusters) and collecting unique
+    /// cluster versions higher than the current version.
     pub async fn get_available_versions(&self, cluster_name: &str) -> Result<Vec<String>> {
         debug!("Getting available versions for cluster: {}", cluster_name);
 
-        // EKS doesn't have a direct API for this, so we'll compute based on current version
         let cluster = self
             .describe_cluster(cluster_name)
             .await?
             .ok_or_else(|| KupError::ClusterNotFound(cluster_name.to_string()))?;
 
         let current_version = parse_k8s_version(&cluster.version)?;
-        let mut available = Vec::new();
 
-        // Show up to +3 minor versions ahead (matches K8s version skew policy: kubelet N-3)
-        for i in 1..=3 {
-            let next_minor = current_version.1 + i;
-            available.push(format!("{}.{}", current_version.0, next_minor));
+        let mut supported_minors = std::collections::BTreeSet::new();
+        let mut next_token: Option<String> = None;
+
+        loop {
+            let mut request = self.client.describe_addon_versions().addon_name("kube-proxy");
+            if let Some(token) = next_token.take() {
+                request = request.next_token(token);
+            }
+
+            let response = request
+                .send()
+                .await
+                .map_err(|e| KupError::aws(module_path!(), e))?;
+
+            for addon in response.addons() {
+                for version_info in addon.addon_versions() {
+                    for compat in version_info.compatibilities() {
+                        if let Some(cluster_version) = compat.cluster_version() {
+                            if let Ok(ver) = parse_k8s_version(cluster_version) {
+                                if ver.0 == current_version.0 && ver.1 > current_version.1 {
+                                    supported_minors.insert(ver.1);
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
+            next_token = response.next_token().map(|s| s.to_string());
+            if next_token.is_none() {
+                break;
+            }
         }
 
+        let available: Vec<String> = supported_minors
+            .into_iter()
+            .map(|minor| format!("{}.{}", current_version.0, minor))
+            .collect();
+
+        debug!("Available upgrade versions: {:?}", available);
         Ok(available)
     }
 }
