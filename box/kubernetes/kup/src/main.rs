@@ -162,7 +162,11 @@ async fn run_interactive(client: &EksClient, config: &Config) -> Result<()> {
 
     version_items.extend(available_versions.iter().enumerate().map(|(i, v)| {
         let steps = calculate_steps(&selected_cluster.version, v);
-        let label = if i == available_versions.len() - 1 { "(latest)" } else { "" };
+        let label = if i == available_versions.len() - 1 {
+            "(latest)"
+        } else {
+            ""
+        };
         let step_word = if steps == 1 { "step" } else { "steps" };
         format!("{:<5} {:<10} +{} {}", v, label, steps, step_word)
     }));
