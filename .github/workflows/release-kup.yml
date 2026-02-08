@@ -51,11 +51,11 @@ jobs:
             target: aarch64-unknown-linux-gnu
             platform: linux
             arch: arm64
-          - os: macos-latest
+          - os: macos-26
             target: x86_64-apple-darwin
             platform: darwin
             arch: amd64
-          - os: macos-latest
+          - os: macos-26
             target: aarch64-apple-darwin
             platform: darwin
             arch: arm64
