@@ -240,13 +240,10 @@ impl EksClient {
         let current_version = parse_k8s_version(&cluster.version)?;
         let mut available = Vec::new();
 
-        // EKS typically supports up to +2-3 minor versions ahead
+        // Show up to +3 minor versions ahead (matches K8s version skew policy: kubelet N-3)
         for i in 1..=3 {
             let next_minor = current_version.1 + i;
-            // EKS version ceiling (update this as new versions are released)
-            if next_minor <= 34 {
-                available.push(format!("{}.{}", current_version.0, next_minor));
-            }
+            available.push(format!("{}.{}", current_version.0, next_minor));
         }
 
         Ok(available)
