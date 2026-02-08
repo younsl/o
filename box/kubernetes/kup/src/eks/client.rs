@@ -246,7 +246,10 @@ impl EksClient {
         let mut next_token: Option<String> = None;
 
         loop {
-            let mut request = self.client.describe_addon_versions().addon_name("kube-proxy");
+            let mut request = self
+                .client
+                .describe_addon_versions()
+                .addon_name("kube-proxy");
             if let Some(token) = next_token.take() {
                 request = request.next_token(token);
             }
@@ -259,12 +262,12 @@ impl EksClient {
             for addon in response.addons() {
                 for version_info in addon.addon_versions() {
                     for compat in version_info.compatibilities() {
-                        if let Some(cluster_version) = compat.cluster_version() {
-                            if let Ok(ver) = parse_k8s_version(cluster_version) {
-                                if ver.0 == current_version.0 && ver.1 > current_version.1 {
-                                    supported_minors.insert(ver.1);
-                                }
-                            }
+                        if let Some(cluster_version) = compat.cluster_version()
+                            && let Ok(ver) = parse_k8s_version(cluster_version)
+                            && ver.0 == current_version.0
+                            && ver.1 > current_version.1
+                        {
+                            supported_minors.insert(ver.1);
                         }
                     }
                 }
