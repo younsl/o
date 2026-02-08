@@ -59,7 +59,8 @@ FROM node:25-bookworm-slim AS runner
 
 LABEL org.opencontainers.image.title="Backstage with GitLab Discovery" \
       org.opencontainers.image.description="Backstage instance with GitLab auto-discovery and API docs plugins" \
-      org.opencontainers.image.source="https://github.com/younsl/o"
+      org.opencontainers.image.source="https://github.com/younsl/o" \
+      org.opencontainers.image.deprecated="false"
 
 # Install runtime dependencies and build tools for native modules
 # Build tools (python3, g++, build-essential) are needed for yarn workspaces focus

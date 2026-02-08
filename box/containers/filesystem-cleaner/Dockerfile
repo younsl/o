@@ -36,6 +36,10 @@ RUN strip /app/target/release/filesystem-cleaner && \
 # Runtime stage
 FROM alpine:3.23 AS runtime
 
+LABEL org.opencontainers.image.title="filesystem-cleaner" \
+      org.opencontainers.image.source="https://github.com/younsl/o" \
+      org.opencontainers.image.deprecated="false"
+
 # Create non-root user (no ca-certificates or tzdata - not needed for filesystem operations)
 RUN addgroup -g 1000 cleaner && \
     adduser -D -u 1000 -G cleaner cleaner

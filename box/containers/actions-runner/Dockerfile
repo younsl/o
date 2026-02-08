@@ -6,7 +6,8 @@ LABEL org.opencontainers.image.base.name="docker.io/summerwind/actions-runner:v2
       org.opencontainers.image.created="${BUILD_DATE}" \
       org.opencontainers.image.source="https://github.com/younsl/box/tree/main/box/containers/actions-runner" \
       org.opencontainers.image.title="actions-runner" \
-      org.opencontainers.image.version="0.4.0"
+      org.opencontainers.image.version="0.4.0" \
+      org.opencontainers.image.deprecated="false"
 
 USER root
 
