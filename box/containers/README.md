@@ -15,11 +15,10 @@ Production-ready container images for DevOps automation, development tooling, an
 | 3 | [filesystem-cleaner](./filesystem-cleaner/) | Sidecar container that monitors and cleans specified directories | [ghcr.io/younsl/filesystem-cleaner](https://github.com/younsl/o/pkgs/container/filesystem-cleaner) | - | - |
 | 4 | [logstash-with-opensearch-plugin](./logstash-with-opensearch-plugin/) | Logstash 8.17.0 with OpenSearch output plugin and Asia/Seoul timezone | [ghcr.io/younsl/logstash-with-opensearch-plugin](https://github.com/younsl/o/pkgs/container/logstash-with-opensearch-plugin) | - | - |
 | 5 | [mageai](./mageai/0.9.73-custom.1/) | Custom mageai 0.9.73 image | - | - | - |
-| 6 | [backup-utils](/.github/workflows/release-backup-utils.yml) | GitHub Enterprise backup/restore tools | [ghcr.io/younsl/backup-utils](https://github.com/younsl/o/pkgs/container/backup-utils) | [backup-utils](https://github.com/younsl/charts/tree/main/charts/backup-utils) | ⚠️ **Deprecated** - GHES 3.17+ includes [built-in backup service](https://docs.github.com/en/enterprise-server@latest/admin/backing-up-and-restoring-your-instance/backup-service-for-github-enterprise-server/configuring-the-backup-service) |
 
 ## References
 
-- **Helm Charts**: [younsl/charts](https://github.com/younsl/charts) - Helm charts repository maintained by me (younsl) that uses these container images (actions-runner, backup-utils)
+- **Helm Charts**: [younsl/charts](https://github.com/younsl/charts) - Helm charts repository maintained by me (younsl) that uses these container images (actions-runner)
 
 ## License
 

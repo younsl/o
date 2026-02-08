@@ -59,7 +59,7 @@ make deploy         # Deploy to Kubernetes (where available)
   - APT sources use DEB822 format (`.sources` files), the official standard since Ubuntu 24.04
   - Build args: BUILD_DATE for OCI image labels
   - Release workflow checks if image exists on GHCR before building to prevent duplicate pushes
-- **hugo**, **backup-utils**: Built from external sources via workflow_dispatch (no local Dockerfile)
+- **hugo**: Built from external sources via workflow_dispatch (no local Dockerfile)
 - Update ECR_REGISTRY variable in Makefiles before pushing
 
 ### Terraform Projects
@@ -668,7 +668,6 @@ git tag grafana-dashboards/charts/1.0.0 && git push --tags
 # - lint-helm-chart.yml                      (PR lint for Helm charts)
 # - release-logstash-with-opensearch-plugin.yml (Container image)
 # - release-actions-runner.yml               (Container image)
-# - release-backup-utils.yml                 (Workflow dispatch - builds from external source)
 # - release-hugo.yml                         (Workflow dispatch)
 
 # Rust tools without automated releases (manual release required):
