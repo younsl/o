@@ -59,7 +59,7 @@ schemars = "0.8"
 hostname = "0.4"
 
 [build-dependencies]
-vergen-gix = { version = "1", features = ["build", "cargo", "rustc"] }
+vergen-gix = { version = "9", features = ["build", "cargo", "rustc"] }
 
 [profile.release]
 opt-level = 3
