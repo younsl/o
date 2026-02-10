@@ -288,4 +288,70 @@ mod tests {
         let certs = pem_to_der_certs(pem).unwrap();
         assert!(certs.is_empty());
     }
+
+    #[test]
+    fn test_pem_to_der_certs_multiple() {
+        let pem = b"-----BEGIN CERTIFICATE-----\n\
+                     SGVsbG8=\n\
+                     -----END CERTIFICATE-----\n\
+                     -----BEGIN CERTIFICATE-----\n\
+                     V29ybGQ=\n\
+                     -----END CERTIFICATE-----\n";
+        let certs = pem_to_der_certs(pem).unwrap();
+        assert_eq!(certs.len(), 2);
+        assert_eq!(certs[0], b"Hello");
+        assert_eq!(certs[1], b"World");
+    }
+
+    #[test]
+    fn test_base64_decode_with_newlines() {
+        // base64 of "Hello World!" split across lines
+        let decoded = base64_decode("SGVs\nbG8g\nV29y\nbGQh").unwrap();
+        assert_eq!(decoded, b"Hello World!");
+    }
+
+    #[test]
+    fn test_base64_decode_two_padding() {
+        // "A" in base64 is "QQ=="
+        let decoded = base64_decode("QQ==").unwrap();
+        assert_eq!(decoded, b"A");
+    }
+
+    #[test]
+    fn test_base64_decode_one_padding() {
+        // "AB" in base64 is "QUI="
+        let decoded = base64_decode("QUI=").unwrap();
+        assert_eq!(decoded, b"AB");
+    }
+
+    #[test]
+    fn test_b64_val_uppercase() {
+        assert_eq!(b64_val(b'A'), Some(0));
+        assert_eq!(b64_val(b'Z'), Some(25));
+    }
+
+    #[test]
+    fn test_b64_val_lowercase() {
+        assert_eq!(b64_val(b'a'), Some(26));
+        assert_eq!(b64_val(b'z'), Some(51));
+    }
+
+    #[test]
+    fn test_b64_val_digits() {
+        assert_eq!(b64_val(b'0'), Some(52));
+        assert_eq!(b64_val(b'9'), Some(61));
+    }
+
+    #[test]
+    fn test_b64_val_special() {
+        assert_eq!(b64_val(b'+'), Some(62));
+        assert_eq!(b64_val(b'/'), Some(63));
+    }
+
+    #[test]
+    fn test_b64_val_invalid() {
+        assert_eq!(b64_val(b'='), None);
+        assert_eq!(b64_val(b' '), None);
+        assert_eq!(b64_val(b'!'), None);
+    }
 }

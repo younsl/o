@@ -727,4 +727,263 @@ mod tests {
         let strategy = format_rolling_strategy(&ng);
         assert_eq!(strategy, "1 at a time (default)");
     }
+
+    #[test]
+    fn test_format_rolling_strategy_percentage_zero_desired() {
+        let ng = NodeGroupInfo {
+            name: "ng-test".to_string(),
+            version: Some("1.32".to_string()),
+            desired_size: 0,
+            max_unavailable: None,
+            max_unavailable_percentage: Some(33),
+            asg_name: None,
+        };
+        let strategy = format_rolling_strategy(&ng);
+        // max(1, 0 * 33 / 100) = max(1, 0) = 1
+        assert_eq!(strategy, "33% = 1 at a time");
+    }
+
+    // UpgradePlan::is_empty() edge cases
+
+    #[test]
+    fn test_upgrade_plan_is_empty_true() {
+        let plan = UpgradePlan {
+            cluster_name: "test".to_string(),
+            current_version: "1.33".to_string(),
+            target_version: "1.33".to_string(),
+            upgrade_path: vec![],
+            addon_upgrades: vec![],
+            skipped_addons: vec![],
+            nodegroup_upgrades: vec![],
+            skipped_nodegroups: vec![],
+            pdb_findings: None,
+        };
+        assert!(plan.is_empty());
+    }
+
+    #[test]
+    fn test_upgrade_plan_is_empty_with_upgrade_path() {
+        let plan = UpgradePlan {
+            cluster_name: "test".to_string(),
+            current_version: "1.32".to_string(),
+            target_version: "1.33".to_string(),
+            upgrade_path: vec!["1.33".to_string()],
+            addon_upgrades: vec![],
+            skipped_addons: vec![],
+            nodegroup_upgrades: vec![],
+            skipped_nodegroups: vec![],
+            pdb_findings: None,
+        };
+        assert!(!plan.is_empty());
+    }
+
+    #[test]
+    fn test_upgrade_plan_is_empty_with_addon_upgrades_only() {
+        let addon = AddonInfo {
+            name: "coredns".to_string(),
+            current_version: "v1.11.1-eksbuild.1".to_string(),
+        };
+        let plan = UpgradePlan {
+            cluster_name: "test".to_string(),
+            current_version: "1.33".to_string(),
+            target_version: "1.33".to_string(),
+            upgrade_path: vec![],
+            addon_upgrades: vec![(addon, "v1.11.3-eksbuild.2".to_string())],
+            skipped_addons: vec![],
+            nodegroup_upgrades: vec![],
+            skipped_nodegroups: vec![],
+            pdb_findings: None,
+        };
+        assert!(!plan.is_empty());
+    }
+
+    #[test]
+    fn test_upgrade_plan_is_empty_with_nodegroup_upgrades_only() {
+        let ng = NodeGroupInfo {
+            name: "ng-system".to_string(),
+            version: Some("1.32".to_string()),
+            desired_size: 3,
+            max_unavailable: None,
+            max_unavailable_percentage: None,
+            asg_name: None,
+        };
+        let plan = UpgradePlan {
+            cluster_name: "test".to_string(),
+            current_version: "1.33".to_string(),
+            target_version: "1.33".to_string(),
+            upgrade_path: vec![],
+            addon_upgrades: vec![],
+            skipped_addons: vec![],
+            nodegroup_upgrades: vec![ng],
+            skipped_nodegroups: vec![],
+            pdb_findings: None,
+        };
+        assert!(!plan.is_empty());
+    }
+
+    #[test]
+    fn test_upgrade_plan_is_empty_skipped_only_still_empty() {
+        let addon = AddonInfo {
+            name: "coredns".to_string(),
+            current_version: "v1.11.3-eksbuild.2".to_string(),
+        };
+        let plan = UpgradePlan {
+            cluster_name: "test".to_string(),
+            current_version: "1.33".to_string(),
+            target_version: "1.33".to_string(),
+            upgrade_path: vec![],
+            addon_upgrades: vec![],
+            skipped_addons: vec![SkippedAddon::new(addon, "already at compatible version")],
+            nodegroup_upgrades: vec![],
+            skipped_nodegroups: vec![],
+            pdb_findings: None,
+        };
+        // Skipped items don't count as upgrades
+        assert!(plan.is_empty());
+    }
+
+    // calculate_estimated_time edge cases
+
+    #[test]
+    fn test_calculate_estimated_time_addons_only() {
+        let addon = AddonInfo {
+            name: "coredns".to_string(),
+            current_version: "v1.11.1-eksbuild.1".to_string(),
+        };
+        let plan = UpgradePlan {
+            cluster_name: "test".to_string(),
+            current_version: "1.33".to_string(),
+            target_version: "1.33".to_string(),
+            upgrade_path: vec![],
+            addon_upgrades: vec![(addon, "v1.11.3-eksbuild.2".to_string())],
+            skipped_addons: vec![],
+            nodegroup_upgrades: vec![],
+            skipped_nodegroups: vec![],
+            pdb_findings: None,
+        };
+        // Skip CP: 0 + addons: 10 + nodegroups: 0 = 10
+        assert_eq!(calculate_estimated_time(&plan, true), 10);
+    }
+
+    #[test]
+    fn test_calculate_estimated_time_nodegroups_only() {
+        let ng1 = NodeGroupInfo {
+            name: "ng-1".to_string(),
+            version: Some("1.32".to_string()),
+            desired_size: 3,
+            max_unavailable: None,
+            max_unavailable_percentage: None,
+            asg_name: None,
+        };
+        let ng2 = NodeGroupInfo {
+            name: "ng-2".to_string(),
+            version: Some("1.32".to_string()),
+            desired_size: 5,
+            max_unavailable: None,
+            max_unavailable_percentage: None,
+            asg_name: None,
+        };
+        let plan = UpgradePlan {
+            cluster_name: "test".to_string(),
+            current_version: "1.33".to_string(),
+            target_version: "1.33".to_string(),
+            upgrade_path: vec![],
+            addon_upgrades: vec![],
+            skipped_addons: vec![],
+            nodegroup_upgrades: vec![ng1, ng2],
+            skipped_nodegroups: vec![],
+            pdb_findings: None,
+        };
+        // Skip CP: 0 + addons: 0 + nodegroups: 2 * 20 = 40
+        assert_eq!(calculate_estimated_time(&plan, true), 40);
+    }
+
+    #[test]
+    fn test_calculate_estimated_time_all_components() {
+        let addon = AddonInfo {
+            name: "coredns".to_string(),
+            current_version: "v1.11.1-eksbuild.1".to_string(),
+        };
+        let ng = NodeGroupInfo {
+            name: "ng-1".to_string(),
+            version: Some("1.32".to_string()),
+            desired_size: 3,
+            max_unavailable: None,
+            max_unavailable_percentage: None,
+            asg_name: None,
+        };
+        let plan = UpgradePlan {
+            cluster_name: "test".to_string(),
+            current_version: "1.32".to_string(),
+            target_version: "1.34".to_string(),
+            upgrade_path: vec!["1.33".to_string(), "1.34".to_string()],
+            addon_upgrades: vec![(addon, "v1.11.3-eksbuild.2".to_string())],
+            skipped_addons: vec![],
+            nodegroup_upgrades: vec![ng],
+            skipped_nodegroups: vec![],
+            pdb_findings: None,
+        };
+        // CP: 2*10=20 + addons: 10 + nodegroups: 1*20=20 = 50
+        assert_eq!(calculate_estimated_time(&plan, false), 50);
+    }
+
+    // VersionedResource trait impl tests
+
+    #[test]
+    fn test_addon_info_versioned_resource() {
+        let addon = AddonInfo {
+            name: "vpc-cni".to_string(),
+            current_version: "v1.18.5-eksbuild.1".to_string(),
+        };
+        assert_eq!(addon.name(), "vpc-cni");
+        assert_eq!(addon.current_version(), "v1.18.5-eksbuild.1");
+    }
+
+    #[test]
+    fn test_nodegroup_info_versioned_resource() {
+        let ng = NodeGroupInfo {
+            name: "ng-app".to_string(),
+            version: Some("1.33".to_string()),
+            desired_size: 5,
+            max_unavailable: None,
+            max_unavailable_percentage: None,
+            asg_name: None,
+        };
+        assert_eq!(ng.name(), "ng-app");
+        assert_eq!(ng.current_version(), "1.33");
+    }
+
+    #[test]
+    fn test_nodegroup_info_versioned_resource_none_version() {
+        let ng = NodeGroupInfo {
+            name: "ng-legacy".to_string(),
+            version: None,
+            desired_size: 2,
+            max_unavailable: None,
+            max_unavailable_percentage: None,
+            asg_name: None,
+        };
+        assert_eq!(ng.name(), "ng-legacy");
+        assert_eq!(ng.current_version(), "unknown");
+    }
+
+    // UpgradeConfig
+
+    #[test]
+    fn test_upgrade_config_custom() {
+        let config = UpgradeConfig {
+            skip_addons: true,
+            skip_nodegroups: true,
+            skip_control_plane: false,
+            dry_run: true,
+            control_plane_timeout_minutes: 60,
+            addon_timeout_minutes: 30,
+            nodegroup_timeout_minutes: 120,
+            check_interval_seconds: 5,
+        };
+        assert!(config.skip_addons);
+        assert!(config.skip_nodegroups);
+        assert!(config.dry_run);
+        assert_eq!(config.control_plane_timeout_minutes, 60);
+    }
 }

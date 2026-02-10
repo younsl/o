@@ -116,4 +116,46 @@ mod tests {
         assert_eq!(result.upgrade_count(), 1);
         assert_eq!(result.skipped_count(), 1);
     }
+
+    #[test]
+    fn test_plan_result_default() {
+        let result: PlanResult<TestResource> = PlanResult::default();
+        assert_eq!(result.upgrade_count(), 0);
+        assert_eq!(result.skipped_count(), 0);
+    }
+
+    #[test]
+    fn test_plan_result_empty() {
+        let result: PlanResult<TestResource> = PlanResult::new();
+        assert_eq!(result.upgrade_count(), 0);
+        assert_eq!(result.skipped_count(), 0);
+        assert!(result.upgrades.is_empty());
+        assert!(result.skipped.is_empty());
+    }
+
+    #[test]
+    fn test_plan_result_multiple_upgrades() {
+        let mut result: PlanResult<TestResource> = PlanResult::new();
+
+        for i in 0..5 {
+            result.add_upgrade(TestResource {
+                name: format!("r{}", i),
+                version: "1.0".to_string(),
+            });
+        }
+
+        assert_eq!(result.upgrade_count(), 5);
+        assert_eq!(result.skipped_count(), 0);
+    }
+
+    #[test]
+    fn test_skipped_reason_from_string() {
+        let resource = TestResource {
+            name: "test".to_string(),
+            version: "1.0".to_string(),
+        };
+        let reason = String::from("dynamically built reason");
+        let skipped = Skipped::new(resource, reason);
+        assert_eq!(skipped.reason, "dynamically built reason");
+    }
 }
