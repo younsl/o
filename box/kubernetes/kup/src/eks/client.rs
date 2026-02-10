@@ -13,6 +13,8 @@ pub struct ClusterInfo {
     pub name: String,
     pub version: String,
     pub region: String,
+    pub endpoint: Option<String>,
+    pub ca_data: Option<String>,
 }
 
 impl std::fmt::Display for ClusterInfo {
@@ -70,6 +72,11 @@ impl EksClient {
         &self.asg_client
     }
 
+    /// Get the AWS region string.
+    pub fn region(&self) -> &str {
+        &self.region
+    }
+
     /// List all EKS clusters in the region.
     pub async fn list_clusters(&self) -> Result<Vec<ClusterInfo>> {
         debug!("Listing EKS clusters in region: {}", self.region);
@@ -122,6 +129,11 @@ impl EksClient {
                 name: cluster.name().unwrap_or_default().to_string(),
                 version: cluster.version().unwrap_or_default().to_string(),
                 region: self.region.clone(),
+                endpoint: cluster.endpoint().map(|s| s.to_string()),
+                ca_data: cluster
+                    .certificate_authority()
+                    .and_then(|ca| ca.data())
+                    .map(|s| s.to_string()),
             };
             return Ok(Some(info));
         }

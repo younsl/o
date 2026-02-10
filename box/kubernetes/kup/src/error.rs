@@ -37,6 +37,9 @@ pub enum KupError {
 
     #[error("Managed node group error: {0}")]
     NodeGroupError(String),
+
+    #[error("Kubernetes API error: {0}")]
+    KubernetesApi(String),
 }
 
 impl KupError {

@@ -11,6 +11,7 @@ use super::addon::{self, AddonInfo, AddonUpgrade};
 use super::client::{EksClient, calculate_upgrade_path};
 use super::nodegroup::{self, NodeGroupInfo, format_rolling_strategy};
 use super::types::{Skipped, VersionedResource};
+use crate::k8s::pdb::PdbSummary;
 
 // Re-export for backward compatibility
 pub type SkippedAddon = Skipped<AddonInfo>;
@@ -27,6 +28,7 @@ pub struct UpgradePlan {
     pub skipped_addons: Vec<SkippedAddon>,
     pub nodegroup_upgrades: Vec<NodeGroupInfo>,
     pub skipped_nodegroups: Vec<SkippedNodeGroup>,
+    pub pdb_findings: Option<PdbSummary>,
 }
 
 impl UpgradePlan {
@@ -71,6 +73,8 @@ pub async fn create_upgrade_plan(
     cluster_name: &str,
     target_version: &str,
     addon_versions: &HashMap<String, String>,
+    skip_pdb_check: bool,
+    profile: Option<&str>,
 ) -> Result<UpgradePlan> {
     info!(
         "Creating upgrade plan for {} to version {}",
@@ -95,6 +99,28 @@ pub async fn create_upgrade_plan(
     let nodegroup_result =
         nodegroup::plan_nodegroup_upgrades(client.inner(), cluster_name, target_version).await?;
 
+    // Check PDB drain deadlock (only when nodegroup upgrades exist)
+    let pdb_findings = if !skip_pdb_check && !nodegroup_result.upgrades.is_empty() {
+        match crate::k8s::client::build_kube_client(&cluster, client.region(), profile).await {
+            Ok(kube_client) => match crate::k8s::pdb::check_pdbs(&kube_client).await {
+                Ok(summary) => Some(summary),
+                Err(e) => {
+                    tracing::warn!("PDB check failed (non-fatal): {}", e);
+                    None
+                }
+            },
+            Err(e) => {
+                tracing::warn!(
+                    "Failed to build Kubernetes client for PDB check (non-fatal): {}",
+                    e
+                );
+                None
+            }
+        }
+    } else {
+        None
+    };
+
     Ok(UpgradePlan {
         cluster_name: cluster_name.to_string(),
         current_version: cluster.version,
@@ -104,6 +130,7 @@ pub async fn create_upgrade_plan(
         skipped_addons: addon_result.skipped,
         nodegroup_upgrades: nodegroup_result.upgrades,
         skipped_nodegroups: nodegroup_result.skipped,
+        pdb_findings,
     })
 }
 
@@ -279,6 +306,41 @@ pub fn print_upgrade_plan(plan: &UpgradePlan, skip_control_plane: bool) {
         );
     }
     print_skipped_nodegroups(&plan.skipped_nodegroups, true);
+
+    // PDB Drain Deadlock (displayed within Phase 3)
+    if let Some(ref pdb) = plan.pdb_findings {
+        if pdb.has_blocking_pdbs() {
+            println!();
+            println!("  {}", "PDB Drain Deadlock:".yellow().bold());
+            println!("  {}", "─".repeat(38).dimmed());
+            for finding in &pdb.findings {
+                println!(
+                    "  {} {}/{}: {}",
+                    "⚠".yellow(),
+                    finding.namespace,
+                    finding.name,
+                    finding.reason()
+                );
+            }
+            println!();
+            println!(
+                "  {} {}/{} PDB(s) may block node drain during rolling update",
+                "⚠".yellow(),
+                pdb.blocking_count,
+                pdb.total_pdbs
+            );
+            println!(
+                "  {} Consider scaling up replicas or adjusting PDB before proceeding",
+                "→".cyan()
+            );
+        } else {
+            println!(
+                "  {} No PDB drain deadlock detected ({} PDBs checked)",
+                "✓".green(),
+                pdb.total_pdbs
+            );
+        }
+    }
 
     // Estimated time
     let estimated_time = calculate_estimated_time(plan, skip_control_plane);
@@ -551,6 +613,7 @@ mod tests {
             skipped_addons: vec![],
             nodegroup_upgrades: vec![],
             skipped_nodegroups: vec![],
+            pdb_findings: None,
         };
 
         assert_eq!(plan.cluster_name, "test-cluster");
@@ -568,6 +631,7 @@ mod tests {
             skipped_addons: vec![],
             nodegroup_upgrades: vec![],
             skipped_nodegroups: vec![],
+            pdb_findings: None,
         };
 
         // With control plane: 2 steps * 10 min = 20 min
@@ -586,6 +650,7 @@ mod tests {
             skipped_addons: vec![],
             nodegroup_upgrades: vec![],
             skipped_nodegroups: vec![],
+            pdb_findings: None,
         };
 
         // Skip control plane: 0 min (no addons/nodegroups either)
