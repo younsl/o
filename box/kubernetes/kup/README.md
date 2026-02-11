@@ -35,6 +35,13 @@ kup --skip-pdb-check             # Skip PDB drain deadlock check
 Requires AWS CLI v2 and valid credentials.
 
 ```bash
+brew install younsl/tap/kup
+kup --version
+```
+
+Or build from source:
+
+```bash
 make install
 mv ~/.cargo/bin/kup /usr/local/bin/
 ```
