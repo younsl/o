@@ -37,6 +37,9 @@ pub enum KupError {
 
     #[error("Managed node group error: {0}")]
     NodeGroupError(String),
+
+    #[error("Kubernetes API error: {0}")]
+    KubernetesApi(String),
 }
 
 impl KupError {
@@ -185,5 +188,71 @@ mod tests {
     fn test_error_display_user_cancelled() {
         let err = KupError::UserCancelled;
         assert_eq!(err.to_string(), "Operation cancelled by user");
+    }
+
+    #[test]
+    fn test_error_display_addon_error() {
+        let err = KupError::AddonError("coredns update failed".to_string());
+        assert_eq!(err.to_string(), "Add-on error: coredns update failed");
+    }
+
+    #[test]
+    fn test_error_display_nodegroup_error() {
+        let err = KupError::NodeGroupError("ng-system rollback".to_string());
+        assert_eq!(
+            err.to_string(),
+            "Managed node group error: ng-system rollback"
+        );
+    }
+
+    #[test]
+    fn test_error_display_kubernetes_api() {
+        let err = KupError::KubernetesApi("Failed to list PDBs".to_string());
+        assert_eq!(err.to_string(), "Kubernetes API error: Failed to list PDBs");
+    }
+
+    #[test]
+    fn test_error_display_no_clusters_found() {
+        let err = KupError::NoClustersFound;
+        assert_eq!(err.to_string(), "No clusters found in region");
+    }
+
+    #[test]
+    fn test_error_display_upgrade_not_possible() {
+        let err = KupError::UpgradeNotPossible("target version lower than current".to_string());
+        assert_eq!(
+            err.to_string(),
+            "Upgrade not possible: target version lower than current"
+        );
+    }
+
+    #[test]
+    fn test_error_aws_sdk_display() {
+        let err = KupError::AwsSdk("eks::client".to_string(), "throttled".to_string());
+        assert_eq!(err.to_string(), "[eks::client] throttled");
+    }
+
+    #[test]
+    fn test_error_extract_details_with_message_pattern() {
+        let debug_str = r#"ServiceError { source: SomeError { message: Some("The cluster was not found"), code: Some("ResourceNotFoundException") } }"#;
+        let display_str = "service error";
+        let details = KupError::extract_error_details(debug_str, display_str);
+        assert_eq!(details, "The cluster was not found");
+    }
+
+    #[test]
+    fn test_error_extract_details_fallback_display() {
+        let debug_str = "Error { kind: Other }";
+        let display_str = "connection timed out";
+        let details = KupError::extract_error_details(debug_str, display_str);
+        assert_eq!(details, "connection timed out");
+    }
+
+    #[test]
+    fn test_error_extract_details_last_resort() {
+        let debug_str = "Error { kind: Other }";
+        let display_str = "service error occurred";
+        let details = KupError::extract_error_details(debug_str, display_str);
+        assert_eq!(details, "AWS API request failed");
     }
 }

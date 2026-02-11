@@ -50,6 +50,10 @@ pub struct Args {
     #[arg(long, default_value = "false")]
     pub skip_nodegroups: bool,
 
+    /// Skip PDB drain deadlock check
+    #[arg(long, default_value = "false")]
+    pub skip_pdb_check: bool,
+
     /// Specific add-on versions (format: ADDON=VERSION, e.g., kube-proxy=v1.34.0-eksbuild.1)
     #[arg(long = "addon-version", value_name = "ADDON=VERSION")]
     pub addon_versions: Vec<String>,
@@ -70,6 +74,7 @@ pub struct Config {
     pub dry_run: bool,
     pub skip_addons: bool,
     pub skip_nodegroups: bool,
+    pub skip_pdb_check: bool,
     pub addon_versions: std::collections::HashMap<String, String>,
     pub log_level: String,
 }
@@ -99,6 +104,7 @@ impl Config {
             dry_run: args.dry_run,
             skip_addons: args.skip_addons,
             skip_nodegroups: args.skip_nodegroups,
+            skip_pdb_check: args.skip_pdb_check,
             addon_versions,
             log_level: args.log_level,
         }
@@ -128,6 +134,7 @@ mod tests {
             dry_run: false,
             skip_addons: false,
             skip_nodegroups: false,
+            skip_pdb_check: false,
             addon_versions: addon_versions.iter().map(|s| s.to_string()).collect(),
             log_level: "warn".to_string(),
         }

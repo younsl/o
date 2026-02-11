@@ -9,6 +9,7 @@
 mod config;
 mod eks;
 mod error;
+mod k8s;
 mod output;
 
 use anyhow::Result;
@@ -196,6 +197,8 @@ async fn run_interactive(client: &EksClient, config: &Config) -> Result<()> {
         &selected_cluster.name,
         &target_version,
         &config.addon_versions,
+        config.skip_pdb_check,
+        config.profile.as_deref(),
     )
     .await?;
 
@@ -298,11 +301,34 @@ async fn run_noninteractive(client: &EksClient, config: &Config) -> Result<()> {
     }
 
     // Create and execute plan
-    let plan =
-        upgrade::create_upgrade_plan(client, cluster_name, target_version, &config.addon_versions)
-            .await?;
+    let plan = upgrade::create_upgrade_plan(
+        client,
+        cluster_name,
+        target_version,
+        &config.addon_versions,
+        config.skip_pdb_check,
+        config.profile.as_deref(),
+    )
+    .await?;
 
     upgrade::print_upgrade_plan(&plan, false);
+
+    // Block on PDB risk in non-interactive mode
+    if let Some(ref pdb) = plan.pdb_findings
+        && pdb.has_blocking_pdbs()
+        && !config.yes
+    {
+        println!(
+            "{}",
+            format!(
+                "{} PDB(s) may block node drain. Use --yes to proceed or --skip-pdb-check to skip.",
+                pdb.blocking_count
+            )
+            .red()
+            .bold()
+        );
+        return Err(KupError::UpgradeNotPossible("Blocking PDBs found".to_string()).into());
+    }
 
     // Skip execution if nothing to upgrade
     if plan.is_empty() {

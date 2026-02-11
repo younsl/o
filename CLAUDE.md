@@ -236,6 +236,7 @@ kup                              # Interactive mode
 kup --dry-run                    # Plan only, no execution
 kup -c my-cluster -t 1.34 --yes  # Non-interactive mode
 kup -r ap-northeast-2            # Specific region
+kup --skip-pdb-check             # Skip PDB drain deadlock check
 
 # Build commands
 make build      # Debug build
@@ -250,6 +251,10 @@ make install    # Install to ~/.cargo/bin/
 - Sync mode: Update only addons/nodegroups without control plane upgrade
 - Automatic add-on version upgrades
 - Managed node group rolling updates
+- PDB drain deadlock detection before node group rolling updates
+
+**PDB Drain Deadlock Detection**:
+Checks `status.disruptionsAllowed == 0` on all PDBs via Kubernetes API before MNG rolling updates. Connects to the EKS API server using endpoint/CA from `describe_cluster` and a bearer token from `aws eks get-token`. Failures are non-fatal warnings. Use `--skip-pdb-check` to skip.
 
 **Constraints**:
 - Control plane upgrades limited to 1 minor version at a time (e.g., 1.28 → 1.30 requires two steps)

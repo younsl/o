@@ -16,6 +16,7 @@
 - **Sync mode**: Update only addons/nodegroups without control plane upgrade
 - Automatic add-on version upgrades
 - Managed node group rolling updates
+- PDB drain deadlock detection before node group rolling updates
 - Dry-run mode for planning
 
 ## Usage
@@ -26,11 +27,19 @@ Run interactive upgrade workflow.
 kup                              # Interactive mode
 kup --dry-run                    # Plan only, no execution
 kup -c my-cluster -t 1.34 --yes  # Non-interactive mode
+kup --skip-pdb-check             # Skip PDB drain deadlock check
 ```
 
 ## Installation
 
 Requires AWS CLI v2 and valid credentials.
+
+```bash
+brew install younsl/tap/kup
+kup --version
+```
+
+Or build from source:
 
 ```bash
 make install
@@ -70,6 +79,7 @@ CLI flags for customization.
 | `--dry-run` | Show plan without executing |
 | `--skip-addons` | Skip add-on upgrades |
 | `--skip-nodegroups` | Skip node group upgrades |
+| `--skip-pdb-check` | Skip PDB drain deadlock check |
 | `--addon-version` | Specify add-on version (`ADDON=VERSION`) |
 | `--log-level` | Log verbosity (default: `info`) |
 
@@ -158,6 +168,15 @@ IAM permissions needed for kup to work.
   ]
 }
 ```
+
+## PDB Drain Deadlock Detection
+
+Before managed node group rolling updates, kup checks all PodDisruptionBudgets in the cluster for drain deadlock conditions. A PDB with `status.disruptionsAllowed == 0` and active pods will permanently block node drain during rolling updates (e.g., replicas=1 with minAvailable=1).
+
+- Connects to the EKS API server using endpoint/CA from `describe_cluster` and a bearer token from `aws eks get-token`
+- Results are displayed within the Phase 3 (Managed Node Group Upgrade) section of the upgrade plan
+- Failures are non-fatal warnings and do not block the upgrade
+- Use `--skip-pdb-check` to skip this check
 
 ## Constraints
 

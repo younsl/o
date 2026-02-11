@@ -2,7 +2,7 @@
 name = "ij"
 version = "0.1.0"
 edition = "2024"
-rust-version = "1.91"
+rust-version = "1.93"
 authors = ["Younsung Lee <cysl@kakao.com>"]
 license = "MIT"
 description = "Interactive EC2 Session Manager connection tool"
