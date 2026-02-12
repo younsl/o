@@ -124,6 +124,35 @@ IAM permissions needed for ij to work.
 
 **EC2 Instance:** `AmazonSSMManagedInstanceCore` policy attached.
 
+<details>
+<summary>IAM Policy example</summary>
+
+```json
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Sid": "AllowDescribeInstances",
+      "Effect": "Allow",
+      "Action": "ec2:DescribeInstances",
+      "Resource": "*"
+    },
+    {
+      "Sid": "AllowSSMStartSession",
+      "Effect": "Allow",
+      "Action": "ssm:StartSession",
+      "Resource": [
+        "arn:aws:ec2:*:123456789012:instance/*",
+        "arn:aws:ssm:*::document/AWS-StartPortForwardingSession",
+        "arn:aws:ssm:*::document/AWS-StartPortForwardingSessionToRemoteHost"
+      ]
+    }
+  ]
+}
+```
+
+</details>
+
 ## License
 
 MIT

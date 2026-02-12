@@ -93,9 +93,25 @@ Escape sequences (SSH-style):
 
 ```json
 {
-  "Effect": "Allow",
-  "Action": ["ec2:DescribeInstances", "ssm:StartSession"],
-  "Resource": "*"
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Sid": "AllowDescribeInstances",
+      "Effect": "Allow",
+      "Action": "ec2:DescribeInstances",
+      "Resource": "*"
+    },
+    {
+      "Sid": "AllowSSMStartSession",
+      "Effect": "Allow",
+      "Action": "ssm:StartSession",
+      "Resource": [
+        "arn:aws:ec2:*:123456789012:instance/*",
+        "arn:aws:ssm:*::document/AWS-StartPortForwardingSession",
+        "arn:aws:ssm:*::document/AWS-StartPortForwardingSessionToRemoteHost"
+      ]
+    }
+  ]
 }
 ```
 
