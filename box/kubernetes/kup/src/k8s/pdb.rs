@@ -214,4 +214,115 @@ mod tests {
         };
         assert!(!summary.has_blocking_pdbs());
     }
+
+    #[test]
+    fn test_pdb_finding_reason_unknown_spec() {
+        let finding = PdbFinding {
+            namespace: "default".to_string(),
+            name: "orphan-pdb".to_string(),
+            min_available: None,
+            max_unavailable: None,
+            current_healthy: 0,
+            expected_pods: 1,
+            disruptions_allowed: 0,
+        };
+
+        assert_eq!(
+            finding.reason(),
+            "unknown spec, 0/1 healthy pods, 0 disruptions allowed"
+        );
+    }
+
+    #[test]
+    fn test_pdb_finding_reason_min_available_takes_precedence() {
+        let finding = PdbFinding {
+            namespace: "app".to_string(),
+            name: "dual-spec-pdb".to_string(),
+            min_available: Some("2".to_string()),
+            max_unavailable: Some("1".to_string()),
+            current_healthy: 2,
+            expected_pods: 3,
+            disruptions_allowed: 0,
+        };
+
+        // min_available should take precedence when both are set
+        assert!(finding.reason().starts_with("minAvailable=2"));
+    }
+
+    #[test]
+    fn test_pdb_finding_reason_percentage_min_available() {
+        let finding = PdbFinding {
+            namespace: "production".to_string(),
+            name: "api-pdb".to_string(),
+            min_available: Some("50%".to_string()),
+            max_unavailable: None,
+            current_healthy: 2,
+            expected_pods: 4,
+            disruptions_allowed: 0,
+        };
+
+        assert_eq!(
+            finding.reason(),
+            "minAvailable=50%, 2/4 healthy pods, 0 disruptions allowed"
+        );
+    }
+
+    #[test]
+    fn test_pdb_summary_with_findings() {
+        let findings = vec![
+            PdbFinding {
+                namespace: "kube-system".to_string(),
+                name: "coredns-pdb".to_string(),
+                min_available: Some("1".to_string()),
+                max_unavailable: None,
+                current_healthy: 1,
+                expected_pods: 1,
+                disruptions_allowed: 0,
+            },
+            PdbFinding {
+                namespace: "monitoring".to_string(),
+                name: "prometheus-pdb".to_string(),
+                min_available: None,
+                max_unavailable: Some("0".to_string()),
+                current_healthy: 1,
+                expected_pods: 1,
+                disruptions_allowed: 0,
+            },
+        ];
+
+        let summary = PdbSummary {
+            total_pdbs: 10,
+            blocking_count: 2,
+            findings,
+        };
+
+        assert!(summary.has_blocking_pdbs());
+        assert_eq!(summary.findings.len(), 2);
+        assert_eq!(summary.total_pdbs, 10);
+        assert_eq!(summary.findings[0].namespace, "kube-system");
+        assert_eq!(summary.findings[1].namespace, "monitoring");
+    }
+
+    #[test]
+    fn test_pdb_summary_zero_total() {
+        let summary = PdbSummary {
+            total_pdbs: 0,
+            blocking_count: 0,
+            findings: vec![],
+        };
+        assert!(!summary.has_blocking_pdbs());
+        assert_eq!(summary.total_pdbs, 0);
+    }
+
+    #[test]
+    fn test_format_int_or_string_zero() {
+        let value = IntOrString::Int(0);
+        assert_eq!(format_int_or_string(&value), "0");
+    }
+
+    #[test]
+    fn test_format_int_or_string_percentage() {
+        let value = IntOrString::String("100%".to_string());
+        assert_eq!(format_int_or_string(&value), "100%");
+    }
 }

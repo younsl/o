@@ -1,7 +1,7 @@
 # kup
 
 [![GitHub release](https://img.shields.io/github/v/release/younsl/o?filter=kup*&style=flat-square&color=black)](https://github.com/younsl/o/releases?q=kup&expanded=true)
-[![Rust](https://img.shields.io/badge/rust-1.92-black?style=flat-square&logo=rust&logoColor=white)](https://www.rust-lang.org/)
+[![Rust](https://img.shields.io/badge/rust-1.93-black?style=flat-square&logo=rust&logoColor=white)](https://www.rust-lang.org/)
 [![GitHub license](https://img.shields.io/github/license/younsl/o?style=flat-square&color=black)](https://github.com/younsl/o/blob/main/LICENSE)
 
 <img src="https://cdn.jsdelivr.net/gh/devicons/devicon/icons/kubernetes/kubernetes-plain.svg" width="40" height="40"/>
@@ -16,7 +16,7 @@
 - **Sync mode**: Update only addons/nodegroups without control plane upgrade
 - Automatic add-on version upgrades
 - Managed node group rolling updates
-- PDB drain deadlock detection before node group rolling updates
+- [Preflight checks](#preflight-checks) before node group rolling updates (PDB drain deadlock, Karpenter EC2NodeClass AMI selector)
 - Dry-run mode for planning
 
 ## Usage
@@ -169,14 +169,17 @@ IAM permissions needed for kup to work.
 }
 ```
 
-## PDB Drain Deadlock Detection
+## Preflight Checks
 
-Before managed node group rolling updates, kup checks all PodDisruptionBudgets in the cluster for drain deadlock conditions. A PDB with `status.disruptionsAllowed == 0` and active pods will permanently block node drain during rolling updates (e.g., replicas=1 with minAvailable=1).
+Before managed node group rolling updates, kup runs preflight checks to detect potential blockers. Both checks connect to the EKS API server using endpoint/CA from `describe_cluster` and a bearer token from `aws eks get-token`. Failures are non-fatal warnings and do not block the upgrade. Checks are skipped when no managed node group upgrades are planned.
 
-- Connects to the EKS API server using endpoint/CA from `describe_cluster` and a bearer token from `aws eks get-token`
-- Results are displayed within the Phase 3 (Managed Node Group Upgrade) section of the upgrade plan
-- Failures are non-fatal warnings and do not block the upgrade
-- Use `--skip-pdb-check` to skip this check
+### PDB Drain Deadlock
+
+MNG rolling updates drain nodes to evict pods. A PDB with `status.disruptionsAllowed == 0` will cause the drain to hang indefinitely, permanently stalling the rolling update (e.g., replicas=1 with minAvailable=1). This check detects blocking PDBs upfront so operators can scale up replicas or adjust the PDB before proceeding. Use `--skip-pdb-check` to skip.
+
+### Karpenter EC2NodeClass
+
+[Karpenter](https://github.com/aws/karpenter-provider-aws) determines node AMIs from `amiSelectorTerms` in the [`EC2NodeClass`](https://karpenter.sh/docs/concepts/nodeclasses/) resource. If pinned to a specific version (e.g., `al2023@v20250117`), nodes may continue launching with the old AMI after a control plane upgrade. This check displays the AMI selector configuration of each EC2NodeClass so operators can verify compatibility with the target version. Queries `karpenter.k8s.aws/v1` first, falls back to `v1beta1`.
 
 ## Constraints
 
@@ -203,4 +206,4 @@ This is useful for:
 
 ## License
 
-MIT
+This project is licensed under the MIT License. See the [LICENSE](../../../LICENSE) file for details.

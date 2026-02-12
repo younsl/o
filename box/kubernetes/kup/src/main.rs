@@ -214,9 +214,12 @@ async fn run_interactive(client: &EksClient, config: &Config) -> Result<()> {
     if plan.is_empty() {
         println!(
             "{}",
-            "All components are already at target version. Nothing to upgrade."
-                .green()
-                .bold()
+            format!(
+                "All components are already at version {}. Nothing to upgrade.",
+                plan.target_version
+            )
+            .green()
+            .bold()
         );
         return Ok(());
     }
@@ -334,9 +337,12 @@ async fn run_noninteractive(client: &EksClient, config: &Config) -> Result<()> {
     if plan.is_empty() {
         println!(
             "{}",
-            "All components are already at target version. Nothing to upgrade."
-                .green()
-                .bold()
+            format!(
+                "All components are already at version {}. Nothing to upgrade.",
+                plan.target_version
+            )
+            .green()
+            .bold()
         );
         return Ok(());
     }

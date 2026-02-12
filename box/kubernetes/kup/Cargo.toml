@@ -1,8 +1,8 @@
 [package]
 name = "kup"
-version = "0.2.0"
+version = "0.3.0"
 edition = "2024"
-rust-version = "1.92"
+rust-version = "1.93"
 authors = ["Younsung Lee <cysl@kakao.com>"]
 license = "MIT"
 description = "EKS cluster upgrade support CLI tool"

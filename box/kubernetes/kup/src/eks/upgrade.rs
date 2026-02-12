@@ -11,6 +11,7 @@ use super::addon::{self, AddonInfo, AddonUpgrade};
 use super::client::{EksClient, calculate_upgrade_path};
 use super::nodegroup::{self, NodeGroupInfo, format_rolling_strategy};
 use super::types::{Skipped, VersionedResource};
+use crate::k8s::karpenter::KarpenterSummary;
 use crate::k8s::pdb::PdbSummary;
 
 // Re-export for backward compatibility
@@ -29,6 +30,7 @@ pub struct UpgradePlan {
     pub nodegroup_upgrades: Vec<NodeGroupInfo>,
     pub skipped_nodegroups: Vec<SkippedNodeGroup>,
     pub pdb_findings: Option<PdbSummary>,
+    pub karpenter_summary: Option<KarpenterSummary>,
 }
 
 impl UpgradePlan {
@@ -99,23 +101,46 @@ pub async fn create_upgrade_plan(
     let nodegroup_result =
         nodegroup::plan_nodegroup_upgrades(client.inner(), cluster_name, target_version).await?;
 
+    // Build kube client once for PDB and Karpenter checks (non-fatal)
+    let kube_client =
+        match crate::k8s::client::build_kube_client(&cluster, client.region(), profile).await {
+            Ok(c) => Some(c),
+            Err(e) => {
+                tracing::warn!("Failed to build Kubernetes client (non-fatal): {}", e);
+                None
+            }
+        };
+
     // Check PDB drain deadlock (only when nodegroup upgrades exist)
     let pdb_findings = if !skip_pdb_check && !nodegroup_result.upgrades.is_empty() {
-        match crate::k8s::client::build_kube_client(&cluster, client.region(), profile).await {
-            Ok(kube_client) => match crate::k8s::pdb::check_pdbs(&kube_client).await {
+        if let Some(ref kc) = kube_client {
+            match crate::k8s::pdb::check_pdbs(kc).await {
                 Ok(summary) => Some(summary),
                 Err(e) => {
                     tracing::warn!("PDB check failed (non-fatal): {}", e);
                     None
                 }
-            },
-            Err(e) => {
-                tracing::warn!(
-                    "Failed to build Kubernetes client for PDB check (non-fatal): {}",
-                    e
-                );
-                None
             }
+        } else {
+            None
+        }
+    } else {
+        None
+    };
+
+    // Check Karpenter EC2NodeClass amiSelectorTerms (only when nodegroup upgrades exist)
+    let karpenter_summary = if !nodegroup_result.upgrades.is_empty() {
+        if let Some(ref kc) = kube_client {
+            match crate::k8s::karpenter::check_ec2_node_classes(kc).await {
+                Ok(summary) if !summary.node_classes.is_empty() => Some(summary),
+                Ok(_) => None,
+                Err(e) => {
+                    tracing::warn!("Karpenter EC2NodeClass check failed (non-fatal): {}", e);
+                    None
+                }
+            }
+        } else {
+            None
         }
     } else {
         None
@@ -131,6 +156,7 @@ pub async fn create_upgrade_plan(
         nodegroup_upgrades: nodegroup_result.upgrades,
         skipped_nodegroups: nodegroup_result.skipped,
         pdb_findings,
+        karpenter_summary,
     })
 }
 
@@ -221,6 +247,28 @@ fn print_skipped_nodegroups(skipped: &[SkippedNodeGroup], dimmed: bool) {
     }
 }
 
+/// Format a single AMI selector term for display.
+fn format_ami_selector_term(term: &crate::k8s::karpenter::AmiSelectorTerm) -> String {
+    if let Some(ref alias) = term.alias {
+        return format!("alias: {}", alias);
+    }
+    if let Some(ref id) = term.id {
+        return format!("id: {}", id);
+    }
+    if let Some(ref name) = term.name {
+        let mut s = format!("name: {}", name);
+        if let Some(ref owner) = term.owner {
+            s.push_str(&format!(", owner: {}", owner));
+        }
+        return s;
+    }
+    if let Some(ref tags) = term.tags {
+        let pairs: Vec<String> = tags.iter().map(|(k, v)| format!("{}={}", k, v)).collect();
+        return format!("tags: {{{}}}", pairs.join(", "));
+    }
+    "(empty term)".to_string()
+}
+
 // ============================================================================
 // Print Upgrade Plan
 // ============================================================================
@@ -307,12 +355,15 @@ pub fn print_upgrade_plan(plan: &UpgradePlan, skip_control_plane: bool) {
     }
     print_skipped_nodegroups(&plan.skipped_nodegroups, true);
 
-    // PDB Drain Deadlock (displayed within Phase 3)
+    // Preflight Checks (PDB + Karpenter)
+    println!();
+    println!("{}", "Preflight Checks:".cyan().bold());
+
+    // PDB Drain Deadlock
+    println!("  {}", "PDB Drain Deadlock:".yellow().bold());
+    println!("  {}", "─".repeat(38).dimmed());
     if let Some(ref pdb) = plan.pdb_findings {
         if pdb.has_blocking_pdbs() {
-            println!();
-            println!("  {}", "PDB Drain Deadlock:".yellow().bold());
-            println!("  {}", "─".repeat(38).dimmed());
             for finding in &pdb.findings {
                 println!(
                     "  {} {}/{}: {}",
@@ -322,7 +373,6 @@ pub fn print_upgrade_plan(plan: &UpgradePlan, skip_control_plane: bool) {
                     finding.reason()
                 );
             }
-            println!();
             println!(
                 "  {} {}/{} PDB(s) may block node drain during rolling update",
                 "⚠".yellow(),
@@ -340,6 +390,60 @@ pub fn print_upgrade_plan(plan: &UpgradePlan, skip_control_plane: bool) {
                 pdb.total_pdbs
             );
         }
+    } else if plan.nodegroup_upgrades.is_empty() {
+        println!(
+            "  {} Skipped (no managed node group upgrades)",
+            "−".dimmed()
+        );
+    } else {
+        println!(
+            "  {} Skipped (--skip-pdb-check or Kubernetes API unavailable)",
+            "−".dimmed()
+        );
+    }
+
+    // Karpenter EC2NodeClass
+    println!(
+        "  {}",
+        "Karpenter EC2NodeClass AMI Configuration:".yellow().bold()
+    );
+    println!("  {}", "─".repeat(38).dimmed());
+    if let Some(ref karpenter) = plan.karpenter_summary {
+        for nc in &karpenter.node_classes {
+            if nc.ami_selector_terms.is_empty() {
+                println!(
+                    "  {} {}: {}",
+                    "⚠".yellow(),
+                    nc.name,
+                    "(no amiSelectorTerms)".dimmed()
+                );
+            } else {
+                for term in &nc.ami_selector_terms {
+                    let desc = format_ami_selector_term(term);
+                    println!("  {} {}: {}", "✓".green(), nc.name, desc);
+                }
+            }
+        }
+        println!(
+            "  {} {} EC2NodeClass(es) detected in cluster",
+            "✓".green(),
+            karpenter.node_classes.len()
+        );
+        println!(
+            "  {} Verify amiSelectorTerms compatibility with {} before upgrading",
+            "→".cyan(),
+            plan.target_version
+        );
+    } else if plan.nodegroup_upgrades.is_empty() {
+        println!(
+            "  {} Skipped (no managed node group upgrades)",
+            "−".dimmed()
+        );
+    } else {
+        println!(
+            "  {} Skipped (Kubernetes API unavailable or Karpenter not in use)",
+            "−".dimmed()
+        );
     }
 
     // Estimated time
@@ -614,6 +718,7 @@ mod tests {
             nodegroup_upgrades: vec![],
             skipped_nodegroups: vec![],
             pdb_findings: None,
+            karpenter_summary: None,
         };
 
         assert_eq!(plan.cluster_name, "test-cluster");
@@ -632,6 +737,7 @@ mod tests {
             nodegroup_upgrades: vec![],
             skipped_nodegroups: vec![],
             pdb_findings: None,
+            karpenter_summary: None,
         };
 
         // With control plane: 2 steps * 10 min = 20 min
@@ -651,6 +757,7 @@ mod tests {
             nodegroup_upgrades: vec![],
             skipped_nodegroups: vec![],
             pdb_findings: None,
+            karpenter_summary: None,
         };
 
         // Skip control plane: 0 min (no addons/nodegroups either)
@@ -757,6 +864,7 @@ mod tests {
             nodegroup_upgrades: vec![],
             skipped_nodegroups: vec![],
             pdb_findings: None,
+            karpenter_summary: None,
         };
         assert!(plan.is_empty());
     }
@@ -773,6 +881,7 @@ mod tests {
             nodegroup_upgrades: vec![],
             skipped_nodegroups: vec![],
             pdb_findings: None,
+            karpenter_summary: None,
         };
         assert!(!plan.is_empty());
     }
@@ -793,6 +902,7 @@ mod tests {
             nodegroup_upgrades: vec![],
             skipped_nodegroups: vec![],
             pdb_findings: None,
+            karpenter_summary: None,
         };
         assert!(!plan.is_empty());
     }
@@ -817,6 +927,7 @@ mod tests {
             nodegroup_upgrades: vec![ng],
             skipped_nodegroups: vec![],
             pdb_findings: None,
+            karpenter_summary: None,
         };
         assert!(!plan.is_empty());
     }
@@ -837,6 +948,7 @@ mod tests {
             nodegroup_upgrades: vec![],
             skipped_nodegroups: vec![],
             pdb_findings: None,
+            karpenter_summary: None,
         };
         // Skipped items don't count as upgrades
         assert!(plan.is_empty());
@@ -860,6 +972,7 @@ mod tests {
             nodegroup_upgrades: vec![],
             skipped_nodegroups: vec![],
             pdb_findings: None,
+            karpenter_summary: None,
         };
         // Skip CP: 0 + addons: 10 + nodegroups: 0 = 10
         assert_eq!(calculate_estimated_time(&plan, true), 10);
@@ -893,6 +1006,7 @@ mod tests {
             nodegroup_upgrades: vec![ng1, ng2],
             skipped_nodegroups: vec![],
             pdb_findings: None,
+            karpenter_summary: None,
         };
         // Skip CP: 0 + addons: 0 + nodegroups: 2 * 20 = 40
         assert_eq!(calculate_estimated_time(&plan, true), 40);
@@ -922,6 +1036,7 @@ mod tests {
             nodegroup_upgrades: vec![ng],
             skipped_nodegroups: vec![],
             pdb_findings: None,
+            karpenter_summary: None,
         };
         // CP: 2*10=20 + addons: 10 + nodegroups: 1*20=20 = 50
         assert_eq!(calculate_estimated_time(&plan, false), 50);
@@ -985,5 +1100,293 @@ mod tests {
         assert!(config.skip_nodegroups);
         assert!(config.dry_run);
         assert_eq!(config.control_plane_timeout_minutes, 60);
+    }
+
+    // =========================================================================
+    // Preflight Checks: format_ami_selector_term
+    // =========================================================================
+
+    #[test]
+    fn test_format_ami_selector_term_alias() {
+        use crate::k8s::karpenter::AmiSelectorTerm;
+        let term = AmiSelectorTerm {
+            alias: Some("al2023@v20250117".to_string()),
+            id: None,
+            name: None,
+            owner: None,
+            tags: None,
+        };
+        assert_eq!(format_ami_selector_term(&term), "alias: al2023@v20250117");
+    }
+
+    #[test]
+    fn test_format_ami_selector_term_id() {
+        use crate::k8s::karpenter::AmiSelectorTerm;
+        let term = AmiSelectorTerm {
+            alias: None,
+            id: Some("ami-0123456789abcdef0".to_string()),
+            name: None,
+            owner: None,
+            tags: None,
+        };
+        assert_eq!(format_ami_selector_term(&term), "id: ami-0123456789abcdef0");
+    }
+
+    #[test]
+    fn test_format_ami_selector_term_name_with_owner() {
+        use crate::k8s::karpenter::AmiSelectorTerm;
+        let term = AmiSelectorTerm {
+            alias: None,
+            id: None,
+            name: Some("my-ami-*".to_string()),
+            owner: Some("123456789012".to_string()),
+            tags: None,
+        };
+        assert_eq!(
+            format_ami_selector_term(&term),
+            "name: my-ami-*, owner: 123456789012"
+        );
+    }
+
+    #[test]
+    fn test_format_ami_selector_term_name_without_owner() {
+        use crate::k8s::karpenter::AmiSelectorTerm;
+        let term = AmiSelectorTerm {
+            alias: None,
+            id: None,
+            name: Some("eks-node-*".to_string()),
+            owner: None,
+            tags: None,
+        };
+        assert_eq!(format_ami_selector_term(&term), "name: eks-node-*");
+    }
+
+    #[test]
+    fn test_format_ami_selector_term_tags() {
+        use crate::k8s::karpenter::AmiSelectorTerm;
+        let mut tags = std::collections::HashMap::new();
+        tags.insert("Environment".to_string(), "production".to_string());
+        let term = AmiSelectorTerm {
+            alias: None,
+            id: None,
+            name: None,
+            owner: None,
+            tags: Some(tags),
+        };
+        assert_eq!(
+            format_ami_selector_term(&term),
+            "tags: {Environment=production}"
+        );
+    }
+
+    #[test]
+    fn test_format_ami_selector_term_empty() {
+        use crate::k8s::karpenter::AmiSelectorTerm;
+        let term = AmiSelectorTerm {
+            alias: None,
+            id: None,
+            name: None,
+            owner: None,
+            tags: None,
+        };
+        assert_eq!(format_ami_selector_term(&term), "(empty term)");
+    }
+
+    #[test]
+    fn test_format_ami_selector_term_alias_takes_precedence() {
+        use crate::k8s::karpenter::AmiSelectorTerm;
+        let term = AmiSelectorTerm {
+            alias: Some("al2023@latest".to_string()),
+            id: Some("ami-fallback".to_string()),
+            name: Some("name-fallback".to_string()),
+            owner: None,
+            tags: None,
+        };
+        // alias should be returned even though id and name are also set
+        assert_eq!(format_ami_selector_term(&term), "alias: al2023@latest");
+    }
+
+    // =========================================================================
+    // Preflight Checks: UpgradePlan with preflight data
+    // =========================================================================
+
+    #[test]
+    fn test_upgrade_plan_with_pdb_findings() {
+        use crate::k8s::pdb::{PdbFinding, PdbSummary};
+
+        let pdb_summary = PdbSummary {
+            total_pdbs: 3,
+            blocking_count: 1,
+            findings: vec![PdbFinding {
+                namespace: "kube-system".to_string(),
+                name: "coredns-pdb".to_string(),
+                min_available: Some("1".to_string()),
+                max_unavailable: None,
+                current_healthy: 1,
+                expected_pods: 1,
+                disruptions_allowed: 0,
+            }],
+        };
+
+        let plan = UpgradePlan {
+            cluster_name: "test".to_string(),
+            current_version: "1.32".to_string(),
+            target_version: "1.33".to_string(),
+            upgrade_path: vec!["1.33".to_string()],
+            addon_upgrades: vec![],
+            skipped_addons: vec![],
+            nodegroup_upgrades: vec![],
+            skipped_nodegroups: vec![],
+            pdb_findings: Some(pdb_summary),
+            karpenter_summary: None,
+        };
+
+        assert!(plan.pdb_findings.is_some());
+        let pdb = plan.pdb_findings.as_ref().unwrap();
+        assert!(pdb.has_blocking_pdbs());
+        assert_eq!(pdb.blocking_count, 1);
+        assert_eq!(pdb.findings[0].name, "coredns-pdb");
+    }
+
+    #[test]
+    fn test_upgrade_plan_with_karpenter_summary() {
+        use crate::k8s::karpenter::{AmiSelectorTerm, Ec2NodeClassInfo, KarpenterSummary};
+
+        let karpenter = KarpenterSummary {
+            node_classes: vec![Ec2NodeClassInfo {
+                name: "default".to_string(),
+                ami_selector_terms: vec![AmiSelectorTerm {
+                    alias: Some("al2023@latest".to_string()),
+                    id: None,
+                    name: None,
+                    owner: None,
+                    tags: None,
+                }],
+            }],
+        };
+
+        let plan = UpgradePlan {
+            cluster_name: "test".to_string(),
+            current_version: "1.32".to_string(),
+            target_version: "1.33".to_string(),
+            upgrade_path: vec!["1.33".to_string()],
+            addon_upgrades: vec![],
+            skipped_addons: vec![],
+            nodegroup_upgrades: vec![],
+            skipped_nodegroups: vec![],
+            pdb_findings: None,
+            karpenter_summary: Some(karpenter),
+        };
+
+        assert!(plan.karpenter_summary.is_some());
+        let ks = plan.karpenter_summary.as_ref().unwrap();
+        assert_eq!(ks.node_classes.len(), 1);
+        assert_eq!(ks.node_classes[0].name, "default");
+    }
+
+    #[test]
+    fn test_upgrade_plan_is_empty_with_preflight_findings() {
+        use crate::k8s::karpenter::{AmiSelectorTerm, Ec2NodeClassInfo, KarpenterSummary};
+        use crate::k8s::pdb::PdbSummary;
+
+        // Preflight findings don't affect is_empty (only upgrade actions matter)
+        let plan = UpgradePlan {
+            cluster_name: "test".to_string(),
+            current_version: "1.33".to_string(),
+            target_version: "1.33".to_string(),
+            upgrade_path: vec![],
+            addon_upgrades: vec![],
+            skipped_addons: vec![],
+            nodegroup_upgrades: vec![],
+            skipped_nodegroups: vec![],
+            pdb_findings: Some(PdbSummary {
+                total_pdbs: 5,
+                blocking_count: 0,
+                findings: vec![],
+            }),
+            karpenter_summary: Some(KarpenterSummary {
+                node_classes: vec![Ec2NodeClassInfo {
+                    name: "default".to_string(),
+                    ami_selector_terms: vec![AmiSelectorTerm {
+                        alias: Some("al2023@latest".to_string()),
+                        id: None,
+                        name: None,
+                        owner: None,
+                        tags: None,
+                    }],
+                }],
+            }),
+        };
+
+        // Even with preflight data, plan is empty when no actual upgrades exist
+        assert!(plan.is_empty());
+    }
+
+    #[test]
+    fn test_upgrade_plan_with_all_preflight_and_upgrades() {
+        use crate::k8s::karpenter::{AmiSelectorTerm, Ec2NodeClassInfo, KarpenterSummary};
+        use crate::k8s::pdb::{PdbFinding, PdbSummary};
+
+        let plan = UpgradePlan {
+            cluster_name: "production".to_string(),
+            current_version: "1.32".to_string(),
+            target_version: "1.34".to_string(),
+            upgrade_path: vec!["1.33".to_string(), "1.34".to_string()],
+            addon_upgrades: vec![(
+                AddonInfo {
+                    name: "coredns".to_string(),
+                    current_version: "v1.11.1-eksbuild.1".to_string(),
+                },
+                "v1.11.3-eksbuild.2".to_string(),
+            )],
+            skipped_addons: vec![],
+            nodegroup_upgrades: vec![NodeGroupInfo {
+                name: "ng-system".to_string(),
+                version: Some("1.32".to_string()),
+                desired_size: 3,
+                max_unavailable: None,
+                max_unavailable_percentage: Some(33),
+                asg_name: None,
+            }],
+            skipped_nodegroups: vec![],
+            pdb_findings: Some(PdbSummary {
+                total_pdbs: 5,
+                blocking_count: 1,
+                findings: vec![PdbFinding {
+                    namespace: "kube-system".to_string(),
+                    name: "coredns-pdb".to_string(),
+                    min_available: Some("1".to_string()),
+                    max_unavailable: None,
+                    current_healthy: 1,
+                    expected_pods: 1,
+                    disruptions_allowed: 0,
+                }],
+            }),
+            karpenter_summary: Some(KarpenterSummary {
+                node_classes: vec![Ec2NodeClassInfo {
+                    name: "default".to_string(),
+                    ami_selector_terms: vec![AmiSelectorTerm {
+                        alias: Some("al2023@latest".to_string()),
+                        id: None,
+                        name: None,
+                        owner: None,
+                        tags: None,
+                    }],
+                }],
+            }),
+        };
+
+        assert!(!plan.is_empty());
+        assert_eq!(plan.upgrade_path.len(), 2);
+        assert_eq!(plan.addon_upgrades.len(), 1);
+        assert_eq!(plan.nodegroup_upgrades.len(), 1);
+        assert!(plan.pdb_findings.as_ref().unwrap().has_blocking_pdbs());
+        assert_eq!(
+            plan.karpenter_summary.as_ref().unwrap().node_classes.len(),
+            1
+        );
+
+        // Estimated time: CP 2*10=20 + addon 10 + NG 1*20=20 = 50
+        assert_eq!(calculate_estimated_time(&plan, false), 50);
     }
 }
