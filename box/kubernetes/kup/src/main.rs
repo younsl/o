@@ -12,14 +12,17 @@ mod error;
 mod k8s;
 mod output;
 
+use std::collections::HashMap;
+
 use anyhow::Result;
+use chrono::NaiveDate;
 use clap::Parser;
-use colored::Colorize;
+use colored::{ColoredString, Colorize};
 use dialoguer::{Confirm, Input, Select, theme::ColorfulTheme};
 use tracing::{debug, error};
 
 use config::{Args, Config};
-use eks::client::EksClient;
+use eks::client::{EksClient, VersionLifecycle};
 use eks::insights;
 use eks::upgrade::{self, UpgradeConfig};
 use error::KupError;
@@ -95,6 +98,39 @@ fn print_step(index: usize) {
     );
 }
 
+/// Format an EOS date string with color coding based on urgency.
+///
+/// - Red: already past or within 90 days
+/// - Yellow: within 180 days
+/// - Dimmed: more than 180 days away
+fn format_eos(date_str: &str) -> ColoredString {
+    let today = chrono::Local::now().date_naive();
+    if let Ok(eos_date) = NaiveDate::parse_from_str(date_str, "%Y-%m-%d") {
+        let days_until = (eos_date - today).num_days();
+        let label = format!("Standard Support ends on {}", date_str);
+        if days_until <= 90 {
+            label.red()
+        } else if days_until <= 180 {
+            label.yellow()
+        } else {
+            label.dimmed()
+        }
+    } else {
+        format!("Standard Support ends on {}", date_str).dimmed()
+    }
+}
+
+/// Look up the EOS date string for a given version from the lifecycles map.
+fn eos_for_version(
+    version: &str,
+    lifecycles: &HashMap<String, VersionLifecycle>,
+) -> Option<String> {
+    lifecycles
+        .get(version)
+        .and_then(|lc| lc.end_of_standard_support.as_deref())
+        .map(|s| s.to_string())
+}
+
 /// Run in interactive mode.
 async fn run_interactive(client: &EksClient, config: &Config) -> Result<()> {
     // Step 1: Select Cluster
@@ -105,9 +141,20 @@ async fn run_interactive(client: &EksClient, config: &Config) -> Result<()> {
         return Err(KupError::NoClustersFound.into());
     }
 
+    let lifecycles = client.get_version_lifecycles().await;
+
     let cluster_items: Vec<String> = clusters
         .iter()
-        .map(|c| format!("{} ({}) - {}", c.name, c.version, c.region))
+        .map(|c| match eos_for_version(&c.version, &lifecycles) {
+            Some(date) => format!(
+                "{} ({}, {}) - {}",
+                c.name,
+                c.version,
+                format_eos(&date),
+                c.region
+            ),
+            None => format!("{} ({}) - {}", c.name, c.version, c.region),
+        })
         .collect();
 
     let cluster_idx = Select::with_theme(&ColorfulTheme::default())
@@ -156,9 +203,14 @@ async fn run_interactive(client: &EksClient, config: &Config) -> Result<()> {
         .await?;
 
     // Build version items with current version (sync only) option first
+    let current_ver = &selected_cluster.version;
+    let current_ver_display = match eos_for_version(current_ver, &lifecycles) {
+        Some(d) => format!("{} ({})", current_ver, format_eos(&d)),
+        None => current_ver.to_string(),
+    };
     let mut version_items: Vec<String> = vec![format!(
-        "{:<5} {:<10} (sync addons/nodegroups only)",
-        selected_cluster.version, "(current)"
+        "{:<22} {:<10} (sync addons/nodegroups only)",
+        current_ver_display, "(current)"
     )];
 
     version_items.extend(available_versions.iter().enumerate().map(|(i, v)| {
@@ -169,7 +221,14 @@ async fn run_interactive(client: &EksClient, config: &Config) -> Result<()> {
             ""
         };
         let step_word = if steps == 1 { "step" } else { "steps" };
-        format!("{:<5} {:<10} +{} {}", v, label, steps, step_word)
+        let ver_display = match eos_for_version(v, &lifecycles) {
+            Some(d) => format!("{} ({})", v, format_eos(&d)),
+            None => v.to_string(),
+        };
+        format!(
+            "{:<22} {:<10} +{} {}",
+            ver_display, label, steps, step_word
+        )
     }));
 
     println!("Select target version ({}):", selected_cluster.name);
@@ -282,11 +341,22 @@ async fn run_noninteractive(client: &EksClient, config: &Config) -> Result<()> {
         .await?
         .ok_or_else(|| KupError::ClusterNotFound(cluster_name.clone()))?;
 
+    let lifecycles = client.get_version_lifecycles().await;
+
+    let current_display = match eos_for_version(&cluster.version, &lifecycles) {
+        Some(d) => format!("{}, {}", cluster.version, format_eos(&d)),
+        None => cluster.version.clone(),
+    };
+    let target_display = match eos_for_version(target_version, &lifecycles) {
+        Some(d) => format!("{}, {}", target_version, format_eos(&d)),
+        None => target_version.clone(),
+    };
+
     println!(
-        "Cluster: {} (current: {}, target: {})",
+        "Cluster: {} (current: {} → target: {})",
         cluster.name.bold(),
-        cluster.version,
-        target_version
+        current_display,
+        target_display,
     );
 
     // Check insights

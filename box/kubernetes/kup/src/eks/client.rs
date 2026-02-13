@@ -1,5 +1,7 @@
 //! AWS EKS SDK client wrapper.
 
+use std::collections::HashMap;
+
 use anyhow::Result;
 use aws_sdk_autoscaling::Client as AsgClient;
 use aws_sdk_eks::Client;
@@ -21,6 +23,12 @@ impl std::fmt::Display for ClusterInfo {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "{} ({}) - {}", self.name, self.version, self.region)
     }
+}
+
+/// EKS version lifecycle information from DescribeClusterVersions API.
+#[derive(Debug, Clone)]
+pub struct VersionLifecycle {
+    pub end_of_standard_support: Option<String>,
 }
 
 /// EKS client wrapper for cluster operations.
@@ -298,6 +306,59 @@ impl EksClient {
 
         debug!("Available upgrade versions: {:?}", available);
         Ok(available)
+    }
+
+    /// Get version lifecycle information (EOS dates) for all EKS versions.
+    ///
+    /// Calls `DescribeClusterVersions` API and returns a map of version string
+    /// to lifecycle dates. Returns an empty map on failure (graceful degradation).
+    pub async fn get_version_lifecycles(&self) -> HashMap<String, VersionLifecycle> {
+        debug!("Fetching EKS version lifecycle information");
+
+        let mut lifecycles = HashMap::new();
+        let mut next_token: Option<String> = None;
+
+        loop {
+            let mut request = self.client.describe_cluster_versions();
+
+            if let Some(token) = next_token.take() {
+                request = request.next_token(token);
+            }
+
+            let response = match request.send().await {
+                Ok(resp) => resp,
+                Err(e) => {
+                    debug!("Failed to fetch version lifecycles: {}", e);
+                    return lifecycles;
+                }
+            };
+
+            for version_info in response.cluster_versions() {
+                if let Some(version) = version_info.cluster_version() {
+                    let eos = version_info
+                        .end_of_standard_support_date()
+                        .and_then(|dt| {
+                            chrono::DateTime::from_timestamp(dt.secs(), dt.subsec_nanos())
+                                .map(|d| d.format("%Y-%m-%d").to_string())
+                        });
+
+                    lifecycles.insert(
+                        version.to_string(),
+                        VersionLifecycle {
+                            end_of_standard_support: eos,
+                        },
+                    );
+                }
+            }
+
+            next_token = response.next_token().map(|s| s.to_string());
+            if next_token.is_none() {
+                break;
+            }
+        }
+
+        debug!("Fetched lifecycle info for {} versions", lifecycles.len());
+        lifecycles
     }
 }
 
