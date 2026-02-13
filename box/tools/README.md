@@ -12,7 +12,6 @@ All CLI tools are built with [Rust](https://github.com/rust-lang/rust) 1.91+. Ru
 
 | Category | Name | Language | Description |
 |----------|------|----------|-------------|
-| CLI | [kk](./kk/) (knock knock) | [Rust](./kk/Cargo.toml) | CLI tool that checks the status of domains specified in a YAML configuration file. |
 | CLI | [qg](./qg/) (qr generator) | [Rust](./qg/Cargo.toml) | CLI tool that generates QR code images from text or URLs. |
 | CLI | [s3vget](./s3vget/) (S3 version get) | [Rust](./s3vget/Cargo.toml) | S3 Object Version Downloader with interactive prompts and configurable timezone support. |
 | CLI | [ij](./ij/) (Instance Jump) | [Rust](./ij/Cargo.toml) | Interactive EC2 Session Manager jump tool with multi-region scanning and fuzzy search. |

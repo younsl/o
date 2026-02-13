@@ -16,7 +16,7 @@ Kubernetes addons and tools follow the [Unix philosophy](https://en.wikipedia.or
 
 ### Rust Projects
 
-Standard Makefile patterns for Rust tools (ij, kk, kup, qg, s3vget, promdrop, gss, filesystem-cleaner, elasticache-backup, redis-console, trivy-collector):
+Standard Makefile patterns for Rust tools (ij, kup, qg, s3vget, promdrop, gss, filesystem-cleaner, elasticache-backup, redis-console, trivy-collector):
 
 ```bash
 # Core build commands
@@ -120,7 +120,6 @@ box/
 │   └── policies/          # Kyverno and CEL admission policies
 ├── tools/                 # CLI utilities
 │   ├── ij/                # Interactive EC2 SSM connection tool (Rust)
-│   ├── kk/                # Domain connectivity checker (Rust)
 │   ├── qg/                # QR code generator (Rust)
 │   └── s3vget/            # S3 object version downloader (Rust)
 ├── containers/            # Custom container images
@@ -261,30 +260,6 @@ Checks `status.disruptionsAllowed == 0` on all PDBs via Kubernetes API before MN
 - Managed Node Groups only (self-managed and Karpenter nodes not supported)
 
 **AWS Permissions Required**: `eks:ListClusters`, `eks:DescribeCluster`, `eks:UpdateClusterVersion`, `eks:DescribeUpdate`, `eks:ListInsights`, `eks:DescribeInsight`, `eks:ListAddons`, `eks:DescribeAddon`, `eks:DescribeAddonVersions`, `eks:UpdateAddon`, `eks:ListNodegroups`, `eks:DescribeNodegroup`, `eks:UpdateNodegroupVersion`, `autoscaling:DescribeAutoScalingGroups`
-
-### kk - Domain Connectivity Checker (Rust)
-
-```bash
-# Check domain connectivity
-./target/release/kk --config configs/domain-example.yaml
-
-# Or use Makefile
-make run        # Build and run with example config
-make dev        # Run with verbose logging
-
-# Build commands
-make build      # Debug build
-make release    # Optimized release build
-make install    # Install to ~/.cargo/bin/
-
-# Configuration format (YAML):
-domains:
-  - www.google.com        # Auto-adds https://
-  - reddit.com
-  - https://registry.k8s.io/v2/
-```
-
-**Note**: Uses Tokio for async concurrency and Clap for CLI.
 
 ### qg - QR Code Generator (Rust)
 
@@ -646,7 +621,6 @@ GitHub Actions automatically builds and releases on tag push:
 ```bash
 # CLI tool releases (pattern: {tool}/x.y.z)
 git tag promdrop/1.0.0 && git push --tags  # Rust
-git tag kk/1.0.0 && git push --tags        # Rust
 
 # Container image releases (pattern: {container}/x.y.z)
 git tag filesystem-cleaner/1.0.0 && git push --tags
@@ -665,7 +639,6 @@ git tag gss/charts/1.0.0 && git push --tags
 git tag grafana-dashboards/charts/1.0.0 && git push --tags
 
 # Available workflows:
-# - release-kk.yml                           (Rust CLI + container)
 # - release-promdrop.yml                     (Rust CLI + container)
 # - release-rust-containers.yml              (Unified Rust container release: filesystem-cleaner, elasticache-backup, redis-console, gss)
 # - release-trivy-collector.yml              (Rust container)
