@@ -19,6 +19,7 @@ pub fn print_insights_summary(summary: &InsightsSummary) {
         let icon = match finding.severity.as_str() {
             "ERROR" | "CRITICAL" => "✗".red(),
             "WARNING" => "⚠".yellow(),
+            "PASSING" => "✓".green(),
             _ => "ℹ".blue(),
         };
         println!(
@@ -62,6 +63,13 @@ pub fn print_insights_summary(summary: &InsightsSummary) {
             "  {} Warnings: {}",
             "⚠".yellow(),
             summary.warning_count.to_string().yellow()
+        );
+    }
+    if summary.passing_count > 0 {
+        println!(
+            "  {} Passing: {}",
+            "✓".green(),
+            summary.passing_count.to_string().green()
         );
     }
     if summary.info_count > 0 {

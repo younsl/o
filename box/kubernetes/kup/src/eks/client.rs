@@ -14,6 +14,7 @@ use crate::error::KupError;
 pub struct ClusterInfo {
     pub name: String,
     pub version: String,
+    pub platform_version: Option<String>,
     pub region: String,
     pub endpoint: Option<String>,
     pub ca_data: Option<String>,
@@ -136,6 +137,7 @@ impl EksClient {
             let info = ClusterInfo {
                 name: cluster.name().unwrap_or_default().to_string(),
                 version: cluster.version().unwrap_or_default().to_string(),
+                platform_version: cluster.platform_version().map(|s| s.to_string()),
                 region: self.region.clone(),
                 endpoint: cluster.endpoint().map(|s| s.to_string()),
                 ca_data: cluster

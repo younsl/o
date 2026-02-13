@@ -18,6 +18,7 @@
 - Managed node group rolling updates
 - [Preflight checks](#preflight-checks) before node group rolling updates (PDB drain deadlock, Karpenter EC2NodeClass AMI selector)
 - Dry-run mode for planning
+- HTML upgrade report auto-generated on every run
 
 ## Usage
 
@@ -27,90 +28,14 @@ Run interactive upgrade workflow.
 kup                              # Interactive mode
 kup --dry-run                    # Plan only, no execution
 kup -c my-cluster -t 1.34 --yes  # Non-interactive mode
-kup --skip-pdb-check             # Skip PDB drain deadlock check
 ```
 
-## Installation
+## Prerequisites
 
-Requires AWS CLI v2 and valid credentials.
+Requires [AWS CLI v2](https://github.com/aws/aws-cli) and valid credentials with the following IAM permissions.
 
-```bash
-brew install younsl/tap/kup
-kup --version
-```
-
-Or build from source:
-
-```bash
-make install
-mv ~/.cargo/bin/kup /usr/local/bin/
-```
-
-## How It Works
-
-```
-┌──────────────┐     ┌──────────────┐     ┌──────────────┐
-│ Control Plane│     │   Add-ons    │     │ Node Groups  │
-│              │     │              │     │              │
-│  1.32 → 1.33 │────▶│ Update to    │────▶│ Rolling AMI  │
-│  ~10 min/step│     │ compatible   │     │ update       │
-└──────────────┘     └──────────────┘     └──────────────┘
-```
-
-**Interactive workflow steps:**
-
-1. Select cluster from available EKS clusters
-2. Review upgrade readiness findings (Cluster Insights)
-3. Pick target version (or current for sync mode)
-4. Verify upgrade plan and estimated timeline
-5. Type 'Yes' to confirm and execute
-
-## Options
-
-CLI flags for customization.
-
-| Flag | Description |
-|------|-------------|
-| `--region`, `-r` | AWS region |
-| `--profile`, `-p` | AWS profile name |
-| `--cluster`, `-c` | Cluster name (non-interactive) |
-| `--target`, `-t` | Target K8s version (non-interactive) |
-| `--yes`, `-y` | Skip confirmation prompts |
-| `--dry-run` | Show plan without executing |
-| `--skip-addons` | Skip add-on upgrades |
-| `--skip-nodegroups` | Skip node group upgrades |
-| `--skip-pdb-check` | Skip PDB drain deadlock check |
-| `--addon-version` | Specify add-on version (`ADDON=VERSION`) |
-| `--log-level` | Log verbosity (default: `info`) |
-
-## Examples
-
-Common usage patterns.
-
-```bash
-# Interactive upgrade with specific region
-kup -r ap-northeast-2
-
-# Plan upgrade without execution
-kup --dry-run
-
-# Non-interactive upgrade for CI/CD
-kup -c prod-cluster -t 1.34 --yes
-
-# Sync mode: update addons/nodegroups only (select current version)
-# Useful when control plane upgrade completed but addons/nodegroups pending
-kup                  # Select "(current)" in Step 3
-
-# Skip node group updates
-kup --skip-nodegroups
-
-# Specify add-on version
-kup --addon-version kube-proxy=v1.34.0-eksbuild.1
-```
-
-## Requirements
-
-IAM permissions needed for kup to work.
+<details>
+<summary>IAM Policy JSON</summary>
 
 ```json
 {
@@ -123,7 +48,8 @@ IAM permissions needed for kup to work.
         "eks:ListClusters",
         "eks:DescribeCluster",
         "eks:UpdateClusterVersion",
-        "eks:DescribeUpdate"
+        "eks:DescribeUpdate",
+        "eks:DescribeClusterVersions"
       ],
       "Resource": "*"
     },
@@ -169,13 +95,86 @@ IAM permissions needed for kup to work.
 }
 ```
 
+</details>
+
+## Installation
+
+```bash
+brew install younsl/tap/kup
+kup --version
+```
+
+Or build from source:
+
+```bash
+make install
+mv ~/.cargo/bin/kup /usr/local/bin/
+```
+
+## How It Works
+
+```
+┌──────────────┐     ┌──────────────┐     ┌──────────────┐
+│ Control Plane│     │   Add-ons    │     │ Node Groups  │
+│              │     │              │     │              │
+│  1.32 → 1.33 │────▶│ Update to    │────▶│ Rolling AMI  │
+│  ~10 min/step│     │ compatible   │     │ update       │
+└──────────────┘     └──────────────┘     └──────────────┘
+```
+
+**Interactive workflow steps:**
+
+1. Select cluster from available EKS clusters
+2. Review upgrade readiness findings (Cluster Insights)
+3. Pick target version (or current for sync mode)
+4. Verify upgrade plan and estimated timeline
+5. Type 'Yes' to confirm and execute
+6. HTML upgrade report auto-generated on completion
+
+## Options
+
+All flags are optional. When both `--cluster` and `--target` are provided, kup runs in non-interactive mode; otherwise it launches an interactive prompt.
+
+| Flag | Required | Default | Description |
+|------|----------|---------|-------------|
+| `--region`, `-r` | optional | `AWS_REGION` env | AWS region |
+| `--profile`, `-p` | optional | `AWS_PROFILE` env | AWS profile name |
+| `--cluster`, `-c` | optional | - | Cluster name (non-interactive) |
+| `--target`, `-t` | optional | - | Target K8s version (non-interactive) |
+| `--yes`, `-y` | optional | `false` | Skip confirmation prompts |
+| `--dry-run` | optional | `false` | Show plan without executing |
+| `--addon-version` | optional | - | Specify add-on version (`ADDON=VERSION`) |
+| `--log-level` | optional | `warn` | Log verbosity (`trace`, `debug`, `info`, `warn`, `error`) |
+
+## Examples
+
+Common usage patterns.
+
+```bash
+# Interactive upgrade with specific region
+kup -r ap-northeast-2
+
+# Plan upgrade without execution
+kup --dry-run
+
+# Non-interactive upgrade for CI/CD
+kup -c prod-cluster -t 1.34 --yes
+
+# Sync mode: update addons/nodegroups only (select current version)
+# Useful when control plane upgrade completed but addons/nodegroups pending
+kup                  # Select "(current)" in Step 3
+
+# Specify add-on version
+kup --addon-version kube-proxy=v1.34.0-eksbuild.1
+```
+
 ## Preflight Checks
 
 Before managed node group rolling updates, kup runs preflight checks to detect potential blockers. Both checks connect to the EKS API server using endpoint/CA from `describe_cluster` and a bearer token from `aws eks get-token`. Failures are non-fatal warnings and do not block the upgrade. Checks are skipped when no managed node group upgrades are planned.
 
 ### PDB Drain Deadlock
 
-MNG rolling updates drain nodes to evict pods. A PDB with `status.disruptionsAllowed == 0` will cause the drain to hang indefinitely, permanently stalling the rolling update (e.g., replicas=1 with minAvailable=1). This check detects blocking PDBs upfront so operators can scale up replicas or adjust the PDB before proceeding. Use `--skip-pdb-check` to skip.
+MNG rolling updates drain nodes to evict pods. A PDB with `status.disruptionsAllowed == 0` will cause the drain to hang indefinitely, permanently stalling the rolling update (e.g., replicas=1 with minAvailable=1). This check detects blocking PDBs upfront so operators can scale up replicas or adjust the PDB before proceeding.
 
 ### Karpenter EC2NodeClass
 

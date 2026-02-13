@@ -1,11 +1,14 @@
 //! EKS upgrade orchestration.
 
 use anyhow::Result;
+use chrono::Local;
 use colored::Colorize;
 use indicatif::{ProgressBar, ProgressStyle};
 use std::collections::HashMap;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 use tracing::info;
+
+use crate::output::report::{PhaseStatus, PhaseTiming};
 
 use super::addon::{self, AddonInfo, AddonUpgrade};
 use super::client::{EksClient, calculate_upgrade_path};
@@ -44,8 +47,6 @@ impl UpgradePlan {
 
 /// Configuration for upgrade execution.
 pub struct UpgradeConfig {
-    pub skip_addons: bool,
-    pub skip_nodegroups: bool,
     pub skip_control_plane: bool,
     pub dry_run: bool,
     pub control_plane_timeout_minutes: u64,
@@ -57,8 +58,6 @@ pub struct UpgradeConfig {
 impl Default for UpgradeConfig {
     fn default() -> Self {
         Self {
-            skip_addons: false,
-            skip_nodegroups: false,
             skip_control_plane: false,
             dry_run: false,
             control_plane_timeout_minutes: 30,
@@ -75,7 +74,6 @@ pub async fn create_upgrade_plan(
     cluster_name: &str,
     target_version: &str,
     addon_versions: &HashMap<String, String>,
-    skip_pdb_check: bool,
     profile: Option<&str>,
 ) -> Result<UpgradePlan> {
     info!(
@@ -112,7 +110,7 @@ pub async fn create_upgrade_plan(
         };
 
     // Check PDB drain deadlock (only when nodegroup upgrades exist)
-    let pdb_findings = if !skip_pdb_check && !nodegroup_result.upgrades.is_empty() {
+    let pdb_findings = if !nodegroup_result.upgrades.is_empty() {
         if let Some(ref kc) = kube_client {
             match crate::k8s::pdb::check_pdbs(kc).await {
                 Ok(summary) => Some(summary),
@@ -396,10 +394,7 @@ pub fn print_upgrade_plan(plan: &UpgradePlan, skip_control_plane: bool) {
             "−".dimmed()
         );
     } else {
-        println!(
-            "  {} Skipped (--skip-pdb-check or Kubernetes API unavailable)",
-            "−".dimmed()
-        );
+        println!("  {} Skipped (Kubernetes API unavailable)", "−".dimmed());
     }
 
     // Karpenter EC2NodeClass
@@ -457,37 +452,100 @@ pub fn print_upgrade_plan(plan: &UpgradePlan, skip_control_plane: bool) {
 // Execute Upgrade
 // ============================================================================
 
-/// Execute the upgrade plan.
+/// Execute the upgrade plan, returning per-phase timing data.
 pub async fn execute_upgrade(
     client: &EksClient,
     plan: &UpgradePlan,
     config: &UpgradeConfig,
-) -> Result<()> {
+) -> Result<Vec<PhaseTiming>> {
     if config.dry_run {
         println!(
             "{}",
             "[DRY RUN] Would execute the following upgrade:".yellow()
         );
         print_upgrade_plan(plan, config.skip_control_plane);
-        return Ok(());
+        return Ok(vec![]);
     }
 
     println!();
     println!("{}", "=== Executing Upgrade ===".green().bold());
 
+    let time_fmt = "%Y-%m-%d %H:%M:%S";
+    let mut timings = Vec::with_capacity(3);
+
     // Phase 1: Control Plane
+    let cp_skipped = config.skip_control_plane || plan.upgrade_path.is_empty();
+    let started = Local::now().format(time_fmt).to_string();
+    let instant = Instant::now();
     execute_control_plane_phase(client, plan, config).await?;
+    timings.push(if cp_skipped {
+        PhaseTiming {
+            phase_name: "Control Plane".to_string(),
+            started_at: None,
+            completed_at: None,
+            duration_secs: None,
+            status: PhaseStatus::Skipped,
+        }
+    } else {
+        PhaseTiming {
+            phase_name: "Control Plane".to_string(),
+            started_at: Some(started),
+            completed_at: Some(Local::now().format(time_fmt).to_string()),
+            duration_secs: Some(instant.elapsed().as_secs()),
+            status: PhaseStatus::Completed,
+        }
+    });
 
     // Phase 2: Add-ons
+    let addons_skipped = plan.addon_upgrades.is_empty();
+    let started = Local::now().format(time_fmt).to_string();
+    let instant = Instant::now();
     execute_addon_phase(client, plan, config).await?;
+    timings.push(if addons_skipped {
+        PhaseTiming {
+            phase_name: "Add-ons".to_string(),
+            started_at: None,
+            completed_at: None,
+            duration_secs: None,
+            status: PhaseStatus::Skipped,
+        }
+    } else {
+        PhaseTiming {
+            phase_name: "Add-ons".to_string(),
+            started_at: Some(started),
+            completed_at: Some(Local::now().format(time_fmt).to_string()),
+            duration_secs: Some(instant.elapsed().as_secs()),
+            status: PhaseStatus::Completed,
+        }
+    });
 
     // Phase 3: Managed Node Groups
+    let ng_skipped = plan.nodegroup_upgrades.is_empty();
+    let started = Local::now().format(time_fmt).to_string();
+    let instant = Instant::now();
     execute_nodegroup_phase(client, plan, config).await?;
+    timings.push(if ng_skipped {
+        PhaseTiming {
+            phase_name: "Node Groups".to_string(),
+            started_at: None,
+            completed_at: None,
+            duration_secs: None,
+            status: PhaseStatus::Skipped,
+        }
+    } else {
+        PhaseTiming {
+            phase_name: "Node Groups".to_string(),
+            started_at: Some(started),
+            completed_at: Some(Local::now().format(time_fmt).to_string()),
+            duration_secs: Some(instant.elapsed().as_secs()),
+            status: PhaseStatus::Completed,
+        }
+    });
 
     // Summary
     print_summary(plan, config.skip_control_plane);
 
-    Ok(())
+    Ok(timings)
 }
 
 /// Execute control plane upgrade phase.
@@ -569,15 +627,15 @@ async fn execute_addon_phase(
 ) -> Result<()> {
     println!();
 
-    let should_upgrade = !config.skip_addons && !plan.addon_upgrades.is_empty();
+    let has_upgrades = !plan.addon_upgrades.is_empty();
     print_exec_phase_header(
         2,
         "Add-on Upgrade [sequential]",
         &plan.target_version,
-        !should_upgrade,
+        !has_upgrades,
     );
 
-    if should_upgrade {
+    if has_upgrades {
         for (addon, target_version) in &plan.addon_upgrades {
             println!(
                 "  {}: {} -> {}",
@@ -611,15 +669,15 @@ async fn execute_nodegroup_phase(
 ) -> Result<()> {
     println!();
 
-    let should_upgrade = !config.skip_nodegroups && !plan.nodegroup_upgrades.is_empty();
+    let has_upgrades = !plan.nodegroup_upgrades.is_empty();
     print_exec_phase_header(
         3,
         "Managed Node Group Rolling Update",
         &plan.target_version,
-        !should_upgrade,
+        !has_upgrades,
     );
 
-    if should_upgrade {
+    if has_upgrades {
         for ng in &plan.nodegroup_upgrades {
             let rolling_strategy = format_rolling_strategy(ng);
             println!(
@@ -696,8 +754,6 @@ mod tests {
     fn test_upgrade_config_default() {
         let config = UpgradeConfig::default();
 
-        assert!(!config.skip_addons);
-        assert!(!config.skip_nodegroups);
         assert!(!config.skip_control_plane);
         assert!(!config.dry_run);
         assert_eq!(config.control_plane_timeout_minutes, 30);
@@ -1087,8 +1143,6 @@ mod tests {
     #[test]
     fn test_upgrade_config_custom() {
         let config = UpgradeConfig {
-            skip_addons: true,
-            skip_nodegroups: true,
             skip_control_plane: false,
             dry_run: true,
             control_plane_timeout_minutes: 60,
@@ -1096,8 +1150,6 @@ mod tests {
             nodegroup_timeout_minutes: 120,
             check_interval_seconds: 5,
         };
-        assert!(config.skip_addons);
-        assert!(config.skip_nodegroups);
         assert!(config.dry_run);
         assert_eq!(config.control_plane_timeout_minutes, 60);
     }
@@ -1263,6 +1315,7 @@ mod tests {
                     tags: None,
                 }],
             }],
+            api_version: "v1".to_string(),
         };
 
         let plan = UpgradePlan {
@@ -1315,6 +1368,7 @@ mod tests {
                         tags: None,
                     }],
                 }],
+                api_version: "v1".to_string(),
             }),
         };
 
@@ -1373,6 +1427,7 @@ mod tests {
                         tags: None,
                     }],
                 }],
+                api_version: "v1".to_string(),
             }),
         };
 

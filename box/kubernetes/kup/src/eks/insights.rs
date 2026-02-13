@@ -31,6 +31,7 @@ pub struct InsightsSummary {
     pub total_findings: usize,
     pub critical_count: usize,
     pub warning_count: usize,
+    pub passing_count: usize,
     pub info_count: usize,
     pub findings: Vec<InsightFinding>,
 }
@@ -56,18 +57,20 @@ pub async fn list_insights(client: &Client, cluster_name: &str) -> Result<Insigh
     let mut findings = Vec::new();
     let mut critical_count = 0;
     let mut warning_count = 0;
+    let mut passing_count = 0;
     let mut info_count = 0;
 
     for insight in response.insights() {
-        let severity = insight
+        let status = insight
             .insight_status()
             .and_then(|s| s.status())
             .map(|s| s.as_str().to_string())
             .unwrap_or_else(|| "UNKNOWN".to_string());
 
-        match severity.as_str() {
+        match status.as_str() {
             "ERROR" | "CRITICAL" => critical_count += 1,
             "WARNING" => warning_count += 1,
+            "PASSING" => passing_count += 1,
             _ => info_count += 1,
         }
 
@@ -83,6 +86,7 @@ pub async fn list_insights(client: &Client, cluster_name: &str) -> Result<Insigh
         total_findings: findings.len(),
         critical_count,
         warning_count,
+        passing_count,
         info_count,
         findings,
     };
@@ -208,6 +212,7 @@ mod tests {
             total_findings: critical + warning + info,
             critical_count: critical,
             warning_count: warning,
+            passing_count: 0,
             info_count: info,
             findings: vec![],
         }

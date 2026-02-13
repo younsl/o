@@ -26,7 +26,9 @@ use eks::client::{EksClient, VersionLifecycle};
 use eks::insights;
 use eks::upgrade::{self, UpgradeConfig};
 use error::KupError;
-use output::print_insights_summary;
+use output::{
+    PhaseStatus, PhaseTiming, ReportData, generate_report, print_insights_summary, save_report,
+};
 
 #[tokio::main]
 async fn main() {
@@ -129,6 +131,115 @@ fn eos_for_version(
         .get(version)
         .and_then(|lc| lc.end_of_standard_support.as_deref())
         .map(|s| s.to_string())
+}
+
+/// Build estimated phase timings for non-executed reports (dry-run, planned, noop).
+fn build_estimated_timings(
+    plan: &upgrade::UpgradePlan,
+    skip_control_plane: bool,
+) -> Vec<PhaseTiming> {
+    let cp_mins = if skip_control_plane || plan.upgrade_path.is_empty() {
+        0
+    } else {
+        plan.upgrade_path.len() as u64 * 10
+    };
+    let addon_mins = if plan.addon_upgrades.is_empty() {
+        0
+    } else {
+        10
+    };
+    let ng_mins = if plan.nodegroup_upgrades.is_empty() {
+        0
+    } else {
+        plan.nodegroup_upgrades.len() as u64 * 20
+    };
+
+    vec![
+        PhaseTiming {
+            phase_name: "Control Plane".to_string(),
+            started_at: None,
+            completed_at: None,
+            duration_secs: None,
+            status: if cp_mins == 0 {
+                PhaseStatus::Skipped
+            } else {
+                PhaseStatus::Estimated(cp_mins)
+            },
+        },
+        PhaseTiming {
+            phase_name: "Add-ons".to_string(),
+            started_at: None,
+            completed_at: None,
+            duration_secs: None,
+            status: if addon_mins == 0 {
+                PhaseStatus::Skipped
+            } else {
+                PhaseStatus::Estimated(addon_mins)
+            },
+        },
+        PhaseTiming {
+            phase_name: "Node Groups".to_string(),
+            started_at: None,
+            completed_at: None,
+            duration_secs: None,
+            status: if ng_mins == 0 {
+                PhaseStatus::Skipped
+            } else {
+                PhaseStatus::Estimated(ng_mins)
+            },
+        },
+    ]
+}
+
+/// Generate and save the HTML report, printing the output path.
+#[allow(clippy::too_many_arguments)]
+fn emit_report(
+    plan: &upgrade::UpgradePlan,
+    region: &str,
+    platform_version: Option<&str>,
+    insights: Option<&insights::InsightsSummary>,
+    skip_control_plane: bool,
+    dry_run: bool,
+    executed: bool,
+    phase_timings: Vec<PhaseTiming>,
+    lifecycles: &HashMap<String, VersionLifecycle>,
+) {
+    let current_eos = eos_for_version(&plan.current_version, lifecycles);
+    let target_eos = eos_for_version(&plan.target_version, lifecycles);
+
+    let data = ReportData {
+        cluster_name: plan.cluster_name.clone(),
+        current_version: plan.current_version.clone(),
+        target_version: plan.target_version.clone(),
+        current_version_eos: current_eos,
+        target_version_eos: target_eos,
+        platform_version: platform_version.map(|s| s.to_string()),
+        region: region.to_string(),
+        kup_version: format!(
+            "kup {} (commit: {}, build date: {})",
+            config::VERSION,
+            config::COMMIT,
+            config::BUILD_DATE,
+        ),
+        insights: insights.cloned(),
+        plan: plan.clone(),
+        phase_timings,
+        skip_control_plane,
+        dry_run,
+        executed,
+        generated_at: chrono::Local::now().format("%Y-%m-%d %H:%M:%S").to_string(),
+    };
+
+    match generate_report(&data) {
+        Ok(html) => match save_report(&html, &data.cluster_name) {
+            Ok(path) => println!(
+                "EKS upgrade report saved to {}",
+                path.display().to_string().bold()
+            ),
+            Err(e) => eprintln!("Warning: failed to save report: {}", e),
+        },
+        Err(e) => eprintln!("Warning: failed to generate report: {}", e),
+    }
 }
 
 /// Run in interactive mode.
@@ -253,7 +364,6 @@ async fn run_interactive(client: &EksClient, config: &Config) -> Result<()> {
         &selected_cluster.name,
         &target_version,
         &config.addon_versions,
-        config.skip_pdb_check,
         config.profile.as_deref(),
     )
     .await?;
@@ -263,6 +373,18 @@ async fn run_interactive(client: &EksClient, config: &Config) -> Result<()> {
     // Step 5: Confirm and Execute
     if config.dry_run {
         println!("{}", "[DRY RUN] Upgrade plan generated.".yellow());
+        let timings = build_estimated_timings(&plan, skip_control_plane);
+        emit_report(
+            &plan,
+            &selected_cluster.region,
+            selected_cluster.platform_version.as_deref(),
+            Some(&insights_summary),
+            skip_control_plane,
+            true,
+            false,
+            timings,
+            &lifecycles,
+        );
         return Ok(());
     }
 
@@ -276,6 +398,17 @@ async fn run_interactive(client: &EksClient, config: &Config) -> Result<()> {
             )
             .green()
             .bold()
+        );
+        emit_report(
+            &plan,
+            &selected_cluster.region,
+            selected_cluster.platform_version.as_deref(),
+            Some(&insights_summary),
+            skip_control_plane,
+            false,
+            false,
+            vec![],
+            &lifecycles,
         );
         return Ok(());
     }
@@ -303,14 +436,24 @@ async fn run_interactive(client: &EksClient, config: &Config) -> Result<()> {
     print_step(4);
 
     let upgrade_config = UpgradeConfig {
-        skip_addons: config.skip_addons,
-        skip_nodegroups: config.skip_nodegroups,
         skip_control_plane,
         dry_run: config.dry_run,
         ..Default::default()
     };
 
-    upgrade::execute_upgrade(client, &plan, &upgrade_config).await?;
+    let phase_timings = upgrade::execute_upgrade(client, &plan, &upgrade_config).await?;
+
+    emit_report(
+        &plan,
+        &selected_cluster.region,
+        selected_cluster.platform_version.as_deref(),
+        Some(&insights_summary),
+        skip_control_plane,
+        false,
+        true,
+        phase_timings,
+        &lifecycles,
+    );
 
     Ok(())
 }
@@ -376,7 +519,6 @@ async fn run_noninteractive(client: &EksClient, config: &Config) -> Result<()> {
         cluster_name,
         target_version,
         &config.addon_versions,
-        config.skip_pdb_check,
         config.profile.as_deref(),
     )
     .await?;
@@ -391,7 +533,7 @@ async fn run_noninteractive(client: &EksClient, config: &Config) -> Result<()> {
         println!(
             "{}",
             format!(
-                "{} PDB(s) may block node drain. Use --yes to proceed or --skip-pdb-check to skip.",
+                "{} PDB(s) may block node drain. Use --yes to proceed.",
                 pdb.blocking_count
             )
             .red()
@@ -411,22 +553,63 @@ async fn run_noninteractive(client: &EksClient, config: &Config) -> Result<()> {
             .green()
             .bold()
         );
+        emit_report(
+            &plan,
+            client.region(),
+            cluster.platform_version.as_deref(),
+            Some(&insights_summary),
+            false,
+            config.dry_run,
+            false,
+            vec![],
+            &lifecycles,
+        );
         return Ok(());
     }
 
     if !config.yes && !config.dry_run {
         println!("{}", "Use --yes to proceed without confirmation.".yellow());
+        let timings = build_estimated_timings(&plan, false);
+        emit_report(
+            &plan,
+            client.region(),
+            cluster.platform_version.as_deref(),
+            Some(&insights_summary),
+            false,
+            false,
+            false,
+            timings,
+            &lifecycles,
+        );
         return Ok(());
     }
 
     let upgrade_config = UpgradeConfig {
-        skip_addons: config.skip_addons,
-        skip_nodegroups: config.skip_nodegroups,
         dry_run: config.dry_run,
         ..Default::default()
     };
 
-    upgrade::execute_upgrade(client, &plan, &upgrade_config).await?;
+    let executed = !config.dry_run;
+    let phase_timings = upgrade::execute_upgrade(client, &plan, &upgrade_config).await?;
+
+    // For dry-run, execute_upgrade returns empty vec; build estimated timings instead
+    let timings = if phase_timings.is_empty() {
+        build_estimated_timings(&plan, false)
+    } else {
+        phase_timings
+    };
+
+    emit_report(
+        &plan,
+        client.region(),
+        cluster.platform_version.as_deref(),
+        Some(&insights_summary),
+        false,
+        config.dry_run,
+        executed,
+        timings,
+        &lifecycles,
+    );
 
     Ok(())
 }

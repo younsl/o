@@ -29,6 +29,8 @@ pub struct Ec2NodeClassInfo {
 #[derive(Debug, Clone)]
 pub struct KarpenterSummary {
     pub node_classes: Vec<Ec2NodeClassInfo>,
+    /// The API version that was successfully queried (e.g. "v1", "v1beta1").
+    pub api_version: String,
 }
 
 /// Check all EC2NodeClass resources in the cluster.
@@ -54,6 +56,7 @@ pub async fn check_ec2_node_classes(client: &kube::Client) -> Result<KarpenterSu
             );
             Ok(KarpenterSummary {
                 node_classes: vec![],
+                api_version: String::new(),
             })
         }
     }
@@ -101,7 +104,10 @@ async fn list_ec2_node_classes(client: &kube::Client, version: &str) -> Result<K
         });
     }
 
-    Ok(KarpenterSummary { node_classes })
+    Ok(KarpenterSummary {
+        node_classes,
+        api_version: version.to_string(),
+    })
 }
 
 /// Extract amiSelectorTerms from EC2NodeClass spec JSON.
@@ -241,6 +247,7 @@ mod tests {
     fn test_karpenter_summary_empty() {
         let summary = KarpenterSummary {
             node_classes: vec![],
+            api_version: String::new(),
         };
         assert!(summary.node_classes.is_empty());
     }
@@ -407,6 +414,7 @@ mod tests {
                     }],
                 },
             ],
+            api_version: "v1".to_string(),
         };
 
         assert_eq!(summary.node_classes.len(), 2);
