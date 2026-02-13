@@ -59,46 +59,27 @@ pub struct ColumnWidths {
 }
 
 impl ColumnWidths {
-    /// Calculate widths from instances.
+    /// Calculate widths from instances in a single pass.
     pub fn from_instances(instances: &[Instance]) -> Self {
-        Self {
-            region: instances
-                .iter()
-                .map(|i| i.region.len())
-                .max()
-                .unwrap_or(6)
-                .max(6),
-            name: instances
-                .iter()
-                .map(|i| i.name.len())
-                .max()
-                .unwrap_or(4)
-                .max(4),
-            instance_id: instances
-                .iter()
-                .map(|i| i.instance_id.len())
-                .max()
-                .unwrap_or(11)
-                .max(11),
-            instance_type: instances
-                .iter()
-                .map(|i| i.instance_type.len())
-                .max()
-                .unwrap_or(4)
-                .max(4),
-            private_ip: instances
-                .iter()
-                .map(|i| i.private_ip.len())
-                .max()
-                .unwrap_or(10)
-                .max(10),
-            platform: instances
-                .iter()
-                .map(|i| i.platform.len())
-                .max()
-                .unwrap_or(8)
-                .max(8),
-        }
+        instances.iter().fold(
+            Self {
+                region: 6,
+                name: 4,
+                instance_id: 11,
+                instance_type: 4,
+                private_ip: 10,
+                platform: 8,
+            },
+            |mut w, i| {
+                w.region = w.region.max(i.region.len());
+                w.name = w.name.max(i.name.len());
+                w.instance_id = w.instance_id.max(i.instance_id.len());
+                w.instance_type = w.instance_type.max(i.instance_type.len());
+                w.private_ip = w.private_ip.max(i.private_ip.len());
+                w.platform = w.platform.max(i.platform.len());
+                w
+            },
+        )
     }
 
     /// Format header row.
@@ -133,31 +114,48 @@ impl Scanner {
     }
 
     /// Fetch all instances matching the configuration.
-    pub async fn fetch_instances(&self) -> Result<Vec<Instance>> {
+    ///
+    /// Returns the instances and the elapsed time for scanning.
+    pub async fn fetch_instances(&self) -> Result<(Vec<Instance>, std::time::Duration)> {
         let regions = self.get_regions();
 
         println!(
-            "\n{} {} region(s)...",
+            "{} {} region(s)...",
             "Scanning".bright_blue().bold(),
             regions.len().to_string().bright_yellow()
         );
 
+        let start = std::time::Instant::now();
+
+        // Load base SDK config once (credential resolution happens only here)
+        let mut config_loader = aws_config::defaults(BehaviorVersion::latest());
+        if let Some(ref p) = self.config.profile {
+            config_loader = config_loader.profile_name(p);
+        }
+        let base_sdk_config = config_loader.load().await;
+
+        let num_regions = regions.len();
         let tasks: Vec<_> = regions
             .into_iter()
             .map(|region| {
                 let region = region.to_string();
-                let profile = self.config.profile.clone();
                 let tag_filters = self.config.tag_filters.clone();
                 let running_only = self.config.running_only;
+                let base_config = base_sdk_config.clone();
 
                 tokio::spawn(async move {
-                    fetch_region_instances(&region, profile.as_deref(), &tag_filters, running_only)
-                        .await
+                    fetch_region_instances_with_config(
+                        &base_config,
+                        &region,
+                        &tag_filters,
+                        running_only,
+                    )
+                    .await
                 })
             })
             .collect();
 
-        let mut instances = Vec::new();
+        let mut instances = Vec::with_capacity(num_regions * 10);
         for task in tasks {
             match task.await {
                 Ok(Ok(region_instances)) => instances.extend(region_instances),
@@ -168,11 +166,13 @@ impl Scanner {
 
         instances.sort_by(|a, b| a.region.cmp(&b.region).then_with(|| a.name.cmp(&b.name)));
 
+        let elapsed = start.elapsed();
+
         if instances.is_empty() {
             return Err(Error::NoInstances);
         }
 
-        Ok(instances)
+        Ok((instances, elapsed))
     }
 
     fn get_regions(&self) -> Vec<&str> {
@@ -183,23 +183,18 @@ impl Scanner {
     }
 }
 
-async fn fetch_region_instances(
+async fn fetch_region_instances_with_config(
+    base_config: &aws_config::SdkConfig,
     region: &str,
-    profile: Option<&str>,
     tag_filters: &[String],
     running_only: bool,
 ) -> Result<Vec<Instance>> {
     debug!("Scanning region: {}", region);
 
-    let mut config_loader = aws_config::defaults(BehaviorVersion::latest())
-        .region(aws_config::Region::new(region.to_string()));
-
-    if let Some(p) = profile {
-        config_loader = config_loader.profile_name(p);
-    }
-
-    let sdk_config = config_loader.load().await;
-    let client = aws_sdk_ec2::Client::new(&sdk_config);
+    let region_config = aws_sdk_ec2::config::Builder::from(base_config)
+        .region(aws_config::Region::new(region.to_string()))
+        .build();
+    let client = aws_sdk_ec2::Client::from_conf(region_config);
 
     let filters = build_filters(tag_filters, running_only);
     let mut request = client.describe_instances();

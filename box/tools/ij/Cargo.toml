@@ -1,6 +1,6 @@
 [package]
 name = "ij"
-version = "0.1.0"
+version = "0.2.0"
 edition = "2024"
 rust-version = "1.93"
 authors = ["Younsung Lee <cysl@kakao.com>"]
@@ -34,7 +34,7 @@ anyhow = "1.0"
 
 # Unix process control (for proper Ctrl+C handling in SSM sessions)
 [target.'cfg(unix)'.dependencies]
-nix = { version = "0.29", features = ["process", "signal", "term"] }
+nix = { version = "0.29", features = ["process", "poll", "signal", "term"] }
 libc = "0.2"
 
 # Logging

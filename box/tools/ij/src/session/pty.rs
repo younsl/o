@@ -2,11 +2,12 @@
 
 use anyhow::{Context, Result};
 use colored::Colorize;
+use nix::poll::{PollFd, PollFlags, PollTimeout, poll};
 use nix::sys::signal::{self, Signal};
 use nix::sys::termios::{self, SetArg};
 use nix::unistd;
 use std::io::{Read, Write};
-use std::os::fd::{AsRawFd, FromRawFd, OwnedFd};
+use std::os::fd::{AsRawFd, BorrowedFd, FromRawFd, OwnedFd};
 use std::os::unix::process::CommandExt;
 use std::process::Command;
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -132,11 +133,14 @@ fn run_io_loop(master: &OwnedFd, child: &mut std::process::Child, stdin_fd: i32)
     let master_fd = master.as_raw_fd();
     let mut detector = escape::EscapeDetector::new();
 
-    let mut stdin_buf = [0u8; 1024];
-    let mut master_buf = [0u8; 4096];
+    let mut stdin_buf = [0u8; 8192];
+    let mut master_buf = [0u8; 8192];
 
     let mut master_read = unsafe { std::fs::File::from_raw_fd(master_fd) };
     let mut master_write = master_read.try_clone()?;
+
+    let stdin_borrow = unsafe { BorrowedFd::borrow_raw(stdin_fd) };
+    let master_borrow = unsafe { BorrowedFd::borrow_raw(master_fd) };
 
     let result = (|| -> Result<()> {
         loop {
@@ -156,67 +160,62 @@ fn run_io_loop(master: &OwnedFd, child: &mut std::process::Child, stdin_fd: i32)
                 }
             }
 
-            let nfds = std::cmp::max(stdin_fd, master_fd) + 1;
-            let mut read_fds: libc::fd_set = unsafe { std::mem::zeroed() };
-            unsafe {
-                libc::FD_ZERO(&mut read_fds);
-                libc::FD_SET(stdin_fd, &mut read_fds);
-                libc::FD_SET(master_fd, &mut read_fds);
-            }
+            let mut poll_fds = [
+                PollFd::new(stdin_borrow, PollFlags::POLLIN),
+                PollFd::new(master_borrow, PollFlags::POLLIN),
+            ];
 
-            let mut timeout = libc::timeval {
-                tv_sec: 0,
-                tv_usec: 100_000,
-            };
-
-            let ready = unsafe {
-                libc::select(
-                    nfds,
-                    &mut read_fds,
-                    std::ptr::null_mut(),
-                    std::ptr::null_mut(),
-                    &mut timeout,
-                )
-            };
-
-            if ready < 0 {
-                continue;
+            match poll(&mut poll_fds, PollTimeout::from(100u16)) {
+                Ok(0) => continue,
+                Err(nix::errno::Errno::EINTR) => continue,
+                Err(e) => return Err(e.into()),
+                Ok(_) => {}
             }
 
             // Handle stdin -> master
-            if unsafe { libc::FD_ISSET(stdin_fd, &read_fds) } {
-                match std::io::stdin().read(&mut stdin_buf) {
-                    Ok(0) => break,
-                    Ok(n) => {
-                        for &byte in &stdin_buf[..n] {
-                            if detector.process(byte) {
-                                info!("Escape sequence detected, disconnecting...");
-                                eprintln!(
-                                    "\r\n{}",
-                                    "Connection closed by escape sequence.".yellow()
-                                );
-                                let _ = child.kill();
-                                let _ = child.wait();
-                                return Ok(());
+            if let Some(revents) = poll_fds[0].revents() {
+                if revents.intersects(PollFlags::POLLERR | PollFlags::POLLHUP) {
+                    break;
+                }
+                if revents.contains(PollFlags::POLLIN) {
+                    match std::io::stdin().read(&mut stdin_buf) {
+                        Ok(0) => break,
+                        Ok(n) => {
+                            for &byte in &stdin_buf[..n] {
+                                if detector.process(byte) {
+                                    info!("Escape sequence detected, disconnecting...");
+                                    eprintln!(
+                                        "\r\n{}",
+                                        "Connection closed by escape sequence.".yellow()
+                                    );
+                                    let _ = child.kill();
+                                    let _ = child.wait();
+                                    return Ok(());
+                                }
                             }
+                            let _ = master_write.write_all(&stdin_buf[..n]);
                         }
-                        let _ = master_write.write_all(&stdin_buf[..n]);
+                        Err(e) if e.kind() == std::io::ErrorKind::Interrupted => continue,
+                        Err(_) => break,
                     }
-                    Err(e) if e.kind() == std::io::ErrorKind::Interrupted => continue,
-                    Err(_) => break,
                 }
             }
 
             // Handle master -> stdout
-            if unsafe { libc::FD_ISSET(master_fd, &read_fds) } {
-                match master_read.read(&mut master_buf) {
-                    Ok(0) => break,
-                    Ok(n) => {
-                        let _ = std::io::stdout().write_all(&master_buf[..n]);
-                        let _ = std::io::stdout().flush();
+            if let Some(revents) = poll_fds[1].revents() {
+                if revents.intersects(PollFlags::POLLERR | PollFlags::POLLHUP) {
+                    break;
+                }
+                if revents.contains(PollFlags::POLLIN) {
+                    match master_read.read(&mut master_buf) {
+                        Ok(0) => break,
+                        Ok(n) => {
+                            let _ = std::io::stdout().write_all(&master_buf[..n]);
+                            let _ = std::io::stdout().flush();
+                        }
+                        Err(e) if e.kind() == std::io::ErrorKind::Interrupted => continue,
+                        Err(_) => break,
                     }
-                    Err(e) if e.kind() == std::io::ErrorKind::Interrupted => continue,
-                    Err(_) => break,
                 }
             }
         }

@@ -43,9 +43,9 @@ impl App {
 
         // Scan for instances
         let scanner = Scanner::new(self.config.clone());
-        let instances = scanner.fetch_instances().await?;
+        let (instances, elapsed) = scanner.fetch_instances().await?;
 
-        self.print_summary(&instances);
+        self.print_summary(&instances, elapsed);
 
         // Select instance
         let selector = Selector::new(&instances, &self.config);
@@ -76,11 +76,12 @@ impl App {
             .init();
     }
 
-    fn print_summary(&self, instances: &[ec2::Instance]) {
+    fn print_summary(&self, instances: &[ec2::Instance], elapsed: std::time::Duration) {
         println!(
-            "{} {} instances (profile: {})",
+            "{} {} instances in {:.1}s (profile: {})",
             "Found".bright_blue().bold(),
             instances.len().to_string().bright_yellow().bold(),
+            elapsed.as_secs_f64(),
             self.config.profile_display().bright_cyan()
         );
     }
