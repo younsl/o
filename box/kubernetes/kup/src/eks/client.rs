@@ -335,12 +335,10 @@ impl EksClient {
 
             for version_info in response.cluster_versions() {
                 if let Some(version) = version_info.cluster_version() {
-                    let eos = version_info
-                        .end_of_standard_support_date()
-                        .and_then(|dt| {
-                            chrono::DateTime::from_timestamp(dt.secs(), dt.subsec_nanos())
-                                .map(|d| d.format("%Y-%m-%d").to_string())
-                        });
+                    let eos = version_info.end_of_standard_support_date().and_then(|dt| {
+                        chrono::DateTime::from_timestamp(dt.secs(), dt.subsec_nanos())
+                            .map(|d| d.format("%Y-%m-%d").to_string())
+                    });
 
                     lifecycles.insert(
                         version.to_string(),

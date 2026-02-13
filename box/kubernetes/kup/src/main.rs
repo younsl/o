@@ -225,10 +225,7 @@ async fn run_interactive(client: &EksClient, config: &Config) -> Result<()> {
             Some(d) => format!("{} ({})", v, format_eos(&d)),
             None => v.to_string(),
         };
-        format!(
-            "{:<22} {:<10} +{} {}",
-            ver_display, label, steps, step_word
-        )
+        format!("{:<22} {:<10} +{} {}", ver_display, label, steps, step_word)
     }));
 
     println!("Select target version ({}):", selected_cluster.name);
