@@ -346,3 +346,67 @@ jobs:
           draft: false
           prerelease: false
           token: ${{ secrets.GITHUB_TOKEN }}
+
+  update-homebrew:
+    runs-on: ubuntu-24.04
+    needs: [extract-version, release]
+    permissions:
+      contents: read
+    env:
+      PROJECT_NAME: karc
+      VERSION: ${{ needs.extract-version.outputs.version }}
+      HOMEBREW_TAP_REPO: younsl/homebrew-tap
+    steps:
+      - name: Download release assets and compute SHA256
+        id: sha
+        run: |
+          BASE_URL="https://github.com/${{ github.repository }}/releases/download/${PROJECT_NAME}/${VERSION}"
+
+          for PLATFORM_ARCH in darwin-amd64 darwin-arm64 linux-amd64 linux-arm64; do
+            FILE="${PROJECT_NAME}-${PLATFORM_ARCH}.tar.gz"
+            curl -sL -o "${FILE}" "${BASE_URL}/${FILE}"
+            SHA=$(sha256sum "${FILE}" | awk '{print $1}')
+            KEY=$(echo "${PLATFORM_ARCH}" | tr '-' '_')
+            echo "sha256_${KEY}=${SHA}" >> "$GITHUB_OUTPUT"
+            echo "${PLATFORM_ARCH}: ${SHA}"
+          done
+
+      - name: Checkout homebrew-tap
+        uses: actions/checkout@v6
+        with:
+          repository: ${{ env.HOMEBREW_TAP_REPO }}
+          token: ${{ secrets.HOMEBREW_TAP_TOKEN }}
+
+      - name: Update formula
+        env:
+          SHA_DARWIN_AMD64: ${{ steps.sha.outputs.sha256_darwin_amd64 }}
+          SHA_DARWIN_ARM64: ${{ steps.sha.outputs.sha256_darwin_arm64 }}
+          SHA_LINUX_AMD64: ${{ steps.sha.outputs.sha256_linux_amd64 }}
+          SHA_LINUX_ARM64: ${{ steps.sha.outputs.sha256_linux_arm64 }}
+        run: |
+          FORMULA="Formula/${PROJECT_NAME}.rb"
+
+          if [ ! -f "${FORMULA}" ]; then
+            echo "Error: Formula not found at ${FORMULA}"
+            ls -la Formula/ 2>/dev/null || echo "Formula directory not found"
+            exit 1
+          fi
+
+          sed -i "s|version \".*\"|version \"${VERSION}\"|" "${FORMULA}"
+
+          sed -i "/darwin.*amd64\|darwin.*intel\|darwin.*x86_64/,/sha256/{s|sha256 \"[a-f0-9]\{64\}\"|sha256 \"${SHA_DARWIN_AMD64}\"|}" "${FORMULA}"
+          sed -i "/darwin.*arm64\|darwin.*arm\b/,/sha256/{s|sha256 \"[a-f0-9]\{64\}\"|sha256 \"${SHA_DARWIN_ARM64}\"|}" "${FORMULA}"
+          sed -i "/linux.*amd64\|linux.*intel\|linux.*x86_64/,/sha256/{s|sha256 \"[a-f0-9]\{64\}\"|sha256 \"${SHA_LINUX_AMD64}\"|}" "${FORMULA}"
+          sed -i "/linux.*arm64\|linux.*arm\b/,/sha256/{s|sha256 \"[a-f0-9]\{64\}\"|sha256 \"${SHA_LINUX_ARM64}\"|}" "${FORMULA}"
+
+          echo "Updated formula:"
+          cat "${FORMULA}"
+
+      - name: Commit and push
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add "Formula/${PROJECT_NAME}.rb"
+          git diff --cached --quiet && echo "No changes to commit" && exit 0
+          git commit -m "bump(${PROJECT_NAME}): ${VERSION}"
+          git push

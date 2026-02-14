@@ -19,7 +19,7 @@ pub const BUILD_DATE: &str = env!("BUILD_DATE");
 ))]
 pub struct Args {
     /// Kubernetes context to use
-    #[arg(long, global = true, env = "KUBECONFIG_CONTEXT")]
+    #[arg(short = 'c', long, global = true, env = "KUBECONFIG_CONTEXT")]
     pub context: Option<String>,
 
     /// Show planned changes without executing
