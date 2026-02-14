@@ -9,7 +9,7 @@ use colored::Colorize;
 use tabled::settings::Style;
 use tabled::{Table, Tabled};
 
-use crate::k8s::nodepool::{format_budgets_summary, is_pause_budget, NodePoolInfo};
+use crate::k8s::nodepool::{NodePoolInfo, format_budgets_summary, is_pause_budget};
 
 /// Row for the NodePool status table.
 #[derive(Tabled)]

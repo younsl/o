@@ -74,10 +74,7 @@ pub async fn list_nodepools(client: &kube::Client) -> Result<NodePoolList> {
 }
 
 /// List NodePools using a specific API version.
-async fn list_nodepools_with_version(
-    client: &kube::Client,
-    version: &str,
-) -> Result<NodePoolList> {
+async fn list_nodepools_with_version(client: &kube::Client, version: &str) -> Result<NodePoolList> {
     let ar = nodepool_api_resource(version);
     let api: Api<DynamicObject> = Api::all_with(client.clone(), &ar);
     let list = api
