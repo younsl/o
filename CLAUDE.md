@@ -16,7 +16,7 @@ Kubernetes addons and tools follow the [Unix philosophy](https://en.wikipedia.or
 
 ### Rust Projects
 
-Standard Makefile patterns for Rust tools (ij, kup, qg, s3vget, promdrop, gss, filesystem-cleaner, elasticache-backup, redis-console, trivy-collector):
+Standard Makefile patterns for Rust tools (ij, kup, karc, qg, s3vget, promdrop, gss, filesystem-cleaner, elasticache-backup, redis-console, trivy-collector):
 
 ```bash
 # Core build commands
@@ -113,11 +113,11 @@ box/
 │   ├── elasticache-backup/# ElastiCache S3 backup automation (Rust, container)
 │   ├── grafana-dashboards/# Grafana dashboard ConfigMaps (Helm chart only)
 │   ├── gss/               # GHES scheduled workflow scanner (Rust, container)
+│   ├── karc/              # Karpenter NodePool consolidation manager CLI (Rust)
 │   ├── kup/               # EKS cluster upgrade CLI tool (Rust)
 │   ├── promdrop/          # Prometheus metric filter generator (Rust, CLI + container)
 │   ├── redis-console/     # Interactive Redis cluster management CLI (Rust, CLI + container)
-│   ├── trivy-collector/   # Multi-cluster Trivy report collector/viewer (Rust, container)
-│   └── policies/          # Kyverno and CEL admission policies
+│   └── trivy-collector/   # Multi-cluster Trivy report collector/viewer (Rust, container)
 ├── tools/                 # CLI utilities
 │   ├── ij/                # Interactive EC2 SSM connection tool (Rust)
 │   ├── qg/                # QR code generator (Rust)
@@ -127,9 +127,7 @@ box/
 │   ├── backstage/         # Backstage with GitLab Auto Discovery (Node.js)
 │   ├── filesystem-cleaner/# File system cleanup tool (Rust)
 │   ├── logstash-with-opensearch-plugin/  # Logstash with OpenSearch plugin for ECK
-│   ├── mageai/            # Mage AI custom image
-│   ├── yarn/              # Yarn package manager container
-│   └── terraform-console-machine/  # Terraform console container
+│   └── mageai/            # Mage AI custom image
 ├── scripts/               # Automation scripts by platform
 │   ├── aws/               # AWS resource management
 │   ├── github/            # Repository automation
@@ -260,6 +258,44 @@ Checks `status.disruptionsAllowed == 0` on all PDBs via Kubernetes API before MN
 - Managed Node Groups only (self-managed and Karpenter nodes not supported)
 
 **AWS Permissions Required**: `eks:ListClusters`, `eks:DescribeCluster`, `eks:UpdateClusterVersion`, `eks:DescribeUpdate`, `eks:ListInsights`, `eks:DescribeInsight`, `eks:ListAddons`, `eks:DescribeAddon`, `eks:DescribeAddonVersions`, `eks:UpdateAddon`, `eks:ListNodegroups`, `eks:DescribeNodegroup`, `eks:UpdateNodegroupVersion`, `autoscaling:DescribeAutoScalingGroups`
+
+### karc - Karpenter NodePool Consolidation Manager CLI (Rust)
+
+CLI tool for managing Karpenter NodePool consolidation. View disruption status with schedule timetables, pause and resume consolidation across NodePools.
+
+```bash
+karc status                  # Show all NodePool status
+karc status my-nodepool      # Show specific NodePool
+karc pause my-nodepool       # Pause consolidation
+karc pause all               # Pause all NodePools
+karc resume my-nodepool      # Resume consolidation
+karc resume all              # Resume all NodePools
+karc pause all --dry-run     # Preview without applying
+karc resume all --yes        # Skip confirmation prompt
+
+# Build commands
+make build      # Debug build
+make release    # Optimized release build
+make install    # Install to ~/.cargo/bin/
+make install-local  # Install to /usr/local/bin/
+```
+
+**Features**:
+- Kubectl-style status table with NodePool disruption details
+- Schedule-based disruption budget timetable with timezone-aware window display
+- Pause consolidation by prepending `{nodes: "0"}` budget
+- Resume consolidation by removing pause budgets (preserves scheduled budgets)
+- Automatic Karpenter API version detection (v1, v1beta1 fallback)
+- Interactive confirmation prompts (skippable with `--yes`)
+- Dry-run mode for previewing changes
+
+**Pause/Resume Mechanism**:
+- **Pause**: Prepends `{nodes: "0"}` unscheduled budget to prevent consolidation
+- **Resume**: Removes only unscheduled zero-node budgets; scheduled budgets are preserved
+
+**Constraints**:
+- Requires Karpenter v1 or v1beta1 NodePool CRD installed in the cluster
+- Requires RBAC: `karpenter.sh` apiGroup, `nodepools`/`nodeclaims` resources, `get`/`list`/`patch` verbs
 
 ### qg - QR Code Generator (Rust)
 
@@ -620,7 +656,10 @@ GitHub Actions automatically builds and releases on tag push:
 
 ```bash
 # CLI tool releases (pattern: {tool}/x.y.z)
-git tag promdrop/1.0.0 && git push --tags  # Rust
+git tag ij/1.0.0 && git push --tags
+git tag kup/1.0.0 && git push --tags
+git tag karc/1.0.0 && git push --tags
+git tag promdrop/1.0.0 && git push --tags
 
 # Container image releases (pattern: {container}/x.y.z)
 git tag filesystem-cleaner/1.0.0 && git push --tags
@@ -630,6 +669,7 @@ git tag gss/1.0.0 && git push --tags
 git tag trivy-collector/1.0.0 && git push --tags
 git tag actions-runner/1.0.0 && git push --tags
 git tag logstash-with-opensearch-plugin/8.17.0 && git push --tags
+git tag backstage/1.0.0 && git push --tags
 
 # Helm chart releases (pattern: {chart}/charts/x.y.z)
 git tag elasticache-backup/charts/1.0.0 && git push --tags
@@ -639,17 +679,19 @@ git tag gss/charts/1.0.0 && git push --tags
 git tag grafana-dashboards/charts/1.0.0 && git push --tags
 
 # Available workflows:
+# - release-ij.yml                           (Rust CLI)
+# - release-kup.yml                          (Rust CLI)
+# - release-karc.yml                         (Rust CLI)
 # - release-promdrop.yml                     (Rust CLI + container)
 # - release-rust-containers.yml              (Unified Rust container release: filesystem-cleaner, elasticache-backup, redis-console, gss)
 # - release-trivy-collector.yml              (Rust container)
 # - release-helm-chart.yml                   (Unified Helm chart release to OCI registry)
 # - release-logstash-with-opensearch-plugin.yml (Container image)
 # - release-actions-runner.yml               (Container image)
-# - release-hugo.yml                         (Workflow dispatch)
+# - release-backstage.yml                    (Container image)
+# - clean-workflow-runs.yml                  (Maintenance: cleanup old workflow runs)
 
 # Rust tools without automated releases (manual release required):
-# - ij (Interactive EC2 SSM connection tool)
-# - kup (EKS cluster upgrade CLI tool)
 # - qg (QR code generator)
 # - s3vget (S3 object version downloader)
 ```
