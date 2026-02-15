@@ -431,5 +431,7 @@ jobs:
           git add "Formula/${PROJECT_NAME}.rb"
           git diff --cached --quiet && echo "No changes to commit" && exit 0
           RELEASE_URL="https://github.com/${{ github.repository }}/releases/tag/${PROJECT_NAME}/${VERSION}"
-          git commit -m "bump(${PROJECT_NAME}): ${VERSION}" -m "Release: ${RELEASE_URL}"
+          git commit \
+            -m "bump(${PROJECT_NAME}): ${VERSION} formula version and SHA" \
+            -m "Release: ${RELEASE_URL}"
           git push
