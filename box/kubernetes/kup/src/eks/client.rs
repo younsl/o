@@ -18,6 +18,7 @@ pub struct ClusterInfo {
     pub region: String,
     pub endpoint: Option<String>,
     pub ca_data: Option<String>,
+    pub deletion_protection: Option<bool>,
 }
 
 impl std::fmt::Display for ClusterInfo {
@@ -144,6 +145,7 @@ impl EksClient {
                     .certificate_authority()
                     .and_then(|ca| ca.data())
                     .map(|s| s.to_string()),
+                deletion_protection: cluster.deletion_protection(),
             };
             return Ok(Some(info));
         }

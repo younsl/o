@@ -413,6 +413,28 @@ async fn run_interactive(client: &EksClient, config: &Config) -> Result<()> {
         return Ok(());
     }
 
+    // Block on mandatory preflight check failures
+    if plan.has_mandatory_failures() {
+        let reasons = plan.mandatory_failure_reasons();
+        for reason in &reasons {
+            println!("{}", format!("✗ {}", reason).red().bold());
+        }
+        println!(
+            "{}",
+            format!(
+                "Mandatory preflight checks failed ({} failed). Resolve the above cluster issues before upgrading.",
+                reasons.len()
+            )
+            .red()
+            .bold()
+        );
+        return Err(KupError::UpgradeNotPossible(format!(
+            "Mandatory preflight checks failed ({} failed)",
+            reasons.len()
+        ))
+        .into());
+    }
+
     println!(
         "{}",
         "This will upgrade your EKS cluster. This action cannot be undone."
@@ -525,21 +547,26 @@ async fn run_noninteractive(client: &EksClient, config: &Config) -> Result<()> {
 
     upgrade::print_upgrade_plan(&plan, false);
 
-    // Block on PDB risk in non-interactive mode
-    if let Some(ref pdb) = plan.pdb_findings
-        && pdb.has_blocking_pdbs()
-        && !config.yes
-    {
+    // Block on mandatory preflight check failures
+    if plan.has_mandatory_failures() {
+        let reasons = plan.mandatory_failure_reasons();
+        for reason in &reasons {
+            println!("{}", format!("✗ {}", reason).red().bold());
+        }
         println!(
             "{}",
             format!(
-                "{} PDB(s) may block node drain. Use --yes to proceed.",
-                pdb.blocking_count
+                "Mandatory preflight checks failed ({} failed). Resolve the above cluster issues before upgrading.",
+                reasons.len()
             )
             .red()
             .bold()
         );
-        return Err(KupError::UpgradeNotPossible("Blocking PDBs found".to_string()).into());
+        return Err(KupError::UpgradeNotPossible(format!(
+            "Mandatory preflight checks failed ({} failed)",
+            reasons.len()
+        ))
+        .into());
     }
 
     // Skip execution if nothing to upgrade

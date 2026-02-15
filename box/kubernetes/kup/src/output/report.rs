@@ -8,6 +8,9 @@ use chrono::Local;
 
 use crate::eks::insights::InsightsSummary;
 use crate::eks::nodegroup::format_rolling_strategy;
+use crate::eks::preflight::{
+    CheckKind, CheckStatus, PreflightCheckResult, format_ami_selector_term,
+};
 use crate::eks::upgrade::{UpgradePlan, calculate_estimated_time};
 
 /// Timing data for a single upgrade phase.
@@ -141,6 +144,7 @@ td {{ background: var(--bg); }}
   font-weight: 600;
 }}
 .badge-critical {{ background: var(--red); color: #fff; }}
+.badge-fail {{ background: var(--red); color: #fff; }}
 .badge-warning {{ background: var(--yellow); color: #000; }}
 .badge-info {{ background: var(--blue); color: #fff; }}
 .badge-ok {{ background: var(--green); color: #000; }}
@@ -536,79 +540,148 @@ fn format_duration(secs: u64) -> String {
 fn write_preflight_section(html: &mut String, data: &ReportData) -> Result<()> {
     html.push_str("<h2>Preflight Checks <span class=\"tooltip\"><span class=\"tip-icon\">?</span><span class=\"tip-text\">Pre-upgrade validation checks run before the actual upgrade begins.</span></span></h2>\n");
 
-    // PDB Drain Deadlock
-    html.push_str("<h3 style=\"color:var(--yellow);font-size:0.95rem;\">PDB Drain Deadlock</h3>\n");
-    if let Some(ref pdb) = data.plan.pdb_findings {
-        if pdb.has_blocking_pdbs() {
+    let preflight = &data.plan.preflight;
+
+    // --- Mandatory ---
+    html.push_str(
+        "<h3 style=\"color:var(--red);font-size:1rem;margin-top:1rem;\">Mandatory</h3>\n",
+    );
+    for check in preflight.mandatory_checks() {
+        write_preflight_item_html(html, check, &data.target_version)?;
+    }
+    for skip in preflight.mandatory_skipped() {
+        writeln!(
+            html,
+            "<h4 style=\"color:var(--yellow);font-size:0.95rem;\">{}</h4>",
+            esc(skip.name),
+        )?;
+        writeln!(
+            html,
+            "<p class=\"dimmed\">Skipped ({})</p>",
+            esc(&skip.reason),
+        )?;
+    }
+
+    // --- Informational ---
+    html.push_str(
+        "<h3 style=\"color:var(--dimmed);font-size:1rem;margin-top:1.5rem;\">Informational</h3>\n",
+    );
+    for check in preflight.informational_checks() {
+        write_preflight_item_html(html, check, &data.target_version)?;
+    }
+    for skip in preflight.informational_skipped() {
+        writeln!(
+            html,
+            "<h4 style=\"color:var(--yellow);font-size:0.95rem;\">{}</h4>",
+            esc(skip.name),
+        )?;
+        writeln!(
+            html,
+            "<p class=\"dimmed\">Skipped ({})</p>",
+            esc(&skip.reason),
+        )?;
+    }
+
+    Ok(())
+}
+
+/// Write a single preflight check result as HTML.
+fn write_preflight_item_html(
+    html: &mut String,
+    check: &PreflightCheckResult,
+    target_version: &str,
+) -> Result<()> {
+    writeln!(
+        html,
+        "<h4 style=\"color:var(--yellow);font-size:0.95rem;\">{}</h4>",
+        esc(check.name),
+    )?;
+
+    let badge = match check.status {
+        CheckStatus::Pass => "<span class=\"badge badge-ok\">PASS</span>",
+        CheckStatus::Fail => "<span class=\"badge badge-fail\">FAIL</span>",
+        CheckStatus::Info => "<span class=\"badge badge-info\">INFO</span>",
+    };
+
+    write_check_html_details(html, check, badge, target_version)
+}
+
+/// Write check-kind-specific HTML details.
+fn write_check_html_details(
+    html: &mut String,
+    check: &PreflightCheckResult,
+    badge: &str,
+    target_version: &str,
+) -> Result<()> {
+    match &check.kind {
+        CheckKind::DeletionProtection { enabled } => {
+            let msg = if *enabled {
+                "Deletion protection is enabled"
+            } else {
+                "Deletion protection is disabled"
+            };
+            writeln!(html, "<p>{} {}</p>", badge, esc(msg))?;
+        }
+        CheckKind::PdbDrainDeadlock { summary } => {
+            if summary.has_blocking_pdbs() {
+                writeln!(
+                    html,
+                    "<p>{} {}/{} PDB(s) may block node drain</p>",
+                    badge, summary.blocking_count, summary.total_pdbs,
+                )?;
+                html.push_str("<table><tr><th>Namespace</th><th>PDB</th><th>Details</th></tr>\n");
+                for f in &summary.findings {
+                    writeln!(
+                        html,
+                        "<tr><td>{}</td><td>{}</td><td>{}</td></tr>",
+                        esc(&f.namespace),
+                        esc(&f.name),
+                        esc(&f.reason()),
+                    )?;
+                }
+                html.push_str("</table>\n");
+            } else {
+                writeln!(
+                    html,
+                    "<p>{} No drain deadlock detected ({} PDBs checked)</p>",
+                    badge, summary.total_pdbs,
+                )?;
+            }
+        }
+        CheckKind::KarpenterAmiConfig { summary } => {
             writeln!(
                 html,
-                "<p><span class=\"badge badge-warning\">WARNING</span> {}/{} PDB(s) may block node drain</p>",
-                pdb.blocking_count, pdb.total_pdbs,
+                "<p>{} {} EC2NodeClass(es) detected</p>",
+                badge,
+                summary.node_classes.len(),
             )?;
-            html.push_str("<table><tr><th>Namespace</th><th>PDB</th><th>Details</th></tr>\n");
-            for f in &pdb.findings {
+            let api_ver = format!("karpenter.k8s.aws/{}", summary.api_version);
+            html.push_str("<table><tr><th>API Version</th><th>EC2NodeClass</th><th>AMI Selector Terms</th></tr>\n");
+            for nc in &summary.node_classes {
+                let terms: Vec<String> = if nc.ami_selector_terms.is_empty() {
+                    vec!["(no amiSelectorTerms)".to_string()]
+                } else {
+                    nc.ami_selector_terms
+                        .iter()
+                        .map(format_ami_selector_term)
+                        .collect()
+                };
                 writeln!(
                     html,
                     "<tr><td>{}</td><td>{}</td><td>{}</td></tr>",
-                    esc(&f.namespace),
-                    esc(&f.name),
-                    esc(&f.reason()),
+                    esc(&api_ver),
+                    esc(&nc.name),
+                    esc(&terms.join("; ")),
                 )?;
             }
             html.push_str("</table>\n");
-        } else {
             writeln!(
                 html,
-                "<p><span class=\"badge badge-ok\">PASS</span> No drain deadlock detected ({} PDBs checked)</p>",
-                pdb.total_pdbs,
+                "<p class=\"note\">Verify amiSelectorTerms compatibility with {} before upgrading.</p>",
+                esc(target_version),
             )?;
         }
-    } else if data.plan.nodegroup_upgrades.is_empty() {
-        html.push_str("<p class=\"dimmed\">Skipped (no managed node group upgrades)</p>\n");
-    } else {
-        html.push_str("<p class=\"dimmed\">Skipped (Kubernetes API unavailable)</p>\n");
     }
-
-    // Karpenter EC2NodeClass
-    html.push_str(
-        "<h3 style=\"color:var(--yellow);font-size:0.95rem;\">Karpenter EC2NodeClass AMI Configuration</h3>\n",
-    );
-    if let Some(ref karpenter) = data.plan.karpenter_summary {
-        writeln!(
-            html,
-            "<p><span class=\"badge badge-info\">INFO</span> {} EC2NodeClass(es) detected</p>",
-            karpenter.node_classes.len(),
-        )?;
-        let api_ver = format!("karpenter.k8s.aws/{}", karpenter.api_version);
-        html.push_str("<table><tr><th>API Version</th><th>EC2NodeClass</th><th>AMI Selector Terms</th></tr>\n");
-        for nc in &karpenter.node_classes {
-            let terms: Vec<String> = if nc.ami_selector_terms.is_empty() {
-                vec!["(no amiSelectorTerms)".to_string()]
-            } else {
-                nc.ami_selector_terms.iter().map(format_ami_term).collect()
-            };
-            writeln!(
-                html,
-                "<tr><td>{}</td><td>{}</td><td>{}</td></tr>",
-                esc(&api_ver),
-                esc(&nc.name),
-                esc(&terms.join("; ")),
-            )?;
-        }
-        html.push_str("</table>\n");
-        writeln!(
-            html,
-            "<p class=\"note\">Verify amiSelectorTerms compatibility with {} before upgrading.</p>",
-            esc(&data.target_version),
-        )?;
-    } else if data.plan.nodegroup_upgrades.is_empty() {
-        html.push_str("<p class=\"dimmed\">Skipped (no managed node group upgrades)</p>\n");
-    } else {
-        html.push_str(
-            "<p class=\"dimmed\">Skipped (Kubernetes API unavailable or Karpenter not in use)</p>\n",
-        );
-    }
-
     Ok(())
 }
 
@@ -662,33 +735,12 @@ fn esc(s: &str) -> String {
         .replace('"', "&quot;")
 }
 
-/// Format a single AMI selector term for the report.
-fn format_ami_term(term: &crate::k8s::karpenter::AmiSelectorTerm) -> String {
-    if let Some(ref alias) = term.alias {
-        return format!("alias: {}", alias);
-    }
-    if let Some(ref id) = term.id {
-        return format!("id: {}", id);
-    }
-    if let Some(ref name) = term.name {
-        let mut s = format!("name: {}", name);
-        if let Some(ref owner) = term.owner {
-            s.push_str(&format!(", owner: {}", owner));
-        }
-        return s;
-    }
-    if let Some(ref tags) = term.tags {
-        let pairs: Vec<String> = tags.iter().map(|(k, v)| format!("{}={}", k, v)).collect();
-        return format!("tags: {{{}}}", pairs.join(", "));
-    }
-    "(empty term)".to_string()
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
     use crate::eks::addon::AddonInfo;
     use crate::eks::nodegroup::NodeGroupInfo;
+    use crate::eks::preflight::{PreflightCheckResult, PreflightResults};
     use crate::eks::upgrade::UpgradePlan;
 
     fn sample_plan() -> UpgradePlan {
@@ -714,8 +766,7 @@ mod tests {
                 asg_name: None,
             }],
             skipped_nodegroups: vec![],
-            pdb_findings: None,
-            karpenter_summary: None,
+            preflight: PreflightResults::default(),
         }
     }
 
@@ -852,19 +903,22 @@ mod tests {
         use crate::k8s::pdb::{PdbFinding, PdbSummary};
 
         let mut plan = sample_plan();
-        plan.pdb_findings = Some(PdbSummary {
-            total_pdbs: 5,
-            blocking_count: 1,
-            findings: vec![PdbFinding {
-                namespace: "kube-system".to_string(),
-                name: "coredns-pdb".to_string(),
-                min_available: Some("1".to_string()),
-                max_unavailable: None,
-                current_healthy: 1,
-                expected_pods: 1,
-                disruptions_allowed: 0,
-            }],
-        });
+        plan.preflight = PreflightResults {
+            checks: vec![PreflightCheckResult::pdb_drain_deadlock(PdbSummary {
+                total_pdbs: 5,
+                blocking_count: 1,
+                findings: vec![PdbFinding {
+                    namespace: "kube-system".to_string(),
+                    name: "coredns-pdb".to_string(),
+                    min_available: Some("1".to_string()),
+                    max_unavailable: None,
+                    current_healthy: 1,
+                    expected_pods: 1,
+                    disruptions_allowed: 0,
+                }],
+            })],
+            skipped: vec![],
+        };
 
         let data = sample_report_data(plan);
         let html = generate_report(&data).unwrap();
@@ -877,19 +931,24 @@ mod tests {
         use crate::k8s::karpenter::{AmiSelectorTerm, Ec2NodeClassInfo, KarpenterSummary};
 
         let mut plan = sample_plan();
-        plan.karpenter_summary = Some(KarpenterSummary {
-            node_classes: vec![Ec2NodeClassInfo {
-                name: "default".to_string(),
-                ami_selector_terms: vec![AmiSelectorTerm {
-                    alias: Some("al2023@latest".to_string()),
-                    id: None,
-                    name: None,
-                    owner: None,
-                    tags: None,
-                }],
-            }],
-            api_version: "v1".to_string(),
-        });
+        plan.preflight = PreflightResults {
+            checks: vec![PreflightCheckResult::karpenter_ami_config(
+                KarpenterSummary {
+                    node_classes: vec![Ec2NodeClassInfo {
+                        name: "default".to_string(),
+                        ami_selector_terms: vec![AmiSelectorTerm {
+                            alias: Some("al2023@latest".to_string()),
+                            id: None,
+                            name: None,
+                            owner: None,
+                            tags: None,
+                        }],
+                    }],
+                    api_version: "v1".to_string(),
+                },
+            )],
+            skipped: vec![],
+        };
 
         let data = sample_report_data(plan);
         let html = generate_report(&data).unwrap();
@@ -903,32 +962,6 @@ mod tests {
         data.skip_control_plane = true;
         let html = generate_report(&data).unwrap();
         assert!(html.contains("sync mode"));
-    }
-
-    #[test]
-    fn test_format_ami_term_alias() {
-        use crate::k8s::karpenter::AmiSelectorTerm;
-        let term = AmiSelectorTerm {
-            alias: Some("al2023@v20250117".to_string()),
-            id: None,
-            name: None,
-            owner: None,
-            tags: None,
-        };
-        assert_eq!(format_ami_term(&term), "alias: al2023@v20250117");
-    }
-
-    #[test]
-    fn test_format_ami_term_empty() {
-        use crate::k8s::karpenter::AmiSelectorTerm;
-        let term = AmiSelectorTerm {
-            alias: None,
-            id: None,
-            name: None,
-            owner: None,
-            tags: None,
-        };
-        assert_eq!(format_ami_term(&term), "(empty term)");
     }
 
     #[test]

@@ -13,9 +13,10 @@ use crate::output::report::{PhaseStatus, PhaseTiming};
 use super::addon::{self, AddonInfo, AddonUpgrade};
 use super::client::{EksClient, calculate_upgrade_path};
 use super::nodegroup::{self, NodeGroupInfo, format_rolling_strategy};
+use super::preflight::{
+    PreflightCheckResult, PreflightResults, SkippedCheck, format_ami_selector_term,
+};
 use super::types::{Skipped, VersionedResource};
-use crate::k8s::karpenter::KarpenterSummary;
-use crate::k8s::pdb::PdbSummary;
 
 // Re-export for backward compatibility
 pub type SkippedAddon = Skipped<AddonInfo>;
@@ -32,8 +33,7 @@ pub struct UpgradePlan {
     pub skipped_addons: Vec<SkippedAddon>,
     pub nodegroup_upgrades: Vec<NodeGroupInfo>,
     pub skipped_nodegroups: Vec<SkippedNodeGroup>,
-    pub pdb_findings: Option<PdbSummary>,
-    pub karpenter_summary: Option<KarpenterSummary>,
+    pub preflight: PreflightResults,
 }
 
 impl UpgradePlan {
@@ -42,6 +42,16 @@ impl UpgradePlan {
         self.upgrade_path.is_empty()
             && self.addon_upgrades.is_empty()
             && self.nodegroup_upgrades.is_empty()
+    }
+
+    /// Returns true if any mandatory preflight check has failed.
+    pub fn has_mandatory_failures(&self) -> bool {
+        self.preflight.has_mandatory_failures()
+    }
+
+    /// Returns human-readable descriptions of failed mandatory preflight checks.
+    pub fn mandatory_failure_reasons(&self) -> Vec<String> {
+        self.preflight.mandatory_failure_reasons()
     }
 }
 
@@ -99,50 +109,94 @@ pub async fn create_upgrade_plan(
     let nodegroup_result =
         nodegroup::plan_nodegroup_upgrades(client.inner(), cluster_name, target_version).await?;
 
+    // Build preflight results
+    let mut preflight = PreflightResults::default();
+
+    // Deletion protection check
+    match cluster.deletion_protection {
+        Some(enabled) => {
+            preflight
+                .checks
+                .push(PreflightCheckResult::deletion_protection(enabled));
+        }
+        None => {
+            preflight
+                .skipped
+                .push(SkippedCheck::deletion_protection("unable to determine"));
+        }
+    }
+
     // Build kube client once for PDB and Karpenter checks (non-fatal)
-    let kube_client =
+    let kube_client = if !nodegroup_result.upgrades.is_empty() {
         match crate::k8s::client::build_kube_client(&cluster, client.region(), profile).await {
             Ok(c) => Some(c),
             Err(e) => {
                 tracing::warn!("Failed to build Kubernetes client (non-fatal): {}", e);
                 None
             }
-        };
+        }
+    } else {
+        None
+    };
 
-    // Check PDB drain deadlock (only when nodegroup upgrades exist)
-    let pdb_findings = if !nodegroup_result.upgrades.is_empty() {
+    // PDB drain deadlock check (only when nodegroup upgrades exist)
+    if !nodegroup_result.upgrades.is_empty() {
         if let Some(ref kc) = kube_client {
             match crate::k8s::pdb::check_pdbs(kc).await {
-                Ok(summary) => Some(summary),
+                Ok(summary) => {
+                    preflight
+                        .checks
+                        .push(PreflightCheckResult::pdb_drain_deadlock(summary));
+                }
                 Err(e) => {
                     tracing::warn!("PDB check failed (non-fatal): {}", e);
-                    None
+                    preflight.skipped.push(SkippedCheck::pdb_drain_deadlock(
+                        "Kubernetes API unavailable",
+                    ));
                 }
             }
         } else {
-            None
+            preflight.skipped.push(SkippedCheck::pdb_drain_deadlock(
+                "Kubernetes API unavailable",
+            ));
         }
     } else {
-        None
-    };
+        preflight.skipped.push(SkippedCheck::pdb_drain_deadlock(
+            "no managed node group upgrades",
+        ));
+    }
 
-    // Check Karpenter EC2NodeClass amiSelectorTerms (only when nodegroup upgrades exist)
-    let karpenter_summary = if !nodegroup_result.upgrades.is_empty() {
+    // Karpenter EC2NodeClass check (only when nodegroup upgrades exist)
+    if !nodegroup_result.upgrades.is_empty() {
         if let Some(ref kc) = kube_client {
             match crate::k8s::karpenter::check_ec2_node_classes(kc).await {
-                Ok(summary) if !summary.node_classes.is_empty() => Some(summary),
-                Ok(_) => None,
+                Ok(summary) if !summary.node_classes.is_empty() => {
+                    preflight
+                        .checks
+                        .push(PreflightCheckResult::karpenter_ami_config(summary));
+                }
+                Ok(_) => {
+                    preflight
+                        .skipped
+                        .push(SkippedCheck::karpenter_ami_config("Karpenter not in use"));
+                }
                 Err(e) => {
                     tracing::warn!("Karpenter EC2NodeClass check failed (non-fatal): {}", e);
-                    None
+                    preflight.skipped.push(SkippedCheck::karpenter_ami_config(
+                        "Kubernetes API unavailable or Karpenter not in use",
+                    ));
                 }
             }
         } else {
-            None
+            preflight.skipped.push(SkippedCheck::karpenter_ami_config(
+                "Kubernetes API unavailable or Karpenter not in use",
+            ));
         }
     } else {
-        None
-    };
+        preflight.skipped.push(SkippedCheck::karpenter_ami_config(
+            "no managed node group upgrades",
+        ));
+    }
 
     Ok(UpgradePlan {
         cluster_name: cluster_name.to_string(),
@@ -153,8 +207,7 @@ pub async fn create_upgrade_plan(
         skipped_addons: addon_result.skipped,
         nodegroup_upgrades: nodegroup_result.upgrades,
         skipped_nodegroups: nodegroup_result.skipped,
-        pdb_findings,
-        karpenter_summary,
+        preflight,
     })
 }
 
@@ -245,26 +298,77 @@ fn print_skipped_nodegroups(skipped: &[SkippedNodeGroup], dimmed: bool) {
     }
 }
 
-/// Format a single AMI selector term for display.
-fn format_ami_selector_term(term: &crate::k8s::karpenter::AmiSelectorTerm) -> String {
-    if let Some(ref alias) = term.alias {
-        return format!("alias: {}", alias);
-    }
-    if let Some(ref id) = term.id {
-        return format!("id: {}", id);
-    }
-    if let Some(ref name) = term.name {
-        let mut s = format!("name: {}", name);
-        if let Some(ref owner) = term.owner {
-            s.push_str(&format!(", owner: {}", owner));
+/// Print detailed output for a single preflight check result.
+fn print_check_details(check: &super::preflight::PreflightCheckResult, target_version: &str) {
+    use super::preflight::{CheckKind, CheckStatus};
+
+    match &check.kind {
+        CheckKind::DeletionProtection { enabled } => {
+            if *enabled {
+                println!("  {} Deletion protection is enabled", "✓".green());
+            } else {
+                println!("  {} Deletion protection is disabled", "✗".red());
+            }
         }
-        return s;
+        CheckKind::PdbDrainDeadlock { summary } => {
+            if summary.has_blocking_pdbs() {
+                for finding in &summary.findings {
+                    println!(
+                        "  {} {}/{}: {}",
+                        "✗".red(),
+                        finding.namespace,
+                        finding.name,
+                        finding.reason()
+                    );
+                }
+                println!(
+                    "  {} {}/{} PDB(s) may block node drain during rolling update",
+                    "✗".red(),
+                    summary.blocking_count,
+                    summary.total_pdbs
+                );
+                println!(
+                    "  {} Consider scaling up replicas or adjusting PDB before proceeding",
+                    "→".cyan()
+                );
+            } else {
+                println!(
+                    "  {} No PDB drain deadlock detected ({} PDBs checked)",
+                    "✓".green(),
+                    summary.total_pdbs
+                );
+            }
+        }
+        CheckKind::KarpenterAmiConfig { summary } => {
+            for nc in &summary.node_classes {
+                if nc.ami_selector_terms.is_empty() {
+                    println!(
+                        "  {} {}: {}",
+                        "⚠".yellow(),
+                        nc.name,
+                        "(no amiSelectorTerms)".dimmed()
+                    );
+                } else {
+                    for term in &nc.ami_selector_terms {
+                        let desc = format_ami_selector_term(term);
+                        println!("  {} {}: {}", "✓".green(), nc.name, desc);
+                    }
+                }
+            }
+            if check.status == CheckStatus::Info {
+                println!(
+                    "  {} {} EC2NodeClass(es) detected in cluster",
+                    "✓".green(),
+                    summary.node_classes.len()
+                );
+                println!(
+                    "  {} Verify amiSelectorTerms compatibility with {} before upgrading",
+                    "→".cyan(),
+                    target_version
+                );
+            }
+        }
     }
-    if let Some(ref tags) = term.tags {
-        let pairs: Vec<String> = tags.iter().map(|(k, v)| format!("{}={}", k, v)).collect();
-        return format!("tags: {{{}}}", pairs.join(", "));
-    }
-    "(empty term)".to_string()
 }
 
 // ============================================================================
@@ -353,92 +457,35 @@ pub fn print_upgrade_plan(plan: &UpgradePlan, skip_control_plane: bool) {
     }
     print_skipped_nodegroups(&plan.skipped_nodegroups, true);
 
-    // Preflight Checks (PDB + Karpenter)
+    // Preflight Checks
     println!();
     println!("{}", "Preflight Checks:".cyan().bold());
 
-    // PDB Drain Deadlock
-    println!("  {}", "PDB Drain Deadlock:".yellow().bold());
-    println!("  {}", "─".repeat(38).dimmed());
-    if let Some(ref pdb) = plan.pdb_findings {
-        if pdb.has_blocking_pdbs() {
-            for finding in &pdb.findings {
-                println!(
-                    "  {} {}/{}: {}",
-                    "⚠".yellow(),
-                    finding.namespace,
-                    finding.name,
-                    finding.reason()
-                );
-            }
-            println!(
-                "  {} {}/{} PDB(s) may block node drain during rolling update",
-                "⚠".yellow(),
-                pdb.blocking_count,
-                pdb.total_pdbs
-            );
-            println!(
-                "  {} Consider scaling up replicas or adjusting PDB before proceeding",
-                "→".cyan()
-            );
-        } else {
-            println!(
-                "  {} No PDB drain deadlock detected ({} PDBs checked)",
-                "✓".green(),
-                pdb.total_pdbs
-            );
-        }
-    } else if plan.nodegroup_upgrades.is_empty() {
-        println!(
-            "  {} Skipped (no managed node group upgrades)",
-            "−".dimmed()
-        );
-    } else {
-        println!("  {} Skipped (Kubernetes API unavailable)", "−".dimmed());
+    // --- Mandatory ---
+    println!("  {}", "[Mandatory]".red().bold());
+    for check in plan.preflight.mandatory_checks() {
+        println!("  {}", format!("{}:", check.name).yellow().bold());
+        println!("  {}", "─".repeat(38).dimmed());
+        print_check_details(check, &plan.target_version);
+    }
+    for skip in plan.preflight.mandatory_skipped() {
+        println!("  {}", format!("{}:", skip.name).yellow().bold());
+        println!("  {}", "─".repeat(38).dimmed());
+        println!("  {} Skipped ({})", "−".dimmed(), skip.reason);
     }
 
-    // Karpenter EC2NodeClass
-    println!(
-        "  {}",
-        "Karpenter EC2NodeClass AMI Configuration:".yellow().bold()
-    );
-    println!("  {}", "─".repeat(38).dimmed());
-    if let Some(ref karpenter) = plan.karpenter_summary {
-        for nc in &karpenter.node_classes {
-            if nc.ami_selector_terms.is_empty() {
-                println!(
-                    "  {} {}: {}",
-                    "⚠".yellow(),
-                    nc.name,
-                    "(no amiSelectorTerms)".dimmed()
-                );
-            } else {
-                for term in &nc.ami_selector_terms {
-                    let desc = format_ami_selector_term(term);
-                    println!("  {} {}: {}", "✓".green(), nc.name, desc);
-                }
-            }
-        }
-        println!(
-            "  {} {} EC2NodeClass(es) detected in cluster",
-            "✓".green(),
-            karpenter.node_classes.len()
-        );
-        println!(
-            "  {} Verify amiSelectorTerms compatibility with {} before upgrading",
-            "→".cyan(),
-            plan.target_version
-        );
-    } else if plan.nodegroup_upgrades.is_empty() {
-        println!(
-            "  {} Skipped (no managed node group upgrades)",
-            "−".dimmed()
-        );
-    } else {
-        println!(
-            "  {} Skipped (Kubernetes API unavailable or Karpenter not in use)",
-            "−".dimmed()
-        );
+    // --- Informational ---
+    println!();
+    println!("  {}", "[Informational]".dimmed().bold());
+    for check in plan.preflight.informational_checks() {
+        println!("  {}", format!("{}:", check.name).yellow().bold());
+        println!("  {}", "─".repeat(38).dimmed());
+        print_check_details(check, &plan.target_version);
+    }
+    for skip in plan.preflight.informational_skipped() {
+        println!("  {}", format!("{}:", skip.name).yellow().bold());
+        println!("  {}", "─".repeat(38).dimmed());
+        println!("  {} Skipped ({})", "−".dimmed(), skip.reason);
     }
 
     // Estimated time
@@ -773,8 +820,7 @@ mod tests {
             skipped_addons: vec![],
             nodegroup_upgrades: vec![],
             skipped_nodegroups: vec![],
-            pdb_findings: None,
-            karpenter_summary: None,
+            preflight: PreflightResults::default(),
         };
 
         assert_eq!(plan.cluster_name, "test-cluster");
@@ -792,8 +838,7 @@ mod tests {
             skipped_addons: vec![],
             nodegroup_upgrades: vec![],
             skipped_nodegroups: vec![],
-            pdb_findings: None,
-            karpenter_summary: None,
+            preflight: PreflightResults::default(),
         };
 
         // With control plane: 2 steps * 10 min = 20 min
@@ -812,8 +857,7 @@ mod tests {
             skipped_addons: vec![],
             nodegroup_upgrades: vec![],
             skipped_nodegroups: vec![],
-            pdb_findings: None,
-            karpenter_summary: None,
+            preflight: PreflightResults::default(),
         };
 
         // Skip control plane: 0 min (no addons/nodegroups either)
@@ -919,8 +963,7 @@ mod tests {
             skipped_addons: vec![],
             nodegroup_upgrades: vec![],
             skipped_nodegroups: vec![],
-            pdb_findings: None,
-            karpenter_summary: None,
+            preflight: PreflightResults::default(),
         };
         assert!(plan.is_empty());
     }
@@ -936,8 +979,7 @@ mod tests {
             skipped_addons: vec![],
             nodegroup_upgrades: vec![],
             skipped_nodegroups: vec![],
-            pdb_findings: None,
-            karpenter_summary: None,
+            preflight: PreflightResults::default(),
         };
         assert!(!plan.is_empty());
     }
@@ -957,8 +999,7 @@ mod tests {
             skipped_addons: vec![],
             nodegroup_upgrades: vec![],
             skipped_nodegroups: vec![],
-            pdb_findings: None,
-            karpenter_summary: None,
+            preflight: PreflightResults::default(),
         };
         assert!(!plan.is_empty());
     }
@@ -982,8 +1023,7 @@ mod tests {
             skipped_addons: vec![],
             nodegroup_upgrades: vec![ng],
             skipped_nodegroups: vec![],
-            pdb_findings: None,
-            karpenter_summary: None,
+            preflight: PreflightResults::default(),
         };
         assert!(!plan.is_empty());
     }
@@ -1003,8 +1043,7 @@ mod tests {
             skipped_addons: vec![SkippedAddon::new(addon, "already at compatible version")],
             nodegroup_upgrades: vec![],
             skipped_nodegroups: vec![],
-            pdb_findings: None,
-            karpenter_summary: None,
+            preflight: PreflightResults::default(),
         };
         // Skipped items don't count as upgrades
         assert!(plan.is_empty());
@@ -1027,8 +1066,7 @@ mod tests {
             skipped_addons: vec![],
             nodegroup_upgrades: vec![],
             skipped_nodegroups: vec![],
-            pdb_findings: None,
-            karpenter_summary: None,
+            preflight: PreflightResults::default(),
         };
         // Skip CP: 0 + addons: 10 + nodegroups: 0 = 10
         assert_eq!(calculate_estimated_time(&plan, true), 10);
@@ -1061,8 +1099,7 @@ mod tests {
             skipped_addons: vec![],
             nodegroup_upgrades: vec![ng1, ng2],
             skipped_nodegroups: vec![],
-            pdb_findings: None,
-            karpenter_summary: None,
+            preflight: PreflightResults::default(),
         };
         // Skip CP: 0 + addons: 0 + nodegroups: 2 * 20 = 40
         assert_eq!(calculate_estimated_time(&plan, true), 40);
@@ -1091,8 +1128,7 @@ mod tests {
             skipped_addons: vec![],
             nodegroup_upgrades: vec![ng],
             skipped_nodegroups: vec![],
-            pdb_findings: None,
-            karpenter_summary: None,
+            preflight: PreflightResults::default(),
         };
         // CP: 2*10=20 + addons: 10 + nodegroups: 1*20=20 = 50
         assert_eq!(calculate_estimated_time(&plan, false), 50);
@@ -1289,12 +1325,13 @@ mod tests {
             skipped_addons: vec![],
             nodegroup_upgrades: vec![],
             skipped_nodegroups: vec![],
-            pdb_findings: Some(pdb_summary),
-            karpenter_summary: None,
+            preflight: PreflightResults {
+                checks: vec![PreflightCheckResult::pdb_drain_deadlock(pdb_summary)],
+                skipped: vec![],
+            },
         };
 
-        assert!(plan.pdb_findings.is_some());
-        let pdb = plan.pdb_findings.as_ref().unwrap();
+        let pdb = plan.preflight.pdb_summary().unwrap();
         assert!(pdb.has_blocking_pdbs());
         assert_eq!(pdb.blocking_count, 1);
         assert_eq!(pdb.findings[0].name, "coredns-pdb");
@@ -1327,12 +1364,13 @@ mod tests {
             skipped_addons: vec![],
             nodegroup_upgrades: vec![],
             skipped_nodegroups: vec![],
-            pdb_findings: None,
-            karpenter_summary: Some(karpenter),
+            preflight: PreflightResults {
+                checks: vec![PreflightCheckResult::karpenter_ami_config(karpenter)],
+                skipped: vec![],
+            },
         };
 
-        assert!(plan.karpenter_summary.is_some());
-        let ks = plan.karpenter_summary.as_ref().unwrap();
+        let ks = plan.preflight.karpenter_summary().unwrap();
         assert_eq!(ks.node_classes.len(), 1);
         assert_eq!(ks.node_classes[0].name, "default");
     }
@@ -1352,24 +1390,29 @@ mod tests {
             skipped_addons: vec![],
             nodegroup_upgrades: vec![],
             skipped_nodegroups: vec![],
-            pdb_findings: Some(PdbSummary {
-                total_pdbs: 5,
-                blocking_count: 0,
-                findings: vec![],
-            }),
-            karpenter_summary: Some(KarpenterSummary {
-                node_classes: vec![Ec2NodeClassInfo {
-                    name: "default".to_string(),
-                    ami_selector_terms: vec![AmiSelectorTerm {
-                        alias: Some("al2023@latest".to_string()),
-                        id: None,
-                        name: None,
-                        owner: None,
-                        tags: None,
-                    }],
-                }],
-                api_version: "v1".to_string(),
-            }),
+            preflight: PreflightResults {
+                checks: vec![
+                    PreflightCheckResult::pdb_drain_deadlock(PdbSummary {
+                        total_pdbs: 5,
+                        blocking_count: 0,
+                        findings: vec![],
+                    }),
+                    PreflightCheckResult::karpenter_ami_config(KarpenterSummary {
+                        node_classes: vec![Ec2NodeClassInfo {
+                            name: "default".to_string(),
+                            ami_selector_terms: vec![AmiSelectorTerm {
+                                alias: Some("al2023@latest".to_string()),
+                                id: None,
+                                name: None,
+                                owner: None,
+                                tags: None,
+                            }],
+                        }],
+                        api_version: "v1".to_string(),
+                    }),
+                ],
+                skipped: vec![],
+            },
         };
 
         // Even with preflight data, plan is empty when no actual upgrades exist
@@ -1403,41 +1446,50 @@ mod tests {
                 asg_name: None,
             }],
             skipped_nodegroups: vec![],
-            pdb_findings: Some(PdbSummary {
-                total_pdbs: 5,
-                blocking_count: 1,
-                findings: vec![PdbFinding {
-                    namespace: "kube-system".to_string(),
-                    name: "coredns-pdb".to_string(),
-                    min_available: Some("1".to_string()),
-                    max_unavailable: None,
-                    current_healthy: 1,
-                    expected_pods: 1,
-                    disruptions_allowed: 0,
-                }],
-            }),
-            karpenter_summary: Some(KarpenterSummary {
-                node_classes: vec![Ec2NodeClassInfo {
-                    name: "default".to_string(),
-                    ami_selector_terms: vec![AmiSelectorTerm {
-                        alias: Some("al2023@latest".to_string()),
-                        id: None,
-                        name: None,
-                        owner: None,
-                        tags: None,
-                    }],
-                }],
-                api_version: "v1".to_string(),
-            }),
+            preflight: PreflightResults {
+                checks: vec![
+                    PreflightCheckResult::pdb_drain_deadlock(PdbSummary {
+                        total_pdbs: 5,
+                        blocking_count: 1,
+                        findings: vec![PdbFinding {
+                            namespace: "kube-system".to_string(),
+                            name: "coredns-pdb".to_string(),
+                            min_available: Some("1".to_string()),
+                            max_unavailable: None,
+                            current_healthy: 1,
+                            expected_pods: 1,
+                            disruptions_allowed: 0,
+                        }],
+                    }),
+                    PreflightCheckResult::karpenter_ami_config(KarpenterSummary {
+                        node_classes: vec![Ec2NodeClassInfo {
+                            name: "default".to_string(),
+                            ami_selector_terms: vec![AmiSelectorTerm {
+                                alias: Some("al2023@latest".to_string()),
+                                id: None,
+                                name: None,
+                                owner: None,
+                                tags: None,
+                            }],
+                        }],
+                        api_version: "v1".to_string(),
+                    }),
+                ],
+                skipped: vec![],
+            },
         };
 
         assert!(!plan.is_empty());
         assert_eq!(plan.upgrade_path.len(), 2);
         assert_eq!(plan.addon_upgrades.len(), 1);
         assert_eq!(plan.nodegroup_upgrades.len(), 1);
-        assert!(plan.pdb_findings.as_ref().unwrap().has_blocking_pdbs());
+        assert!(plan.preflight.pdb_summary().unwrap().has_blocking_pdbs());
         assert_eq!(
-            plan.karpenter_summary.as_ref().unwrap().node_classes.len(),
+            plan.preflight
+                .karpenter_summary()
+                .unwrap()
+                .node_classes
+                .len(),
             1
         );
 
