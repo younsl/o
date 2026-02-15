@@ -643,7 +643,6 @@ git tag grafana-dashboards/charts/1.0.0 && git push --tags
 # - release-rust-containers.yml              (Unified Rust container release: filesystem-cleaner, elasticache-backup, redis-console, gss)
 # - release-trivy-collector.yml              (Rust container)
 # - release-helm-chart.yml                   (Unified Helm chart release to OCI registry)
-# - lint-helm-chart.yml                      (PR lint for Helm charts)
 # - release-logstash-with-opensearch-plugin.yml (Container image)
 # - release-actions-runner.yml               (Container image)
 # - release-hugo.yml                         (Workflow dispatch)
@@ -685,17 +684,6 @@ Rust projects:
 
 **Graceful Shutdown**:
 - Signal handling (SIGTERM, SIGINT) with cleanup logic
-
-## Pull Request Guidelines
-
-When creating pull requests, follow the template structure in `.github/pull_request_template.md`:
-
-**PR Types**: bump, bug, cleanup, documentation, feature, enhancement, test, chore
-
-**Required Sections**:
-- What this PR does / why we need it
-- Which issue(s) this PR fixes (use `Fixes #issue_number` format)
-- Testing done (unit tests, integration tests, manual verification)
 
 ## Backstage Troubleshooting
 
