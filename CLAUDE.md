@@ -12,6 +12,20 @@ All applications in `kubernetes/`, `tools/`, and `containers/` are built with **
 
 Kubernetes addons and tools follow the [Unix philosophy](https://en.wikipedia.org/wiki/Unix_philosophy) of "Do One Thing and Do It Well". Rather than building monolithic solutions, each component is designed to solve specific operational problems with focus and simplicity.
 
+## Commit Message Convention
+
+Format: `[<TOOLNAME>] <type>(<scope>): <detail message>`
+
+- 특정 툴에 해당하지 않는 변경은 `[repo]`를 사용합니다.
+
+Examples:
+- `[kup] feat(upgrade): add EKS 1.34 support`
+- `[karc] fix(status): correct nodepool display alignment`
+- `[ij] refactor(scan): improve multi-region parallel scanning`
+- `[repo] chore(docs): update CLAUDE.md`
+
+Types: `feat`, `fix`, `refactor`, `docs`, `test`, `chore`, etc.
+
 ## Development Commands
 
 ### Rust Projects
