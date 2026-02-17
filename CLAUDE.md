@@ -140,8 +140,7 @@ box/
 │   ├── actions-runner/    # GitHub Actions runner
 │   ├── backstage/         # Backstage with GitLab Auto Discovery (Node.js)
 │   ├── filesystem-cleaner/# File system cleanup tool (Rust)
-│   ├── logstash-with-opensearch-plugin/  # Logstash with OpenSearch plugin for ECK
-│   └── mageai/            # Mage AI custom image
+│   └── logstash-with-opensearch-plugin/  # Logstash with OpenSearch plugin for ECK
 ├── scripts/               # Automation scripts by platform
 │   ├── aws/               # AWS resource management
 │   ├── github/            # Repository automation
