@@ -1,0 +1,42 @@
+# ==============================================================================
+# Backstage Catalog Info - AsyncAPI Example (Kafka/Event-driven)
+# ==============================================================================
+# Use this template for event-driven APIs (Kafka, RabbitMQ, WebSocket, etc.)
+# ==============================================================================
+
+apiVersion: backstage.io/v1alpha1
+kind: API
+metadata:
+  name: order-events-api
+  title: Order Events API
+  description: |
+    Async API for order-related events.
+    Publishes events to Kafka when orders are created, updated, or completed.
+  annotations:
+    gitlab.com/project-slug: my-group/order-service
+  tags:
+    - kafka
+    - events
+    - async
+spec:
+  type: asyncapi
+  lifecycle: production
+  owner: team-orders
+  definition:
+    $text: ./asyncapi.yaml
+
+---
+apiVersion: backstage.io/v1alpha1
+kind: Component
+metadata:
+  name: order-service
+  title: Order Service
+  description: Handles order processing and publishes events
+  annotations:
+    gitlab.com/project-slug: my-group/order-service
+spec:
+  type: service
+  lifecycle: production
+  owner: team-orders
+  providesApis:
+    - order-events-api

@@ -1,0 +1,145 @@
+app:
+  title: Backstage
+  baseUrl: http://localhost:3000
+  gitlab:
+    host: ${GITLAB_HOST}
+  platforms:
+    - name: Grafana
+      category: Observability
+      description: Metrics visualization and dashboards
+      url: https://grafana.example.com
+      logo: https://cdn.jsdelivr.net/gh/grafana/grafana@main/public/img/grafana_icon.svg
+      tags: shared
+    - name: ArgoCD
+      category: CI/CD
+      description: GitOps continuous delivery
+      url: https://argocd.example.com
+      logo: https://argo-cd.readthedocs.io/en/stable/assets/logo.png
+      tags: shared
+    - name: QueryPie (nonprd)
+      category: Data
+      description: Data access governance platform
+      url: https://querypie-nonprd.example.com
+      logo: https://backstage.io/logo_assets/svg/Icon_Teal.svg
+      tags: nonprd
+    - name: QueryPie (prd)
+      category: Data
+      description: Data access governance platform
+      url: https://querypie-prd.example.com
+      logo: https://backstage.io/logo_assets/svg/Icon_Teal.svg
+      tags: prd
+
+organization:
+  name: DevOps Portal
+
+backend:
+  baseUrl: http://localhost:7007
+  listen:
+    port: 7007
+  auditor:
+    severityLogLevelMappings:
+      low: debug
+      medium: info
+      high: info
+      critical: error
+  csp:
+    connect-src: ["'self'", 'http:', 'https:']
+  cors:
+    origin: http://localhost:3000
+    methods: [GET, HEAD, PATCH, POST, PUT, DELETE]
+    credentials: true
+  database:
+    client: better-sqlite3
+    connection: ':memory:'
+  auth:
+    dangerouslyDisableDefaultAuthPolicy: true
+  reading:
+    allow:
+      - host: localhost:7007
+
+integrations:
+  gitlab:
+    - host: ${GITLAB_HOST}
+      token: ${GITLAB_TOKEN}
+      apiBaseUrl: https://${GITLAB_HOST}/api/v4
+
+catalog:
+  import:
+    entityFilename: catalog-info.yaml
+    pullRequestBranchName: backstage-integration
+  rules:
+    - allow: [Component, System, API, Resource, Location, Domain, Group, User, Template]
+  providers:
+    gitlab:
+      yourProviderId:
+        host: ${GITLAB_HOST}
+        branch: main
+        fallbackBranch: master
+        skipForkedRepos: false
+        entityFilename: catalog-info.yaml
+        schedule:
+          frequency: { minutes: 1 }
+          timeout: { minutes: 3 }
+          initialDelay: { seconds: 10 }
+    gitlabOrg:
+      yourOrgProviderId:
+        host: ${GITLAB_HOST}
+        schedule:
+          frequency: { hours: 1 }
+          timeout: { minutes: 5 }
+          initialDelay: { seconds: 30 }
+  locations:
+    - type: file
+      target: ../../templates/register-component/template.yaml
+      rules:
+        - allow: [Template]
+
+auth:
+  environment: development
+  session:
+    secret: ${AUTH_SESSION_SECRET}
+  providers:
+    guest:
+      dangerouslyAllowOutsideDevelopment: true
+    oidc:
+      development:
+        clientId: ${KEYCLOAK_CLIENT_ID}
+        clientSecret: ${KEYCLOAK_CLIENT_SECRET}
+        metadataUrl: ${KEYCLOAK_METADATA_URL}
+        prompt: auto
+        signIn:
+          resolvers:
+            - resolver: emailLocalPartMatchingUserEntityName
+              dangerouslyAllowSignInWithoutUserInCatalog: true
+
+scaffolder:
+  defaultScmIntegrations: true
+
+techdocs:
+  builder: 'local'
+  generator:
+    runIn: 'local'
+  publisher:
+    type: 'local'
+
+gitlab:
+  defaultCodeOwnersPath: CODEOWNERS
+  defaultReadmePath: README.md
+  allowedKinds:
+    - Component
+    - Resource
+
+sonarqube:
+  baseUrl: ${SONARQUBE_BASE_URL}
+  apiKey: ${SONARQUBE_API_KEY}
+
+proxy:
+  endpoints: {}
+
+search:
+  collators:
+    catalog:
+      schedule:
+        frequency: { minutes: 1 }
+        timeout: { minutes: 15 }
+        initialDelay: { seconds: 10 }

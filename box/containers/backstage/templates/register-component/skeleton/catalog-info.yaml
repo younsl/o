@@ -1,0 +1,23 @@
+apiVersion: backstage.io/v1alpha1
+kind: Component
+metadata:
+  name: ${{ values.name }}
+  description: ${{ values.description }}
+{%- if values.tags %}
+  tags:
+{%- for tag in values.tags.split(',') %}
+    - ${{ tag | trim }}
+{%- endfor %}
+{%- endif %}
+  annotations:
+    gitlab.com/project-slug: ${{ values.repoOwner }}/${{ values.repo }}
+{%- if values.techDocs %}
+    backstage.io/techdocs-ref: dir:.
+{%- endif %}
+spec:
+  type: ${{ values.type }}
+  lifecycle: ${{ values.lifecycle }}
+  owner: ${{ values.owner }}
+{%- if values.system %}
+  system: ${{ values.system }}
+{%- endif %}
