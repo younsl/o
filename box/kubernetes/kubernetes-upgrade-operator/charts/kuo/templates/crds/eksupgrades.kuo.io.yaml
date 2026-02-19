@@ -5,10 +5,10 @@ metadata:
   name: eksupgrades.kuo.io
   labels:
     {{- include "kuo.labels" . | nindent 4 }}
+  {{- with .Values.crds.annotations }}
   annotations:
-    {{- with .Values.crds.annotations }}
     {{- toYaml . | nindent 4 }}
-    {{- end }}
+  {{- end }}
 spec:
   group: kuo.io
   names:
