@@ -891,8 +891,14 @@ mod tests {
         db.upsert_report(&payload).expect("Failed to insert");
 
         // First update: creates notes
-        db.update_notes("prod", "default", "app1", "vulnerabilityreport", "first note")
-            .expect("Failed to update notes");
+        db.update_notes(
+            "prod",
+            "default",
+            "app1",
+            "vulnerabilityreport",
+            "first note",
+        )
+        .expect("Failed to update notes");
 
         let report = db
             .get_report("prod", "default", "app1", "vulnerabilityreport")
