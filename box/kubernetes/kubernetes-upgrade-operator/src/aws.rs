@@ -88,7 +88,7 @@ impl AwsClients {
             .role_session_name("kuo-operator")
             .send()
             .await
-            .context(format!("Failed to assume role: {}", role_arn))?;
+            .map_err(|e| anyhow::anyhow!("Failed to assume role {}: {}", role_arn, e))?;
 
         let creds = assumed.credentials().ok_or_else(|| {
             anyhow::anyhow!("AssumeRole returned no credentials for {}", role_arn)
