@@ -1,6 +1,5 @@
 # kuo
 
-[![GitHub release](https://img.shields.io/github/v/release/younsl/o?filter=kuo*&style=flat-square&color=black)](https://github.com/younsl/o/releases?q=kuo&expanded=true)
 [![Rust](https://img.shields.io/badge/rust-1.93-black?style=flat-square&logo=rust&logoColor=white)](https://www.rust-lang.org/)
 [![GitHub Container Registry](https://img.shields.io/badge/ghcr.io-kuo-black?style=flat-square&logo=docker&logoColor=white)](https://github.com/younsl/o/pkgs/container/kuo)
 [![Helm Chart](https://img.shields.io/badge/ghcr.io-charts%2Fkuo-black?style=flat-square&logo=helm&logoColor=white)](https://github.com/younsl/o/pkgs/container/charts%2Fkuo)
@@ -21,48 +20,39 @@ Kubernetes Upgrade Operator for EKS clusters. Watches `EKSUpgrade` custom resour
 
 ## Architecture
 
-```
-                    Hub Account (A)                         Spoke Account (B)
-              ┌──────────────────────┐              ┌──────────────────────┐
-              │  EKS Cluster (Hub)   │              │  EKS Cluster (Target)│
-              │                      │              │                      │
-              │  ┌────────────────┐  │  AssumeRole  │                      │
-              │  │ kuo operator   │──┼──────────────┼──→ EKS API           │
-              │  │ (Deployment)   │  │              │  → K8s API (PDB)     │
-              │  └───────┬────────┘  │              │                      │
-              │          │           │              └──────────────────────┘
-              │  ┌───────▼────────┐  │
-              │  │ EKSUpgrade CRD │  │
-              │  └────────────────┘  │
-              └──────────────────────┘
-```
+kuo is a Kubernetes operator that runs in a central (hub) EKS cluster and upgrades EKS clusters declaratively. It watches `EKSUpgrade` custom resources, assumes IAM roles to reach spoke-account clusters via STS AssumeRole, and executes sequential control plane, add-on, and managed node group upgrades. The same hub role can also upgrade the cluster it runs in directly.
+
+![kuo Architecture](architecture.png)
 
 ## Upgrade Phase Flow
 
-```
-Pending → Planning → PreflightChecking → UpgradingControlPlane → UpgradingAddons → UpgradingNodeGroups → Completed
-                            │                                                                               │
-                            └───── (mandatory check failure) ──→ Failed ←── (any phase error) ──────────────┘
-```
+1. **Pending** — CR created, waiting for reconciliation
+2. **Planning** — Resolve upgrade path, addon targets, nodegroup targets
+3. **PreflightChecking** — EKS Insights, Deletion Protection, PDB drain deadlock checks
+4. **UpgradingControlPlane** — Step through 1 minor version at a time
+5. **UpgradingAddons** — Update add-ons to compatible versions
+6. **UpgradingNodeGroups** — Trigger managed node group rolling updates
+7. **Completed** — All upgrades finished successfully
+
+> Any phase can transition to **Failed** on error. Mandatory preflight check failures also result in **Failed**.
 
 ### Dry-Run Mode
 
 When `dryRun: true` is set, the operator executes planning and preflight validation but skips all infrastructure changes:
 
-```
-Pending → Planning → PreflightChecking ──→ Completed (DryRunCompleted)
-                            │
-                            └── (mandatory check failure) ──→ Failed
-```
+1. **Pending** — CR created, waiting for reconciliation
+2. **Planning** — Resolve upgrade path, addon targets, nodegroup targets
+3. **PreflightChecking** — EKS Insights, Deletion Protection, PDB drain deadlock checks
+4. **Completed** (DryRunCompleted) — Plan generated, no infrastructure changes applied
 
-The dry-run gate is evaluated **after** all preflight checks pass. If any mandatory check fails, the upgrade fails regardless of the dry-run flag. On success, the full upgrade plan (upgrade path, addon targets, nodegroup targets) is available in `status.phases` for review.
+> Mandatory preflight check failures result in **Failed** regardless of the dry-run flag. On success, the full upgrade plan (upgrade path, addon targets, nodegroup targets) is available in `status.phases` for review.
 
 **Preflight checks:**
 
 | Check | Category | Behavior |
 |-------|----------|----------|
 | EKS Cluster Insights | Mandatory | Fails if critical insights exist |
-| EKS Deletion Protection | Mandatory | Fails if deletion protection is disabled |
+| [EKS Deletion Protection](https://docs.aws.amazon.com/eks/latest/userguide/delete-cluster.html) | Mandatory | Fails if deletion protection is disabled |
 | PDB Drain Deadlock | Mandatory | Fails if any PDB has `disruptionsAllowed == 0` (skippable via `skipPdbCheck`) |
 
 ## Installation
@@ -121,7 +111,71 @@ spec:
 
 The operator pod needs base credentials via **IRSA** or **EKS Pod Identity**.
 
-**IAM Policy for Hub Role** (`kuo-hub-role`):
+<details>
+<summary>Hub Policy — for same-account clusters</summary>
+
+```json
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Sid": "EKSClusterOperations",
+      "Effect": "Allow",
+      "Action": [
+        "eks:ListClusters",
+        "eks:DescribeCluster",
+        "eks:UpdateClusterVersion",
+        "eks:DescribeUpdate",
+        "eks:ListNodegroups"
+      ],
+      "Resource": "arn:aws:eks:*:111111111111:cluster/*"
+    },
+    {
+      "Sid": "EKSInsights",
+      "Effect": "Allow",
+      "Action": [
+        "eks:ListInsights",
+        "eks:DescribeInsight"
+      ],
+      "Resource": "arn:aws:eks:*:111111111111:cluster/*"
+    },
+    {
+      "Sid": "EKSAddonOperations",
+      "Effect": "Allow",
+      "Action": [
+        "eks:ListAddons",
+        "eks:DescribeAddon",
+        "eks:DescribeAddonVersions",
+        "eks:UpdateAddon"
+      ],
+      "Resource": "*"
+    },
+    {
+      "Sid": "EKSNodegroupOperations",
+      "Effect": "Allow",
+      "Action": [
+        "eks:DescribeNodegroup",
+        "eks:UpdateNodegroupVersion"
+      ],
+      "Resource": "arn:aws:eks:*:111111111111:nodegroup/*/*/*"
+    },
+    {
+      "Sid": "STSIdentity",
+      "Effect": "Allow",
+      "Action": [
+        "sts:GetCallerIdentity",
+        "sts:TagSession"
+      ],
+      "Resource": "*"
+    }
+  ]
+}
+```
+
+</details>
+
+<details>
+<summary>Spoke Policy — for cross-account clusters</summary>
 
 ```json
 {
@@ -130,14 +184,21 @@ The operator pod needs base credentials via **IRSA** or **EKS Pod Identity**.
     {
       "Sid": "AllowAssumeRoleToSpokeAccounts",
       "Effect": "Allow",
-      "Action": "sts:AssumeRole",
+      "Action": [
+        "sts:AssumeRole",
+        "sts:TagSession"
+      ],
       "Resource": "arn:aws:iam::*:role/kuo-spoke-role"
     }
   ]
 }
 ```
 
-For same-account clusters (no `assumeRoleArn`), the hub role also needs the EKS permissions listed below.
+</details>
+
+> Both policies can be attached to the same hub role when managing both same-account and cross-account clusters.
+>
+> **Important:** `sts:TagSession` is required in both Hub Policy and Spoke Policy. EKS Pod Identity and IRSA attach session tags when issuing credentials. Without this permission, the hub role cannot obtain credentials and all API calls will fail with `AccessDenied`.
 
 **Helm values for IRSA:**
 
@@ -159,7 +220,8 @@ serviceAccount:
 
 ### Spoke Account (Target — EKS clusters to upgrade)
 
-**IAM Policy for Spoke Role** (`kuo-spoke-role`):
+<details>
+<summary>IAM Policy for Spoke Role</summary>
 
 ```json
 {
@@ -216,7 +278,10 @@ serviceAccount:
 }
 ```
 
-**Trust Policy for Spoke Role:**
+</details>
+
+<details>
+<summary>Trust Policy for Spoke Role</summary>
 
 ```json
 {
@@ -227,11 +292,16 @@ serviceAccount:
       "Principal": {
         "AWS": "arn:aws:iam::111111111111:role/kuo-hub-role"
       },
-      "Action": "sts:AssumeRole"
+      "Action": [
+        "sts:AssumeRole",
+        "sts:TagSession"
+      ]
     }
   ]
 }
 ```
+
+</details>
 
 **EKS Access Entry** (for K8s API access in spoke cluster):
 
@@ -250,7 +320,7 @@ aws eks associate-access-policy \
   --access-scope type=cluster
 ```
 
-> Spoke account does **NOT** need EKS Pod Identity registration. The operator authenticates via STS AssumeRole from the hub account.
+> Spoke cluster does **NOT** need EKS Pod Identity registration. The kuo pod only runs in the hub cluster and authenticates to spoke accounts via STS AssumeRole.
 
 ### Permission Summary
 
@@ -259,18 +329,19 @@ Hub Account (111111111111)           Spoke Account (222222222222)
 ┌──────────────────────────┐        ┌──────────────────────────┐
 │ kuo-hub-role             │        │ kuo-spoke-role           │
 │                          │        │                          │
-│ Permissions:             │        │ Permissions:             │
-│  · sts:AssumeRole ───────┼───────→│  · eks:* (cluster ops)   │
-│                          │        │  · sts:GetCallerIdentity │
-│ Credential source:       │        │                          │
-│  · IRSA or               │        │ Trust policy:            │
-│  · EKS Pod Identity      │        │  · Hub role (AssumeRole) │
+│ Hub Policy:              │        │ Permissions:             │
+│  · eks:* (same-account)  │        │  · eks:* (cluster ops)   │
+│  · sts:GetCallerIdentity │        │  · sts:GetCallerIdentity │
 │                          │        │                          │
-│ EKS Pod Identity: YES    │        │ EKS Pod Identity: NO     │
-└──────────────────────────┘        │                          │
-                                    │ EKS Access Entry: YES    │
-                                    │  · AmazonEKSViewPolicy   │
-                                    └──────────────────────────┘
+│ Spoke Policy:            │        │ Trust policy:            │
+│  · sts:AssumeRole ───────┼───────→│  · Hub role (AssumeRole) │
+│                          │        │                          │
+│ Credential source:       │        │ EKS Pod Identity: NO     │
+│  · IRSA or               │        │                          │
+│  · EKS Pod Identity      │        │ EKS Access Entry: YES    │
+│                          │        │  · AmazonEKSViewPolicy   │
+│ EKS Pod Identity: YES    │        │                          │
+└──────────────────────────┘        └──────────────────────────┘
 ```
 
 ## Monitoring
@@ -282,9 +353,9 @@ Hub Account (111111111111)           Spoke Account (222222222222)
 
 ```bash
 kubectl get eksupgrades
-NAME                CLUSTER              TARGET   PHASE       AUTH                AGE
-staging-upgrade     staging-cluster      1.34     Completed   IdentityVerified    5m
-production-upgrade  production-cluster   1.34     UpgradingAddons  AssumeRoleSuccess  2m
+NAME                 CLUSTER              TARGET   PHASE             AUTH                AGE
+staging-upgrade      staging-cluster      1.34     Completed         IdentityVerified    5m
+production-upgrade   production-cluster   1.34     UpgradingAddons   AssumeRoleSuccess   2m
 ```
 
 ## Development
@@ -316,4 +387,4 @@ git tag kuo/charts/0.1.0 && git push --tags
 
 ## License
 
-MIT
+This project is licensed under the MIT License. See the [LICENSE](../../../LICENSE) file for details.
