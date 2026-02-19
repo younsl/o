@@ -6,6 +6,9 @@
 
 <img src="https://cdn.jsdelivr.net/gh/devicons/devicon/icons/kubernetes/kubernetes-plain.svg" width="40" height="40"/>
 
+> [!WARNING]
+> kup is deprecated and will be removed in a future release. Use [kubernetes-upgrade-operator](https://github.com/younsl/kubernetes-upgrade-operator) instead.
+
 [**K**ubernetes](https://github.com/kubernetes/kubernetes) **Up**grade - Interactive EKS cluster upgrade CLI tool. Analyzes cluster insights, plans sequential control plane upgrades, and updates add-ons and managed node groups. Inspired by [clowdhaus/eksup](https://github.com/clowdhaus/eksup).
 
 ## Features
