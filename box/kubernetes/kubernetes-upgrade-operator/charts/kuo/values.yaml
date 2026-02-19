@@ -75,6 +75,7 @@ eksUpgrades: []
   #     clusterName: staging-cluster
   #     targetVersion: "1.31"
   #     region: ap-northeast-2
+  #     dryRun: true
   #
   # - name: production-cluster-upgrade
   #   spec:
@@ -98,3 +99,4 @@ eksUpgrades: []
   #     targetVersion: "1.31"
   #     region: ap-northeast-2
   #     assumeRoleArn: arn:aws:iam::123456789012:role/kuo-target-role
+  #     dryRun: false

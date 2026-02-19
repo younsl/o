@@ -1,4 +1,4 @@
-# kuo
+# kubernetes-upgrade-operator
 
 [![Rust](https://img.shields.io/badge/rust-1.93-black?style=flat-square&logo=rust&logoColor=white)](https://www.rust-lang.org/)
 [![GitHub Container Registry](https://img.shields.io/badge/ghcr.io-kuo-black?style=flat-square&logo=docker&logoColor=white)](https://github.com/younsl/o/pkgs/container/kuo)
@@ -20,9 +20,9 @@ Kubernetes Upgrade Operator for EKS clusters. Watches `EKSUpgrade` custom resour
 
 ## Architecture
 
-kuo is a Kubernetes operator that runs in a central (hub) EKS cluster and upgrades EKS clusters declaratively. It watches `EKSUpgrade` custom resources, assumes IAM roles to reach spoke-account clusters via STS AssumeRole, and executes sequential control plane, add-on, and managed node group upgrades. The same hub role can also upgrade the cluster it runs in directly.
+kubernetes-upgrade-operator is a Kubernetes operator that runs in a central (hub) EKS cluster and upgrades EKS clusters declaratively. It watches `EKSUpgrade` custom resources, assumes IAM roles to reach spoke-account clusters via STS AssumeRole, and executes sequential control plane, add-on, and managed node group upgrades. The same hub role can also upgrade the cluster it runs in directly.
 
-![kuo Architecture](architecture.png)
+![kubernetes-upgrade-operator Architecture](architecture.png)
 
 ## Upgrade Phase Flow
 
@@ -38,7 +38,7 @@ kuo is a Kubernetes operator that runs in a central (hub) EKS cluster and upgrad
 
 ### Dry-Run Mode
 
-When `dryRun: true` is set, the operator executes planning and preflight validation but skips all infrastructure changes:
+When `dryRun: true` is set, the operator executes planning and preflight validation but skips all infrastructure changes (control plane upgrade, add-on updates, node group rolling updates):
 
 1. **Pending** — CR created, waiting for reconciliation
 2. **Planning** — Resolve upgrade path, addon targets, nodegroup targets
@@ -57,14 +57,11 @@ When `dryRun: true` is set, the operator executes planning and preflight validat
 
 ## Installation
 
-### Helm
-
-```bash
-helm install kuo oci://ghcr.io/younsl/charts/kuo \
-  --namespace kube-system
-```
+Helm is the recommended installation method. See [charts/kuo](charts/kuo) for detailed configuration and values reference.
 
 ### EKSUpgrade CR Example
+
+`EKSUpgrade` is a cluster-scoped custom resource that declares the desired upgrade state for an EKS cluster. The operator watches these resources and continuously reconciles the actual cluster state to match the spec through the Kubernetes [control loop](https://kubernetes.io/docs/concepts/architecture/controller/). This enables GitOps-driven upgrades where the upgrade intent is version-controlled and auditable, and interrupted upgrades are automatically resumed without manual intervention.
 
 ```yaml
 apiVersion: kuo.io/v1alpha1
@@ -107,7 +104,7 @@ spec:
 
 ## Hub & Spoke IAM Permissions
 
-### Hub Account (Central — where kuo runs)
+### Hub Account (Central — where kubernetes-upgrade-operator runs)
 
 The operator pod needs base credentials via **IRSA** or **EKS Pod Identity**.
 
@@ -198,7 +195,7 @@ The operator pod needs base credentials via **IRSA** or **EKS Pod Identity**.
 
 > Both policies can be attached to the same hub role when managing both same-account and cross-account clusters.
 >
-> **Important:** `sts:TagSession` is required in both Hub Policy and Spoke Policy. EKS Pod Identity and IRSA attach session tags when issuing credentials. Without this permission, the hub role cannot obtain credentials and all API calls will fail with `AccessDenied`.
+> ⚠️ **Important:** `sts:TagSession` is required in both Hub Policy and Spoke Policy. EKS Pod Identity and IRSA attach session tags when issuing credentials. Without this permission, the hub role cannot obtain credentials and all API calls will fail with `AccessDenied`.
 
 **Helm values for IRSA:**
 
@@ -208,15 +205,17 @@ serviceAccount:
     eks.amazonaws.com/role-arn: arn:aws:iam::111111111111:role/kuo-hub-role
 ```
 
-**Helm values for EKS Pod Identity:**
+**[EKS Pod Identity](https://docs.aws.amazon.com/eks/latest/userguide/pod-id-how-it-works.html):**
 
-```yaml
-serviceAccount:
-  annotations:
-    eks.amazonaws.com/audience: sts.amazonaws.com
+EKS Pod Identity does not require any ServiceAccount annotations. Create a Pod Identity Association instead:
+
+```bash
+aws eks create-pod-identity-association \
+  --cluster-name hub-cluster \
+  --namespace kube-system \
+  --service-account kuo \
+  --role-arn arn:aws:iam::111111111111:role/kuo-hub-role
 ```
-
-> EKS Pod Identity requires a Pod Identity Association created via `aws eks create-pod-identity-association`.
 
 ### Spoke Account (Target — EKS clusters to upgrade)
 
@@ -320,7 +319,7 @@ aws eks associate-access-policy \
   --access-scope type=cluster
 ```
 
-> Spoke cluster does **NOT** need EKS Pod Identity registration. The kuo pod only runs in the hub cluster and authenticates to spoke accounts via STS AssumeRole.
+> Spoke cluster does **NOT** need EKS Pod Identity registration. The kubernetes-upgrade-operator pod only runs in the hub cluster and authenticates to spoke accounts via STS AssumeRole.
 
 ### Permission Summary
 
@@ -367,16 +366,6 @@ make test           # Run tests
 make fmt            # Format code
 make lint           # Run clippy
 make install        # Install to ~/.cargo/bin/
-```
-
-## Release
-
-```bash
-# Container image (triggers GitHub Actions → zigbuild → multi-arch push to GHCR)
-git tag kuo/0.1.0 && git push --tags
-
-# Helm chart (triggers unified Helm chart release workflow)
-git tag kuo/charts/0.1.0 && git push --tags
 ```
 
 ## Constraints
