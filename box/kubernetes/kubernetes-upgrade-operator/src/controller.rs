@@ -58,7 +58,9 @@ pub async fn reconcile(obj: Arc<EKSUpgrade>, ctx: Arc<Context>) -> Result<Action
         // Only skip if not in a polling state
         if !matches!(
             phase,
-            UpgradePhase::UpgradingControlPlane
+            UpgradePhase::Planning
+                | UpgradePhase::PreflightChecking
+                | UpgradePhase::UpgradingControlPlane
                 | UpgradePhase::UpgradingAddons
                 | UpgradePhase::UpgradingNodeGroups
         ) {
