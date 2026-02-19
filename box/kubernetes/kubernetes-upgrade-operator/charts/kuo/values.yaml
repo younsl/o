@@ -51,6 +51,16 @@ podDisruptionBudget:
   # -- (string) Eviction policy for unhealthy pods. One of `IfHealthyBudget` or `AlwaysAllow`
   unhealthyPodEvictionPolicy: IfHealthyBudget
 
+# -- (object) Container security context.
+securityContext:
+  runAsNonRoot: true
+  runAsUser: 65532
+  readOnlyRootFilesystem: true
+  allowPrivilegeEscalation: false
+  capabilities:
+    drop:
+      - ALL
+
 # -- (object) Node selector for pod scheduling.
 nodeSelector: {}
 # -- (list) Tolerations for pod scheduling.
