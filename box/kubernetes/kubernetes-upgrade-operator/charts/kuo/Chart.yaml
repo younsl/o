@@ -2,8 +2,9 @@ apiVersion: v2
 name: kuo
 description: Kubernetes Upgrade Operator for EKS clusters
 type: application
-version: 0.1.1
+version: 0.1.0
 appVersion: "0.1.0"
 maintainers:
   - name: younsl
+    email: cysl@kakao.com
     url: https://github.com/younsl
