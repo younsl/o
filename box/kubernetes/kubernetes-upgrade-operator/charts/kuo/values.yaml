@@ -1,0 +1,90 @@
+crds:
+  # -- (bool) Whether to install CRDs. Set to false if CRDs are managed externally.
+  install: true
+  # -- (object) Annotations to add to the CRD resources.
+  annotations: {}
+
+# -- (int) Number of operator replicas to run.
+replicaCount: 1
+
+image:
+  # -- (string) Container image repository.
+  repository: ghcr.io/younsl/kuo
+  # -- (string) Image pull policy.
+  pullPolicy: IfNotPresent
+  # -- (string) Image tag. Defaults to `.Chart.AppVersion` if empty.
+  tag: ""
+
+# -- (list) Image pull secrets for private registries.
+imagePullSecrets: []
+
+serviceAccount:
+  # -- (bool) Whether to create a ServiceAccount.
+  create: true
+  # -- (object) Annotations to add to the ServiceAccount.
+  annotations: {}
+  # -- (string) ServiceAccount name. Defaults to the fullname template if empty.
+  name: ""
+
+resources:
+  limits:
+    # -- (string) Memory limit.
+    memory: 128Mi
+  requests:
+    # -- (string) CPU request.
+    cpu: 50m
+    # -- (string) Memory request.
+    memory: 64Mi
+
+# -- (list) In-place resize policies for container resources
+resizePolicy:
+  - resourceName: cpu
+    restartPolicy: NotRequired
+  - resourceName: memory
+    restartPolicy: RestartContainer
+
+podDisruptionBudget:
+  # -- (bool) Whether to create a PodDisruptionBudget.
+  enabled: true
+  # -- (int) Maximum number of pods that can be unavailable during disruption.
+  maxUnavailable: 1
+  # -- (string) Eviction policy for unhealthy pods. One of `IfHealthyBudget` or `AlwaysAllow`
+  unhealthyPodEvictionPolicy: IfHealthyBudget
+
+# -- (object) Node selector for pod scheduling.
+nodeSelector: {}
+# -- (list) Tolerations for pod scheduling.
+tolerations: []
+# -- (object) Affinity rules for pod scheduling.
+affinity: {}
+
+# -- (list) EKSUpgrade custom resources to create. Each entry creates an EKSUpgrade CR that the operator will reconcile.
+eksUpgrades: []
+  # - name: staging-cluster-upgrade
+  #   spec:
+  #     clusterName: staging-cluster
+  #     targetVersion: "1.31"
+  #     region: ap-northeast-2
+  #
+  # - name: production-cluster-upgrade
+  #   spec:
+  #     clusterName: production-cluster
+  #     targetVersion: "1.31"
+  #     region: ap-northeast-2
+  #     dryRun: true
+  #     skipPdbCheck: false
+  #     addonVersions:
+  #       kube-proxy: v1.31.0-eksbuild.1
+  #       coredns: v1.11.4-eksbuild.1
+  #     timeouts:
+  #       controlPlaneMinutes: 40
+  #       nodegroupMinutes: 90
+  #
+  # ## Cross-account example: assume a role in another AWS account.
+  # ## Works with both IRSA and EKS Pod Identity as the base credential source.
+  # - name: cross-account-cluster-upgrade
+  #   spec:
+  #     clusterName: remote-cluster
+  #     targetVersion: "1.31"
+  #     region: ap-northeast-2
+  #     assumeRoleArn: arn:aws:iam::123456789012:role/kuo-target-role

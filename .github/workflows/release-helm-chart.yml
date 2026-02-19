@@ -9,6 +9,7 @@ on:
       - 'trivy-collector/charts/[0-9]+.[0-9]+.[0-9]+'
       - 'grafana-dashboards/charts/[0-9]+.[0-9]+.[0-9]+'
       - 'gss/charts/[0-9]+.[0-9]+.[0-9]+'
+      - 'kuo/charts/[0-9]+.[0-9]+.[0-9]+'
 
 env:
   REGISTRY: ghcr.io
@@ -38,6 +39,12 @@ jobs:
           if [ "${CHART_NAME}" = "grafana-dashboards" ]; then
             CHART_PATH="box/kubernetes/${CHART_NAME}"
             CHART_DIRS="box/kubernetes"
+          fi
+
+          # kuo directory name differs from chart name
+          if [ "${CHART_NAME}" = "kuo" ]; then
+            CHART_PATH="box/kubernetes/kubernetes-upgrade-operator/charts/kuo"
+            CHART_DIRS="box/kubernetes/kubernetes-upgrade-operator/charts"
           fi
 
           echo "chart_name=${CHART_NAME}" >> $GITHUB_OUTPUT
