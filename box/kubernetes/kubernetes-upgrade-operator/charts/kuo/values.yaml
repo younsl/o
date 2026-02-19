@@ -29,12 +29,12 @@ serviceAccount:
 resources:
   limits:
     # -- (string) Memory limit.
-    memory: 128Mi
+    memory: 64Mi
   requests:
     # -- (string) CPU request.
-    cpu: 50m
+    cpu: 25m
     # -- (string) Memory request.
-    memory: 64Mi
+    memory: 32Mi
 
 # -- (list) In-place resize policies for container resources
 resizePolicy:
