@@ -33,13 +33,19 @@ pub async fn reconcile(obj: Arc<EKSUpgrade>, ctx: Arc<Context>) -> Result<Action
         .clone()
         .unwrap_or(UpgradePhase::Pending);
 
-    // Skip terminal phases
+    // Check generation for spec change detection
+    let generation = obj.metadata.generation.unwrap_or(0);
+
+    // Skip terminal phases (log guidance if spec was changed)
     if phase == UpgradePhase::Completed || phase == UpgradePhase::Failed {
+        if current_status.observed_generation < generation {
+            warn!(
+                "Spec changed for {} but phase is {}. Delete and recreate the EKSUpgrade resource to re-run.",
+                name, phase
+            );
+        }
         return Ok(Action::await_change());
     }
-
-    // Check generation to avoid re-processing
-    let generation = obj.metadata.generation.unwrap_or(0);
     let has_active_update = current_status
         .phases
         .control_plane
