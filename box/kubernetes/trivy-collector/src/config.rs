@@ -159,3 +159,90 @@ impl Config {
         format!("{}/trivy.db", self.storage_path)
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn default_config(mode: Mode) -> Config {
+        Config {
+            command: None,
+            mode,
+            log_format: "json".to_string(),
+            log_level: "info".to_string(),
+            health_port: 8080,
+            server_url: None,
+            cluster_name: "local".to_string(),
+            namespaces: vec![],
+            collect_vulnerability_reports: true,
+            collect_sbom_reports: true,
+            retry_attempts: 3,
+            retry_delay_secs: 5,
+            health_check_interval_secs: 30,
+            server_port: 3000,
+            storage_path: "/data".to_string(),
+            watch_local: true,
+        }
+    }
+
+    #[test]
+    fn test_validate_collector_without_server_url() {
+        let config = default_config(Mode::Collector);
+        assert!(config.validate().is_err());
+        assert_eq!(
+            config.validate().unwrap_err(),
+            "SERVER_URL is required in collector mode"
+        );
+    }
+
+    #[test]
+    fn test_validate_collector_with_server_url() {
+        let mut config = default_config(Mode::Collector);
+        config.server_url = Some("http://server:3000".to_string());
+        assert!(config.validate().is_ok());
+    }
+
+    #[test]
+    fn test_validate_server_mode() {
+        let config = default_config(Mode::Server);
+        assert!(config.validate().is_ok());
+    }
+
+    #[test]
+    fn test_get_server_url_present() {
+        let mut config = default_config(Mode::Collector);
+        config.server_url = Some("http://server:3000".to_string());
+        assert_eq!(config.get_server_url(), "http://server:3000");
+    }
+
+    #[test]
+    fn test_get_server_url_absent() {
+        let config = default_config(Mode::Collector);
+        assert_eq!(config.get_server_url(), "");
+    }
+
+    #[test]
+    fn test_get_db_path() {
+        let config = default_config(Mode::Server);
+        assert_eq!(config.get_db_path(), "/data/trivy.db");
+    }
+
+    #[test]
+    fn test_get_db_path_custom() {
+        let mut config = default_config(Mode::Server);
+        config.storage_path = "/tmp/custom".to_string();
+        assert_eq!(config.get_db_path(), "/tmp/custom/trivy.db");
+    }
+
+    #[test]
+    fn test_mode_display() {
+        assert_eq!(Mode::Collector.to_string(), "collector");
+        assert_eq!(Mode::Server.to_string(), "server");
+    }
+
+    #[test]
+    fn test_get_cluster_name() {
+        let config = default_config(Mode::Collector);
+        assert_eq!(config.get_cluster_name(), "local");
+    }
+}

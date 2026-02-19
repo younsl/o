@@ -1,7 +1,7 @@
 //! Application state and watcher status management
 
-use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::Arc;
 use std::time::Instant;
 
 use crate::config::Config;
@@ -124,4 +124,53 @@ pub struct AppState {
     pub watcher_status: Arc<WatcherStatus>,
     pub config: Arc<ConfigInfo>,
     pub runtime: Arc<RuntimeInfo>,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_watcher_status_default() {
+        let status = WatcherStatus::new();
+        assert!(!status.vuln_watcher_running.load(Ordering::SeqCst));
+        assert!(!status.sbom_watcher_running.load(Ordering::SeqCst));
+        assert!(!status.vuln_initial_sync_done.load(Ordering::SeqCst));
+        assert!(!status.sbom_initial_sync_done.load(Ordering::SeqCst));
+    }
+
+    #[test]
+    fn test_watcher_status_set_vuln() {
+        let status = WatcherStatus::new();
+        status.set_vuln_running(true);
+        status.set_vuln_sync_done(true);
+        assert!(status.vuln_watcher_running.load(Ordering::SeqCst));
+        assert!(status.vuln_initial_sync_done.load(Ordering::SeqCst));
+        assert!(!status.sbom_watcher_running.load(Ordering::SeqCst));
+    }
+
+    #[test]
+    fn test_watcher_status_set_sbom() {
+        let status = WatcherStatus::new();
+        status.set_sbom_running(true);
+        status.set_sbom_sync_done(true);
+        assert!(status.sbom_watcher_running.load(Ordering::SeqCst));
+        assert!(status.sbom_initial_sync_done.load(Ordering::SeqCst));
+        assert!(!status.vuln_watcher_running.load(Ordering::SeqCst));
+    }
+
+    #[test]
+    fn test_runtime_info_uptime_string() {
+        let runtime = RuntimeInfo::new();
+        let uptime = runtime.uptime_string();
+        // Just created, should be 0s
+        assert_eq!(uptime, "0s");
+    }
+
+    #[test]
+    fn test_runtime_info_hostname() {
+        let runtime = RuntimeInfo::new();
+        // hostname should be non-empty
+        assert!(!runtime.hostname.is_empty());
+    }
 }

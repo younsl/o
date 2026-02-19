@@ -343,4 +343,116 @@ mod tests {
         assert_eq!(severities.len(), 1);
         assert_eq!(severities[0], "critical");
     }
+
+    #[test]
+    fn test_trend_query_parse_range_relative() {
+        let query = TrendQuery {
+            range: Some("7d".to_string()),
+            cluster: None,
+            granularity: None,
+        };
+        let (start, end) = query.parse_range();
+        let today = chrono::Utc::now().date_naive();
+        let expected_start = today - chrono::Duration::days(7);
+        assert_eq!(start, expected_start.to_string());
+        assert_eq!(end, today.to_string());
+    }
+
+    #[test]
+    fn test_trend_query_parse_range_custom() {
+        let query = TrendQuery {
+            range: Some("2025-01-01:2025-01-31".to_string()),
+            cluster: None,
+            granularity: None,
+        };
+        let (start, end) = query.parse_range();
+        assert_eq!(start, "2025-01-01");
+        assert_eq!(end, "2025-01-31");
+    }
+
+    #[test]
+    fn test_trend_query_parse_range_default() {
+        let query = TrendQuery {
+            range: None,
+            cluster: None,
+            granularity: None,
+        };
+        let (start, end) = query.parse_range();
+        let today = chrono::Utc::now().date_naive();
+        let expected_start = today - chrono::Duration::days(30);
+        assert_eq!(start, expected_start.to_string());
+        assert_eq!(end, today.to_string());
+    }
+
+    #[test]
+    fn test_trend_query_parse_range_unknown_defaults_to_30d() {
+        let query = TrendQuery {
+            range: Some("999d".to_string()),
+            cluster: None,
+            granularity: None,
+        };
+        let (start, end) = query.parse_range();
+        let today = chrono::Utc::now().date_naive();
+        let expected_start = today - chrono::Duration::days(30);
+        assert_eq!(start, expected_start.to_string());
+        assert_eq!(end, today.to_string());
+    }
+
+    #[test]
+    fn test_trend_query_granularity_auto_hourly() {
+        let query = TrendQuery {
+            range: Some("1d".to_string()),
+            cluster: None,
+            granularity: None,
+        };
+        assert_eq!(query.get_granularity(), "hourly");
+    }
+
+    #[test]
+    fn test_trend_query_granularity_auto_daily() {
+        let query = TrendQuery {
+            range: Some("7d".to_string()),
+            cluster: None,
+            granularity: None,
+        };
+        assert_eq!(query.get_granularity(), "daily");
+    }
+
+    #[test]
+    fn test_trend_query_granularity_explicit() {
+        let query = TrendQuery {
+            range: Some("1d".to_string()),
+            cluster: None,
+            granularity: Some("weekly".to_string()),
+        };
+        assert_eq!(query.get_granularity(), "weekly");
+    }
+
+    #[test]
+    fn test_config_item_public() {
+        let item = ConfigItem::public("MODE", "server");
+        assert_eq!(item.env, "MODE");
+        assert_eq!(item.value, "server");
+        assert!(!item.sensitive);
+    }
+
+    #[test]
+    fn test_config_item_sensitive() {
+        let item = ConfigItem::sensitive("API_KEY", "sk-abcdef123456");
+        assert_eq!(item.env, "API_KEY");
+        assert_eq!(item.value, "sk****");
+        assert!(item.sensitive);
+    }
+
+    #[test]
+    fn test_config_item_mask_empty() {
+        let item = ConfigItem::sensitive("TOKEN", "");
+        assert_eq!(item.value, "(empty)");
+    }
+
+    #[test]
+    fn test_config_item_mask_short() {
+        let item = ConfigItem::sensitive("PIN", "1234");
+        assert_eq!(item.value, "****");
+    }
 }

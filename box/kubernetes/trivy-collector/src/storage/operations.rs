@@ -707,6 +707,236 @@ mod tests {
     }
 
     #[test]
+    fn test_query_reports_with_severity_filter() {
+        let db = Database::new(":memory:").expect("Failed to create database");
+
+        // Insert report with critical=2, high=5
+        db.upsert_report(&create_test_payload(
+            "prod",
+            "default",
+            "app1",
+            "vulnerabilityreport",
+        ))
+        .unwrap();
+
+        // Insert report with critical=0, high=0
+        let mut low_sev_payload =
+            create_test_payload("prod", "default", "app2", "vulnerabilityreport");
+        low_sev_payload.data_json = json!({
+            "metadata": { "labels": {} },
+            "report": {
+                "artifact": { "repository": "alpine", "tag": "3.19" },
+                "registry": { "server": "docker.io" },
+                "summary": {
+                    "criticalCount": 0,
+                    "highCount": 0,
+                    "mediumCount": 1,
+                    "lowCount": 2,
+                    "unknownCount": 0
+                }
+            }
+        })
+        .to_string();
+        db.upsert_report(&low_sev_payload).unwrap();
+
+        // Filter by critical severity
+        let params = QueryParams {
+            severity: Some(vec!["critical".to_string()]),
+            ..Default::default()
+        };
+        let results = db
+            .query_reports("vulnerabilityreport", &params)
+            .expect("Failed to query");
+        assert_eq!(results.len(), 1);
+        assert_eq!(results[0].name, "app1");
+    }
+
+    #[test]
+    fn test_query_reports_with_app_filter() {
+        let db = Database::new(":memory:").expect("Failed to create database");
+
+        db.upsert_report(&create_test_payload(
+            "prod",
+            "default",
+            "nginx-vuln",
+            "vulnerabilityreport",
+        ))
+        .unwrap();
+        db.upsert_report(&create_test_payload(
+            "prod",
+            "default",
+            "redis-vuln",
+            "vulnerabilityreport",
+        ))
+        .unwrap();
+
+        // Both reports have app="test-app" from create_test_payload
+        let params = QueryParams {
+            app: Some("test".to_string()),
+            ..Default::default()
+        };
+        let results = db
+            .query_reports("vulnerabilityreport", &params)
+            .expect("Failed to query");
+        assert_eq!(results.len(), 2);
+    }
+
+    #[test]
+    fn test_query_reports_with_image_filter() {
+        let db = Database::new(":memory:").expect("Failed to create database");
+
+        db.upsert_report(&create_test_payload(
+            "prod",
+            "default",
+            "app1",
+            "vulnerabilityreport",
+        ))
+        .unwrap();
+
+        let params = QueryParams {
+            image: Some("nginx".to_string()),
+            ..Default::default()
+        };
+        let results = db
+            .query_reports("vulnerabilityreport", &params)
+            .expect("Failed to query");
+        assert_eq!(results.len(), 1);
+
+        let params = QueryParams {
+            image: Some("nonexistent".to_string()),
+            ..Default::default()
+        };
+        let results = db
+            .query_reports("vulnerabilityreport", &params)
+            .expect("Failed to query");
+        assert_eq!(results.len(), 0);
+    }
+
+    #[test]
+    fn test_query_reports_with_limit_offset() {
+        let db = Database::new(":memory:").expect("Failed to create database");
+
+        for i in 0..5 {
+            db.upsert_report(&create_test_payload(
+                "prod",
+                "default",
+                &format!("app{}", i),
+                "vulnerabilityreport",
+            ))
+            .unwrap();
+        }
+
+        let params = QueryParams {
+            limit: Some(2),
+            ..Default::default()
+        };
+        let results = db
+            .query_reports("vulnerabilityreport", &params)
+            .expect("Failed to query");
+        assert_eq!(results.len(), 2);
+
+        let params = QueryParams {
+            limit: Some(2),
+            offset: Some(3),
+            ..Default::default()
+        };
+        let results = db
+            .query_reports("vulnerabilityreport", &params)
+            .expect("Failed to query");
+        assert_eq!(results.len(), 2);
+    }
+
+    #[test]
+    fn test_list_clusters_with_data() {
+        let db = Database::new(":memory:").expect("Failed to create database");
+
+        db.upsert_report(&create_test_payload(
+            "prod",
+            "default",
+            "app1",
+            "vulnerabilityreport",
+        ))
+        .unwrap();
+        db.upsert_report(&create_test_payload(
+            "prod",
+            "default",
+            "app2",
+            "sbomreport",
+        ))
+        .unwrap();
+        db.upsert_report(&create_test_payload(
+            "staging",
+            "default",
+            "app3",
+            "vulnerabilityreport",
+        ))
+        .unwrap();
+
+        let clusters = db.list_clusters().expect("Failed to list clusters");
+        assert_eq!(clusters.len(), 2);
+
+        let prod = clusters.iter().find(|c| c.name == "prod").unwrap();
+        assert_eq!(prod.vuln_report_count, 1);
+        assert_eq!(prod.sbom_report_count, 1);
+
+        let staging = clusters.iter().find(|c| c.name == "staging").unwrap();
+        assert_eq!(staging.vuln_report_count, 1);
+        assert_eq!(staging.sbom_report_count, 0);
+    }
+
+    #[test]
+    fn test_update_notes_creates_then_updates() {
+        let db = Database::new(":memory:").expect("Failed to create database");
+        let payload = create_test_payload("prod", "default", "app1", "vulnerabilityreport");
+        db.upsert_report(&payload).expect("Failed to insert");
+
+        // First update: creates notes
+        db.update_notes("prod", "default", "app1", "vulnerabilityreport", "first note")
+            .expect("Failed to update notes");
+
+        let report = db
+            .get_report("prod", "default", "app1", "vulnerabilityreport")
+            .unwrap()
+            .unwrap();
+        let created_at = report.meta.notes_created_at.clone();
+        assert_eq!(report.meta.notes, "first note");
+        assert!(created_at.is_some());
+
+        // Second update: updates notes, created_at should remain
+        db.update_notes(
+            "prod",
+            "default",
+            "app1",
+            "vulnerabilityreport",
+            "updated note",
+        )
+        .expect("Failed to update notes");
+
+        let report = db
+            .get_report("prod", "default", "app1", "vulnerabilityreport")
+            .unwrap()
+            .unwrap();
+        assert_eq!(report.meta.notes, "updated note");
+        assert_eq!(report.meta.notes_created_at, created_at);
+    }
+
+    #[test]
+    fn test_update_notes_nonexistent_report() {
+        let db = Database::new(":memory:").expect("Failed to create database");
+
+        let updated = db
+            .update_notes(
+                "prod",
+                "default",
+                "nonexistent",
+                "vulnerabilityreport",
+                "note",
+            )
+            .expect("Failed to update notes");
+        assert!(!updated);
+    }
+
+    #[test]
     fn test_get_stats_with_data() {
         let db = Database::new(":memory:").expect("Failed to create database");
 

@@ -137,3 +137,85 @@ pub struct Stats {
     #[schema(example = "3.45.0")]
     pub sqlite_version: String,
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn sample_report_meta() -> ReportMeta {
+        ReportMeta {
+            id: 1,
+            cluster: "prod".to_string(),
+            namespace: "default".to_string(),
+            name: "nginx-vuln".to_string(),
+            app: "nginx".to_string(),
+            image: "nginx:1.25".to_string(),
+            report_type: "vulnerabilityreport".to_string(),
+            summary: Some(VulnSummary {
+                critical: 2,
+                high: 5,
+                medium: 10,
+                low: 3,
+                unknown: 1,
+            }),
+            components_count: None,
+            received_at: "2025-01-01T00:00:00Z".to_string(),
+            updated_at: "2025-01-01T00:00:00Z".to_string(),
+            notes: String::new(),
+            notes_created_at: None,
+            notes_updated_at: None,
+        }
+    }
+
+    #[test]
+    fn test_full_report_serialize_valid_json() {
+        let report = FullReport {
+            meta: sample_report_meta(),
+            data_json: r#"{"key": "value"}"#.to_string(),
+        };
+
+        let json = serde_json::to_value(&report).expect("Failed to serialize");
+        assert_eq!(json["data"]["key"], "value");
+        assert_eq!(json["meta"]["cluster"], "prod");
+    }
+
+    #[test]
+    fn test_full_report_serialize_invalid_json() {
+        let report = FullReport {
+            meta: sample_report_meta(),
+            data_json: "not valid json".to_string(),
+        };
+
+        // Should not panic — invalid JSON falls back to null
+        let json = serde_json::to_value(&report).expect("Failed to serialize");
+        assert!(json["data"].is_null());
+    }
+
+    #[test]
+    fn test_full_report_serialize_empty_json() {
+        let report = FullReport {
+            meta: sample_report_meta(),
+            data_json: String::new(),
+        };
+
+        let json = serde_json::to_value(&report).expect("Failed to serialize");
+        assert!(json["data"].is_null());
+    }
+
+    #[test]
+    fn test_vuln_summary_serialization() {
+        let summary = VulnSummary {
+            critical: 1,
+            high: 2,
+            medium: 3,
+            low: 4,
+            unknown: 5,
+        };
+        let json = serde_json::to_value(&summary).expect("Failed to serialize");
+        assert_eq!(json["critical"], 1);
+        assert_eq!(json["high"], 2);
+        assert_eq!(json["medium"], 3);
+        assert_eq!(json["low"], 4);
+        assert_eq!(json["unknown"], 5);
+    }
+}

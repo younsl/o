@@ -199,7 +199,16 @@ pub async fn get_vulnerability_report(
         .db
         .get_report(&cluster, &namespace, &name, "vulnerabilityreport")
     {
-        Ok(Some(report)) => (StatusCode::OK, Json(serde_json::to_value(report).unwrap())),
+        Ok(Some(report)) => match serde_json::to_value(report) {
+            Ok(json) => (StatusCode::OK, Json(json)),
+            Err(e) => {
+                error!(error = %e, "Failed to serialize vulnerability report");
+                (
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                    Json(serde_json::json!({"error": "Failed to serialize report"})),
+                )
+            }
+        },
         Ok(None) => (
             StatusCode::NOT_FOUND,
             Json(serde_json::json!({"error": "Report not found"})),
@@ -279,7 +288,16 @@ pub async fn get_sbom_report(
         .db
         .get_report(&cluster, &namespace, &name, "sbomreport")
     {
-        Ok(Some(report)) => (StatusCode::OK, Json(serde_json::to_value(report).unwrap())),
+        Ok(Some(report)) => match serde_json::to_value(report) {
+            Ok(json) => (StatusCode::OK, Json(json)),
+            Err(e) => {
+                error!(error = %e, "Failed to serialize SBOM report");
+                (
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                    Json(serde_json::json!({"error": "Failed to serialize report"})),
+                )
+            }
+        },
         Ok(None) => (
             StatusCode::NOT_FOUND,
             Json(serde_json::json!({"error": "Report not found"})),
