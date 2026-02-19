@@ -6,7 +6,7 @@
 [![Helm Chart](https://img.shields.io/badge/ghcr.io-charts%2Fkuo-black?style=flat-square&logo=helm&logoColor=white)](https://github.com/younsl/o/pkgs/container/charts%2Fkuo)
 [![GitHub license](https://img.shields.io/github/license/younsl/o?style=flat-square&color=black)](https://github.com/younsl/o/blob/main/LICENSE)
 
-Kubernetes Upgrade Operator for EKS clusters. Watches `EKSUpgrade` custom resources and performs declarative, sequential EKS cluster upgrades including control plane, add-ons, and managed node groups.
+Kubernetes Upgrade Operator for EKS clusters. Watches `EKSUpgrade` custom resources and performs declarative, sequential EKS cluster upgrades including control plane, add-ons, and managed node groups. Inspired by Rancher's [system-upgrade-controller](https://github.com/rancher/system-upgrade-controller).
 
 ## Features
 
@@ -172,7 +172,8 @@ serviceAccount:
         "eks:ListClusters",
         "eks:DescribeCluster",
         "eks:UpdateClusterVersion",
-        "eks:DescribeUpdate"
+        "eks:DescribeUpdate",
+        "eks:ListNodegroups"
       ],
       "Resource": "arn:aws:eks:*:222222222222:cluster/*"
     },
@@ -200,7 +201,6 @@ serviceAccount:
       "Sid": "EKSNodegroupOperations",
       "Effect": "Allow",
       "Action": [
-        "eks:ListNodegroups",
         "eks:DescribeNodegroup",
         "eks:UpdateNodegroupVersion"
       ],
