@@ -39,6 +39,18 @@ Pending → Planning → PreflightChecking → UpgradingControlPlane → Upgradi
                             └───── (mandatory check failure) ──→ Failed ←── (any phase error) ──────────────┘
 ```
 
+### Dry-Run Mode
+
+When `dryRun: true` is set, the operator executes planning and preflight validation but skips all infrastructure changes:
+
+```
+Pending → Planning → PreflightChecking ──→ Completed (DryRunCompleted)
+                            │
+                            └── (mandatory check failure) ──→ Failed
+```
+
+The dry-run gate is evaluated **after** all preflight checks pass. If any mandatory check fails, the upgrade fails regardless of the dry-run flag. On success, the full upgrade plan (upgrade path, addon targets, nodegroup targets) is available in `status.phases` for review.
+
 **Preflight checks:**
 
 | Check | Category | Behavior |
