@@ -123,3 +123,108 @@ impl EventRecorder {
             .unwrap_or_else(|e| tracing::warn!("Failed to publish warning event: {}", e));
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::crd::EKSUpgradeStatus;
+
+    #[test]
+    fn test_set_phase_completed() {
+        let mut status = EKSUpgradeStatus::default();
+        set_phase(&mut status, UpgradePhase::Completed);
+        assert_eq!(status.phase, Some(UpgradePhase::Completed));
+        assert!(status.completed_at.is_some());
+    }
+
+    #[test]
+    fn test_set_phase_non_terminal() {
+        let mut status = EKSUpgradeStatus::default();
+        set_phase(&mut status, UpgradePhase::UpgradingControlPlane);
+        assert_eq!(status.phase, Some(UpgradePhase::UpgradingControlPlane));
+        assert!(status.completed_at.is_none());
+    }
+
+    #[test]
+    fn test_set_failed() {
+        let mut status = EKSUpgradeStatus::default();
+        set_failed(&mut status, "something broke");
+        assert_eq!(status.phase, Some(UpgradePhase::Failed));
+        assert!(status.completed_at.is_some());
+        assert_eq!(status.message.as_deref(), Some("something broke"));
+    }
+
+    #[test]
+    fn test_set_failed_message_in_condition() {
+        let mut status = EKSUpgradeStatus::default();
+        set_failed(&mut status, "timeout exceeded");
+        let cond = status
+            .conditions
+            .iter()
+            .find(|c| c.r#type == "Ready")
+            .unwrap();
+        assert_eq!(cond.message.as_deref(), Some("timeout exceeded"));
+        assert_eq!(cond.status, "False");
+        assert_eq!(cond.reason, "UpgradeFailed");
+    }
+
+    #[test]
+    fn test_set_condition_adds_new() {
+        let mut status = EKSUpgradeStatus::default();
+        assert!(status.conditions.is_empty());
+        set_condition(&mut status, "Ready", "True", "AllGood", None);
+        assert_eq!(status.conditions.len(), 1);
+        assert_eq!(status.conditions[0].r#type, "Ready");
+    }
+
+    #[test]
+    fn test_set_condition_replaces_existing() {
+        let mut status = EKSUpgradeStatus::default();
+        set_condition(&mut status, "Ready", "False", "NotReady", None);
+        set_condition(
+            &mut status,
+            "Ready",
+            "True",
+            "NowReady",
+            Some("ok".to_string()),
+        );
+        assert_eq!(status.conditions.len(), 1);
+        assert_eq!(status.conditions[0].status, "True");
+        assert_eq!(status.conditions[0].reason, "NowReady");
+    }
+
+    #[test]
+    fn test_set_condition_preserves_other_types() {
+        let mut status = EKSUpgradeStatus::default();
+        set_condition(&mut status, "AWSAuthenticated", "True", "Auth", None);
+        set_condition(&mut status, "Ready", "True", "Ok", None);
+        assert_eq!(status.conditions.len(), 2);
+        assert!(
+            status
+                .conditions
+                .iter()
+                .any(|c| c.r#type == "AWSAuthenticated")
+        );
+        assert!(status.conditions.iter().any(|c| c.r#type == "Ready"));
+    }
+
+    #[test]
+    fn test_set_condition_fields() {
+        let mut status = EKSUpgradeStatus::default();
+        set_condition(
+            &mut status,
+            "Ready",
+            "True",
+            "Complete",
+            Some("done".to_string()),
+        );
+        let cond = &status.conditions[0];
+        assert_eq!(cond.r#type, "Ready");
+        assert_eq!(cond.status, "True");
+        assert_eq!(cond.reason, "Complete");
+        assert_eq!(cond.message.as_deref(), Some("done"));
+        // last_transition_time should be recent (within last second)
+        let elapsed = Utc::now().signed_duration_since(&cond.last_transition_time);
+        assert!(elapsed.num_seconds() < 2);
+    }
+}

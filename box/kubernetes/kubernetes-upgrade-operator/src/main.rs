@@ -11,6 +11,7 @@ mod eks;
 mod error;
 mod health;
 mod k8s;
+mod metrics;
 mod phases;
 mod status;
 
@@ -72,7 +73,12 @@ async fn run() -> Result<()> {
     let client = kube::Client::try_default().await?;
     info!("Connected to Kubernetes API server");
 
-    // Start health server
+    // Initialize Prometheus metrics
+    let mut registry = prometheus_client::registry::Registry::default();
+    let metrics = Arc::new(metrics::Metrics::new(&mut registry));
+    let registry = Arc::new(registry);
+
+    // Start health server (port 8080)
     let health_state = health::HealthState::new();
     let health_state_clone = health_state.clone();
     tokio::spawn(async move {
@@ -81,11 +87,20 @@ async fn run() -> Result<()> {
         }
     });
 
+    // Start metrics server (port 8081)
+    let registry_clone = registry.clone();
+    tokio::spawn(async move {
+        if let Err(e) = metrics::serve(8081, registry_clone).await {
+            error!("Metrics server failed: {}", e);
+        }
+    });
+
     // Set up the controller
     let api: Api<EKSUpgrade> = Api::all(client.clone());
 
     let ctx = Arc::new(Context {
         kube_client: client.clone(),
+        metrics,
     });
 
     // Mark as ready once controller starts

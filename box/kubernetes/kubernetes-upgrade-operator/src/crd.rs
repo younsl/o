@@ -333,4 +333,108 @@ mod tests {
         assert!(status.phases.nodegroups.is_empty());
         assert!(status.conditions.is_empty());
     }
+
+    #[test]
+    fn test_component_status_equality() {
+        assert_eq!(ComponentStatus::Pending, ComponentStatus::Pending);
+        assert_eq!(ComponentStatus::InProgress, ComponentStatus::InProgress);
+        assert_eq!(ComponentStatus::Completed, ComponentStatus::Completed);
+        assert_eq!(ComponentStatus::Failed, ComponentStatus::Failed);
+        assert_eq!(ComponentStatus::Skipped, ComponentStatus::Skipped);
+        assert_ne!(ComponentStatus::Pending, ComponentStatus::Completed);
+    }
+
+    #[test]
+    fn test_component_status_all_variants() {
+        let variants = [
+            ComponentStatus::Pending,
+            ComponentStatus::InProgress,
+            ComponentStatus::Completed,
+            ComponentStatus::Failed,
+            ComponentStatus::Skipped,
+        ];
+        assert_eq!(variants.len(), 5);
+    }
+
+    #[test]
+    fn test_phase_statuses_default() {
+        let ps = PhaseStatuses::default();
+        assert!(ps.planning.is_none());
+        assert!(ps.preflight.is_none());
+        assert!(ps.control_plane.is_none());
+        assert!(ps.addons.is_empty());
+        assert!(ps.nodegroups.is_empty());
+    }
+
+    #[test]
+    fn test_upgrade_condition_fields() {
+        let now = chrono::Utc::now();
+        let cond = UpgradeCondition {
+            r#type: "Ready".to_string(),
+            status: "True".to_string(),
+            reason: "UpgradeCompleted".to_string(),
+            message: Some("All good".to_string()),
+            last_transition_time: now,
+        };
+        assert_eq!(cond.r#type, "Ready");
+        assert_eq!(cond.status, "True");
+        assert_eq!(cond.reason, "UpgradeCompleted");
+        assert_eq!(cond.message.as_deref(), Some("All good"));
+        assert_eq!(cond.last_transition_time, now);
+    }
+
+    #[test]
+    fn test_aws_identity_fields() {
+        let identity = AwsIdentity {
+            account_id: "123456789012".to_string(),
+            arn: "arn:aws:iam::123456789012:role/kuo-role".to_string(),
+        };
+        assert_eq!(identity.account_id, "123456789012");
+        assert!(identity.arn.contains("kuo-role"));
+    }
+
+    #[test]
+    fn test_timeout_config_serde_defaults() {
+        let json = r#"{}"#;
+        let config: TimeoutConfig = serde_json::from_str(json).unwrap();
+        assert_eq!(config.control_plane_minutes, 30);
+        assert_eq!(config.nodegroup_minutes, 60);
+    }
+
+    #[test]
+    fn test_status_serialization_roundtrip() {
+        let status = EKSUpgradeStatus {
+            phase: Some(UpgradePhase::Planning),
+            current_version: Some("1.32".to_string()),
+            ..Default::default()
+        };
+        let json = serde_json::to_string(&status).unwrap();
+        let deserialized: EKSUpgradeStatus = serde_json::from_str(&json).unwrap();
+        assert_eq!(deserialized.phase, Some(UpgradePhase::Planning));
+        assert_eq!(deserialized.current_version.as_deref(), Some("1.32"));
+    }
+
+    #[test]
+    fn test_upgrade_phase_all_variants() {
+        let variants = [
+            UpgradePhase::Pending,
+            UpgradePhase::Planning,
+            UpgradePhase::PreflightChecking,
+            UpgradePhase::UpgradingControlPlane,
+            UpgradePhase::UpgradingAddons,
+            UpgradePhase::UpgradingNodeGroups,
+            UpgradePhase::Completed,
+            UpgradePhase::Failed,
+        ];
+        let displays: Vec<String> = variants.iter().map(|v| v.to_string()).collect();
+        assert_eq!(displays.len(), 8);
+        assert!(displays.contains(&"Pending".to_string()));
+        assert!(displays.contains(&"Planning".to_string()));
+        assert!(displays.contains(&"PreflightChecking".to_string()));
+        assert!(displays.contains(&"UpgradingControlPlane".to_string()));
+        assert!(displays.contains(&"UpgradingAddons".to_string()));
+        assert!(displays.contains(&"UpgradingNodeGroups".to_string()));
+        assert!(displays.contains(&"Completed".to_string()));
+        assert!(displays.contains(&"Failed".to_string()));
+    }
 }

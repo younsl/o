@@ -120,4 +120,35 @@ mod tests {
         };
         assert!(!plan.is_empty());
     }
+
+    #[test]
+    fn test_upgrade_plan_is_empty_with_all_components() {
+        let addon = AddonInfo {
+            name: "coredns".to_string(),
+            current_version: "v1.11.1-eksbuild.1".to_string(),
+        };
+        let ng = NodeGroupInfo {
+            name: "ng-system".to_string(),
+            version: Some("1.32".to_string()),
+        };
+        let plan = UpgradePlan {
+            current_version: "1.32".to_string(),
+            upgrade_path: vec!["1.33".to_string()],
+            addon_upgrades: vec![(addon, "v1.11.3-eksbuild.2".to_string())],
+            nodegroup_upgrades: vec![ng],
+        };
+        assert!(!plan.is_empty());
+    }
+
+    #[test]
+    fn test_upgrade_plan_current_version() {
+        let plan = UpgradePlan {
+            current_version: "1.31".to_string(),
+            upgrade_path: vec!["1.32".to_string(), "1.33".to_string()],
+            addon_upgrades: vec![],
+            nodegroup_upgrades: vec![],
+        };
+        assert_eq!(plan.current_version, "1.31");
+        assert_eq!(plan.upgrade_path.len(), 2);
+    }
 }

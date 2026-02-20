@@ -91,6 +91,10 @@ The following table lists the configurable parameters and their default values.
 | podDisruptionBudget.maxUnavailable | int | `1` | Maximum number of pods that can be unavailable during disruption. |
 | podDisruptionBudget.unhealthyPodEvictionPolicy | string | `"IfHealthyBudget"` | Eviction policy for unhealthy pods. One of `IfHealthyBudget` or `AlwaysAllow` |
 | securityContext | object | `{"allowPrivilegeEscalation":false,"capabilities":{"drop":["ALL"]},"readOnlyRootFilesystem":true,"runAsNonRoot":true,"runAsUser":65532}` | Container security context. |
+| serviceMonitor.enabled | bool | `false` | Whether to create a ServiceMonitor for Prometheus scraping. |
+| serviceMonitor.interval | string | `"30s"` | Scrape interval for the ServiceMonitor. |
+| serviceMonitor.scrapeTimeout | string | `""` | Scrape timeout for the ServiceMonitor. Defaults to Prometheus global setting if empty. |
+| serviceMonitor.additionalLabels | object | `{}` | Additional labels to add to the ServiceMonitor resource. |
 | nodeSelector | object | `{}` | Node selector for pod scheduling. |
 | tolerations | list | `[]` | Tolerations for pod scheduling. |
 | affinity | object | `{}` | Affinity rules for pod scheduling. |

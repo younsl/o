@@ -106,3 +106,40 @@ fn advance_to_next_phase(new_status: &mut EKSUpgradeStatus) {
         status::set_condition(new_status, "Ready", "True", "UpgradeCompleted", None);
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::crd::{EKSUpgradeStatus, NodegroupStatus};
+
+    #[test]
+    fn test_advance_with_nodegroups() {
+        let mut s = EKSUpgradeStatus::default();
+        s.phases.nodegroups.push(NodegroupStatus {
+            name: "ng-system".to_string(),
+            current_version: "1.32".to_string(),
+            target_version: "1.33".to_string(),
+            status: ComponentStatus::Pending,
+            update_id: None,
+            started_at: None,
+            completed_at: None,
+        });
+        advance_to_next_phase(&mut s);
+        assert_eq!(s.phase, Some(UpgradePhase::UpgradingNodeGroups));
+    }
+
+    #[test]
+    fn test_advance_no_nodegroups() {
+        let mut s = EKSUpgradeStatus::default();
+        advance_to_next_phase(&mut s);
+        assert_eq!(s.phase, Some(UpgradePhase::Completed));
+        let ready = s.conditions.iter().find(|c| c.r#type == "Ready").unwrap();
+        assert_eq!(ready.status, "True");
+        assert_eq!(ready.reason, "UpgradeCompleted");
+    }
+
+    #[test]
+    fn test_poll_interval_constant() {
+        assert_eq!(POLL_INTERVAL, Duration::from_secs(15));
+    }
+}

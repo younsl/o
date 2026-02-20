@@ -186,3 +186,88 @@ fn advance_to_next_phase(new_status: &mut EKSUpgradeStatus) {
         status::set_condition(new_status, "Ready", "True", "UpgradeCompleted", None);
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::crd::{
+        AddonStatus, ComponentStatus, ControlPlaneStatus, EKSUpgradeStatus, NodegroupStatus,
+    };
+
+    fn status_with_cp() -> EKSUpgradeStatus {
+        let mut s = EKSUpgradeStatus::default();
+        s.phases.control_plane = Some(ControlPlaneStatus {
+            update_id: Some("upd-123".to_string()),
+            target: Some("1.33".to_string()),
+            started_at: Some(Utc::now()),
+            ..Default::default()
+        });
+        s
+    }
+
+    #[test]
+    fn test_advance_with_addons() {
+        let mut s = status_with_cp();
+        s.phases.addons.push(AddonStatus {
+            name: "coredns".to_string(),
+            current_version: "v1.11.1".to_string(),
+            target_version: "v1.11.3".to_string(),
+            status: ComponentStatus::Pending,
+            started_at: None,
+            completed_at: None,
+        });
+        advance_to_next_phase(&mut s);
+        assert_eq!(s.phase, Some(UpgradePhase::UpgradingAddons));
+        assert!(
+            s.phases
+                .control_plane
+                .as_ref()
+                .unwrap()
+                .completed_at
+                .is_some()
+        );
+    }
+
+    #[test]
+    fn test_advance_with_nodegroups_only() {
+        let mut s = status_with_cp();
+        s.phases.nodegroups.push(NodegroupStatus {
+            name: "ng-system".to_string(),
+            current_version: "1.32".to_string(),
+            target_version: "1.33".to_string(),
+            status: ComponentStatus::Pending,
+            update_id: None,
+            started_at: None,
+            completed_at: None,
+        });
+        advance_to_next_phase(&mut s);
+        assert_eq!(s.phase, Some(UpgradePhase::UpgradingNodeGroups));
+    }
+
+    #[test]
+    fn test_advance_no_remaining() {
+        let mut s = status_with_cp();
+        advance_to_next_phase(&mut s);
+        assert_eq!(s.phase, Some(UpgradePhase::Completed));
+        let ready = s.conditions.iter().find(|c| c.r#type == "Ready").unwrap();
+        assert_eq!(ready.status, "True");
+        assert_eq!(ready.reason, "UpgradeCompleted");
+    }
+
+    #[test]
+    fn test_advance_clears_cp_fields() {
+        let mut s = status_with_cp();
+        assert!(s.phases.control_plane.as_ref().unwrap().update_id.is_some());
+        advance_to_next_phase(&mut s);
+        let cp = s.phases.control_plane.as_ref().unwrap();
+        assert!(cp.update_id.is_none());
+        assert!(cp.target.is_none());
+        assert!(cp.started_at.is_none());
+        assert!(cp.completed_at.is_some());
+    }
+
+    #[test]
+    fn test_poll_interval_constant() {
+        assert_eq!(POLL_INTERVAL, Duration::from_secs(30));
+    }
+}

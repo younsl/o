@@ -218,6 +218,52 @@ pub async fn plan_addon_upgrades(
     Ok(result)
 }
 
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_addon_info_creation() {
+        let addon = AddonInfo {
+            name: "vpc-cni".to_string(),
+            current_version: "v1.18.1-eksbuild.3".to_string(),
+        };
+        assert_eq!(addon.name, "vpc-cni");
+        assert_eq!(addon.current_version, "v1.18.1-eksbuild.3");
+    }
+
+    #[test]
+    fn test_addon_version_info_default() {
+        let v = AddonVersionInfo {
+            version: "v1.18.1-eksbuild.3".to_string(),
+            default_version: true,
+        };
+        assert!(v.default_version);
+        assert_eq!(v.version, "v1.18.1-eksbuild.3");
+    }
+
+    #[test]
+    fn test_addon_version_info_sorting() {
+        let mut versions = vec![
+            AddonVersionInfo {
+                version: "v1.16.0-eksbuild.1".to_string(),
+                default_version: false,
+            },
+            AddonVersionInfo {
+                version: "v1.18.1-eksbuild.3".to_string(),
+                default_version: true,
+            },
+            AddonVersionInfo {
+                version: "v1.17.0-eksbuild.2".to_string(),
+                default_version: false,
+            },
+        ];
+        versions.sort_by(|a, b| b.version.cmp(&a.version));
+        assert_eq!(versions[0].version, "v1.18.1-eksbuild.3");
+        assert_eq!(versions[2].version, "v1.16.0-eksbuild.1");
+    }
+}
+
 /// Poll addon status (non-blocking). Returns the current status string.
 pub async fn poll_addon_status(
     client: &Client,

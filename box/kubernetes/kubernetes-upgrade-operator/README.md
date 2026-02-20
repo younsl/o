@@ -345,10 +345,25 @@ Hub Account (111111111111)           Spoke Account (222222222222)
 
 ## Monitoring
 
-| Endpoint | Description |
-|----------|-------------|
-| `GET /healthz` | Liveness probe (always 200) |
-| `GET /readyz` | Readiness probe (200 when controller is watching) |
+| Endpoint | Port | Description |
+|----------|------|-------------|
+| `GET /healthz` | 8080 | Liveness probe (always 200) |
+| `GET /readyz` | 8080 | Readiness probe (200 when controller is watching) |
+| `GET /metrics` | 8081 | Prometheus metrics (OpenMetrics text) |
+
+### Prometheus Metrics
+
+| Metric | Type | Labels |
+|--------|------|--------|
+| `kuo_reconcile_total` | Counter | cluster_name, region, result |
+| `kuo_reconcile_duration_seconds` | Histogram | cluster_name, region |
+| `kuo_phase_duration_seconds` | Histogram | cluster_name, region, phase |
+| `kuo_upgrade_phase_info` | Gauge | cluster_name, region, phase |
+| `kuo_phase_transition_total` | Counter | cluster_name, region, phase |
+| `kuo_upgrade_completed_total` | Counter | cluster_name, region |
+| `kuo_upgrade_failed_total` | Counter | cluster_name, region |
+
+For PromQL examples, alerting rules, and detailed label descriptions, see [docs/metrics.md](docs/metrics.md).
 
 ```bash
 kubectl get eksupgrades

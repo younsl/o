@@ -103,4 +103,24 @@ mod tests {
         assert!(!summary.has_blocking_pdbs());
         assert_eq!(summary.total_pdbs, 0);
     }
+
+    #[test]
+    fn test_pdb_summary_single_blocking() {
+        let summary = PdbSummary {
+            total_pdbs: 10,
+            blocking_count: 1,
+        };
+        assert!(summary.has_blocking_pdbs());
+        assert_eq!(summary.blocking_count, 1);
+    }
+
+    #[test]
+    fn test_pdb_summary_all_blocking() {
+        let summary = PdbSummary {
+            total_pdbs: 3,
+            blocking_count: 3,
+        };
+        assert!(summary.has_blocking_pdbs());
+        assert_eq!(summary.blocking_count, summary.total_pdbs);
+    }
 }

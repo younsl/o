@@ -54,3 +54,38 @@ pub async fn serve(port: u16, state: HealthState) -> anyhow::Result<()> {
     axum::serve(listener, app).await?;
     Ok(())
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_health_state_initial() {
+        let state = HealthState::new();
+        assert!(!state.is_ready());
+    }
+
+    #[test]
+    fn test_health_state_set_ready() {
+        let state = HealthState::new();
+        state.set_ready(true);
+        assert!(state.is_ready());
+    }
+
+    #[test]
+    fn test_health_state_set_not_ready() {
+        let state = HealthState::new();
+        state.set_ready(true);
+        assert!(state.is_ready());
+        state.set_ready(false);
+        assert!(!state.is_ready());
+    }
+
+    #[test]
+    fn test_health_state_clone_shares_state() {
+        let state = HealthState::new();
+        let cloned = state.clone();
+        state.set_ready(true);
+        assert!(cloned.is_ready());
+    }
+}

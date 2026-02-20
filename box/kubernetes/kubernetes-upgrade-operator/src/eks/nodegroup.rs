@@ -139,6 +139,40 @@ pub async fn plan_nodegroup_upgrades(
     Ok(result)
 }
 
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_current_version_with_some() {
+        let ng = NodeGroupInfo {
+            name: "ng-system".to_string(),
+            version: Some("1.33".to_string()),
+        };
+        assert_eq!(ng.current_version(), "1.33");
+    }
+
+    #[test]
+    fn test_current_version_with_none() {
+        let ng = NodeGroupInfo {
+            name: "ng-system".to_string(),
+            version: None,
+        };
+        assert_eq!(ng.current_version(), "unknown");
+    }
+
+    #[test]
+    fn test_nodegroup_info_clone() {
+        let ng = NodeGroupInfo {
+            name: "ng-app".to_string(),
+            version: Some("1.32".to_string()),
+        };
+        let cloned = ng.clone();
+        assert_eq!(cloned.name, "ng-app");
+        assert_eq!(cloned.version.as_deref(), Some("1.32"));
+    }
+}
+
 /// Poll nodegroup update status (non-blocking).
 /// Returns the update status string (e.g., "InProgress", "Successful", "Failed").
 pub async fn poll_nodegroup_update(

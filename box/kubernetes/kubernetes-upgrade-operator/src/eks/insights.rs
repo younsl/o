@@ -259,4 +259,67 @@ mod tests {
         assert_eq!(finding.severity, "WARNING");
         assert!(finding.recommendation.is_some());
     }
+
+    #[test]
+    fn test_insights_summary_counts() {
+        let summary = InsightsSummary {
+            total_findings: 6,
+            critical_count: 1,
+            warning_count: 2,
+            passing_count: 2,
+            info_count: 1,
+            findings: vec![],
+        };
+        assert_eq!(
+            summary.total_findings,
+            summary.critical_count
+                + summary.warning_count
+                + summary.passing_count
+                + summary.info_count
+        );
+    }
+
+    #[test]
+    fn test_insights_summary_with_findings() {
+        let finding = InsightFinding {
+            category: "UPGRADE_READINESS".to_string(),
+            description: "Deprecated API usage".to_string(),
+            severity: "WARNING".to_string(),
+            recommendation: Some("Migrate to new API".to_string()),
+            resources: vec![],
+        };
+        let summary = InsightsSummary {
+            total_findings: 1,
+            critical_count: 0,
+            warning_count: 1,
+            passing_count: 0,
+            info_count: 0,
+            findings: vec![finding],
+        };
+        assert_eq!(summary.findings.len(), 1);
+        assert_eq!(summary.findings[0].description, "Deprecated API usage");
+    }
+
+    #[test]
+    fn test_insight_finding_with_resources() {
+        let finding = InsightFinding {
+            category: "UPGRADE_READINESS".to_string(),
+            description: "Addon needs update".to_string(),
+            severity: "WARNING".to_string(),
+            recommendation: None,
+            resources: vec![
+                InsightResource {
+                    resource_type: "addon".to_string(),
+                    resource_id: "vpc-cni".to_string(),
+                },
+                InsightResource {
+                    resource_type: "addon".to_string(),
+                    resource_id: "coredns".to_string(),
+                },
+            ],
+        };
+        assert_eq!(finding.resources.len(), 2);
+        assert_eq!(finding.resources[0].resource_id, "vpc-cni");
+        assert_eq!(finding.resources[1].resource_id, "coredns");
+    }
 }

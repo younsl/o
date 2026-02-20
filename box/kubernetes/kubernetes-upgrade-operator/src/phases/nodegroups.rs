@@ -140,3 +140,13 @@ pub async fn execute(
         _ => Ok((new_status, Some(Duration::from_secs(0)))),
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_poll_interval_constant() {
+        assert_eq!(POLL_INTERVAL, Duration::from_secs(30));
+    }
+}

@@ -61,6 +61,16 @@ securityContext:
     drop:
       - ALL
 
+serviceMonitor:
+  # -- (bool) Whether to create a ServiceMonitor for Prometheus scraping.
+  enabled: false
+  # -- (string) Scrape interval for the ServiceMonitor.
+  interval: 30s
+  # -- (string) Scrape timeout for the ServiceMonitor. Defaults to Prometheus global setting if empty.
+  scrapeTimeout: ""
+  # -- (object) Additional labels to add to the ServiceMonitor resource.
+  additionalLabels: {}
+
 # -- (object) Node selector for pod scheduling.
 nodeSelector: {}
 # -- (list) Tolerations for pod scheduling.

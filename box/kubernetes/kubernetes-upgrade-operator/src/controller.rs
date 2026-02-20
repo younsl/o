@@ -1,7 +1,7 @@
 //! EKSUpgrade controller - reconcile dispatch and error policy.
 
 use std::sync::Arc;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use anyhow::Result;
 use kube::Api;
@@ -10,12 +10,14 @@ use tracing::{error, info, warn};
 
 use crate::aws::AwsClients;
 use crate::crd::{EKSUpgrade, UpgradePhase};
+use crate::metrics::{Metrics, PhaseLabels, ReconcileLabels, UpgradeLabels};
 use crate::phases;
 use crate::status;
 
 /// Shared context for the controller.
 pub struct Context {
     pub kube_client: kube::Client,
+    pub metrics: Arc<Metrics>,
 }
 
 /// Reconcile an EKSUpgrade resource.
@@ -75,6 +77,18 @@ pub async fn reconcile(obj: Arc<EKSUpgrade>, ctx: Arc<Context>) -> Result<Action
     }
 
     info!("Reconciling {} (phase: {})", name, phase);
+
+    let reconcile_start = Instant::now();
+    let upgrade_labels = UpgradeLabels {
+        cluster_name: spec.cluster_name.clone(),
+        region: spec.region.clone(),
+    };
+    let old_phase = phase.clone();
+
+    // Ensure phase start time is tracked (idempotent across reconcile loops,
+    // also handles operator restart where in-memory state is lost)
+    ctx.metrics
+        .ensure_phase_start(&spec.cluster_name, &spec.region);
 
     let recorder = status::EventRecorder::new(ctx.kube_client.clone(), &obj);
 
@@ -185,9 +199,81 @@ pub async fn reconcile(obj: Arc<EKSUpgrade>, ctx: Arc<Context>) -> Result<Action
                 return Ok(Action::requeue(Duration::from_secs(5)));
             }
 
-            // Emit event on terminal phase
+            // Record metrics
+            let elapsed = reconcile_start.elapsed().as_secs_f64();
+            ctx.metrics
+                .reconcile_duration_seconds
+                .get_or_create(&upgrade_labels)
+                .observe(elapsed);
+
+            let new_phase = new_status.phase.clone().unwrap_or(UpgradePhase::Pending);
+
+            // Detect phase transition
+            if new_phase != old_phase {
+                // Observe duration of the completed phase
+                ctx.metrics.observe_phase_duration(
+                    &spec.cluster_name,
+                    &spec.region,
+                    &old_phase.to_string(),
+                );
+
+                // Deactivate old phase gauge
+                ctx.metrics
+                    .upgrade_phase_info
+                    .get_or_create(&PhaseLabels {
+                        cluster_name: spec.cluster_name.clone(),
+                        region: spec.region.clone(),
+                        phase: old_phase.to_string(),
+                    })
+                    .set(0);
+
+                // Activate new phase gauge
+                ctx.metrics
+                    .upgrade_phase_info
+                    .get_or_create(&PhaseLabels {
+                        cluster_name: spec.cluster_name.clone(),
+                        region: spec.region.clone(),
+                        phase: new_phase.to_string(),
+                    })
+                    .set(1);
+
+                // Record phase transition
+                ctx.metrics
+                    .phase_transition_total
+                    .get_or_create(&PhaseLabels {
+                        cluster_name: spec.cluster_name.clone(),
+                        region: spec.region.clone(),
+                        phase: new_phase.to_string(),
+                    })
+                    .inc();
+
+                // Start tracking the new phase duration
+                ctx.metrics
+                    .record_phase_start(&spec.cluster_name, &spec.region);
+            }
+
+            // Determine result label for reconcile counter
+            let result_label = if requeue.is_some() {
+                "requeue"
+            } else {
+                "success"
+            };
+            ctx.metrics
+                .reconcile_total
+                .get_or_create(&ReconcileLabels {
+                    cluster_name: spec.cluster_name.clone(),
+                    region: spec.region.clone(),
+                    result: result_label.to_string(),
+                })
+                .inc();
+
+            // Emit event and record terminal metrics
             match new_status.phase {
                 Some(UpgradePhase::Completed) => {
+                    ctx.metrics
+                        .upgrade_completed_total
+                        .get_or_create(&upgrade_labels)
+                        .inc();
                     let msg = new_status
                         .message
                         .as_deref()
@@ -195,6 +281,10 @@ pub async fn reconcile(obj: Arc<EKSUpgrade>, ctx: Arc<Context>) -> Result<Action
                     recorder.publish("UpgradeCompleted", msg).await;
                 }
                 Some(UpgradePhase::Failed) => {
+                    ctx.metrics
+                        .upgrade_failed_total
+                        .get_or_create(&upgrade_labels)
+                        .inc();
                     let msg = new_status.message.as_deref().unwrap_or("Upgrade failed");
                     recorder.publish_warning("UpgradeFailed", msg).await;
                 }
@@ -209,6 +299,21 @@ pub async fn reconcile(obj: Arc<EKSUpgrade>, ctx: Arc<Context>) -> Result<Action
         }
         Err(e) => {
             error!("Reconcile error for {}: {}", name, e);
+
+            // Record error metric
+            let elapsed = reconcile_start.elapsed().as_secs_f64();
+            ctx.metrics
+                .reconcile_duration_seconds
+                .get_or_create(&upgrade_labels)
+                .observe(elapsed);
+            ctx.metrics
+                .reconcile_total
+                .get_or_create(&ReconcileLabels {
+                    cluster_name: spec.cluster_name.clone(),
+                    region: spec.region.clone(),
+                    result: "error".to_string(),
+                })
+                .inc();
 
             let mut new_status = current_status.clone();
             new_status.observed_generation = generation;
@@ -231,6 +336,10 @@ pub async fn reconcile(obj: Arc<EKSUpgrade>, ctx: Arc<Context>) -> Result<Action
 
             // Permanent error → Failed
             status::set_failed(&mut new_status, e.to_string());
+            ctx.metrics
+                .upgrade_failed_total
+                .get_or_create(&upgrade_labels)
+                .inc();
             let _ = status::patch_status(&api, name, &new_status).await;
             recorder
                 .publish_warning("UpgradeFailed", &e.to_string())
