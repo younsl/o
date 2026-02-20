@@ -23,7 +23,7 @@ Kubernetes tools, policy resources, and architecture documentation organized by 
 | Kubernetes Operator | [kuo](./kubernetes-upgrade-operator/) | [Rust](./kubernetes-upgrade-operator/Cargo.toml) | Active | Kubernetes Upgrade Operator that watches EKSUpgrade CRD and performs declarative EKS cluster upgrades with sequential control plane upgrades, add-on updates, and managed node group rolling updates |
 | Helm Chart | [grafana-dashboards](./grafana-dashboards/) | [Helm](./grafana-dashboards/Chart.yaml) | Active | Helm chart that deploys Grafana dashboards as Kubernetes [ConfigMaps](https://kubernetes.io/docs/concepts/configuration/configmap/) for sidecar provisioning |
 | Tools | [karc](./karc/) | [Rust](./karc/Cargo.toml) | Active | Karpenter NodePool consolidation manager CLI with disruption schedule timetable and pause/resume support |
-| Tools | [kup](./kup/) | [Rust](./kup/Cargo.toml) | Active | Interactive EKS cluster upgrade CLI with Insights analysis, sequential control plane upgrades, and addon/nodegroup updates |
+| Tools | [kup](./kup/) | [Rust](./kup/Cargo.toml) | Deprecated | Interactive EKS cluster upgrade CLI. Deprecated in favor of [kubernetes-upgrade-operator](./kubernetes-upgrade-operator/) |
 | Tools | [promdrop](./promdrop/) | [Rust](./promdrop/Cargo.toml) | Active | Prometheus scrape config generator to drop unused metrics analyzed by [mimirtool](https://grafana.com/docs/mimir/latest/manage/tools/mimirtool/) |
 
 ## Related
