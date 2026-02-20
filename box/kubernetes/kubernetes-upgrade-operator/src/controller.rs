@@ -78,6 +78,10 @@ pub async fn reconcile(obj: Arc<EKSUpgrade>, ctx: Arc<Context>) -> Result<Action
 
     info!("Reconciling {} (phase: {})", name, phase);
 
+    // Pre-initialize metric label combinations for this cluster (once per cluster)
+    ctx.metrics
+        .init_for_cluster(&spec.cluster_name, &spec.region);
+
     let reconcile_start = Instant::now();
     let upgrade_labels = UpgradeLabels {
         cluster_name: spec.cluster_name.clone(),

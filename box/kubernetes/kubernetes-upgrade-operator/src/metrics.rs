@@ -1,6 +1,6 @@
 //! Prometheus metrics for the kuo operator.
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::sync::{Arc, Mutex};
 use std::time::Instant;
 
@@ -52,6 +52,8 @@ pub struct Metrics {
     pub phase_duration_seconds: Family<PhaseLabels, Histogram>,
     /// In-memory tracking of when the current phase started for each cluster.
     phase_start_times: Mutex<HashMap<ClusterKey, Instant>>,
+    /// Tracks which clusters have had their metrics pre-initialized.
+    initialized_clusters: Mutex<HashSet<ClusterKey>>,
 }
 
 const RECONCILE_BUCKETS: &[f64] = &[
@@ -130,7 +132,40 @@ impl Metrics {
             phase_transition_total,
             phase_duration_seconds,
             phase_start_times: Mutex::new(HashMap::new()),
+            initialized_clusters: Mutex::new(HashSet::new()),
         }
+    }
+
+    /// Pre-initialize all known counter label combinations for a cluster.
+    ///
+    /// Ensures time series exist from the first Prometheus scrape, preventing
+    /// "No data" in dashboards when counters have not yet been incremented.
+    /// Called once per cluster on first reconcile (idempotent via HashSet guard).
+    pub fn init_for_cluster(&self, cluster_name: &str, region: &str) {
+        let key = (cluster_name.to_string(), region.to_string());
+        {
+            let mut initialized = self.initialized_clusters.lock().unwrap();
+            if !initialized.insert(key) {
+                return;
+            }
+        }
+
+        // reconcile_total: pre-initialize all result label values
+        for result in &["success", "requeue", "error"] {
+            let _ = self.reconcile_total.get_or_create(&ReconcileLabels {
+                cluster_name: cluster_name.to_string(),
+                region: region.to_string(),
+                result: result.to_string(),
+            });
+        }
+
+        // Terminal counters
+        let upgrade_labels = UpgradeLabels {
+            cluster_name: cluster_name.to_string(),
+            region: region.to_string(),
+        };
+        let _ = self.upgrade_completed_total.get_or_create(&upgrade_labels);
+        let _ = self.upgrade_failed_total.get_or_create(&upgrade_labels);
     }
 
     /// Record the start of a phase for the given cluster.
@@ -323,6 +358,72 @@ mod tests {
 
         let duration = metrics.observe_phase_duration("test-cluster", "us-east-1", "Pending");
         assert!(duration.unwrap() >= 0.01);
+    }
+
+    #[test]
+    fn test_init_for_cluster_creates_zero_counters() {
+        let mut registry = Registry::default();
+        let metrics = Metrics::new(&mut registry);
+
+        // Pre-initialize without any inc() calls
+        metrics.init_for_cluster("test-cluster", "ap-northeast-2");
+
+        let mut buf = String::new();
+        encode(&mut buf, &registry).unwrap();
+
+        // All reconcile_total result variants should exist with value 0
+        assert!(
+            buf.contains(r#"kuo_reconcile_total{cluster_name="test-cluster",region="ap-northeast-2",result="success"} 0"#),
+            "missing pre-initialized reconcile_total success"
+        );
+        assert!(
+            buf.contains(r#"kuo_reconcile_total{cluster_name="test-cluster",region="ap-northeast-2",result="requeue"} 0"#),
+            "missing pre-initialized reconcile_total requeue"
+        );
+        assert!(
+            buf.contains(r#"kuo_reconcile_total{cluster_name="test-cluster",region="ap-northeast-2",result="error"} 0"#),
+            "missing pre-initialized reconcile_total error"
+        );
+
+        // Terminal counters should exist with value 0
+        assert!(
+            buf.contains(r#"kuo_upgrade_completed_total{cluster_name="test-cluster",region="ap-northeast-2"} 0"#),
+            "missing pre-initialized upgrade_completed_total"
+        );
+        assert!(
+            buf.contains(
+                r#"kuo_upgrade_failed_total{cluster_name="test-cluster",region="ap-northeast-2"} 0"#
+            ),
+            "missing pre-initialized upgrade_failed_total"
+        );
+    }
+
+    #[test]
+    fn test_init_for_cluster_is_idempotent() {
+        let mut registry = Registry::default();
+        let metrics = Metrics::new(&mut registry);
+
+        metrics.init_for_cluster("test-cluster", "ap-northeast-2");
+
+        // Increment error counter
+        metrics
+            .reconcile_total
+            .get_or_create(&ReconcileLabels {
+                cluster_name: "test-cluster".to_string(),
+                region: "ap-northeast-2".to_string(),
+                result: "error".to_string(),
+            })
+            .inc();
+
+        // Second init should not reset the counter
+        metrics.init_for_cluster("test-cluster", "ap-northeast-2");
+
+        let mut buf = String::new();
+        encode(&mut buf, &registry).unwrap();
+        assert!(
+            buf.contains(r#"kuo_reconcile_total{cluster_name="test-cluster",region="ap-northeast-2",result="error"} 1"#),
+            "init_for_cluster should not reset existing counters"
+        );
     }
 
     /// Simulate a full upgrade lifecycle and verify all 7 metrics appear in
