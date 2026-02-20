@@ -17,6 +17,7 @@ Kubernetes Upgrade Operator for EKS clusters. Watches `EKSUpgrade` custom resour
 - **Crash recovery** — Persists AWS update IDs in CRD status for resuming interrupted operations
 - **Dry-run mode** — Generate upgrade plan without executing
 - **Sync mode** — Update only add-ons and node groups without control plane upgrade (when target version equals current)
+- **Slack notifications** — Opt-in Slack Incoming Webhook alerts for Started, Completed, and Failed events with dry-run/live mode distinction
 
 ## Architecture
 
@@ -74,7 +75,7 @@ spec:
   region: ap-northeast-2
 ```
 
-Cross-account upgrade:
+Cross-account upgrade with Slack notification:
 
 ```yaml
 apiVersion: kuo.io/v1alpha1
@@ -86,6 +87,9 @@ spec:
   targetVersion: "1.34"
   region: ap-northeast-2
   assumeRoleArn: arn:aws:iam::123456789012:role/kuo-spoke-role
+  notification:
+    onUpgrade: true
+    onDryRun: false
 ```
 
 ### Spec Fields
@@ -101,6 +105,8 @@ spec:
 | `dryRun` | No | `false` | Plan only, do not execute |
 | `timeouts.controlPlaneMinutes` | No | `30` | Control plane upgrade timeout |
 | `timeouts.nodegroupMinutes` | No | `60` | Node group upgrade timeout |
+| `notification.onUpgrade` | No | `false` | Send Slack notifications for actual upgrades (`dryRun: false`) |
+| `notification.onDryRun` | No | `false` | Send Slack notifications for dry-run executions (`dryRun: true`) |
 
 ## Hub & Spoke IAM Permissions
 

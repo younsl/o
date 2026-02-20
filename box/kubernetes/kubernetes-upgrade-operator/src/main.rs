@@ -13,6 +13,7 @@ mod health;
 mod k8s;
 mod metrics;
 mod phases;
+mod slack;
 mod status;
 
 use std::sync::Arc;
@@ -95,12 +96,22 @@ async fn run() -> Result<()> {
         }
     });
 
+    // Initialize Slack notifier (if webhook URL is configured)
+    let slack = std::env::var("SLACK_WEBHOOK_URL")
+        .ok()
+        .filter(|url| !url.is_empty())
+        .map(|url| {
+            info!("Slack notifications enabled");
+            Arc::new(slack::SlackNotifier::new(url))
+        });
+
     // Set up the controller
     let api: Api<EKSUpgrade> = Api::all(client.clone());
 
     let ctx = Arc::new(Context {
         kube_client: client.clone(),
         metrics,
+        slack,
     });
 
     // Mark as ready once controller starts

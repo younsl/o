@@ -98,6 +98,8 @@ The following table lists the configurable parameters and their default values.
 | nodeSelector | object | `{}` | Node selector for pod scheduling. |
 | tolerations | list | `[]` | Tolerations for pod scheduling. |
 | affinity | object | `{}` | Affinity rules for pod scheduling. |
+| slack.enabled | bool | `false` | Whether to create a Slack webhook Secret and inject the URL into the operator. |
+| slack.webhookUrl | string | `""` | Slack Incoming Webhook URL. |
 | eksUpgrades | list | `[]` | EKSUpgrade custom resources to create. Each entry creates an EKSUpgrade CR that the operator will reconcile. |
 
 ## Source Code

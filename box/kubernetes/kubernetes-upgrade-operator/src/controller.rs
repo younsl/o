@@ -12,12 +12,15 @@ use crate::aws::AwsClients;
 use crate::crd::{EKSUpgrade, UpgradePhase};
 use crate::metrics::{Metrics, PhaseLabels, ReconcileLabels, UpgradeLabels};
 use crate::phases;
+use crate::slack::{self, SlackNotifier};
 use crate::status;
 
 /// Shared context for the controller.
 pub struct Context {
     pub kube_client: kube::Client,
     pub metrics: Arc<Metrics>,
+    /// Slack notifier. `None` when `SLACK_WEBHOOK_URL` is not set.
+    pub slack: Option<Arc<SlackNotifier>>,
 }
 
 /// Reconcile an EKSUpgrade resource.
@@ -254,6 +257,16 @@ pub async fn reconcile(obj: Arc<EKSUpgrade>, ctx: Arc<Context>) -> Result<Action
                 // Start tracking the new phase duration
                 ctx.metrics
                     .record_phase_start(&spec.cluster_name, &spec.region);
+
+                // Slack: send Started notification when Planning → PreflightChecking
+                if old_phase == UpgradePhase::Planning
+                    && new_phase == UpgradePhase::PreflightChecking
+                    && let Some(ref notifier) = ctx.slack
+                    && slack::should_notify(spec)
+                {
+                    let msg = slack::build_started_message(spec, &new_status);
+                    notifier.send(&msg).await;
+                }
             }
 
             // Determine result label for reconcile counter
@@ -283,6 +296,14 @@ pub async fn reconcile(obj: Arc<EKSUpgrade>, ctx: Arc<Context>) -> Result<Action
                         .as_deref()
                         .unwrap_or("Upgrade completed successfully");
                     recorder.publish("UpgradeCompleted", msg).await;
+
+                    // Slack: send Completed notification
+                    if let Some(ref notifier) = ctx.slack
+                        && slack::should_notify(spec)
+                    {
+                        let slack_msg = slack::build_completed_message(spec, &new_status);
+                        notifier.send(&slack_msg).await;
+                    }
                 }
                 Some(UpgradePhase::Failed) => {
                     ctx.metrics
@@ -291,6 +312,14 @@ pub async fn reconcile(obj: Arc<EKSUpgrade>, ctx: Arc<Context>) -> Result<Action
                         .inc();
                     let msg = new_status.message.as_deref().unwrap_or("Upgrade failed");
                     recorder.publish_warning("UpgradeFailed", msg).await;
+
+                    // Slack: send Failed notification
+                    if let Some(ref notifier) = ctx.slack
+                        && slack::should_notify(spec)
+                    {
+                        let slack_msg = slack::build_failed_message(spec, &new_status, msg);
+                        notifier.send(&slack_msg).await;
+                    }
                 }
                 _ => {}
             }
@@ -348,6 +377,15 @@ pub async fn reconcile(obj: Arc<EKSUpgrade>, ctx: Arc<Context>) -> Result<Action
             recorder
                 .publish_warning("UpgradeFailed", &e.to_string())
                 .await;
+
+            // Slack: send Failed notification (permanent error)
+            if let Some(ref notifier) = ctx.slack
+                && slack::should_notify(spec)
+            {
+                let slack_msg = slack::build_failed_message(spec, &new_status, &e.to_string());
+                notifier.send(&slack_msg).await;
+            }
+
             Ok(Action::await_change())
         }
     }

@@ -24,6 +24,14 @@ spec:
         - name: kuo
           image: "{{ .Values.image.repository }}:{{ .Values.image.tag | default .Chart.AppVersion }}"
           imagePullPolicy: {{ .Values.image.pullPolicy }}
+          {{- if .Values.slack.enabled }}
+          env:
+            - name: SLACK_WEBHOOK_URL
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "kuo.fullname" . }}-slack
+                  key: webhook-url
+          {{- end }}
           ports:
             - name: health
               containerPort: 8080

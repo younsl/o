@@ -27,4 +27,8 @@ spec:
   timeouts:
     {{- toYaml . | nindent 4 }}
   {{- end }}
+  {{- with .spec.notification }}
+  notification:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
 {{- end }}

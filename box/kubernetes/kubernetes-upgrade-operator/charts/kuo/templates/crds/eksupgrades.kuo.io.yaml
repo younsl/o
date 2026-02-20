@@ -73,6 +73,18 @@ spec:
                       type: integer
                       default: 60
                       description: Node group upgrade timeout in minutes. The operator fails the upgrade if a node group rolling update does not complete within this duration.
+                notification:
+                  type: object
+                  description: Slack notification configuration for this upgrade.
+                  properties:
+                    onUpgrade:
+                      type: boolean
+                      default: false
+                      description: Send Slack notifications for actual upgrades (dryRun false).
+                    onDryRun:
+                      type: boolean
+                      default: false
+                      description: Send Slack notifications for dry-run executions (dryRun true).
             status:
               type: object
               description: EKSUpgradeStatus defines the observed state of the upgrade.

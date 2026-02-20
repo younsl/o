@@ -49,6 +49,22 @@ pub struct EKSUpgradeSpec {
     /// Timeout configuration.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub timeouts: Option<TimeoutConfig>,
+
+    /// Slack notification configuration for this upgrade.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub notification: Option<NotificationConfig>,
+}
+
+/// Slack notification configuration.
+#[derive(Deserialize, Serialize, Clone, Debug, JsonSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct NotificationConfig {
+    /// Send Slack notifications for actual upgrades (dryRun: false).
+    #[serde(default)]
+    pub on_upgrade: bool,
+    /// Send Slack notifications for dry-run executions (dryRun: true).
+    #[serde(default)]
+    pub on_dry_run: bool,
 }
 
 /// Timeout configuration for upgrade operations.

@@ -78,6 +78,12 @@ tolerations: []
 # -- (object) Affinity rules for pod scheduling.
 affinity: {}
 
+slack:
+  # -- (bool) Whether to create a Slack webhook Secret and inject the URL into the operator.
+  enabled: false
+  # -- (string) Slack Incoming Webhook URL.
+  webhookUrl: ""
+
 # -- (list) EKSUpgrade custom resources to create. Each entry creates an EKSUpgrade CR that the operator will reconcile.
 eksUpgrades: []
   # - name: staging-cluster-upgrade
@@ -100,6 +106,9 @@ eksUpgrades: []
   #     timeouts:
   #       controlPlaneMinutes: 40
   #       nodegroupMinutes: 90
+  #     notification:
+  #       onUpgrade: true
+  #       onDryRun: false
   #
   # ## Cross-account example: assume a role in another AWS account.
   # ## Works with both IRSA and EKS Pod Identity as the base credential source.
