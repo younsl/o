@@ -18,6 +18,7 @@ pub const POLL_INTERVAL: Duration = Duration::from_secs(30);
 /// Execute one step of nodegroup upgrades.
 ///
 /// Finds the first pending/in-progress nodegroup and either initiates or polls it.
+#[allow(clippy::too_many_lines)]
 pub async fn execute(
     spec: &EKSUpgradeSpec,
     current_status: &EKSUpgradeStatus,
@@ -40,19 +41,16 @@ pub async fn execute(
 
     let ng_status = &new_status.phases.nodegroups[idx];
     let ng_name = ng_status.name.clone();
+    let current_version = ng_status.current_version.clone();
     let target_version = ng_status.target_version.clone();
 
-    let timeout_minutes = spec
-        .timeouts
-        .as_ref()
-        .map(|t| t.nodegroup_minutes)
-        .unwrap_or(60);
+    let timeout_minutes = spec.timeouts.as_ref().map_or(60, |t| t.nodegroup_minutes);
 
     match ng_status.status {
         ComponentStatus::Pending => {
             // Initiate upgrade
             info!(
-                "Initiating nodegroup upgrade: {} -> {}",
+                "Initiating nodegroup upgrade: {} to {}",
                 ng_name, target_version
             );
             let update_id = nodegroup::update_nodegroup_version(
@@ -71,6 +69,7 @@ pub async fn execute(
             // Check timeout
             if let Some(ref ng_started) = current_status.phases.nodegroups[idx].started_at {
                 let elapsed = Utc::now().signed_duration_since(ng_started);
+                #[allow(clippy::cast_possible_wrap)]
                 if elapsed.num_minutes() >= timeout_minutes as i64 {
                     warn!(
                         "Nodegroup {} timed out after {} minutes (limit: {}) for {}",
@@ -120,12 +119,16 @@ pub async fn execute(
                     new_status.phases.nodegroups[idx].update_id = None;
                     status::set_failed(
                         &mut new_status,
-                        format!("Nodegroup {} upgrade failed: {}", ng_name, status_str),
+                        format!("Nodegroup {ng_name} upgrade failed: {status_str}"),
                     );
                     Ok((new_status, None))
                 }
                 _ => {
                     // Still in progress
+                    info!(
+                        "Polling nodegroup {} upgrade: {} to {} (status: {})",
+                        ng_name, current_version, target_version, status_str
+                    );
                     Ok((new_status, Some(POLL_INTERVAL)))
                 }
             }
@@ -133,7 +136,7 @@ pub async fn execute(
         ComponentStatus::Failed => {
             status::set_failed(
                 &mut new_status,
-                format!("Nodegroup {} is in failed state", ng_name),
+                format!("Nodegroup {ng_name} is in failed state"),
             );
             Ok((new_status, None))
         }

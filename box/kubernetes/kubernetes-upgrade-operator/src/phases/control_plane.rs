@@ -21,6 +21,7 @@ pub const POLL_INTERVAL: Duration = Duration::from_secs(30);
 /// Returns the updated status and an optional requeue duration.
 /// - If an upgrade is in progress, returns a requeue to poll later.
 /// - If a step completes, advances to the next step or next phase.
+#[allow(clippy::too_many_lines)]
 pub async fn execute(
     spec: &EKSUpgradeSpec,
     current_status: &EKSUpgradeStatus,
@@ -34,13 +35,12 @@ pub async fn execute(
         .phases
         .control_plane
         .as_ref()
-        .expect("control_plane status must be set before this phase");
-    let upgrade_path = current_status
+        .ok_or_else(|| anyhow::anyhow!("control_plane status must be set before this phase"))?;
+    let upgrade_path: &[String] = current_status
         .phases
         .planning
         .as_ref()
-        .map(|p| &p.upgrade_path[..])
-        .unwrap_or(&[]);
+        .map_or(&[], |p| &p.upgrade_path);
 
     let step = cp.current_step; // 1-based
     let total = cp.total_steps;
@@ -54,21 +54,32 @@ pub async fn execute(
 
     let path_index = (step - 1) as usize;
     let target_version = &upgrade_path[path_index];
+    if path_index == 0 && current_status.current_version.is_none() {
+        warn!("current_version is not set in status, using 'unknown' as from_version");
+    }
+    let from_version = if path_index == 0 {
+        current_status
+            .current_version
+            .as_deref()
+            .unwrap_or("unknown")
+    } else {
+        &upgrade_path[path_index - 1]
+    };
 
     let timeout_minutes = spec
         .timeouts
         .as_ref()
-        .map(|t| t.control_plane_minutes)
-        .unwrap_or(30);
+        .map_or(30, |t| t.control_plane_minutes);
 
     // Check if we have an in-progress update (crash recovery)
     if let Some(ref update_id) = cp.update_id {
         // Check timeout
         if let Some(ref step_started) = cp.started_at {
             let elapsed = Utc::now().signed_duration_since(step_started);
+            #[allow(clippy::cast_possible_wrap)]
             if elapsed.num_minutes() >= timeout_minutes as i64 {
                 warn!(
-                    "CP step {}/{} timed out after {} minutes (limit: {}) for {}",
+                    "Control plane step {}/{} timed out after {} minutes (limit: {}) for {}",
                     step,
                     total,
                     elapsed.num_minutes(),
@@ -93,7 +104,7 @@ pub async fn execute(
         }
 
         info!(
-            "Checking existing CP update {} for {}",
+            "Checking existing control plane update {} for {}",
             update_id, spec.cluster_name
         );
 
@@ -104,12 +115,14 @@ pub async fn execute(
         match status_str.as_str() {
             "Successful" => {
                 info!(
-                    "CP step {}/{} completed: -> {}",
-                    step, total, target_version
+                    "Control plane step {}/{} completed: {} to {}",
+                    step, total, from_version, target_version
                 );
                 let next_step = step + 1;
                 {
-                    let cp = new_status.phases.control_plane.as_mut().unwrap();
+                    let cp = new_status.phases.control_plane.as_mut().ok_or_else(|| {
+                        anyhow::anyhow!("control_plane status missing during upgrade")
+                    })?;
                     cp.current_step = next_step;
                     cp.update_id = None;
                     cp.target = None;
@@ -128,7 +141,7 @@ pub async fn execute(
             }
             "Failed" | "Cancelled" => {
                 warn!(
-                    "CP update {} for {} failed: {}",
+                    "Control plane update {} for {} failed: {}",
                     update_id, spec.cluster_name, status_str
                 );
                 if let Some(cp) = new_status.phases.control_plane.as_mut() {
@@ -137,14 +150,17 @@ pub async fn execute(
                 status::set_failed(
                     &mut new_status,
                     format!(
-                        "Control plane upgrade to {} failed (update: {})",
-                        target_version, update_id
+                        "Control plane upgrade to {target_version} failed (update: {update_id})"
                     ),
                 );
                 return Ok((new_status, None));
             }
             _ => {
                 // Still in progress → requeue
+                info!(
+                    "Polling control plane step {}/{}: {} to {} (status: {})",
+                    step, total, from_version, target_version, status_str
+                );
                 return Ok((new_status, Some(POLL_INTERVAL)));
             }
         }
@@ -152,15 +168,19 @@ pub async fn execute(
 
     // No active update → initiate next step
     info!(
-        "Initiating CP step {}/{}: -> {} for {}",
-        step, total, target_version, spec.cluster_name
+        "Initiating control plane step {}/{}: {} to {} for {}",
+        step, total, from_version, target_version, spec.cluster_name
     );
 
     let update_id = eks_client
         .update_cluster_version(&spec.cluster_name, target_version)
         .await?;
 
-    let cp_mut = new_status.phases.control_plane.as_mut().unwrap();
+    let cp_mut = new_status
+        .phases
+        .control_plane
+        .as_mut()
+        .ok_or_else(|| anyhow::anyhow!("control_plane status missing during upgrade"))?;
     cp_mut.target = Some(target_version.clone());
     cp_mut.update_id = Some(update_id);
     cp_mut.started_at = Some(Utc::now());
