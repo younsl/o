@@ -1,56 +1,13 @@
-//! Slack notification support via Incoming Webhooks.
+//! Notification module for upgrade lifecycle events.
 
-use serde::Serialize;
-use tracing::warn;
+pub mod slack;
+
+pub use slack::SlackNotifier;
 
 use crate::crd::{EKSUpgradeSpec, EKSUpgradeStatus};
 
-/// Slack webhook client.
-pub struct SlackNotifier {
-    webhook_url: String,
-    client: reqwest::Client,
-}
-
-/// Slack webhook payload.
-#[derive(Serialize)]
-struct SlackPayload {
-    text: String,
-}
-
-impl SlackNotifier {
-    /// Create a new Slack notifier with the given webhook URL.
-    pub fn new(webhook_url: String) -> Self {
-        Self {
-            webhook_url,
-            client: reqwest::Client::new(),
-        }
-    }
-
-    /// Send a text message to Slack. Errors are logged but not propagated.
-    pub async fn send(&self, text: &str) {
-        let payload = SlackPayload {
-            text: text.to_string(),
-        };
-        match self
-            .client
-            .post(&self.webhook_url)
-            .json(&payload)
-            .send()
-            .await
-        {
-            Ok(resp) if !resp.status().is_success() => {
-                warn!("Slack webhook returned status {}", resp.status());
-            }
-            Err(e) => {
-                warn!("Failed to send Slack notification: {}", e);
-            }
-            _ => {}
-        }
-    }
-}
-
 /// Determine whether a notification should be sent for this spec.
-pub fn should_notify(spec: &EKSUpgradeSpec) -> bool {
+pub const fn should_notify(spec: &EKSUpgradeSpec) -> bool {
     match &spec.notification {
         None => false,
         Some(config) => {
@@ -85,7 +42,7 @@ pub fn build_started_message(spec: &EKSUpgradeSpec, status: &EKSUpgradeStatus) -
     let path_display = if upgrade_path.is_empty() {
         format!("{} → {}", current, spec.target_version)
     } else {
-        format!("{} → {}", current, upgrade_path)
+        format!("{current} → {upgrade_path}")
     };
 
     format!(
@@ -118,7 +75,7 @@ pub fn build_completed_message(spec: &EKSUpgradeSpec, status: &EKSUpgradeStatus)
     let path_display = if upgrade_path.is_empty() {
         format!("{} → {}", current, spec.target_version)
     } else {
-        format!("{} → {}", current, upgrade_path)
+        format!("{current} → {upgrade_path}")
     };
 
     let duration = match (status.started_at, status.completed_at) {
@@ -126,7 +83,7 @@ pub fn build_completed_message(spec: &EKSUpgradeSpec, status: &EKSUpgradeStatus)
             let secs = (end - start).num_seconds().unsigned_abs();
             let mins = secs / 60;
             let remaining_secs = secs % 60;
-            format!("{}m {}s", mins, remaining_secs)
+            format!("{mins}m {remaining_secs}s")
         }
         _ => "unknown".to_string(),
     };
@@ -160,8 +117,7 @@ pub fn build_failed_message(
     let phase = status
         .phase
         .as_ref()
-        .map(|p| p.to_string())
-        .unwrap_or_else(|| "Unknown".to_string());
+        .map_or_else(|| "Unknown".to_string(), std::string::ToString::to_string);
 
     let mode = if spec.dry_run {
         "Dry Run"

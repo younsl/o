@@ -10,7 +10,7 @@ pub struct PlanResult<U> {
 }
 
 impl<U> PlanResult<U> {
-    pub fn new() -> Self {
+    pub const fn new() -> Self {
         Self {
             upgrades: Vec::new(),
             skipped: 0,
@@ -21,15 +21,15 @@ impl<U> PlanResult<U> {
         self.upgrades.push(upgrade);
     }
 
-    pub fn add_skipped(&mut self) {
+    pub const fn add_skipped(&mut self) {
         self.skipped += 1;
     }
 
-    pub fn upgrade_count(&self) -> usize {
+    pub const fn upgrade_count(&self) -> usize {
         self.upgrades.len()
     }
 
-    pub fn skipped_count(&self) -> usize {
+    pub const fn skipped_count(&self) -> usize {
         self.skipped
     }
 }

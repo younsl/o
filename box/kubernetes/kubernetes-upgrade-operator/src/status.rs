@@ -11,7 +11,7 @@ use tracing::debug;
 
 use crate::crd::{EKSUpgrade, EKSUpgradeStatus, UpgradeCondition, UpgradePhase};
 
-/// Patch the status subresource of an EKSUpgrade.
+/// Patch the status subresource of an `EKSUpgrade`.
 pub async fn patch_status(
     api: &Api<EKSUpgrade>,
     name: &str,
@@ -70,14 +70,14 @@ pub fn set_condition(
     });
 }
 
-/// Event recorder bundled with its target ObjectReference.
+/// Event recorder bundled with its target `ObjectReference`.
 pub struct EventRecorder {
     recorder: Recorder,
     obj_ref: ObjectReference,
 }
 
 impl EventRecorder {
-    /// Create an event recorder for the given EKSUpgrade resource.
+    /// Create an event recorder for the given `EKSUpgrade` resource.
     pub fn new(client: kube::Client, obj: &EKSUpgrade) -> Self {
         let reporter = Reporter {
             controller: "kuo".into(),

@@ -5,6 +5,8 @@
 //! - EKS Deletion Protection: cluster must have deletion protection enabled.
 //! - PDB Drain Deadlock: no PDB with `disruptionsAllowed == 0` (unless skipped).
 
+pub mod checks;
+
 use anyhow::Result;
 use tracing::{info, warn};
 
@@ -13,13 +15,15 @@ use crate::crd::{
     EKSUpgradeSpec, EKSUpgradeStatus, PreflightCheckStatus, PreflightStatus, UpgradePhase,
 };
 use crate::eks::client::EksClient;
-use crate::eks::preflight::{CheckStatus, PreflightCheckResult, PreflightResults, SkippedCheck};
 use crate::status;
+
+use self::checks::{CheckStatus, PreflightCheckResult, PreflightResults, SkippedCheck};
 
 /// Execute the preflight checking phase.
 ///
 /// Runs mandatory checks (deletion protection, PDB drain deadlock) and transitions
 /// to the next upgrade phase or fails if any mandatory check fails.
+#[allow(clippy::too_many_lines)]
 pub async fn execute(
     spec: &EKSUpgradeSpec,
     current_status: &EKSUpgradeStatus,
@@ -61,7 +65,7 @@ pub async fn execute(
                         finding
                             .recommendation
                             .as_ref()
-                            .map_or(String::new(), |r| format!(" recommendation: {}", r)),
+                            .map_or(String::new(), |r| format!(" recommendation: {r}")),
                     );
                 }
             }
@@ -108,7 +112,7 @@ pub async fn execute(
                 Ok(summary) => {
                     preflight
                         .checks
-                        .push(PreflightCheckResult::pdb_drain_deadlock(summary));
+                        .push(PreflightCheckResult::pdb_drain_deadlock(&summary));
                 }
                 Err(e) => {
                     warn!("PDB check failed (non-fatal): {}", e);

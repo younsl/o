@@ -32,12 +32,12 @@ impl KuoError {
     /// Analyzes the error message to provide more specific error types.
     pub fn aws<E: std::fmt::Debug + std::fmt::Display>(component: &str, err: E) -> Self {
         // Use Debug format to get more detailed error information
-        let err_debug = format!("{:?}", err);
+        let err_debug = format!("{err:?}");
         let err_display = err.to_string();
         let component = component.to_string();
 
         // Combine both for analysis
-        let combined = format!("{} {}", err_display, err_debug);
+        let combined = format!("{err_display} {err_debug}");
         let combined_lower = combined.to_lowercase();
 
         // Check for credentials-related errors
@@ -55,7 +55,7 @@ impl KuoError {
             || combined_lower.contains("not authorized")
             || combined_lower.contains("accessdenied")
         {
-            return KuoError::AwsCredentials(
+            return Self::AwsCredentials(
                 component,
                 Self::extract_error_details(&err_debug, &err_display),
             );
@@ -66,13 +66,13 @@ impl KuoError {
             || combined_lower.contains("region not found")
             || combined_lower.contains("missing region")
         {
-            return KuoError::AwsRegion(
+            return Self::AwsRegion(
                 component,
                 Self::extract_error_details(&err_debug, &err_display),
             );
         }
 
-        KuoError::AwsSdk(
+        Self::AwsSdk(
             component,
             Self::extract_error_details(&err_debug, &err_display),
         )
@@ -101,8 +101,8 @@ impl KuoError {
     }
 
     /// Returns true if this error is transient and should be retried.
-    pub fn is_transient(&self) -> bool {
-        matches!(self, KuoError::AwsSdk(_, _) | KuoError::KubernetesApi(_))
+    pub const fn is_transient(&self) -> bool {
+        matches!(self, Self::AwsSdk(_, _) | Self::KubernetesApi(_))
     }
 }
 

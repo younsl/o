@@ -94,7 +94,7 @@ impl PreflightCheckResult {
     }
 
     /// Build a PDB drain deadlock check result.
-    pub fn pdb_drain_deadlock(summary: PdbSummary) -> Self {
+    pub fn pdb_drain_deadlock(summary: &PdbSummary) -> Self {
         let (status, msg) = if summary.has_blocking_pdbs() {
             (
                 CheckStatus::Fail,
@@ -202,7 +202,7 @@ mod tests {
             total_pdbs: 5,
             blocking_count: 0,
         };
-        let check = PreflightCheckResult::pdb_drain_deadlock(summary);
+        let check = PreflightCheckResult::pdb_drain_deadlock(&summary);
         assert_eq!(check.status, CheckStatus::Pass);
         assert!(check.summary.contains("No PDB drain deadlock"));
     }
@@ -213,7 +213,7 @@ mod tests {
             total_pdbs: 3,
             blocking_count: 1,
         };
-        let check = PreflightCheckResult::pdb_drain_deadlock(summary);
+        let check = PreflightCheckResult::pdb_drain_deadlock(&summary);
         assert_eq!(check.status, CheckStatus::Fail);
         assert!(check.summary.contains("1/3"));
     }
@@ -246,7 +246,7 @@ mod tests {
             blocking_count: 1,
         };
         let results = PreflightResults {
-            checks: vec![PreflightCheckResult::pdb_drain_deadlock(pdb)],
+            checks: vec![PreflightCheckResult::pdb_drain_deadlock(&pdb)],
             skipped: vec![],
         };
         assert!(results.has_mandatory_failures());
@@ -261,7 +261,7 @@ mod tests {
         let results = PreflightResults {
             checks: vec![
                 PreflightCheckResult::deletion_protection(true),
-                PreflightCheckResult::pdb_drain_deadlock(pdb),
+                PreflightCheckResult::pdb_drain_deadlock(&pdb),
             ],
             skipped: vec![],
         };

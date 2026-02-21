@@ -73,7 +73,7 @@ pub async fn describe_nodegroup(
     if let Some(ng) = response.nodegroup() {
         let info = NodeGroupInfo {
             name: ng.nodegroup_name().unwrap_or_default().to_string(),
-            version: ng.version().map(|s| s.to_string()),
+            version: ng.version().map(std::string::ToString::to_string),
         };
         return Ok(Some(info));
     }
@@ -105,7 +105,7 @@ pub async fn update_nodegroup_version(
     let update_id = response
         .update()
         .and_then(|u| u.id())
-        .map(|s| s.to_string())
+        .map(std::string::ToString::to_string)
         .unwrap_or_default();
 
     info!("Managed node group update initiated: {}", update_id);
@@ -123,10 +123,10 @@ pub async fn plan_nodegroup_upgrades(
     let mut result = NodeGroupPlanResult::new();
 
     for ng in nodegroups {
-        if ng.version.as_deref() != Some(target_version) {
-            result.add_upgrade(ng);
-        } else {
+        if ng.version.as_deref() == Some(target_version) {
             result.add_skipped();
+        } else {
+            result.add_upgrade(ng);
         }
     }
 
@@ -174,7 +174,7 @@ mod tests {
 }
 
 /// Poll nodegroup update status (non-blocking).
-/// Returns the update status string (e.g., "InProgress", "Successful", "Failed").
+/// Returns the update status string (e.g., "`InProgress`", "Successful", "Failed").
 pub async fn poll_nodegroup_update(
     client: &Client,
     cluster_name: &str,
@@ -193,8 +193,7 @@ pub async fn poll_nodegroup_update(
     let status = response
         .update()
         .and_then(|u| u.status())
-        .map(|s| s.as_str().to_string())
-        .unwrap_or_else(|| "Unknown".to_string());
+        .map_or_else(|| "Unknown".to_string(), |s| s.as_str().to_string());
 
     Ok(status)
 }

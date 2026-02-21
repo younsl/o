@@ -1,4 +1,4 @@
-//! EKSUpgrade controller - reconcile dispatch and error policy.
+//! `EKSUpgrade` controller - reconcile dispatch and error policy.
 
 use std::sync::Arc;
 use std::time::{Duration, Instant};
@@ -10,10 +10,10 @@ use tracing::{error, info, warn};
 
 use crate::aws::AwsClients;
 use crate::crd::{EKSUpgrade, UpgradePhase};
-use crate::metrics::{Metrics, PhaseLabels, ReconcileLabels, UpgradeLabels};
+use crate::notify::{self, SlackNotifier};
 use crate::phases;
-use crate::slack::{self, SlackNotifier};
 use crate::status;
+use crate::telemetry::metrics::{Metrics, PhaseLabels, ReconcileLabels, UpgradeLabels};
 
 /// Shared context for the controller.
 pub struct Context {
@@ -23,9 +23,10 @@ pub struct Context {
     pub slack: Option<Arc<SlackNotifier>>,
 }
 
-/// Reconcile an EKSUpgrade resource.
+/// Reconcile an `EKSUpgrade` resource.
 ///
 /// Phase-based state machine: reads current phase, executes one step, patches status.
+#[allow(clippy::too_many_lines)]
 pub async fn reconcile(obj: Arc<EKSUpgrade>, ctx: Arc<Context>) -> Result<Action, kube::Error> {
     let name = obj.metadata.name.as_deref().unwrap_or("unknown");
 
@@ -105,7 +106,7 @@ pub async fn reconcile(obj: Arc<EKSUpgrade>, ctx: Arc<Context>) -> Result<Action
         Err(e) => {
             error!("Failed to create AWS clients for {}: {}", spec.region, e);
             let mut new_status = current_status.clone();
-            status::set_failed(&mut new_status, format!("AWS client error: {}", e));
+            status::set_failed(&mut new_status, format!("AWS client error: {e}"));
             status::set_condition(
                 &mut new_status,
                 "AWSAuthenticated",
@@ -141,7 +142,7 @@ pub async fn reconcile(obj: Arc<EKSUpgrade>, ctx: Arc<Context>) -> Result<Action
             }
             Err(e) => {
                 error!("AWS identity verification failed for {}: {}", name, e);
-                status::set_failed(&mut new_status, format!("AWS authentication failed: {}", e));
+                status::set_failed(&mut new_status, format!("AWS authentication failed: {e}"));
                 status::set_condition(
                     &mut new_status,
                     "AWSAuthenticated",
@@ -262,9 +263,9 @@ pub async fn reconcile(obj: Arc<EKSUpgrade>, ctx: Arc<Context>) -> Result<Action
                 if old_phase == UpgradePhase::Planning
                     && new_phase == UpgradePhase::PreflightChecking
                     && let Some(ref notifier) = ctx.slack
-                    && slack::should_notify(spec)
+                    && notify::should_notify(spec)
                 {
-                    let msg = slack::build_started_message(spec, &new_status);
+                    let msg = notify::build_started_message(spec, &new_status);
                     notifier.send(&msg).await;
                 }
             }
@@ -299,9 +300,9 @@ pub async fn reconcile(obj: Arc<EKSUpgrade>, ctx: Arc<Context>) -> Result<Action
 
                     // Slack: send Completed notification
                     if let Some(ref notifier) = ctx.slack
-                        && slack::should_notify(spec)
+                        && notify::should_notify(spec)
                     {
-                        let slack_msg = slack::build_completed_message(spec, &new_status);
+                        let slack_msg = notify::build_completed_message(spec, &new_status);
                         notifier.send(&slack_msg).await;
                     }
                 }
@@ -315,9 +316,9 @@ pub async fn reconcile(obj: Arc<EKSUpgrade>, ctx: Arc<Context>) -> Result<Action
 
                     // Slack: send Failed notification
                     if let Some(ref notifier) = ctx.slack
-                        && slack::should_notify(spec)
+                        && notify::should_notify(spec)
                     {
-                        let slack_msg = slack::build_failed_message(spec, &new_status, msg);
+                        let slack_msg = notify::build_failed_message(spec, &new_status, msg);
                         notifier.send(&slack_msg).await;
                     }
                 }
@@ -380,9 +381,9 @@ pub async fn reconcile(obj: Arc<EKSUpgrade>, ctx: Arc<Context>) -> Result<Action
 
             // Slack: send Failed notification (permanent error)
             if let Some(ref notifier) = ctx.slack
-                && slack::should_notify(spec)
+                && notify::should_notify(spec)
             {
-                let slack_msg = slack::build_failed_message(spec, &new_status, &e.to_string());
+                let slack_msg = notify::build_failed_message(spec, &new_status, &e.to_string());
                 notifier.send(&slack_msg).await;
             }
 
@@ -392,6 +393,7 @@ pub async fn reconcile(obj: Arc<EKSUpgrade>, ctx: Arc<Context>) -> Result<Action
 }
 
 /// Error policy for the controller.
+#[allow(clippy::needless_pass_by_value)]
 pub fn error_policy(obj: Arc<EKSUpgrade>, err: &kube::Error, _ctx: Arc<Context>) -> Action {
     let name = obj.metadata.name.as_deref().unwrap_or("unknown");
     error!("Controller error for {}: {}", name, err);

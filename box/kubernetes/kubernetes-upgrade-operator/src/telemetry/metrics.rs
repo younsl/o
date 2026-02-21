@@ -60,8 +60,8 @@ const RECONCILE_BUCKETS: &[f64] = &[
     0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1.0, 2.5, 5.0, 10.0,
 ];
 
-/// Buckets for phase duration (1s to 1h): phases like UpgradingControlPlane
-/// or UpgradingNodeGroups can take tens of minutes.
+/// Buckets for phase duration (1s to 1h): phases like `UpgradingControlPlane`
+/// or `UpgradingNodeGroups` can take tens of minutes.
 const PHASE_DURATION_BUCKETS: &[f64] = &[
     1.0, 5.0, 10.0, 30.0, 60.0, 120.0, 300.0, 600.0, 1800.0, 3600.0,
 ];
@@ -140,7 +140,7 @@ impl Metrics {
     ///
     /// Ensures time series exist from the first Prometheus scrape, preventing
     /// "No data" in dashboards when counters have not yet been incremented.
-    /// Called once per cluster on first reconcile (idempotent via HashSet guard).
+    /// Called once per cluster on first reconcile (idempotent via `HashSet` guard).
     pub fn init_for_cluster(&self, cluster_name: &str, region: &str) {
         let key = (cluster_name.to_string(), region.to_string());
         {
@@ -211,7 +211,7 @@ impl Metrics {
     }
 }
 
-/// Axum handler that encodes the registry as OpenMetrics text.
+/// Axum handler that encodes the registry as `OpenMetrics` text.
 async fn metrics_handler(State(registry): State<Arc<Registry>>) -> impl IntoResponse {
     let mut buf = String::new();
     if encode(&mut buf, &registry).is_err() {
@@ -234,7 +234,7 @@ pub async fn serve(port: u16, registry: Arc<Registry>) -> anyhow::Result<()> {
         .route("/metrics", get(metrics_handler))
         .with_state(registry);
 
-    let listener = TcpListener::bind(format!("0.0.0.0:{}", port)).await?;
+    let listener = TcpListener::bind(format!("0.0.0.0:{port}")).await?;
     info!("Metrics server listening on port {}", port);
     axum::serve(listener, app).await?;
     Ok(())

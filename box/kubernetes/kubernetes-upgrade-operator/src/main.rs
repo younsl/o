@@ -1,6 +1,6 @@
 //! kuo - Kubernetes Upgrade Operator for EKS clusters.
 //!
-//! Watches EKSUpgrade CRD resources and performs declarative EKS cluster upgrades
+//! Watches `EKSUpgrade` CRD resources and performs declarative EKS cluster upgrades
 //! with sequential control plane upgrades, add-on updates, and managed node group
 //! rolling updates.
 
@@ -9,12 +9,11 @@ mod controller;
 mod crd;
 mod eks;
 mod error;
-mod health;
 mod k8s;
-mod metrics;
+mod notify;
 mod phases;
-mod slack;
 mod status;
+mod telemetry;
 
 use std::sync::Arc;
 
@@ -36,7 +35,7 @@ pub const BUILD_DATE: &str = env!("BUILD_DATE");
 async fn main() {
     // Initialize logging
     if let Err(e) = init_tracing() {
-        eprintln!("Failed to initialize logging: {}", e);
+        eprintln!("Failed to initialize logging: {e}");
         std::process::exit(1);
     }
 
@@ -57,7 +56,7 @@ fn init_tracing() -> Result<()> {
 
     let filter = EnvFilter::try_from_default_env()
         .or_else(|_| EnvFilter::try_new("info"))
-        .map_err(|e| anyhow::anyhow!("Failed to initialize log filter: {}", e))?;
+        .map_err(|e| anyhow::anyhow!("Failed to initialize log filter: {e}"))?;
 
     fmt()
         .with_env_filter(filter)
@@ -76,14 +75,14 @@ async fn run() -> Result<()> {
 
     // Initialize Prometheus metrics
     let mut registry = prometheus_client::registry::Registry::default();
-    let metrics = Arc::new(metrics::Metrics::new(&mut registry));
+    let metrics = Arc::new(telemetry::metrics::Metrics::new(&mut registry));
     let registry = Arc::new(registry);
 
     // Start health server (port 8080)
-    let health_state = health::HealthState::new();
+    let health_state = telemetry::health::HealthState::new();
     let health_state_clone = health_state.clone();
     tokio::spawn(async move {
-        if let Err(e) = health::serve(8080, health_state_clone).await {
+        if let Err(e) = telemetry::health::serve(8080, health_state_clone).await {
             error!("Health server failed: {}", e);
         }
     });
@@ -91,7 +90,7 @@ async fn run() -> Result<()> {
     // Start metrics server (port 8081)
     let registry_clone = registry.clone();
     tokio::spawn(async move {
-        if let Err(e) = metrics::serve(8081, registry_clone).await {
+        if let Err(e) = telemetry::metrics::serve(8081, registry_clone).await {
             error!("Metrics server failed: {}", e);
         }
     });
@@ -102,7 +101,7 @@ async fn run() -> Result<()> {
         .filter(|url| !url.is_empty())
         .map(|url| {
             info!("Slack notifications enabled");
-            Arc::new(slack::SlackNotifier::new(url))
+            Arc::new(notify::SlackNotifier::new(url))
         });
 
     // Set up the controller

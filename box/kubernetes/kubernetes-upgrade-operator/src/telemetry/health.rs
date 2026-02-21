@@ -49,7 +49,7 @@ pub async fn serve(port: u16, state: HealthState) -> anyhow::Result<()> {
         .route("/readyz", get(readyz))
         .with_state(state);
 
-    let listener = TcpListener::bind(format!("0.0.0.0:{}", port)).await?;
+    let listener = TcpListener::bind(format!("0.0.0.0:{port}")).await?;
     info!("Health server listening on port {}", port);
     axum::serve(listener, app).await?;
     Ok(())

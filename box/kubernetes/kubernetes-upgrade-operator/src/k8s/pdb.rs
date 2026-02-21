@@ -1,4 +1,4 @@
-//! PDB (PodDisruptionBudget) drain deadlock validation.
+//! PDB (`PodDisruptionBudget`) drain deadlock validation.
 //!
 //! Detects PDBs that would block node drain during managed node group rolling updates.
 
@@ -17,7 +17,7 @@ pub struct PdbSummary {
 
 impl PdbSummary {
     /// Returns true if any PDBs would block node drain.
-    pub fn has_blocking_pdbs(&self) -> bool {
+    pub const fn has_blocking_pdbs(&self) -> bool {
         self.blocking_count > 0
     }
 }
@@ -29,9 +29,10 @@ impl PdbSummary {
 /// allows zero disruptions).
 pub async fn check_pdbs(client: &kube::Client) -> Result<PdbSummary> {
     let pdbs: Api<PodDisruptionBudget> = Api::all(client.clone());
-    let list = pdbs.list(&ListParams::default()).await.map_err(|e| {
-        crate::error::KuoError::KubernetesApi(format!("Failed to list PDBs: {}", e))
-    })?;
+    let list = pdbs
+        .list(&ListParams::default())
+        .await
+        .map_err(|e| crate::error::KuoError::KubernetesApi(format!("Failed to list PDBs: {e}")))?;
 
     let total_pdbs = list.items.len();
     debug!("Found {} PDBs in cluster", total_pdbs);
@@ -39,9 +40,8 @@ pub async fn check_pdbs(client: &kube::Client) -> Result<PdbSummary> {
     let mut blocking_count = 0;
 
     for pdb in &list.items {
-        let status = match &pdb.status {
-            Some(s) => s,
-            None => continue,
+        let Some(status) = &pdb.status else {
+            continue;
         };
 
         let disruptions_allowed = status.disruptions_allowed;

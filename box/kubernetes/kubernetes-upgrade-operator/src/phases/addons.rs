@@ -39,14 +39,15 @@ pub async fn execute(
 
     let addon_status = &new_status.phases.addons[idx];
     let addon_name = addon_status.name.clone();
+    let current_version = addon_status.current_version.clone();
     let target_version = addon_status.target_version.clone();
 
     match addon_status.status {
         ComponentStatus::Pending => {
             // Initiate upgrade
             info!(
-                "Initiating addon upgrade: {} -> {}",
-                addon_name, target_version
+                "Initiating addon upgrade: {} {} to {}",
+                addon_name, current_version, target_version
             );
             addon::update_addon(&aws.eks, &spec.cluster_name, &addon_name, &target_version).await?;
             new_status.phases.addons[idx].status = ComponentStatus::InProgress;
@@ -60,24 +61,34 @@ pub async fn execute(
 
             match status_str.as_str() {
                 "ACTIVE" => {
-                    info!("Addon {} upgrade completed", addon_name);
+                    info!(
+                        "Addon {} upgrade completed: {} to {}",
+                        addon_name, current_version, target_version
+                    );
                     new_status.phases.addons[idx].status = ComponentStatus::Completed;
                     new_status.phases.addons[idx].completed_at = Some(Utc::now());
                     // Requeue immediately to process next addon
                     Ok((new_status, Some(Duration::from_secs(0))))
                 }
                 "CREATE_FAILED" | "UPDATE_FAILED" | "DELETE_FAILED" | "DEGRADED" => {
-                    warn!("Addon {} upgrade failed: {}", addon_name, status_str);
+                    warn!(
+                        "Addon {} upgrade failed: {} ({} to {})",
+                        addon_name, status_str, current_version, target_version
+                    );
                     new_status.phases.addons[idx].status = ComponentStatus::Failed;
                     new_status.phases.addons[idx].completed_at = Some(Utc::now());
                     status::set_failed(
                         &mut new_status,
-                        format!("Addon {} upgrade failed: {}", addon_name, status_str),
+                        format!("Addon {addon_name} upgrade failed: {status_str}"),
                     );
                     Ok((new_status, None))
                 }
                 _ => {
                     // Still updating
+                    info!(
+                        "Polling addon {} upgrade: {} to {} (status: {})",
+                        addon_name, current_version, target_version, status_str
+                    );
                     Ok((new_status, Some(POLL_INTERVAL)))
                 }
             }
@@ -86,7 +97,7 @@ pub async fn execute(
             // Already failed → mark overall as failed
             status::set_failed(
                 &mut new_status,
-                format!("Addon {} is in failed state", addon_name),
+                format!("Addon {addon_name} is in failed state"),
             );
             Ok((new_status, None))
         }
@@ -99,11 +110,11 @@ pub async fn execute(
 
 /// Advance from addons phase to the next applicable phase.
 fn advance_to_next_phase(new_status: &mut EKSUpgradeStatus) {
-    if !new_status.phases.nodegroups.is_empty() {
-        status::set_phase(new_status, UpgradePhase::UpgradingNodeGroups);
-    } else {
+    if new_status.phases.nodegroups.is_empty() {
         status::set_phase(new_status, UpgradePhase::Completed);
         status::set_condition(new_status, "Ready", "True", "UpgradeCompleted", None);
+    } else {
+        status::set_phase(new_status, UpgradePhase::UpgradingNodeGroups);
     }
 }
 

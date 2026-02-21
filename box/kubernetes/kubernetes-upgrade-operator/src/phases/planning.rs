@@ -15,7 +15,7 @@ use crate::status;
 /// Execute the planning phase.
 ///
 /// Fetches cluster info, calculates upgrade path, plans addon and nodegroup upgrades.
-/// Populates the status with upgrade_path, addon_statuses, and nodegroup_statuses.
+/// Populates the status with `upgrade_path`, `addon_statuses`, and `nodegroup_statuses`.
 pub async fn execute(
     spec: &EKSUpgradeSpec,
     current_status: &EKSUpgradeStatus,
@@ -47,9 +47,10 @@ pub async fn execute(
     });
 
     // Control plane phase details
+    #[allow(clippy::cast_possible_truncation)]
     let total_steps = plan.upgrade_path.len() as u32;
     new_status.phases.control_plane = Some(ControlPlaneStatus {
-        current_step: if total_steps > 0 { 1 } else { 0 },
+        current_step: u32::from(total_steps > 0),
         total_steps,
         target: None,
         update_id: None,

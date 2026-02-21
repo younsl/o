@@ -6,8 +6,46 @@ use futures::future::join_all;
 use std::collections::HashMap;
 use tracing::{debug, info, warn};
 
+use std::cmp::Ordering;
+
 use super::types::PlanResult;
 use crate::error::KuoError;
+
+/// Parse an EKS addon version string into a comparable tuple.
+///
+/// Format: `v<major>.<minor>.<patch>-eksbuild.<build>`
+/// Returns `(major, minor, patch, build)` or `None` if parsing fails.
+fn parse_addon_version(version: &str) -> Option<(u64, u64, u64, u64)> {
+    let s = version.strip_prefix('v').unwrap_or(version);
+
+    let (semver_part, build) = if let Some((sem, eksbuild)) = s.split_once("-eksbuild.") {
+        let build_num = eksbuild.parse::<u64>().ok()?;
+        (sem, build_num)
+    } else {
+        (s, 0)
+    };
+
+    let parts: Vec<&str> = semver_part.split('.').collect();
+    if parts.len() != 3 {
+        return None;
+    }
+
+    let major = parts[0].parse::<u64>().ok()?;
+    let minor = parts[1].parse::<u64>().ok()?;
+    let patch = parts[2].parse::<u64>().ok()?;
+
+    Some((major, minor, patch, build))
+}
+
+/// Compare two EKS addon version strings numerically.
+///
+/// Falls back to lexicographic comparison if either version cannot be parsed.
+fn compare_addon_versions(a: &str, b: &str) -> Ordering {
+    match (parse_addon_version(a), parse_addon_version(b)) {
+        (Some(va), Some(vb)) => va.cmp(&vb),
+        _ => a.cmp(b),
+    }
+}
 
 /// Add-on information.
 #[derive(Debug, Clone)]
@@ -113,13 +151,13 @@ pub async fn get_compatible_versions(
                 default_version: version_info
                     .compatibilities()
                     .iter()
-                    .any(|c| c.default_version()),
+                    .any(aws_sdk_eks::types::Compatibility::default_version),
             });
         }
     }
 
-    // Sort by version (latest first)
-    versions.sort_by(|a, b| b.version.cmp(&a.version));
+    // Sort by version (latest first) using numeric comparison
+    versions.sort_by(|a, b| compare_addon_versions(&b.version, &a.version));
 
     Ok(versions)
 }
@@ -165,7 +203,7 @@ pub async fn update_addon(
     let update_id = response
         .update()
         .and_then(|u| u.id())
-        .map(|s| s.to_string())
+        .map(std::string::ToString::to_string)
         .unwrap_or_default();
 
     info!("Add-on update initiated: {}", update_id);
@@ -189,23 +227,24 @@ pub async fn plan_addon_upgrades(
             specified.clone()
         } else {
             // Get latest compatible version
-            match get_latest_compatible_version(client, &addon.name, target_k8s_version).await? {
-                Some(version) => version,
-                None => {
-                    warn!(
-                        "No compatible version found for {} with K8s {}",
-                        addon.name, target_k8s_version
-                    );
-                    result.add_skipped();
-                    continue;
-                }
+            if let Some(version) =
+                get_latest_compatible_version(client, &addon.name, target_k8s_version).await?
+            {
+                version
+            } else {
+                warn!(
+                    "No compatible version found for {} with K8s {}",
+                    addon.name, target_k8s_version
+                );
+                result.add_skipped();
+                continue;
             }
         };
 
-        if target_version != addon.current_version {
-            result.add_upgrade((addon, target_version));
-        } else {
+        if target_version == addon.current_version {
             result.add_skipped();
+        } else {
+            result.add_upgrade((addon, target_version));
         }
     }
 
@@ -257,10 +296,71 @@ mod tests {
                 version: "v1.17.0-eksbuild.2".to_string(),
                 default_version: false,
             },
+            AddonVersionInfo {
+                version: "v1.9.0-eksbuild.1".to_string(),
+                default_version: false,
+            },
         ];
-        versions.sort_by(|a, b| b.version.cmp(&a.version));
+        versions.sort_by(|a, b| compare_addon_versions(&b.version, &a.version));
         assert_eq!(versions[0].version, "v1.18.1-eksbuild.3");
+        assert_eq!(versions[1].version, "v1.17.0-eksbuild.2");
         assert_eq!(versions[2].version, "v1.16.0-eksbuild.1");
+        assert_eq!(versions[3].version, "v1.9.0-eksbuild.1");
+    }
+
+    #[test]
+    fn test_parse_addon_version() {
+        assert_eq!(
+            parse_addon_version("v1.18.1-eksbuild.3"),
+            Some((1, 18, 1, 3))
+        );
+        assert_eq!(parse_addon_version("v1.9.0-eksbuild.1"), Some((1, 9, 0, 1)));
+        assert_eq!(
+            parse_addon_version("v2.0.0-eksbuild.10"),
+            Some((2, 0, 0, 10))
+        );
+        // Without eksbuild suffix
+        assert_eq!(parse_addon_version("v1.5.0"), Some((1, 5, 0, 0)));
+        // Without v prefix
+        assert_eq!(parse_addon_version("1.5.0-eksbuild.2"), Some((1, 5, 0, 2)));
+        // Invalid
+        assert_eq!(parse_addon_version("invalid"), None);
+        assert_eq!(parse_addon_version("v1.2"), None);
+    }
+
+    #[test]
+    fn test_compare_addon_versions() {
+        use std::cmp::Ordering;
+
+        // v1.18 > v1.9 (the bug case: lexicographic would say v1.9 > v1.18)
+        assert_eq!(
+            compare_addon_versions("v1.18.0-eksbuild.1", "v1.9.0-eksbuild.1"),
+            Ordering::Greater
+        );
+
+        // Same version
+        assert_eq!(
+            compare_addon_versions("v1.18.1-eksbuild.3", "v1.18.1-eksbuild.3"),
+            Ordering::Equal
+        );
+
+        // eksbuild number comparison
+        assert_eq!(
+            compare_addon_versions("v1.18.1-eksbuild.3", "v1.18.1-eksbuild.1"),
+            Ordering::Greater
+        );
+
+        // Patch version comparison
+        assert_eq!(
+            compare_addon_versions("v1.18.2-eksbuild.1", "v1.18.1-eksbuild.3"),
+            Ordering::Greater
+        );
+
+        // Fallback to string comparison for unparseable versions
+        assert_eq!(
+            compare_addon_versions("invalid-a", "invalid-b"),
+            Ordering::Less
+        );
     }
 }
 
@@ -281,8 +381,7 @@ pub async fn poll_addon_status(
     let status = response
         .addon()
         .and_then(|a| a.status())
-        .map(|s| s.as_str().to_string())
-        .unwrap_or_else(|| "Unknown".to_string());
+        .map_or_else(|| "Unknown".to_string(), |s| s.as_str().to_string());
 
     Ok(status)
 }

@@ -5,8 +5,9 @@ use std::collections::HashMap;
 use tracing::info;
 
 use super::addon::{self, AddonUpgrade};
-use super::client::{EksClient, calculate_upgrade_path};
+use super::client::EksClient;
 use super::nodegroup::{self, NodeGroupInfo};
+use super::version::calculate_upgrade_path;
 
 /// Upgrade plan for a cluster.
 #[derive(Debug, Clone)]
@@ -19,7 +20,7 @@ pub struct UpgradePlan {
 
 impl UpgradePlan {
     /// Returns true if there's nothing to upgrade (all components already at target version).
-    pub fn is_empty(&self) -> bool {
+    pub const fn is_empty(&self) -> bool {
         self.upgrade_path.is_empty()
             && self.addon_upgrades.is_empty()
             && self.nodegroup_upgrades.is_empty()

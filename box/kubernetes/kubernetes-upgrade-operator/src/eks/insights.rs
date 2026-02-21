@@ -38,7 +38,7 @@ pub struct InsightsSummary {
 
 impl InsightsSummary {
     /// Check if there are any critical blockers.
-    pub fn has_critical_blockers(&self) -> bool {
+    pub const fn has_critical_blockers(&self) -> bool {
         self.critical_count > 0
     }
 }
@@ -64,8 +64,7 @@ pub async fn list_insights(client: &Client, cluster_name: &str) -> Result<Insigh
         let status = insight
             .insight_status()
             .and_then(|s| s.status())
-            .map(|s| s.as_str().to_string())
-            .unwrap_or_else(|| "UNKNOWN".to_string());
+            .map_or_else(|| "UNKNOWN".to_string(), |s| s.as_str().to_string());
 
         match status.as_str() {
             "ERROR" | "CRITICAL" => critical_count += 1,
@@ -172,7 +171,9 @@ pub async fn describe_insight(
                 .and_then(|s| s.status())
                 .map(|s| s.as_str().to_string())
                 .unwrap_or_default(),
-            recommendation: insight.recommendation().map(|s| s.to_string()),
+            recommendation: insight
+                .recommendation()
+                .map(std::string::ToString::to_string),
             resources,
         };
 
