@@ -135,10 +135,6 @@ box/
 │   ├── backstage/         # Backstage with GitLab Auto Discovery (Node.js)
 │   ├── filesystem-cleaner/# File system cleanup tool (Rust)
 │   └── logstash-with-opensearch-plugin/  # Logstash with OpenSearch plugin for ECK
-├── scripts/               # Automation scripts by platform
-│   ├── aws/               # AWS resource management
-│   ├── github/            # Repository automation
-│   └── k8s-registry-io-stat/  # K8s connectivity testing
 └── terraform/             # Infrastructure as Code
     └── vault/irsa/        # Vault auto-unseal with AWS KMS
 ```
