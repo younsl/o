@@ -12,4 +12,3 @@ Production-ready tools, controllers, and automation resources for Kubernetes and
 - **[kubernetes](./box/kubernetes/)** - Kubernetes addons and CLI tools
 - **[containers](./box/containers/)** - Runtime images for CI/CD and data platforms
 - **[terraform](./box/terraform/)** - Infrastructure modules
-- **[scripts](./box/scripts/)** - AWS, GitHub, and K8s automation
