@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Repository Overview
 
-A monorepo serving as a DevOps toolbox containing Kubernetes utilities, automation scripts, infrastructure code, and engineering documentation.
+A monorepo serving as a DevOps toolbox containing Kubernetes utilities, infrastructure code, and engineering documentation.
 
 All applications in `kubernetes/`, `tools/`, and `containers/` are built with **[Rust](https://github.com/rust-lang/rust) 1.93+**. Rust provides key operational benefits: minimal container sizes, low memory footprint, single static binaries with no runtime dependencies, memory safety preventing null pointer and buffer overflow crashes, and compile-time guarantees ensuring system stability in production.
 
@@ -30,7 +30,7 @@ Types: `feat`, `fix`, `refactor`, `docs`, `test`, `chore`, etc.
 
 ### Rust Projects
 
-Standard Makefile patterns for Rust tools (ij, kup, karc, qg, s3vget, promdrop, gss, filesystem-cleaner, elasticache-backup, redis-console, trivy-collector):
+Standard Makefile patterns for Rust tools (ij, kup, kuo, karc, qg, s3vget, promdrop, gss, filesystem-cleaner, elasticache-backup, redis-console, trivy-collector):
 
 ```bash
 # Core build commands
@@ -68,7 +68,6 @@ make deploy         # Deploy to Kubernetes (where available)
 **Container-Specific Notes**:
 - **filesystem-cleaner**: Includes `make all` target that runs fmt + lint + test + build
 - **elasticache-backup**: Supports multi-arch builds and has `run-json` target for JSON log testing
-- **hugo**: Built from external sources via workflow_dispatch (no local Dockerfile)
 - Update ECR_REGISTRY variable in Makefiles before pushing
 
 ### Terraform Projects
@@ -124,6 +123,7 @@ box/
 │   ├── gss/               # GHES scheduled workflow scanner (Rust, container)
 │   ├── karc/              # Karpenter NodePool consolidation manager CLI (Rust)
 │   ├── kup/               # EKS cluster upgrade CLI tool (Rust)
+│   ├── kubernetes-upgrade-operator/ # EKS declarative upgrade operator (Rust, container)
 │   ├── promdrop/          # Prometheus metric filter generator (Rust, CLI + container)
 │   ├── redis-console/     # Interactive Redis cluster management CLI (Rust, CLI + container)
 │   └── trivy-collector/   # Multi-cluster Trivy report collector/viewer (Rust, container)
@@ -261,6 +261,59 @@ Checks `status.disruptionsAllowed == 0` on all PDBs via Kubernetes API before MN
 - Managed Node Groups only (self-managed and Karpenter nodes not supported)
 
 **AWS Permissions Required**: `eks:ListClusters`, `eks:DescribeCluster`, `eks:UpdateClusterVersion`, `eks:DescribeUpdate`, `eks:ListInsights`, `eks:DescribeInsight`, `eks:ListAddons`, `eks:DescribeAddon`, `eks:DescribeAddonVersions`, `eks:UpdateAddon`, `eks:ListNodegroups`, `eks:DescribeNodegroup`, `eks:UpdateNodegroupVersion`, `autoscaling:DescribeAutoScalingGroups`
+
+### kuo - Kubernetes Upgrade Operator (Rust)
+
+Kubernetes operator for declarative EKS cluster upgrades. Watches `EKSUpgrade` custom resources and performs sequential control plane, add-on, and managed node group upgrades. Inspired by Rancher's [system-upgrade-controller](https://github.com/rancher/system-upgrade-controller).
+
+```bash
+# Build commands
+make build      # Debug build
+make release    # Optimized release build
+make run        # Build and run operator
+make dev        # Run with debug logging
+make install    # Install to ~/.cargo/bin/
+
+# Helm operations
+make helm-lint      # Lint Helm chart
+make helm-template  # Render templates locally
+
+# Container
+make docker-build   # Build Docker image
+```
+
+**EKSUpgrade CR Example**:
+```yaml
+apiVersion: kuo.io/v1alpha1
+kind: EKSUpgrade
+metadata:
+  name: staging-upgrade
+spec:
+  clusterName: staging-cluster
+  targetVersion: "1.34"
+  region: ap-northeast-2
+  # assumeRoleArn: arn:aws:iam::123456789012:role/kuo-spoke-role  # Cross-account
+  # dryRun: true              # Plan only
+  # skipPdbCheck: false       # PDB drain deadlock check
+  # notification:
+  #   onUpgrade: true         # Slack notifications
+```
+
+**Upgrade Phases**: Pending → Planning → PreflightChecking → UpgradingControlPlane → UpgradingAddons → UpgradingNodeGroups → Completed
+
+**Features**:
+- Sequential control plane upgrades (1 minor version at a time)
+- Hub & Spoke model via STS AssumeRole for cross-account upgrades
+- Preflight checks: EKS Insights, Deletion Protection, PDB drain deadlock
+- Crash recovery via persisted AWS update IDs in CRD status
+- Dry-run and sync mode support
+- Slack Incoming Webhook notifications
+- Prometheus metrics on port 8081, health endpoints on port 8080
+
+**Constraints**:
+- Control plane upgrades limited to 1 minor version at a time (EKS limitation)
+- Managed Node Groups only (self-managed and Karpenter nodes not supported)
+- Cluster-scoped CRD (one EKSUpgrade per cluster)
 
 ### karc - Karpenter NodePool Consolidation Manager CLI (Rust)
 
@@ -662,6 +715,7 @@ GitHub Actions automatically builds and releases on tag push:
 git tag ij/1.0.0 && git push --tags
 git tag kup/1.0.0 && git push --tags
 git tag karc/1.0.0 && git push --tags
+git tag kuo/1.0.0 && git push --tags
 git tag promdrop/1.0.0 && git push --tags
 
 # Container image releases (pattern: {container}/x.y.z)
@@ -669,6 +723,7 @@ git tag filesystem-cleaner/1.0.0 && git push --tags
 git tag elasticache-backup/1.0.0 && git push --tags
 git tag redis-console/1.0.0 && git push --tags
 git tag gss/1.0.0 && git push --tags
+git tag kuo/1.0.0 && git push --tags
 git tag trivy-collector/1.0.0 && git push --tags
 git tag logstash-with-opensearch-plugin/8.17.0 && git push --tags
 git tag backstage/1.0.0 && git push --tags
@@ -676,6 +731,7 @@ git tag backstage/1.0.0 && git push --tags
 # Helm chart releases (pattern: {chart}/charts/x.y.z)
 git tag elasticache-backup/charts/1.0.0 && git push --tags
 git tag redis-console/charts/1.0.0 && git push --tags
+git tag kuo/charts/1.0.0 && git push --tags
 git tag trivy-collector/charts/1.0.0 && git push --tags
 git tag gss/charts/1.0.0 && git push --tags
 git tag grafana-dashboards/charts/1.0.0 && git push --tags
@@ -684,6 +740,7 @@ git tag grafana-dashboards/charts/1.0.0 && git push --tags
 # - release-ij.yml                           (Rust CLI)
 # - release-kup.yml                          (Rust CLI)
 # - release-karc.yml                         (Rust CLI)
+# - release-kuo.yml                          (Rust container + operator)
 # - release-promdrop.yml                     (Rust CLI + container)
 # - release-rust-containers.yml              (Unified Rust container release: filesystem-cleaner, elasticache-backup, redis-console, gss)
 # - release-trivy-collector.yml              (Rust container)
