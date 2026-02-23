@@ -114,9 +114,12 @@ fn build_presigned_token(
     let signed_headers = "host;x-k8s-aws-id";
 
     // Canonical request
+    // STS requires the actual SHA-256 hash of the (empty) request body,
+    // unlike S3 which accepts the literal string "UNSIGNED-PAYLOAD".
+    let payload_hash = hex_sha256(b"");
     let canonical_request = format!(
         "GET\n/\n{}\n{}\n{}\n{}",
-        canonical_querystring, canonical_headers, signed_headers, "UNSIGNED-PAYLOAD"
+        canonical_querystring, canonical_headers, signed_headers, payload_hash
     );
 
     // String to sign
