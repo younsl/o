@@ -53,15 +53,19 @@ pub struct ControlPlaneStatus {
     pub total_steps: u32,
 
     /// Target version of the current upgrade step.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
+    /// NOTE: No `skip_serializing_if` — None must serialize as `null` so that
+    /// JSON Merge Patch (RFC 7396) removes the field from the CRD status.
+    #[serde(default)]
     pub target: Option<String>,
 
     /// Active AWS update ID for crash recovery.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
+    /// NOTE: No `skip_serializing_if` — same reason as `target`.
+    #[serde(default)]
     pub update_id: Option<String>,
 
     /// Timestamp when the current upgrade step was initiated. Used for timeout enforcement.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
+    /// NOTE: No `skip_serializing_if` — same reason as `target`.
+    #[serde(default)]
     pub started_at: Option<DateTime<Utc>>,
 
     /// Timestamp when all control plane upgrade steps completed.
@@ -94,10 +98,13 @@ pub struct NodegroupStatus {
     pub target_version: String,
     pub status: ComponentStatus,
     /// Active AWS update ID for this node group (for crash recovery).
-    #[serde(default, skip_serializing_if = "Option::is_none")]
+    /// NOTE: No `skip_serializing_if` — None must serialize as `null` so that
+    /// JSON Merge Patch (RFC 7396) removes the field from the CRD status.
+    #[serde(default)]
     pub update_id: Option<String>,
     /// Timestamp when this node group upgrade was initiated. Used for timeout enforcement.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
+    /// NOTE: No `skip_serializing_if` — same reason as `update_id`.
+    #[serde(default)]
     pub started_at: Option<DateTime<Utc>>,
 
     /// Timestamp when this node group upgrade completed.
@@ -262,5 +269,142 @@ mod tests {
         let deserialized: EKSUpgradeStatus = serde_json::from_str(&json).unwrap();
         assert_eq!(deserialized.phase, Some(UpgradePhase::Planning));
         assert_eq!(deserialized.current_version.as_deref(), Some("1.32"));
+    }
+
+    /// Regression test: ControlPlaneStatus fields that are cleared to None during
+    /// step transitions MUST serialize as JSON `null` (not be omitted) so that
+    /// JSON Merge Patch (RFC 7396) removes them from the CRD status.
+    /// Without this, a stale `update_id` persists and causes the operator to
+    /// skip control plane upgrade steps.
+    #[test]
+    fn test_control_plane_none_fields_serialize_as_null() {
+        let cp = ControlPlaneStatus {
+            current_step: 2,
+            total_steps: 2,
+            target: None,
+            update_id: None,
+            started_at: None,
+            completed_at: None,
+        };
+        let json = serde_json::to_value(&cp).unwrap();
+        let obj = json.as_object().unwrap();
+
+        // These fields MUST be present as null, not omitted.
+        assert!(obj.contains_key("updateId"), "updateId must be present");
+        assert!(obj["updateId"].is_null(), "updateId must be null");
+
+        assert!(obj.contains_key("target"), "target must be present");
+        assert!(obj["target"].is_null(), "target must be null");
+
+        assert!(obj.contains_key("startedAt"), "startedAt must be present");
+        assert!(obj["startedAt"].is_null(), "startedAt must be null");
+    }
+
+    /// Regression test: NodegroupStatus fields cleared on completion must
+    /// serialize as null for the same Merge Patch reason.
+    #[test]
+    fn test_nodegroup_none_fields_serialize_as_null() {
+        let ng = NodegroupStatus {
+            name: "ng-system".to_string(),
+            current_version: "1.33".to_string(),
+            target_version: "1.34".to_string(),
+            status: ComponentStatus::Completed,
+            update_id: None,
+            started_at: None,
+            completed_at: None,
+        };
+        let json = serde_json::to_value(&ng).unwrap();
+        let obj = json.as_object().unwrap();
+
+        assert!(obj.contains_key("updateId"), "updateId must be present");
+        assert!(obj["updateId"].is_null(), "updateId must be null");
+
+        assert!(obj.contains_key("startedAt"), "startedAt must be present");
+        assert!(obj["startedAt"].is_null(), "startedAt must be null");
+    }
+
+    /// Minimal RFC 7396 JSON Merge Patch implementation for testing.
+    fn json_merge_patch(target: &mut serde_json::Value, patch: &serde_json::Value) {
+        if let (Some(target_obj), Some(patch_obj)) = (target.as_object_mut(), patch.as_object()) {
+            for (key, value) in patch_obj {
+                if value.is_null() {
+                    target_obj.remove(key);
+                } else if value.is_object() {
+                    let entry = target_obj
+                        .entry(key.clone())
+                        .or_insert(serde_json::json!({}));
+                    json_merge_patch(entry, value);
+                } else {
+                    target_obj.insert(key.clone(), value.clone());
+                }
+            }
+        }
+    }
+
+    /// Regression test for the two-step control plane upgrade bug.
+    ///
+    /// Simulates the exact scenario: upgrading from 1.32 → 1.34 (two steps).
+    /// After step 1/2 (1.32→1.33) completes, the operator sets update_id = None
+    /// and current_step = 2. When this is applied as a JSON Merge Patch, the
+    /// stale update_id MUST be removed. Otherwise, step 2/2 polls the old
+    /// update_id (which returns "Successful" for the already-completed step 1),
+    /// causing the operator to skip the actual 1.33→1.34 upgrade and jump
+    /// directly to UpgradingAddons.
+    #[test]
+    fn test_two_step_cp_upgrade_merge_patch_clears_stale_update_id() {
+        // === State BEFORE step 1/2 completes ===
+        // CRD status in Kubernetes has update_id from step 1.
+        let mut crd_status = serde_json::json!({
+            "phases": {
+                "controlPlane": {
+                    "currentStep": 1,
+                    "totalSteps": 2,
+                    "target": "1.33",
+                    "updateId": "6a86aea3-7708-3eea-a4e1-c22d0c8f0a9d",
+                    "startedAt": "2026-02-23T04:59:14Z"
+                }
+            }
+        });
+
+        // === Operator detects step 1/2 "Successful" ===
+        // Builds new status: current_step = 2, clears update_id/target/started_at.
+        let after_step1 = ControlPlaneStatus {
+            current_step: 2,
+            total_steps: 2,
+            target: None,
+            update_id: None,
+            started_at: None,
+            completed_at: None,
+        };
+
+        // Serialize exactly as patch_status() does.
+        let patch = serde_json::json!({
+            "phases": {
+                "controlPlane": serde_json::to_value(&after_step1).unwrap()
+            }
+        });
+
+        // Apply JSON Merge Patch (RFC 7396), same as Patch::Merge in kube-rs.
+        json_merge_patch(&mut crd_status, &patch);
+
+        // === Verify: stale update_id MUST be removed ===
+        let cp = &crd_status["phases"]["controlPlane"];
+
+        assert_eq!(cp["currentStep"], 2, "currentStep must advance to 2");
+        assert_eq!(cp["totalSteps"], 2);
+
+        // The critical assertions: these fields must NOT retain stale values.
+        assert!(
+            !cp.as_object().unwrap().contains_key("updateId"),
+            "updateId must be removed by merge patch (null removes the key)"
+        );
+        assert!(
+            !cp.as_object().unwrap().contains_key("target"),
+            "target must be removed by merge patch"
+        );
+        assert!(
+            !cp.as_object().unwrap().contains_key("startedAt"),
+            "startedAt must be removed by merge patch"
+        );
     }
 }
