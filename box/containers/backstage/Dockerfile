@@ -35,11 +35,14 @@ COPY .yarn ./.yarn
 COPY .yarnrc.yml ./
 
 # Copy package files for dependency caching
+# Uses find + cp to preserve directory structure for all workspace package.json files
 COPY package.json yarn.lock ./
-COPY packages/backend/package.json packages/backend/
-COPY packages/app/package.json packages/app/
-COPY plugins/openapi-registry/package.json plugins/openapi-registry/
-COPY plugins/openapi-registry-backend/package.json plugins/openapi-registry-backend/
+COPY packages/ /tmp/packages/
+COPY plugins/ /tmp/plugins/
+RUN find /tmp/packages /tmp/plugins -name 'package.json' | while read f; do \
+      rel="${f#/tmp/}"; \
+      mkdir -p "$(dirname "$rel")" && cp "$f" "$rel"; \
+    done && rm -rf /tmp/packages /tmp/plugins
 
 # Install all dependencies (including devDependencies for build)
 RUN yarn install --immutable
@@ -103,14 +106,14 @@ RUN tar xzf skeleton.tar.gz && rm skeleton.tar.gz
 COPY --from=build --chown=node:node /app/.yarn ./.yarn
 COPY --from=build --chown=node:node /app/.yarnrc.yml ./
 
-# Copy app workspace package.json BEFORE yarn install
-# This allows yarn to create proper workspace symlinks (node_modules/app -> packages/app)
-# plugin-app-backend uses resolvePackagePath('app') which requires this symlink
+# Copy all workspace package.json files for yarn workspace resolution
+# Includes packages/app and all plugins (auto-discovers new plugins)
 COPY --from=build --chown=node:node /app/packages/app/package.json ./packages/app/
-
-# Copy plugins package.json for workspace resolution
-COPY --from=build --chown=node:node /app/plugins/openapi-registry/package.json ./plugins/openapi-registry/
-COPY --from=build --chown=node:node /app/plugins/openapi-registry-backend/package.json ./plugins/openapi-registry-backend/
+COPY --from=build --chown=node:node /app/plugins/ /tmp/plugins/
+RUN find /tmp/plugins -name 'package.json' | while read f; do \
+      dir="plugins/$(echo "$f" | sed 's|^/tmp/plugins/||' | xargs dirname)"; \
+      mkdir -p "$dir" && cp "$f" "$dir/"; \
+    done && rm -rf /tmp/plugins
 
 # Install production dependencies only (Yarn Berry feature)
 # Uses cached packages from .yarn/cache
