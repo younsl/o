@@ -18,9 +18,11 @@ Custom Backstage image with GitLab Auto Discovery, Keycloak OIDC, and API Docs p
 | OIDC Authentication | [`@backstage/plugin-auth-backend-module-oidc-provider`](https://www.npmjs.com/package/@backstage/plugin-auth-backend-module-oidc-provider) | Native | Keycloak/OIDC SSO authentication |
 | API Docs | [`@backstage/plugin-api-docs`](https://www.npmjs.com/package/@backstage/plugin-api-docs) | Native | OpenAPI, AsyncAPI, GraphQL spec viewer |
 | OpenAPI Registry | `openapi-registry` | Custom† | Register external OpenAPI specs by URL with search and filters |
+| ArgoCD AppSets | `argocd-appset` | Custom† | View and manage ArgoCD ApplicationSets with mute/unmute and Slack alerts |
 | TechDocs | [`@backstage/plugin-techdocs`](https://www.npmjs.com/package/@backstage/plugin-techdocs) | Native | Markdown-based technical documentation |
 | Scaffolder | [`@backstage/plugin-scaffolder`](https://www.npmjs.com/package/@backstage/plugin-scaffolder) | Native | Template-based project creation |
 | Search | [`@backstage/plugin-search`](https://www.npmjs.com/package/@backstage/plugin-search) | Native | Full-text search across catalog |
+| Simple Icons | [`@dweber019/backstage-plugin-simple-icons`](https://www.npmjs.com/package/@dweber019/backstage-plugin-simple-icons) | Community | Brand icons from [simpleicons.org](https://simpleicons.org/) for sidebar and links |
 
 † Custom plugins currently use legacy `@backstage/core-components` with Material-UI v4. Migration to [`@backstage/ui`](https://www.npmjs.com/package/@backstage/ui) is recommended as `@backstage/core-components` will be deprecated in favor of the new design system.
 
@@ -68,6 +70,8 @@ git push origin backstage/1.48.0
 | `KEYCLOAK_CLIENT_SECRET` | OIDC | Keycloak client secret |
 | `KEYCLOAK_METADATA_URL` | OIDC | OIDC metadata URL |
 | `AUTH_SESSION_SECRET` | OIDC | Session secret (min 32 chars) |
+| `K8S_SA_TOKEN` | ArgoCD AppSet | Kubernetes service account token |
+| `SLACK_WEBHOOK_URL` | ArgoCD AppSet | Slack Incoming Webhook URL for alerts |
 
 ## Documentation
 
@@ -89,6 +93,7 @@ git push origin backstage/1.48.0
 │  ├─ GitLab CI/CD Tab        │  ├─ GitLab CI/CD API          │
 │  ├─ API Docs Viewer         │  ├─ Search Indexer            │
 │  ├─ OpenAPI Registry        │  ├─ OpenAPI Registry API      │
+│  ├─ ArgoCD AppSets          │  ├─ ArgoCD AppSet API         │
 │  ├─ TechDocs Reader         │  ├─ TechDocs Builder          │
 │  └─ Scaffolder UI           │  └─ Scaffolder Backend        │
 ├─────────────────────────────────────────────────────────────┤
@@ -113,6 +118,8 @@ backstage/
 │   ├── app/                     # Frontend
 │   └── backend/                 # Backend
 ├── plugins/
+│   ├── argocd-appset/           # ArgoCD AppSet frontend plugin
+│   ├── argocd-appset-backend/   # ArgoCD AppSet backend plugin
 │   ├── openapi-registry/        # OpenAPI Registry frontend plugin
 │   └── openapi-registry-backend/# OpenAPI Registry backend plugin
 ├── templates/
