@@ -46,11 +46,13 @@ import {
   themes as builtinThemes,
 } from '@backstage/theme';
 import { OpenApiRegistryPage } from '@internal/plugin-openapi-registry';
+import { ArgocdAppsetPage } from '@internal/plugin-argocd-appset';
 
 const CustomSignInPage = (props: any) => (
   <SignInPage
     {...props}
     providers={[
+      'guest',
       {
         id: 'keycloak',
         title: 'Keycloak',
@@ -127,6 +129,7 @@ const routes = (
     <Route path="/catalog-import" element={<CatalogImportPage />} />
     <Route path="/catalog-graph" element={<CatalogGraphPage />} />
     <Route path="/openapi-registry" element={<OpenApiRegistryPage />} />
+    <Route path="/argocd-appset" element={<ArgocdAppsetPage />} />
     <Route path="/settings" element={<UserSettingsPage />} />
   </FlatRoutes>
 );

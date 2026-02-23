@@ -73,6 +73,9 @@ backend.add(import('@backstage/plugin-search-backend-module-catalog'));
 // OpenAPI Registry plugin for registering external API specs
 backend.add(import('@internal/plugin-openapi-registry-backend'));
 
+// ArgoCD ApplicationSet plugin for viewing ApplicationSets from Kubernetes
+backend.add(import('@internal/plugin-argocd-appset-backend'));
+
 // SonarQube plugin for code quality metrics
 backend.add(import('@backstage-community/plugin-sonarqube-backend'));
 

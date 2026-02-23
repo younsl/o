@@ -133,6 +133,22 @@ sonarqube:
   baseUrl: ${SONARQUBE_BASE_URL}
   apiKey: ${SONARQUBE_API_KEY}
 
+argocdApplicationSet:
+  enabled: true 
+  kubernetes:
+    # Optional: in-cluster mode uses SA token automatically
+    # serviceAccountToken: ${K8S_SA_TOKEN}
+    # Namespace where ApplicationSets are deployed
+    namespace: argocd
+  slack:
+    webhookUrl: ${SLACK_WEBHOOK_URL}
+  # All cron expressions are evaluated in UTC (container default timezone)
+  schedule:
+    # Optional: fetch interval (default: every 1 minute)
+    # fetchCron: '*/5 * * * *'
+    # Slack notification: weekdays 10-11, 14-18 every hour (UTC)
+    cron: '0 10-11,14-18 * * 1-5'
+
 proxy:
   endpoints: {}
 

@@ -12,7 +12,11 @@ import CloudUploadIcon from '@material-ui/icons/CloudUpload';
 import ExpandMoreIcon from '@material-ui/icons/ExpandMore';
 import ExpandLessIcon from '@material-ui/icons/ExpandLess';
 import AppsIcon from '@material-ui/icons/Apps';
-import BuildIcon from '@material-ui/icons/Build';
+import { siArgo, siKubernetes } from 'simple-icons';
+import { createIcon } from '@dweber019/backstage-plugin-simple-icons';
+
+const ArgocdIcon = createIcon(siArgo, false);
+const KubernetesIcon = createIcon(siKubernetes, false);
 import {
   Settings as SidebarSettings,
   UserSettingsSignInAvatar,
@@ -31,7 +35,7 @@ import {
   Link,
 } from '@backstage/core-components';
 import { MyGroupsSidebarItem } from '@backstage/plugin-org';
-import { identityApiRef, useApi } from '@backstage/core-plugin-api';
+import { configApiRef, identityApiRef, useApi } from '@backstage/core-plugin-api';
 import LogoFull from './LogoFull';
 import LogoIcon from './LogoIcon';
 
@@ -202,7 +206,11 @@ const FoldableSection = ({
   );
 };
 
-export const Root = ({ children }: PropsWithChildren<{}>) => (
+export const Root = ({ children }: PropsWithChildren<{}>) => {
+  const config = useApi(configApiRef);
+  const argocdAppSetEnabled = config.getOptionalBoolean('argocdApplicationSet.enabled') ?? true;
+
+  return (
   <SidebarPage>
     <Sidebar>
       <SidebarLogo />
@@ -211,7 +219,7 @@ export const Root = ({ children }: PropsWithChildren<{}>) => (
       </SidebarGroup>
       <SidebarDivider />
       <SidebarItem icon={HomeIcon} to="/" text="Home" />
-      <SidebarItem icon={DashboardIcon} to="platforms" text="Platforms" />
+      <SidebarItem icon={KubernetesIcon} to="platforms" text="Platforms" />
       <SidebarDivider />
 
       {/* Resources Section */}
@@ -219,6 +227,9 @@ export const Root = ({ children }: PropsWithChildren<{}>) => (
         <SidebarItem icon={CategoryIcon} to="catalog" text="Catalog" />
         <SidebarItem icon={ExtensionIcon} to="api-docs" text="APIs" />
         <SidebarItem icon={CloudUploadIcon} to="openapi-registry" text="API Registry" />
+        {argocdAppSetEnabled && (
+          <SidebarItem icon={ArgocdIcon} to="argocd-appset" text="ArgoCD" />
+        )}
         <SidebarItem icon={LibraryBooks} to="docs" text="Docs" />
       </FoldableSection>
 
@@ -246,4 +257,5 @@ export const Root = ({ children }: PropsWithChildren<{}>) => (
     </Sidebar>
     {children}
   </SidebarPage>
-);
+  );
+};

@@ -18,7 +18,9 @@
     { "path": "packages/app" },
     { "path": "packages/backend" },
     { "path": "plugins/openapi-registry" },
-    { "path": "plugins/openapi-registry-backend" }
+    { "path": "plugins/openapi-registry-backend" },
+    { "path": "plugins/argocd-appset" },
+    { "path": "plugins/argocd-appset-backend" }
   ],
   "files": []
 }

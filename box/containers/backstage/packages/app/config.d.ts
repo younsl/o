@@ -1,4 +1,14 @@
 export interface Config {
+  /**
+   * ArgoCD ApplicationSet plugin configuration
+   */
+  argocdApplicationSet?: {
+    /**
+     * Enable or disable the plugin
+     * @visibility frontend
+     */
+    enabled?: boolean;
+  };
   app: {
     /**
      * Internal platform services for developers
