@@ -6,6 +6,7 @@ import { createRouter } from './service/router';
 import { ApplicationSetService } from './service/ApplicationSetService';
 import { SlackNotifier } from './service/SlackNotifier';
 import { AppSetCache } from './service/AppSetCache';
+import { parseExpression } from 'cron-parser';
 
 export const argocdAppsetPlugin = createBackendPlugin({
   pluginId: 'argocd-appset',
@@ -79,6 +80,17 @@ export const argocdAppsetPlugin = createBackendPlugin({
             initialDelay: { seconds: 30 },
             fn: async () => {
               try {
+                // Guard against Backstage scheduler firing immediately after pod
+                // restart regardless of the cron expression (overdue task catchup).
+                const now = new Date();
+                const interval = parseExpression(notifyCron, { utc: true });
+                const prev = interval.prev().toDate();
+                const diffMs = now.getTime() - prev.getTime();
+                if (diffMs > 60_000) {
+                  logger.info(`Skipped Slack notification: ${now.toISOString()} is outside cron schedule`);
+                  return;
+                }
+
                 const appSets = cache.getAppSets();
                 const nonHeadAppSets = appSets.filter(a => !a.isHeadRevision && !a.muted);
                 if (nonHeadAppSets.length > 0) {
