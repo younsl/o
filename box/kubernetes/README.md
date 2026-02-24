@@ -24,7 +24,6 @@ Kubernetes tools, policy resources, and architecture documentation organized by 
 | Helm Chart | [grafana-dashboards](./grafana-dashboards/) | [Helm](./grafana-dashboards/Chart.yaml) | Active | Helm chart that deploys Grafana dashboards as Kubernetes [ConfigMaps](https://kubernetes.io/docs/concepts/configuration/configmap/) for sidecar provisioning |
 | Tools | [karc](./karc/) | [Rust](./karc/Cargo.toml) | Active | Karpenter NodePool consolidation manager CLI with disruption schedule timetable and pause/resume support |
 | Tools | [kup](./kup/) | [Rust](./kup/Cargo.toml) | Deprecated | Interactive EKS cluster upgrade CLI. Deprecated in favor of [kubernetes-upgrade-operator](./kubernetes-upgrade-operator/) |
-| Tools | [promdrop](./promdrop/) | [Rust](./promdrop/Cargo.toml) | Active | Prometheus scrape config generator to drop unused metrics analyzed by [mimirtool](https://grafana.com/docs/mimir/latest/manage/tools/mimirtool/) |
 
 ## Related
 

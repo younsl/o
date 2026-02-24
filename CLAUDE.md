@@ -30,7 +30,7 @@ Types: `feat`, `fix`, `refactor`, `docs`, `test`, `chore`, etc.
 
 ### Rust Projects
 
-Standard Makefile patterns for Rust tools (ij, kup, kuo, karc, qg, s3vget, promdrop, gss, filesystem-cleaner, elasticache-backup, redis-console, trivy-collector):
+Standard Makefile patterns for Rust tools (ij, kup, kuo, karc, qg, s3vget, gss, filesystem-cleaner, elasticache-backup, redis-console, trivy-collector):
 
 ```bash
 # Core build commands
@@ -124,7 +124,6 @@ box/
 │   ├── karc/              # Karpenter NodePool consolidation manager CLI (Rust)
 │   ├── kup/               # EKS cluster upgrade CLI tool (Rust)
 │   ├── kubernetes-upgrade-operator/ # EKS declarative upgrade operator (Rust, container)
-│   ├── promdrop/          # Prometheus metric filter generator (Rust, CLI + container)
 │   ├── redis-console/     # Interactive Redis cluster management CLI (Rust, CLI + container)
 │   └── trivy-collector/   # Multi-cluster Trivy report collector/viewer (Rust, container)
 ├── tools/                 # CLI utilities
@@ -188,7 +187,7 @@ Rust cross-compilation is more complex than Go and requires additional setup:
 - Rust crates often depend on C libraries (openssl, sqlite, etc.)
 - Must install target-specific gcc/g++ and configure linker paths
 
-See `.github/workflows/release-promdrop.yml` for complete ARM64 cross-compilation example.
+See `.github/workflows/release-kup.yml` for complete ARM64 cross-compilation example.
 
 ## AWS Integration Points
 
@@ -415,40 +414,6 @@ s3vget -b my-bucket -k path/to/file.json -s 2025-10-01 -e now
 - Pagination support for large version lists
 
 **AWS Permissions Required**: `s3:GetObject`, `s3:GetObjectVersion`, `s3:ListBucket`, `s3:ListBucketVersions`
-
-### promdrop - Prometheus Metric Filter Generator (Rust)
-
-Generates Prometheus metric drop configurations from mimirtool analysis.
-
-```bash
-# Generate metric drop configs from mimirtool analysis
-# First run mimirtool to analyze metrics:
-mimirtool analyze prometheus --output=prometheus-metrics.json
-
-# Then generate drop configs (Rust version):
-./target/release/promdrop --file prometheus-metrics.json
-
-# Or use Makefile
-make run        # Build and run with example
-make release    # Optimized release build
-
-# Custom output locations
-promdrop --file prometheus-metrics.json \
-  --txt-output-dir ./unused \
-  --output combined_relabel_configs.yaml
-
-# Container usage
-docker run --rm -v $(pwd):/data \
-  ghcr.io/younsl/promdrop:latest \
-  --file /data/prometheus-metrics.json
-```
-
-**Technical Details**:
-- Built with Rust using serde for JSON/YAML parsing
-- CLI built with Clap for argument parsing
-- Available as both CLI binary and container image
-- Multi-arch Docker images (linux/amd64, linux/arm64)
-- Automated releases via GitHub Actions (tag pattern: `promdrop/x.y.z`)
 
 ### filesystem-cleaner - Kubernetes Filesystem Cleanup Tool (Rust)
 
@@ -716,8 +681,6 @@ git tag ij/1.0.0 && git push --tags
 git tag kup/1.0.0 && git push --tags
 git tag karc/1.0.0 && git push --tags
 git tag kuo/1.0.0 && git push --tags
-git tag promdrop/1.0.0 && git push --tags
-
 # Container image releases (pattern: {container}/x.y.z)
 git tag filesystem-cleaner/1.0.0 && git push --tags
 git tag elasticache-backup/1.0.0 && git push --tags
@@ -741,7 +704,6 @@ git tag grafana-dashboards/charts/1.0.0 && git push --tags
 # - release-kup.yml                          (Rust CLI)
 # - release-karc.yml                         (Rust CLI)
 # - release-kuo.yml                          (Rust container + operator)
-# - release-promdrop.yml                     (Rust CLI + container)
 # - release-rust-containers.yml              (Unified Rust container release: filesystem-cleaner, elasticache-backup, redis-console, gss)
 # - release-trivy-collector.yml              (Rust container)
 # - release-helm-chart.yml                   (Unified Helm chart release to OCI registry)
