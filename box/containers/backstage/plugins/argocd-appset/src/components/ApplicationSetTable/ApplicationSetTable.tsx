@@ -1,177 +1,38 @@
 import React, { useState, useMemo, useCallback } from 'react';
 import {
-  Card,
-  CardContent,
-  CircularProgress,
-  Divider,
-  Typography,
-  makeStyles,
-  Chip,
-  TextField,
-  FormControl,
-  InputLabel,
-  Select,
-  MenuItem,
-  Grid,
-  InputAdornment,
-  IconButton,
+  Alert,
   Box,
-  Tooltip,
+  ButtonIcon,
+  Card,
+  CardBody,
+  CardFooter,
+  Flex,
+  Grid,
   Link,
-} from '@material-ui/core';
-import SearchIcon from '@material-ui/icons/Search';
-import ClearIcon from '@material-ui/icons/Clear';
-import NotificationsIcon from '@material-ui/icons/Notifications';
-import NotificationsOffIcon from '@material-ui/icons/NotificationsOff';
-import { Alert } from '@material-ui/lab';
+  SearchField,
+  Select,
+  Skeleton,
+  Tag,
+  TagGroup,
+  Text,
+  Tooltip,
+  TooltipTrigger,
+} from '@backstage/ui';
+import {
+  RiNotificationLine,
+  RiNotificationOffLine,
+} from '@remixicon/react';
 import { useApi } from '@backstage/core-plugin-api';
 import { useAsyncRetry } from 'react-use';
 import { argocdAppsetApiRef, ApplicationSetResponse } from '../../api';
-
-const useStyles = makeStyles(theme => ({
-  section: {
-    marginBottom: theme.spacing(4),
-  },
-  sectionTitle: {
-    fontSize: '0.875rem',
-    fontWeight: 700,
-    textTransform: 'uppercase',
-    letterSpacing: '0.5px',
-    color: theme.palette.text.secondary,
-    marginBottom: theme.spacing(2),
-  },
-  divider: {
-    marginBottom: theme.spacing(4),
-  },
-  summaryBar: {
-    display: 'flex',
-    gap: theme.spacing(2),
-    flexWrap: 'wrap',
-  },
-  summaryCard: {
-    display: 'flex',
-    alignItems: 'center',
-    padding: theme.spacing(1.5, 2),
-    borderRadius: theme.shape.borderRadius,
-    backgroundColor: theme.palette.type === 'dark'
-      ? 'rgba(255, 255, 255, 0.05)'
-      : 'rgba(0, 0, 0, 0.02)',
-    border: `1px solid ${theme.palette.divider}`,
-  },
-  summaryValue: {
-    fontWeight: 700,
-    fontSize: '1.25rem',
-    marginRight: theme.spacing(1),
-  },
-  summaryLabel: {
-    fontSize: '0.8rem',
-    color: theme.palette.text.secondary,
-  },
-  filterBar: {
-    marginBottom: theme.spacing(3),
-  },
-  searchField: {
-    minWidth: 300,
-  },
-  filterSelect: {
-    minWidth: 150,
-  },
-  emptyState: {
-    textAlign: 'center',
-    padding: theme.spacing(4),
-  },
-  loadingState: {
-    display: 'flex',
-    justifyContent: 'center',
-    padding: theme.spacing(4),
-  },
-  card: {
-    height: '100%',
-    display: 'flex',
-    flexDirection: 'column',
-  },
-  cardWarning: {
-    height: '100%',
-    display: 'flex',
-    flexDirection: 'column',
-    borderLeft: `4px solid ${theme.palette.warning.main}`,
-  },
-  cardHeader: {
-    display: 'flex',
-    justifyContent: 'space-between',
-    alignItems: 'flex-start',
-    marginBottom: theme.spacing(1.5),
-  },
-  cardName: {
-    fontWeight: 600,
-    fontSize: '1rem',
-    wordBreak: 'break-word',
-  },
-  appCountBadge: {
-    display: 'flex',
-    flexDirection: 'column',
-    alignItems: 'center',
-    flexShrink: 0,
-    marginLeft: theme.spacing(1),
-  },
-  appCountNumber: {
-    display: 'flex',
-    alignItems: 'center',
-    justifyContent: 'center',
-    minWidth: 36,
-    height: 36,
-    borderRadius: '50%',
-    backgroundColor: theme.palette.type === 'dark'
-      ? 'rgba(255, 255, 255, 0.08)'
-      : 'rgba(0, 0, 0, 0.04)',
-    fontWeight: 700,
-    fontSize: '0.875rem',
-  },
-  appCountLabel: {
-    fontSize: '0.625rem',
-    color: theme.palette.text.hint,
-    textTransform: 'uppercase',
-    marginTop: 2,
-  },
-  fieldLabel: {
-    fontSize: '0.75rem',
-    color: theme.palette.text.secondary,
-    textTransform: 'uppercase',
-    letterSpacing: '0.5px',
-    marginBottom: theme.spacing(0.5),
-  },
-  fieldRow: {
-    marginBottom: theme.spacing(1.5),
-  },
-  chips: {
-    display: 'flex',
-    flexWrap: 'wrap',
-    gap: theme.spacing(0.5),
-  },
-  namespace: {
-    fontSize: '0.8rem',
-    color: theme.palette.text.secondary,
-  },
-  cardFooter: {
-    display: 'flex',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginTop: 'auto',
-    paddingTop: theme.spacing(1.5),
-    borderTop: `1px solid ${theme.palette.divider}`,
-  },
-  created: {
-    fontSize: '0.75rem',
-    color: theme.palette.text.hint,
-  },
-}));
+import './ApplicationSetTable.css';
 
 export const ApplicationSetTable = () => {
-  const classes = useStyles();
   const api = useApi(argocdAppsetApiRef);
 
   const [searchQuery, setSearchQuery] = useState('');
   const [namespaceFilter, setNamespaceFilter] = useState<string>('all');
+  const [repoFilter, setRepoFilter] = useState<string>('all');
   const [revisionFilter, setRevisionFilter] = useState<string>('all');
 
   const [mutingKey, setMutingKey] = useState<string | null>(null);
@@ -210,6 +71,11 @@ export const ApplicationSetTable = () => {
     return [...new Set(appSets.map(a => a.namespace))].sort();
   }, [appSets]);
 
+  const uniqueRepos = useMemo(() => {
+    if (!appSets) return [];
+    return [...new Set(appSets.map(a => a.repoName).filter(Boolean))].sort();
+  }, [appSets]);
+
   const uniqueRevisions = useMemo(() => {
     if (!appSets) return [];
     return [...new Set(appSets.flatMap(a => a.targetRevisions))].sort();
@@ -224,12 +90,14 @@ export const ApplicationSetTable = () => {
           a.name.toLowerCase().includes(searchQuery.toLowerCase());
         const matchesNamespace =
           namespaceFilter === 'all' || a.namespace === namespaceFilter;
+        const matchesRepo =
+          repoFilter === 'all' || a.repoName === repoFilter;
         const matchesRevision =
           revisionFilter === 'all' || a.targetRevisions.includes(revisionFilter);
-        return matchesSearch && matchesNamespace && matchesRevision;
+        return matchesSearch && matchesNamespace && matchesRepo && matchesRevision;
       })
       .sort((a, b) => Number(a.isHeadRevision) - Number(b.isHeadRevision));
-  }, [appSets, searchQuery, namespaceFilter, revisionFilter]);
+  }, [appSets, searchQuery, namespaceFilter, repoFilter, revisionFilter]);
 
   const formatDate = (dateString: string) => {
     if (!dateString) return '-';
@@ -245,7 +113,6 @@ export const ApplicationSetTable = () => {
       } else {
         await api.mute(namespace, name);
       }
-      // Optimistic update: toggle muted state locally without re-fetching
       setLocalAppSets(prev => {
         const source = prev ?? appSetsRaw;
         if (!source) return source;
@@ -264,292 +131,258 @@ export const ApplicationSetTable = () => {
 
   if (loading) {
     return (
-      <div className={classes.loadingState}>
-        <CircularProgress />
-      </div>
+      <Flex direction="column" gap="3" mt="4">
+        <Skeleton width="100%" height={60} />
+        <Skeleton width="100%" height={40} />
+        <Grid.Root columns={{ initial: '1', sm: '2', md: '4' }} gap="3">
+          {[1, 2, 3, 4].map(i => (
+            <Grid.Item key={i}>
+              <Skeleton width="100%" height={200} />
+            </Grid.Item>
+          ))}
+        </Grid.Root>
+      </Flex>
     );
   }
 
   if (loadError) {
     return (
-      <Alert severity="error">
-        Failed to load ApplicationSets: {loadError.message}
-      </Alert>
+      <Box mt="4">
+        <Alert status="danger" title={`Failed to load ApplicationSets: ${loadError.message}`} />
+      </Box>
     );
   }
 
   if (!appSets || appSets.length === 0) {
     return (
-      <div className={classes.emptyState}>
-        <Typography variant="h6" color="textSecondary">
+      <div className="appset-empty-state">
+        <Text variant="body-large" color="secondary">
           No ApplicationSets found
-        </Typography>
-        <Typography variant="body2" color="textSecondary">
-          Ensure the backend has access to the Kubernetes cluster with ArgoCD
-          ApplicationSets
-        </Typography>
+        </Text>
+        <Text variant="body-small" color="secondary">
+          Ensure the backend has access to the Kubernetes cluster with ArgoCD ApplicationSets
+        </Text>
       </div>
     );
   }
 
+  const namespaceOptions = [
+    { value: 'all', label: 'All' },
+    ...uniqueNamespaces.map(ns => ({ value: ns, label: ns })),
+  ];
+
+  const repoOptions = [
+    { value: 'all', label: 'All' },
+    ...uniqueRepos.map(repo => ({ value: repo, label: repo })),
+  ];
+
+  const revisionOptions = [
+    { value: 'all', label: 'All' },
+    ...uniqueRevisions.map(rev => ({ value: rev, label: rev })),
+  ];
+
   return (
     <>
       {/* Summary Section */}
-      <div className={classes.section}>
-        <Typography className={classes.sectionTitle}>Overview</Typography>
-        <div className={classes.summaryBar}>
-          <div className={classes.summaryCard}>
-            <Typography className={classes.summaryValue}>{totalCount}</Typography>
-            <Typography className={classes.summaryLabel}>ApplicationSets</Typography>
+      <Box mb="4" mt="4">
+        <Text as="h3" variant="body-small" weight="bold" color="secondary" className="appset-section-title">
+          Overview
+        </Text>
+        <div className="appset-summary-bar">
+          <div className="appset-summary-card">
+            <Text weight="bold" className="appset-summary-value">{totalCount}</Text>
+            <Text variant="body-x-small" color="secondary">ApplicationSets</Text>
           </div>
-          <div className={classes.summaryCard}>
-            <Typography className={classes.summaryValue}>{totalApps}</Typography>
-            <Typography className={classes.summaryLabel}>Total Apps</Typography>
+          <div className="appset-summary-card">
+            <Text weight="bold" className="appset-summary-value">{totalApps}</Text>
+            <Text variant="body-x-small" color="secondary">Total Apps</Text>
           </div>
-          <div className={classes.summaryCard}>
-            <Typography className={classes.summaryValue} color={nonHeadCount > 0 ? 'secondary' : 'inherit'}>{nonHeadCount}</Typography>
-            <Typography className={classes.summaryLabel}>Not HEAD</Typography>
+          <div className="appset-summary-card">
+            <Text weight="bold" color={nonHeadCount > 0 ? 'warning' : undefined} className="appset-summary-value">
+              {nonHeadCount}
+            </Text>
+            <Text variant="body-x-small" color="secondary">Not HEAD</Text>
           </div>
-          <div className={classes.summaryCard}>
-            <Typography className={classes.summaryValue}>{mutedCount}</Typography>
-            <Typography className={classes.summaryLabel}>Muted</Typography>
+          <div className="appset-summary-card">
+            <Text weight="bold" className="appset-summary-value">{mutedCount}</Text>
+            <Text variant="body-x-small" color="secondary">Muted</Text>
           </div>
           {status && (
-            <div className={classes.summaryCard}>
-              <Chip
-                label={status.cron}
-                size="small"
-                variant="outlined"
-                style={{ marginRight: 8 }}
-              />
-              <Typography className={classes.summaryLabel}>
+            <div className="appset-summary-card">
+              <Text variant="body-x-small" weight="bold" className="appset-cron-badge">
+                {status.cron}
+              </Text>
+              <Text variant="body-x-small" color="secondary">
                 Schedule {status.slackConfigured ? '(Slack ON)' : '(Slack OFF)'}
-              </Typography>
+              </Text>
             </div>
           )}
           {status?.lastFetchedAt && (
-            <div className={classes.summaryCard}>
-              <Typography className={classes.summaryLabel}>
+            <div className="appset-summary-card">
+              <Text variant="body-x-small" color="secondary">
                 Last fetched {new Date(status.lastFetchedAt).toLocaleString()}
-              </Typography>
+              </Text>
             </div>
           )}
         </div>
-      </div>
-
-      <Divider className={classes.divider} />
+      </Box>
 
       {/* ApplicationSets Section */}
-      <div>
-        <Typography className={classes.sectionTitle}>ApplicationSets</Typography>
+      <Box mt="4">
+        <Text as="h3" variant="body-small" weight="bold" color="secondary" className="appset-section-title">
+          ApplicationSets
+        </Text>
 
-        <Grid
-          container
-          spacing={2}
-          className={classes.filterBar}
-          alignItems="center"
-        >
-          <Grid item>
-            <TextField
-              className={classes.searchField}
-              placeholder="Search by name..."
-              variant="outlined"
-              size="small"
-              value={searchQuery}
-              onChange={e => setSearchQuery(e.target.value)}
-              InputProps={{
-                startAdornment: (
-                  <InputAdornment position="start">
-                    <SearchIcon color="disabled" />
-                  </InputAdornment>
-                ),
-                endAdornment: searchQuery && (
-                  <InputAdornment position="end">
-                    <IconButton
-                      size="small"
-                      onClick={() => setSearchQuery('')}
-                      aria-label="clear search"
-                    >
-                      <ClearIcon fontSize="small" />
-                    </IconButton>
-                  </InputAdornment>
-                ),
-              }}
-            />
-          </Grid>
-          <Grid item>
-            <FormControl
-              variant="outlined"
-              size="small"
-              className={classes.filterSelect}
-            >
-              <InputLabel>Namespace</InputLabel>
-              <Select
-                value={namespaceFilter}
-                onChange={e => setNamespaceFilter(e.target.value as string)}
-                label="Namespace"
-              >
-                <MenuItem value="all">All</MenuItem>
-                {uniqueNamespaces.map(ns => (
-                  <MenuItem key={ns} value={ns}>
-                    {ns}
-                  </MenuItem>
-                ))}
-              </Select>
-            </FormControl>
-          </Grid>
-          <Grid item>
-            <FormControl
-              variant="outlined"
-              size="small"
-              className={classes.filterSelect}
-            >
-              <InputLabel>Target Revision</InputLabel>
-              <Select
-                value={revisionFilter}
-                onChange={e => setRevisionFilter(e.target.value as string)}
-                label="Target Revision"
-              >
-                <MenuItem value="all">All</MenuItem>
-                {uniqueRevisions.map(rev => (
-                  <MenuItem key={rev} value={rev}>
-                    {rev}
-                  </MenuItem>
-                ))}
-              </Select>
-            </FormControl>
-          </Grid>
-        </Grid>
+        <div className="appset-filter-bar">
+          <SearchField
+            label="Search"
+            placeholder="Search by name..."
+            size="small"
+            value={searchQuery}
+            onChange={setSearchQuery}
+          />
+          <Select
+            label="Namespace"
+            size="small"
+            options={namespaceOptions}
+            selectedKey={namespaceFilter}
+            onSelectionChange={key => setNamespaceFilter(key as string)}
+          />
+          <Select
+            label="Repository"
+            size="small"
+            options={repoOptions}
+            selectedKey={repoFilter}
+            onSelectionChange={key => setRepoFilter(key as string)}
+          />
+          <Select
+            label="Target Revision"
+            size="small"
+            options={revisionOptions}
+            selectedKey={revisionFilter}
+            onSelectionChange={key => setRevisionFilter(key as string)}
+          />
+        </div>
 
         {filteredAppSets.length === 0 ? (
-          <div className={classes.emptyState}>
-            <Typography variant="body1" color="textSecondary">
+          <div className="appset-empty-state">
+            <Text variant="body-medium" color="secondary">
               No ApplicationSets match the current filters
-            </Typography>
+            </Text>
           </div>
         ) : (
-          <Grid container spacing={2}>
-            {filteredAppSets.map(appSet => (
-              <Grid
-                item
-                xs={12}
-                sm={6}
-                md={3}
-                key={`${appSet.namespace}/${appSet.name}`}
-              >
-                <Card
-                  className={
-                    appSet.isHeadRevision ? classes.card : classes.cardWarning
-                  }
-                  variant="outlined"
-                >
-                  <CardContent>
-                    <div className={classes.cardHeader}>
-                      <Box>
-                        <Typography className={classes.cardName}>
-                          {appSet.name}
-                        </Typography>
-                        <Typography className={classes.namespace}>
-                          {appSet.namespace}
-                        </Typography>
-                      </Box>
-                      <div className={classes.appCountBadge}>
-                        <div className={classes.appCountNumber}>
-                          {appSet.applicationCount}
+          <Grid.Root columns={{ initial: '1', sm: '2', md: '4' }} gap="3">
+            {filteredAppSets.map(appSet => {
+              const cardKey = `${appSet.namespace}/${appSet.name}`;
+              const isMuting = mutingKey === cardKey;
+
+              return (
+                <Grid.Item key={cardKey}>
+                  <Card className={`${appSet.isHeadRevision ? 'appset-card' : 'appset-card-warning'}${appSet.muted ? ' appset-card-muted' : ''}`}>
+                    <CardBody className="appset-card-body">
+                      <div className="appset-card-header">
+                        <div>
+                          <Text variant="body-medium" className="appset-card-name">
+                            <Text as="span" variant="body-medium" color="secondary">{appSet.namespace}</Text>
+                            {' / '}
+                            {appSet.name}
+                          </Text>
                         </div>
-                        <Typography className={classes.appCountLabel}>
-                          Apps
-                        </Typography>
+                        <div className="appset-app-count-badge">
+                          <TooltipTrigger delay={200}>
+                            <ButtonIcon
+                              size="small"
+                              variant="tertiary"
+                              className="appset-app-count-trigger"
+                              icon={<span>{appSet.applicationCount}</span>}
+                              aria-label={`${appSet.applicationCount} applications`}
+                            />
+                            <Tooltip className="appset-apps-tooltip">
+                              {appSet.applications.length > 0
+                                ? appSet.applications.join(', ')
+                                : 'No applications'}
+                            </Tooltip>
+                          </TooltipTrigger>
+                          <Text variant="body-x-small" color="secondary" className="appset-app-count-label">
+                            Apps
+                          </Text>
+                        </div>
                       </div>
-                    </div>
 
-                    <div className={classes.fieldRow}>
-                      <Typography className={classes.fieldLabel}>
-                        Generators
-                      </Typography>
-                      <div className={classes.chips}>
-                        {appSet.generators.map((gen, i) => (
-                          <Chip
-                            key={i}
-                            label={gen}
-                            size="small"
-                            variant="outlined"
-                          />
-                        ))}
+                      <div>
+                        <Text variant="body-x-small" color="secondary" className="appset-field-label">
+                          Generators
+                        </Text>
+                        <TagGroup>
+                          {appSet.generators.map((gen, i) => (
+                            <Tag key={i} id={`gen-${i}`} size="small">{gen}</Tag>
+                          ))}
+                        </TagGroup>
                       </div>
-                    </div>
 
-                    {appSet.repoName && (
-                      <div className={classes.fieldRow}>
-                        <Typography className={classes.fieldLabel}>
-                          Repository
-                        </Typography>
-                        <Typography variant="body2" noWrap>
-                          {appSet.repoUrl ? (
-                            <Link
-                              href={appSet.repoUrl}
-                              target="_blank"
-                              rel="noopener noreferrer"
-                            >
-                              {appSet.repoName}
-                            </Link>
-                          ) : (
-                            appSet.repoName
+                      {appSet.repoName && (
+                        <div>
+                          <Text variant="body-x-small" color="secondary" className="appset-field-label">
+                            Repository
+                          </Text>
+                          <TagGroup>
+                            <Tag id="repo" size="small">
+                              {appSet.repoUrl ? (
+                                <Link href={appSet.repoUrl} target="_blank" rel="noopener noreferrer">
+                                  {appSet.repoName}
+                                </Link>
+                              ) : (
+                                appSet.repoName
+                              )}
+                            </Tag>
+                          </TagGroup>
+                        </div>
+                      )}
+
+                      <div>
+                        <Text variant="body-x-small" color="secondary" className="appset-field-label">
+                          Target Revision
+                        </Text>
+                        <TagGroup>
+                          {appSet.targetRevisions.map((rev, i) => (
+                            <Tag key={i} id={`rev-${i}`} size="small">{rev}</Tag>
+                          ))}
+                          {!appSet.isHeadRevision && (
+                            <Tag id="not-head" size="small">Not HEAD</Tag>
                           )}
-                        </Typography>
+                        </TagGroup>
                       </div>
-                    )}
+                    </CardBody>
 
-                    <div className={classes.fieldRow}>
-                      <Typography className={classes.fieldLabel}>
-                        Target Revision
-                      </Typography>
-                      <div className={classes.chips}>
-                        {appSet.targetRevisions.map((rev, i) => (
-                          <Chip
-                            key={i}
-                            label={rev}
-                            size="small"
-                            color={rev === 'HEAD' ? 'default' : 'secondary'}
-                          />
-                        ))}
-                        {!appSet.isHeadRevision && (
-                          <Chip
-                            label="Not HEAD"
-                            color="secondary"
-                            size="small"
-                          />
-                        )}
-                      </div>
-                    </div>
-
-                    <div className={classes.cardFooter}>
-                      <Typography className={classes.created}>
+                    <CardFooter className="appset-card-footer">
+                      <Text variant="body-x-small" color="secondary">
                         Created {formatDate(appSet.createdAt)}
-                      </Typography>
-                      <Tooltip title={appSet.muted ? 'Unmute notifications' : 'Mute notifications'}>
-                        <IconButton
+                      </Text>
+                      <TooltipTrigger>
+                        <ButtonIcon
                           size="small"
-                          onClick={() => handleToggleMute(appSet.namespace, appSet.name, appSet.muted)}
-                          disabled={mutingKey === `${appSet.namespace}/${appSet.name}`}
-                        >
-                          {mutingKey === `${appSet.namespace}/${appSet.name}` ? (
-                            <CircularProgress size={18} />
-                          ) : appSet.muted ? (
-                            <NotificationsOffIcon fontSize="small" color="disabled" />
-                          ) : (
-                            <NotificationsIcon fontSize="small" />
-                          )}
-                        </IconButton>
-                      </Tooltip>
-                    </div>
-                  </CardContent>
-                </Card>
-              </Grid>
-            ))}
-          </Grid>
+                          variant="tertiary"
+                          icon={
+                            isMuting
+                              ? <Skeleton width={18} height={18} rounded />
+                              : appSet.muted
+                                ? <RiNotificationOffLine size={18} />
+                                : <RiNotificationLine size={18} />
+                          }
+                          onPress={() => handleToggleMute(appSet.namespace, appSet.name, appSet.muted)}
+                          isDisabled={isMuting}
+                          aria-label={appSet.muted ? 'Unmute notifications' : 'Mute notifications'}
+                        />
+                        <Tooltip>{appSet.muted ? 'Unmute notifications' : 'Mute notifications'}</Tooltip>
+                      </TooltipTrigger>
+                    </CardFooter>
+                  </Card>
+                </Grid.Item>
+              );
+            })}
+          </Grid.Root>
         )}
-      </div>
+      </Box>
     </>
   );
 };

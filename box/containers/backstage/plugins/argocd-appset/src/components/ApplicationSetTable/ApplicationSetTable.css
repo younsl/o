@@ -1,0 +1,138 @@
+/* Summary */
+.appset-summary-bar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--bui-space-2);
+  margin-top: var(--bui-space-2);
+}
+
+.appset-summary-card {
+  display: flex;
+  align-items: center;
+  padding: var(--bui-space-2) var(--bui-space-3);
+  border-radius: var(--bui-radius-3);
+  background-color: var(--bui-bg-neutral-2);
+  border: 1px solid var(--bui-border-1);
+  gap: var(--bui-space-2);
+}
+
+.appset-summary-value {
+  font-weight: var(--bui-font-weight-bold);
+  font-size: 1.25rem;
+}
+
+.appset-cron-badge {
+  padding: 2px var(--bui-space-2);
+  border-radius: var(--bui-radius-2);
+  border: 1px solid var(--bui-border-1);
+  font-family: var(--bui-font-monospace);
+}
+
+/* Section */
+.appset-section-title {
+  font-size: var(--bui-font-size-2);
+  font-weight: var(--bui-font-weight-bold);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+/* Filter bar */
+.appset-filter-bar {
+  display: flex;
+  gap: var(--bui-space-3);
+  align-items: flex-end;
+  margin-top: var(--bui-space-2);
+  margin-bottom: var(--bui-space-4);
+}
+
+.appset-filter-bar .bui-SearchField {
+  min-width: 280px;
+}
+
+.appset-filter-bar .bui-Select {
+  min-width: 150px;
+}
+
+/* Card */
+.appset-card,
+.appset-card-warning {
+  height: 100%;
+  border: 1px solid var(--bui-border-1);
+}
+
+/* CardBody inner spacing between field rows */
+.appset-card-body {
+  display: flex;
+  flex-direction: column;
+  gap: var(--bui-space-3);
+}
+
+.appset-card-warning {
+  border-left: 4px solid var(--bui-border-warning);
+}
+
+.appset-card-muted {
+  opacity: 0.7;
+}
+
+.appset-card-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+}
+
+.appset-card-name {
+  font-weight: var(--bui-font-weight-bold);
+  word-break: break-word;
+}
+
+.appset-app-count-badge {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  flex-shrink: 0;
+  margin-left: var(--bui-space-2);
+}
+
+.appset-app-count-trigger {
+  min-width: 36px;
+  min-height: 36px;
+  border-radius: var(--bui-radius-full);
+  background-color: var(--bui-bg-neutral-2);
+  font-weight: var(--bui-font-weight-bold);
+  font-size: var(--bui-font-size-3);
+}
+
+.appset-app-count-label {
+  font-size: var(--bui-font-size-1);
+  text-transform: uppercase;
+  margin-top: 2px;
+}
+
+.appset-field-label {
+  font-size: var(--bui-font-size-2);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  margin-bottom: var(--bui-space-1);
+}
+
+/* Card footer — Card already has gap between CardBody/CardFooter, so only add the border-top */
+.appset-card-footer {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  border-top: 1px solid var(--bui-border-1);
+  padding-top: var(--bui-space-3);
+}
+
+/* Apps tooltip */
+.appset-apps-tooltip {
+  max-width: 320px;
+  word-break: break-word;
+}
+
+/* Empty state */
+.appset-empty-state {
+  text-align: center;
+  padding: var(--bui-space-8);
+}

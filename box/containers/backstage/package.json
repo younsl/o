@@ -21,7 +21,7 @@
     ]
   },
   "devDependencies": {
-    "@backstage/cli": "^0.35.3",
+    "@backstage/cli": "^0.35.4",
     "concurrently": "^8.2.2",
     "typescript": "~5.4.0"
   },

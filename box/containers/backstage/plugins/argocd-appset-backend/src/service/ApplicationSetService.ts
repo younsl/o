@@ -110,7 +110,12 @@ export class ApplicationSetService {
     );
 
     const targetRevisions: string[] = this.extractTargetRevisions(spec);
-    const applicationCount: number = (status.resources ?? []).length;
+    const resources: any[] = status.resources ?? [];
+    const applicationCount: number = resources.length;
+    const applications: string[] = resources
+      .map((r: any) => r.name as string)
+      .filter(Boolean)
+      .sort();
 
     // Go template expressions (e.g. {{.branch}}) are resolved dynamically by ArgoCD
     const isDynamic = (rev: string) => /\{\{.*\}\}/.test(rev);
@@ -130,6 +135,7 @@ export class ApplicationSetService {
       namespace: metadata.namespace ?? '',
       generators,
       applicationCount,
+      applications,
       repoUrl,
       repoName,
       targetRevisions: targetRevisions.length > 0 ? targetRevisions : ['HEAD'],

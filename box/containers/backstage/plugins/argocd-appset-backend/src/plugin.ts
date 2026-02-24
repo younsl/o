@@ -94,7 +94,7 @@ export const argocdAppsetPlugin = createBackendPlugin({
                 const appSets = cache.getAppSets();
                 const nonHeadAppSets = appSets.filter(a => !a.isHeadRevision && !a.muted);
                 if (nonHeadAppSets.length > 0) {
-                  await slackNotifier.notify(nonHeadAppSets);
+                  await slackNotifier.notify(nonHeadAppSets, appSets.length);
                   logger.info(`Notified Slack about ${nonHeadAppSets.length} non-HEAD ApplicationSets`);
                 }
               } catch (error) {

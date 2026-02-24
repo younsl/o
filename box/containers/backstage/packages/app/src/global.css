@@ -9,6 +9,11 @@ html, body, #root {
   overflow-x: hidden;
 }
 
+/* Remove PluginHeader top color bar (conflicts with custom body background) */
+[class*="bui-PluginHeaderToolbar"]::before {
+  background-color: transparent !important;
+}
+
 /* Fix horizontal overflow on main content */
 main {
   min-width: 0;

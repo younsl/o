@@ -1,17 +1,17 @@
 import React from 'react';
-import { Header, Page, Content } from '@backstage/core-components';
+import { PluginHeader, Container, Text } from '@backstage/ui';
 import { ApplicationSetTable } from '../ApplicationSetTable';
 
 export const ArgocdAppsetPage = () => {
   return (
-    <Page themeId="tool">
-      <Header
-        title="ArgoCD ApplicationSets"
-        subtitle="View ApplicationSet resources from the Kubernetes cluster"
-      />
-      <Content>
+    <>
+      <PluginHeader title="ArgoCD ApplicationSets" />
+      <Container my="4">
+        <Text variant="body-medium" color="secondary">
+          View ApplicationSet resources from the Kubernetes cluster
+        </Text>
         <ApplicationSetTable />
-      </Content>
-    </Page>
+      </Container>
+    </>
   );
 };

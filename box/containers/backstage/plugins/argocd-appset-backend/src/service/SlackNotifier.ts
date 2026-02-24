@@ -12,7 +12,7 @@ export class SlackNotifier {
     this.logger = options.logger;
   }
 
-  async notify(appSets: ApplicationSetResponse[]): Promise<void> {
+  async notify(appSets: ApplicationSetResponse[], totalCount: number): Promise<void> {
     const webhookUrl = this.config.getOptionalString(
       'argocdApplicationSet.slack.webhookUrl',
     );
@@ -22,18 +22,28 @@ export class SlackNotifier {
       return;
     }
 
-    const blocks = [
+    const blocks: Record<string, any>[] = [
       {
         type: 'header',
         text: {
           type: 'plain_text',
-          text: `ArgoCD ApplicationSet: ${appSets.length} non-HEAD revision(s) detected`,
+          text: 'Non-HEAD revision(s) detected',
+        },
+      },
+      {
+        type: 'section',
+        text: {
+          type: 'mrkdwn',
+          text: `*${appSets.length}* of *${totalCount}* ApplicationSets are not targeting HEAD.`,
         },
       },
       {
         type: 'divider',
       },
-      ...appSets.map(appSet => ({
+    ];
+
+    for (const appSet of appSets) {
+      blocks.push({
         type: 'section',
         fields: [
           {
@@ -50,11 +60,25 @@ export class SlackNotifier {
           },
           {
             type: 'mrkdwn',
-            text: `*Applications:*\n${appSet.applicationCount}`,
+            text: `*Applications:*\n${appSet.applications.join(', ') || `${appSet.applicationCount}`}`,
           },
         ],
-      })),
-    ];
+      });
+    }
+
+    const baseUrl = this.config.getString('app.baseUrl');
+    blocks.push(
+      { type: 'divider' },
+      {
+        type: 'context',
+        elements: [
+          {
+            type: 'mrkdwn',
+            text: `<${baseUrl}/argocd-appset|View in Backstage>`,
+          },
+        ],
+      },
+    );
 
     try {
       const response = await fetch(webhookUrl, {
