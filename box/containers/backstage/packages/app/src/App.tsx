@@ -52,7 +52,6 @@ const CustomSignInPage = (props: any) => (
   <SignInPage
     {...props}
     providers={[
-      'guest',
       {
         id: 'keycloak',
         title: 'Keycloak',
