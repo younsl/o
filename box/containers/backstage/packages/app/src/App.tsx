@@ -52,6 +52,7 @@ import { IamUserAuditPage } from '@internal/plugin-iam-user-audit';
 const CustomSignInPage = (props: any) => (
   <SignInPage
     {...props}
+    auto
     providers={[
       {
         id: 'keycloak',
