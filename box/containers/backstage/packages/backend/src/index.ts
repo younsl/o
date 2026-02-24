@@ -19,6 +19,7 @@ import {
   catalogPluginGitlabFillerProcessorModule,
 } from '@immobiliarelabs/backstage-plugin-gitlab-backend';
 import { catalogModuleSonarQubeAnnotationProcessor } from './processors';
+import { permissionModuleAdminPolicy } from './permissions-policy';
 
 const backend = createBackend();
 
@@ -76,7 +77,14 @@ backend.add(import('@internal/plugin-openapi-registry-backend'));
 // ArgoCD ApplicationSet plugin for viewing ApplicationSets from Kubernetes
 backend.add(import('@internal/plugin-argocd-appset-backend'));
 
+// IAM User Audit plugin for monitoring inactive AWS IAM users
+backend.add(import('@internal/plugin-iam-user-audit-backend'));
+
 // SonarQube plugin for code quality metrics
 backend.add(import('@backstage-community/plugin-sonarqube-backend'));
+
+// Permission policy: admin-only gates for mute/unmute and password reset review
+backend.add(import('@backstage/plugin-permission-backend'));
+backend.add(permissionModuleAdminPolicy);
 
 backend.start();

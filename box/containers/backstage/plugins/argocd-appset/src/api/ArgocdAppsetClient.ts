@@ -63,4 +63,15 @@ export class ArgocdAppsetClient implements ArgocdAppsetApi {
       throw await ResponseError.fromResponse(response as any);
     }
   }
+
+  async getAdminStatus(): Promise<{ isAdmin: boolean }> {
+    const baseUrl = await this.getBaseUrl();
+    const response = await this.fetchApi.fetch(`${baseUrl}/admin-status`);
+
+    if (!response.ok) {
+      return { isAdmin: false };
+    }
+
+    return response.json();
+  }
 }

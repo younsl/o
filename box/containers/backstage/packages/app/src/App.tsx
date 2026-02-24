@@ -47,6 +47,7 @@ import {
 } from '@backstage/theme';
 import { OpenApiRegistryPage } from '@internal/plugin-openapi-registry';
 import { ArgocdAppsetPage } from '@internal/plugin-argocd-appset';
+import { IamUserAuditPage } from '@internal/plugin-iam-user-audit';
 
 const CustomSignInPage = (props: any) => (
   <SignInPage
@@ -129,6 +130,7 @@ const routes = (
     <Route path="/catalog-graph" element={<CatalogGraphPage />} />
     <Route path="/openapi-registry" element={<OpenApiRegistryPage />} />
     <Route path="/argocd-appset" element={<ArgocdAppsetPage />} />
+    <Route path="/iam-user-audit" element={<IamUserAuditPage />} />
     <Route path="/settings" element={<UserSettingsPage />} />
   </FlatRoutes>
 );

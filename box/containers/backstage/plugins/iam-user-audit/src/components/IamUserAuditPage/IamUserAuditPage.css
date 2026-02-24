@@ -1,0 +1,35 @@
+.iam-tabs .MuiTabs-indicator {
+  background-color: var(--bui-color-primary);
+}
+
+.iam-tabs .MuiTab-root {
+  text-transform: none;
+  font-family: inherit;
+  min-width: 120px;
+}
+
+.iam-tab-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.iam-tab-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 20px;
+  height: 20px;
+  padding: 0 6px;
+  border-radius: 10px;
+  background-color: #f59e0b;
+  color: #fff;
+  font-size: 11px;
+  font-weight: 700;
+  line-height: 1;
+}
+
+.iam-tab-badge-zero {
+  background-color: rgba(128, 128, 128, 0.2);
+  color: rgba(128, 128, 128, 0.8);
+}

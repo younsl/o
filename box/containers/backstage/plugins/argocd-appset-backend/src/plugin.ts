@@ -17,8 +17,9 @@ export const argocdAppsetPlugin = createBackendPlugin({
         logger: coreServices.logger,
         config: coreServices.rootConfig,
         scheduler: coreServices.scheduler,
+        httpAuth: coreServices.httpAuth,
       },
-      async init({ httpRouter, logger, config, scheduler }) {
+      async init({ httpRouter, logger, config, scheduler, httpAuth }) {
         const enabled = config.getOptionalBoolean('argocdApplicationSet.enabled') ?? true;
         if (!enabled) {
           logger.info('ArgoCD AppSet backend plugin is disabled via config');
@@ -31,7 +32,7 @@ export const argocdAppsetPlugin = createBackendPlugin({
         const slackNotifier = new SlackNotifier({ config, logger });
         const cache = new AppSetCache();
 
-        const router = await createRouter({ service: appsetService, cache, logger, config });
+        const router = await createRouter({ service: appsetService, cache, logger, config, httpAuth });
 
         httpRouter.use(router as any);
         httpRouter.addAuthPolicy({
@@ -48,6 +49,10 @@ export const argocdAppsetPlugin = createBackendPlugin({
         });
         httpRouter.addAuthPolicy({
           path: '/application-sets/*',
+          allow: 'unauthenticated',
+        });
+        httpRouter.addAuthPolicy({
+          path: '/admin-status',
           allow: 'unauthenticated',
         });
 

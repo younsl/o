@@ -12,6 +12,7 @@ import CloudUploadIcon from '@material-ui/icons/CloudUpload';
 import ExpandMoreIcon from '@material-ui/icons/ExpandMore';
 import ExpandLessIcon from '@material-ui/icons/ExpandLess';
 import AppsIcon from '@material-ui/icons/Apps';
+import SecurityIcon from '@material-ui/icons/Security';
 import { siArgo, siKubernetes } from 'simple-icons';
 import { createIcon } from '@dweber019/backstage-plugin-simple-icons';
 
@@ -35,9 +36,16 @@ import {
   Link,
 } from '@backstage/core-components';
 import { MyGroupsSidebarItem } from '@backstage/plugin-org';
-import { configApiRef, identityApiRef, useApi } from '@backstage/core-plugin-api';
+import {
+  configApiRef,
+  discoveryApiRef,
+  fetchApiRef,
+  identityApiRef,
+  useApi,
+} from '@backstage/core-plugin-api';
 import LogoFull from './LogoFull';
 import LogoIcon from './LogoIcon';
+import './Root.css';
 
 const useSidebarLogoStyles = makeStyles({
   root: {
@@ -206,9 +214,48 @@ const FoldableSection = ({
   );
 };
 
+const IamAuditSidebarItem = () => {
+  const discoveryApi = useApi(discoveryApiRef);
+  const fetchApi = useApi(fetchApiRef);
+  const [pendingCount, setPendingCount] = useState(0);
+
+  useEffect(() => {
+    const fetchPending = async () => {
+      try {
+        const baseUrl = await discoveryApi.getBaseUrl('iam-user-audit');
+        const response = await fetchApi.fetch(
+          `${baseUrl}/password-reset/requests`,
+        );
+        const data = await response.json();
+        setPendingCount(
+          data.filter((r: any) => r.status === 'pending').length,
+        );
+      } catch {
+        /* ignore */
+      }
+    };
+    fetchPending();
+    const interval = setInterval(fetchPending, 60_000);
+    return () => clearInterval(interval);
+  }, [discoveryApi, fetchApi]);
+
+  return (
+    <SidebarItem icon={SecurityIcon} to="iam-user-audit" text="IAM Audit">
+      <span
+        className={
+          pendingCount > 0 ? 'sidebar-badge' : 'sidebar-badge sidebar-badge-zero'
+        }
+      >
+        {pendingCount}
+      </span>
+    </SidebarItem>
+  );
+};
+
 export const Root = ({ children }: PropsWithChildren<{}>) => {
   const config = useApi(configApiRef);
   const argocdAppSetEnabled = config.getOptionalBoolean('argocdApplicationSet.enabled') ?? true;
+  const iamUserAuditEnabled = config.getOptionalBoolean('iamUserAudit.enabled') ?? true;
 
   return (
   <SidebarPage>
@@ -227,11 +274,18 @@ export const Root = ({ children }: PropsWithChildren<{}>) => {
         <SidebarItem icon={CategoryIcon} to="catalog" text="Catalog" />
         <SidebarItem icon={ExtensionIcon} to="api-docs" text="APIs" />
         <SidebarItem icon={CloudUploadIcon} to="openapi-registry" text="API Registry" />
-        {argocdAppSetEnabled && (
-          <SidebarItem icon={ArgocdIcon} to="argocd-appset" text="ArgoCD" />
-        )}
         <SidebarItem icon={LibraryBooks} to="docs" text="Docs" />
       </FoldableSection>
+
+      {/* Operations Section */}
+      {(argocdAppSetEnabled || iamUserAuditEnabled) && (
+        <FoldableSection title="Operations" icon={<DashboardIcon />} defaultOpen={false}>
+          {argocdAppSetEnabled && (
+            <SidebarItem icon={ArgocdIcon} to="argocd-appset" text="ArgoCD" />
+          )}
+          {iamUserAuditEnabled && <IamAuditSidebarItem />}
+        </FoldableSection>
+      )}
 
       <SidebarDivider />
       <SidebarItem icon={CreateComponentIcon} to="create" text="Create..." />

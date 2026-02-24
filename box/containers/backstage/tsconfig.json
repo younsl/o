@@ -20,7 +20,9 @@
     { "path": "plugins/openapi-registry" },
     { "path": "plugins/openapi-registry-backend" },
     { "path": "plugins/argocd-appset" },
-    { "path": "plugins/argocd-appset-backend" }
+    { "path": "plugins/argocd-appset-backend" },
+    { "path": "plugins/iam-user-audit" },
+    { "path": "plugins/iam-user-audit-backend" }
   ],
   "files": []
 }

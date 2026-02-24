@@ -30,6 +30,11 @@ import './ApplicationSetTable.css';
 export const ApplicationSetTable = () => {
   const api = useApi(argocdAppsetApiRef);
 
+  const { value: adminStatus } = useAsyncRetry(async () => {
+    return api.getAdminStatus();
+  }, []);
+  const isAdmin = adminStatus?.isAdmin ?? false;
+
   const [searchQuery, setSearchQuery] = useState('');
   const [namespaceFilter, setNamespaceFilter] = useState<string>('all');
   const [repoFilter, setRepoFilter] = useState<string>('all');
@@ -147,22 +152,25 @@ export const ApplicationSetTable = () => {
 
   if (loadError) {
     return (
-      <Box mt="4">
-        <Alert status="danger" title={`Failed to load ApplicationSets: ${loadError.message}`} />
-      </Box>
+      <Flex direction="column" gap="2" mt="4">
+        <Alert status="danger" title="Failed to load ApplicationSets" />
+        <Text variant="body-small" color="secondary">
+          {loadError.message}
+        </Text>
+      </Flex>
     );
   }
 
   if (!appSets || appSets.length === 0) {
     return (
-      <div className="appset-empty-state">
+      <Flex direction="column" align="center" gap="2" className="appset-empty-state">
         <Text variant="body-large" color="secondary">
           No ApplicationSets found
         </Text>
         <Text variant="body-small" color="secondary">
           Ensure the backend has access to the Kubernetes cluster with ArgoCD ApplicationSets
         </Text>
-      </div>
+      </Flex>
     );
   }
 
@@ -325,17 +333,13 @@ export const ApplicationSetTable = () => {
                           <Text variant="body-x-small" color="secondary" className="appset-field-label">
                             Repository
                           </Text>
-                          <TagGroup>
-                            <Tag id="repo" size="small">
-                              {appSet.repoUrl ? (
-                                <Link href={appSet.repoUrl} target="_blank" rel="noopener noreferrer">
-                                  {appSet.repoName}
-                                </Link>
-                              ) : (
-                                appSet.repoName
-                              )}
-                            </Tag>
-                          </TagGroup>
+                          {appSet.repoUrl ? (
+                            <Link href={appSet.repoUrl} target="_blank" rel="noopener noreferrer">
+                              <Text variant="body-small">{appSet.repoName}</Text>
+                            </Link>
+                          ) : (
+                            <Text variant="body-small">{appSet.repoName}</Text>
+                          )}
                         </div>
                       )}
 
@@ -358,23 +362,25 @@ export const ApplicationSetTable = () => {
                       <Text variant="body-x-small" color="secondary">
                         Created {formatDate(appSet.createdAt)}
                       </Text>
-                      <TooltipTrigger>
-                        <ButtonIcon
-                          size="small"
-                          variant="tertiary"
-                          icon={
-                            isMuting
-                              ? <Skeleton width={18} height={18} rounded />
-                              : appSet.muted
-                                ? <RiNotificationOffLine size={18} />
-                                : <RiNotificationLine size={18} />
-                          }
-                          onPress={() => handleToggleMute(appSet.namespace, appSet.name, appSet.muted)}
-                          isDisabled={isMuting}
-                          aria-label={appSet.muted ? 'Unmute notifications' : 'Mute notifications'}
-                        />
-                        <Tooltip>{appSet.muted ? 'Unmute notifications' : 'Mute notifications'}</Tooltip>
-                      </TooltipTrigger>
+                      {isAdmin && (
+                        <TooltipTrigger>
+                          <ButtonIcon
+                            size="small"
+                            variant="tertiary"
+                            icon={
+                              isMuting
+                                ? <Skeleton width={18} height={18} rounded />
+                                : appSet.muted
+                                  ? <RiNotificationOffLine size={18} />
+                                  : <RiNotificationLine size={18} />
+                            }
+                            onPress={() => handleToggleMute(appSet.namespace, appSet.name, appSet.muted)}
+                            isDisabled={isMuting}
+                            aria-label={appSet.muted ? 'Unmute notifications' : 'Mute notifications'}
+                          />
+                          <Tooltip>{appSet.muted ? 'Unmute notifications' : 'Mute notifications'}</Tooltip>
+                        </TooltipTrigger>
+                      )}
                     </CardFooter>
                   </Card>
                 </Grid.Item>

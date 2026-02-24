@@ -1,5 +1,5 @@
 {
-  "name": "@internal/plugin-argocd-appset-backend",
+  "name": "@internal/plugin-iam-user-audit-backend",
   "version": "1.0.0",
   "main": "src/index.ts",
   "types": "src/index.ts",
@@ -13,17 +13,22 @@
     "clean": "backstage-cli package clean"
   },
   "dependencies": {
+    "@aws-sdk/client-iam": "^3.700.0",
+    "@aws-sdk/client-sts": "^3.700.0",
     "@backstage/backend-plugin-api": "^1.7.0",
+    "@backstage/catalog-model": "^1.7.2",
     "@backstage/config": "^1.3.6",
     "@backstage/plugin-permission-common": "^0.9.6",
-    "@kubernetes/client-node": "^1.0.0",
     "cron-parser": "^4.9.0",
     "express": "^4.21.2",
-    "node-fetch": "^2.7.0"
+    "knex": "^3.1.0",
+    "node-fetch": "^2.7.0",
+    "uuid": "^11.1.0"
   },
   "devDependencies": {
     "@backstage/cli": "^0.35.4",
     "@types/express": "^5.0.0",
-    "@types/node-fetch": "^2.6.12"
+    "@types/node-fetch": "^2.6.12",
+    "@types/uuid": "^10.0.0"
   }
 }

@@ -38,6 +38,7 @@
     "@dweber019/backstage-plugin-simple-icons": "^0.1.2",
     "@immobiliarelabs/backstage-plugin-gitlab": "^6.13.0",
     "@internal/plugin-argocd-appset": "workspace:*",
+    "@internal/plugin-iam-user-audit": "workspace:*",
     "@internal/plugin-openapi-registry": "workspace:*",
     "@material-ui/core": "^4.12.4",
     "@material-ui/icons": "^4.11.3",
