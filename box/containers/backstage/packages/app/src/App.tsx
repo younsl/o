@@ -74,14 +74,6 @@ const app = createApp({
         <UnifiedThemeProvider theme={builtinThemes.dark} children={children} />
       ),
     },
-    {
-      id: 'light',
-      title: 'Light',
-      variant: 'light',
-      Provider: ({ children }) => (
-        <UnifiedThemeProvider theme={builtinThemes.light} children={children} />
-      ),
-    },
   ],
   components: {
     SignInPage: CustomSignInPage,
