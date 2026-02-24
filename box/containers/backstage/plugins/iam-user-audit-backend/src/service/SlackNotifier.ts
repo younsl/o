@@ -344,4 +344,117 @@ export class SlackNotifier {
       this.logger.error(`[slack] Failed to send password DM to ${email}: ${error}`);
     }
   }
+
+  async sendRejectionDm(
+    email: string,
+    iamUserName: string,
+    requestId: string,
+    reviewerRef: string,
+    comment?: string,
+  ): Promise<void> {
+    const botToken = this.config.getOptionalString(
+      'iamUserAudit.slack.botToken',
+    );
+    if (!botToken) {
+      this.logger.warn(
+        '[slack] bot token not configured, skipping rejection DM',
+      );
+      return;
+    }
+
+    this.logger.info(`[slack] Sending rejection DM to ${email} for IAM user ${iamUserName}`);
+
+    try {
+      const lookupRes = await fetch(
+        `https://slack.com/api/users.lookupByEmail?email=${encodeURIComponent(email)}`,
+        {
+          method: 'GET',
+          headers: { Authorization: `Bearer ${botToken}` },
+        },
+      );
+      const lookupData = (await lookupRes.json()) as {
+        ok: boolean;
+        user?: { id: string };
+        error?: string;
+      };
+
+      if (!lookupData.ok || !lookupData.user) {
+        this.logger.warn(
+          `[slack] User lookup failed for ${email}: ${lookupData.error ?? 'no user returned'}`,
+        );
+        return;
+      }
+
+      const slackUserId = lookupData.user.id;
+      const baseUrl = this.config.getString('app.baseUrl');
+      const blocks: Record<string, any>[] = [
+        {
+          type: 'header',
+          text: {
+            type: 'plain_text',
+            text: 'Password Reset Rejected',
+          },
+        },
+        {
+          type: 'section',
+          fields: [
+            { type: 'mrkdwn', text: `*Request ID:*\n${requestId}` },
+            { type: 'mrkdwn', text: `*IAM User:*\n${iamUserName}` },
+            { type: 'mrkdwn', text: `*Rejected by:*\n${reviewerRef}` },
+          ],
+        },
+      ];
+
+      if (comment) {
+        blocks.push({
+          type: 'section',
+          text: {
+            type: 'mrkdwn',
+            text: `*Reason:*\n${comment}`,
+          },
+        });
+      }
+
+      blocks.push(
+        { type: 'divider' },
+        {
+          type: 'context',
+          elements: [
+            {
+              type: 'mrkdwn',
+              text: `<${baseUrl}/iam-user-audit|View in Backstage>`,
+            },
+          ],
+        },
+      );
+
+      const postRes = await fetch('https://slack.com/api/chat.postMessage', {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${botToken}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          channel: slackUserId,
+          text: `Password reset rejected for IAM user ${iamUserName}`,
+          blocks,
+        }),
+      });
+      const postData = (await postRes.json()) as {
+        ok: boolean;
+        error?: string;
+      };
+
+      if (!postData.ok) {
+        this.logger.warn(
+          `[slack] Rejection DM delivery failed for ${email}: ${postData.error}`,
+        );
+        return;
+      }
+
+      this.logger.info(`[slack] Rejection DM sent to ${email} for IAM user ${iamUserName}`);
+    } catch (error) {
+      this.logger.error(`[slack] Failed to send rejection DM to ${email}: ${error}`);
+    }
+  }
 }

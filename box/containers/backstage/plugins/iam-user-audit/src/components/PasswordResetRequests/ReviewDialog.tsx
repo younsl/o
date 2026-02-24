@@ -39,6 +39,10 @@ export const ReviewDialog = ({
   const isApprove = action === 'approve';
 
   const handleSubmit = async () => {
+    if (!comment.trim()) {
+      setError('Comment is required');
+      return;
+    }
     if (isApprove && !newPassword) {
       setError('New password is required for approval');
       return;
@@ -113,7 +117,7 @@ export const ReviewDialog = ({
         <Box mt="3">
           <label className="prd-label">
             <Text variant="body-small" weight="bold">
-              Comment {!isApprove ? '' : '(optional)'}
+              Comment
             </Text>
             <textarea
               className="prd-textarea"
@@ -122,7 +126,7 @@ export const ReviewDialog = ({
               onChange={e => setComment(e.target.value)}
               placeholder={
                 isApprove
-                  ? 'Optional comment'
+                  ? 'Reason for approval'
                   : 'Reason for rejection'
               }
             />
@@ -148,7 +152,7 @@ export const ReviewDialog = ({
           <Button
             variant={isApprove ? 'primary' : 'secondary'}
             onPress={handleSubmit}
-            isDisabled={submitting || (isApprove && !newPassword)}
+            isDisabled={submitting || !comment.trim() || (isApprove && !newPassword)}
           >
             {submitting
               ? 'Submitting...'

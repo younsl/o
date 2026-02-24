@@ -219,6 +219,13 @@ export async function createRouter(options: RouterOptions): Promise<Router> {
         return;
       }
 
+      if (!input.comment?.trim()) {
+        res
+          .status(400)
+          .json({ error: 'comment is required' });
+        return;
+      }
+
       const existing = await store.getRequest(req.params.id);
       if (!existing) {
         res.status(404).json({ error: 'Request not found' });
@@ -281,6 +288,17 @@ export async function createRouter(options: RouterOptions): Promise<Router> {
         logger.info(
           `Password reset rejected [${req.params.id}] for ${existing.iamUserName} by ${reviewerRef}`,
         );
+
+        // Send rejection DM to requester
+        if (existing.requesterEmail) {
+          slackNotifier
+            .sendRejectionDm(existing.requesterEmail, existing.iamUserName, existing.id, reviewerRef, input.comment)
+            .catch(err => {
+              logger.warn(`[slack] Failed to send rejection DM: ${err}`);
+            });
+        } else {
+          logger.info(`[slack] Skipping rejection DM: requesterEmail is empty for request ${existing.id}`);
+        }
       }
       const updated = await store.updateStatus(
         req.params.id,
