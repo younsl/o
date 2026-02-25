@@ -10,7 +10,8 @@
   "scripts": {
     "start": "backstage-cli package start",
     "build": "backstage-cli package build",
-    "clean": "backstage-cli package clean"
+    "clean": "backstage-cli package clean",
+    "test": "backstage-cli package test"
   },
   "dependencies": {
     "@backstage/backend-plugin-api": "^1.7.0",
@@ -24,6 +25,7 @@
   "devDependencies": {
     "@backstage/cli": "^0.35.4",
     "@types/express": "^5.0.0",
-    "@types/node-fetch": "^2.6.12"
+    "@types/node-fetch": "^2.6.12",
+    "jest": "^29.7.0"
   }
 }

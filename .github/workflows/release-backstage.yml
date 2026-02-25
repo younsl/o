@@ -21,7 +21,7 @@ permissions:
 
 jobs:
   check:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     outputs:
       image_exists: ${{ steps.image_check.outputs.image_exists }}
       version: ${{ steps.extract_version.outputs.version }}
@@ -58,9 +58,40 @@ jobs:
             fi
           fi
 
-  release:
-    runs-on: ubuntu-latest
+  test:
+    runs-on: ubuntu-24.04
     needs: check
+    if: ${{ needs.check.outputs.image_exists == 'false' }}
+    defaults:
+      run:
+        working-directory: box/containers/backstage
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+
+      - name: Enable Corepack
+        run: corepack enable
+
+      - name: Install dependencies
+        run: yarn install --immutable
+
+      - name: Type check
+        run: yarn tsc
+
+      - name: Run tests
+        run: |
+          yarn workspace @internal/plugin-argocd-appset-backend test --no-cache --ci
+          yarn workspace @internal/plugin-iam-user-audit-backend test --no-cache --ci
+          yarn workspace @internal/plugin-openapi-registry-backend test --no-cache --ci
+
+  release:
+    runs-on: ubuntu-24.04
+    needs: [check, test]
     if: ${{ needs.check.outputs.image_exists == 'false' }}
     steps:
       - name: Checkout

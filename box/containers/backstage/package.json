@@ -23,6 +23,7 @@
   "devDependencies": {
     "@backstage/cli": "^0.35.4",
     "concurrently": "^8.2.2",
+    "jest-environment-jsdom": "^29.7.0",
     "typescript": "~5.4.0"
   },
   "resolutions": {
