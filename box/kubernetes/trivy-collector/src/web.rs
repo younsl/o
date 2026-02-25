@@ -271,9 +271,7 @@ async fn serve_index() -> impl IntoResponse {
     }
 }
 
-async fn serve_asset(
-    axum::extract::Path(path): axum::extract::Path<String>,
-) -> impl IntoResponse {
+async fn serve_asset(axum::extract::Path(path): axum::extract::Path<String>) -> impl IntoResponse {
     let full_path = format!("assets/{}", path.trim_start_matches('/'));
     match StaticAssets::get(&full_path) {
         Some(content) => {
