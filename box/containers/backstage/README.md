@@ -222,15 +222,14 @@ sonarqube:
 
 ## Authentication
 
-Authentication is configured via Keycloak OIDC with [redirect flow](https://backstage.io/docs/auth/oauth/). For better user experience, [`enableExperimentalRedirectFlow`](https://backstage.io/docs/releases/v1.13.0-changelog/) is enabled to use in-window redirect instead of the default popup on auto sign-in.
+Authentication is configured via Keycloak OIDC with [redirect flow](https://backstage.io/docs/auth/oauth/). For better user experience, [`enableExperimentalRedirectFlow`](https://backstage.io/docs/auth/#sign-in-configuration) is enabled to use in-window redirect instead of the default popup on auto sign-in.
 
 **Flow:** Backstage → `SignInPage` auto trigger → Keycloak login (redirect) → Backstage home
 
 **Config (`app-config.yaml`):**
 
 ```yaml
-auth:
-  enableExperimentalRedirectFlow: true
+enableExperimentalRedirectFlow: true
 ```
 
 > **Note:** `enableExperimentalRedirectFlow` applies to the `auto` sign-in path only.

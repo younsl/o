@@ -127,6 +127,8 @@ backstage:
           rules:
             - allow: [Template]
 
+    enableExperimentalRedirectFlow: true
+
     auth:
       providers:
         guest:

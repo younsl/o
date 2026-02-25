@@ -94,8 +94,9 @@ catalog:
       rules:
         - allow: [Template]
 
+enableExperimentalRedirectFlow: true
+
 auth:
-  enableExperimentalRedirectFlow: true
   environment: development
   session:
     secret: ${AUTH_SESSION_SECRET}
