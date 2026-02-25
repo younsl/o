@@ -222,12 +222,18 @@ sonarqube:
 
 ## Authentication
 
-Authentication is configured via Keycloak OIDC. Guest login is **disabled in production**.
+Authentication is configured via Keycloak OIDC with [redirect flow](https://backstage.io/docs/auth/oauth/). For better user experience, the sign-in page uses in-window redirect instead of the default popup. Users are redirected to the Keycloak login page immediately without seeing a separate sign-in UI.
 
-> **Note:** Backstage does not support dynamically enabling/disabling guest login via config.
-> The `guest` provider in `SignInPage` (`packages/app/src/App.tsx`) is hardcoded in frontend.
-> To enable guest login, add `'guest'` to the providers array and rebuild the image.
-> See [Guest Authentication Provider](https://backstage.io/docs/auth/guest/provider/) for details.
+**Flow:** Backstage → Keycloak login → Backstage home
+
+**Config (`app-config.yaml`):**
+
+```yaml
+auth:
+  enableExperimentalRedirectFlow: true
+```
+
+See [Backstage Auth documentation](https://backstage.io/docs/auth/) for details on [`enableExperimentalRedirectFlow`](https://backstage.io/docs/releases/v1.13.0-changelog/).
 
 ## Ports
 
