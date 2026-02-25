@@ -266,7 +266,7 @@ pub async fn reconcile(obj: Arc<EKSUpgrade>, ctx: Arc<Context>) -> Result<Action
                     && notify::should_notify(spec)
                 {
                     let msg = notify::build_started_message(name, spec, &new_status);
-                    notifier.send(&msg).await;
+                    notifier.send(name, &msg).await;
                 }
             }
 
@@ -303,7 +303,7 @@ pub async fn reconcile(obj: Arc<EKSUpgrade>, ctx: Arc<Context>) -> Result<Action
                         && notify::should_notify(spec)
                     {
                         let slack_msg = notify::build_completed_message(name, spec, &new_status);
-                        notifier.send(&slack_msg).await;
+                        notifier.send(name, &slack_msg).await;
                     }
                 }
                 Some(UpgradePhase::Failed) => {
@@ -319,7 +319,7 @@ pub async fn reconcile(obj: Arc<EKSUpgrade>, ctx: Arc<Context>) -> Result<Action
                         && notify::should_notify(spec)
                     {
                         let slack_msg = notify::build_failed_message(name, spec, &new_status, msg);
-                        notifier.send(&slack_msg).await;
+                        notifier.send(name, &slack_msg).await;
                     }
                 }
                 _ => {}
@@ -385,7 +385,7 @@ pub async fn reconcile(obj: Arc<EKSUpgrade>, ctx: Arc<Context>) -> Result<Action
             {
                 let slack_msg =
                     notify::build_failed_message(name, spec, &new_status, &e.to_string());
-                notifier.send(&slack_msg).await;
+                notifier.send(name, &slack_msg).await;
             }
 
             Ok(Action::await_change())

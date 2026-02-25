@@ -1,7 +1,7 @@
 //! Slack notification support via Incoming Webhooks.
 
 use serde_json::{Value, json};
-use tracing::warn;
+use tracing::{info, warn};
 
 /// Structured Slack message for Block Kit rendering.
 pub struct SlackMessage {
@@ -26,7 +26,7 @@ impl SlackNotifier {
     }
 
     /// Send a Block Kit message to Slack. Errors are logged but not propagated.
-    pub async fn send(&self, message: &SlackMessage) {
+    pub async fn send(&self, resource_name: &str, message: &SlackMessage) {
         let payload = build_blocks_payload(message);
         match self
             .client
@@ -36,12 +36,26 @@ impl SlackNotifier {
             .await
         {
             Ok(resp) if !resp.status().is_success() => {
-                warn!("Slack webhook returned status {}", resp.status());
+                warn!(
+                    resource = resource_name,
+                    status = %resp.status(),
+                    "Slack webhook returned non-success status"
+                );
             }
             Err(e) => {
-                warn!("Failed to send Slack notification: {}", e);
+                warn!(
+                    resource = resource_name,
+                    error = %e,
+                    "Failed to send Slack notification"
+                );
             }
-            _ => {}
+            Ok(_) => {
+                info!(
+                    resource = resource_name,
+                    header = message.header.as_str(),
+                    "Slack notification sent"
+                );
+            }
         }
     }
 }
