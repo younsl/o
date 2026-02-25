@@ -141,6 +141,7 @@ export class SlackNotifier {
       {
         type: 'section',
         fields: [
+          { type: 'mrkdwn', text: `*Request ID:*\n${request.id}` },
           { type: 'mrkdwn', text: `*IAM User:*\n${request.iamUserName}` },
           { type: 'mrkdwn', text: `*Requester:*\n${request.requesterRef}` },
           { type: 'mrkdwn', text: `*Reason:*\n${request.reason}` },
@@ -199,6 +200,7 @@ export class SlackNotifier {
       {
         type: 'section',
         fields: [
+          { type: 'mrkdwn', text: `*Request ID:*\n${request.id}` },
           { type: 'mrkdwn', text: `*IAM User:*\n${request.iamUserName}` },
           { type: 'mrkdwn', text: `*Status:*\n${statusEmoji} ${request.status}` },
           { type: 'mrkdwn', text: `*Reviewer:*\n${request.reviewerRef ?? 'unknown'}` },
