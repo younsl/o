@@ -1,0 +1,107 @@
+.popup {
+    position: absolute;
+    background-color: var(--bg-secondary);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    box-shadow: 0 10px 25px rgba(0, 0, 0, 0.4);
+    min-width: 220px;
+    max-width: 300px;
+    z-index: 200;
+}
+
+.popup:global(.hidden) {
+    display: none;
+}
+
+.popupHeader {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 10px 12px;
+    border-bottom: 1px solid var(--border);
+    background-color: var(--bg-tertiary);
+    border-radius: 8px 8px 0 0;
+}
+
+.popupTitle {
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--text-primary);
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+.closeButton {
+    background: transparent;
+    border: none;
+    color: var(--text-secondary);
+    font-size: 16px;
+    cursor: pointer;
+    padding: 2px 6px;
+    border-radius: 4px;
+    line-height: 1;
+}
+
+.closeButton:hover {
+    background-color: var(--bg-hover);
+    color: var(--text-primary);
+}
+
+.popupBody {
+    padding: 12px;
+    max-height: 250px;
+    overflow-y: auto;
+}
+
+.popupBody select,
+.popupBody input[type="text"] {
+    width: 100%;
+    background-color: var(--bg-primary);
+    border: 1px solid var(--border);
+    color: var(--text-primary);
+    padding: 8px 10px;
+    border-radius: 6px;
+    font-size: 13px;
+}
+
+.popupBody select:focus,
+.popupBody input:focus {
+    outline: none;
+    border-color: var(--accent);
+}
+
+.filterOption {
+    display: flex;
+    align-items: center;
+    padding: 6px 0;
+    cursor: pointer;
+}
+
+.filterOption input[type="checkbox"] {
+    width: 16px;
+    height: 16px;
+    margin-right: 8px;
+    accent-color: var(--accent);
+    cursor: pointer;
+}
+
+.filterOption label {
+    font-size: 13px;
+    color: var(--text-primary);
+    cursor: pointer;
+}
+
+.popupFooter {
+    display: flex;
+    gap: 8px;
+    padding: 10px 12px;
+    border-top: 1px solid var(--border);
+    background-color: var(--bg-tertiary);
+    border-radius: 0 0 8px 8px;
+}
+
+.popupFooter button {
+    flex: 1;
+    padding: 6px 12px;
+    font-size: 12px;
+}

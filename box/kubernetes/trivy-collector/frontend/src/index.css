@@ -1,0 +1,451 @@
+/* ===========================================
+   Global Styles — shared across components
+   =========================================== */
+
+* {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+}
+
+:root {
+    --bg-primary: #0d0d0d;
+    --bg-secondary: #161616;
+    --bg-tertiary: #1e1e1e;
+    --bg-hover: #252525;
+    --text-primary: #f5f5f5;
+    --text-secondary: #888;
+    --text-muted: #555;
+    --border: #2a2a2a;
+    --accent: #3b82f6;
+    --accent-hover: #2563eb;
+    --critical: #ef4444;
+    --high: #f97316;
+    --medium: #eab308;
+    --low: #22c55e;
+    --unknown: #6b7280;
+}
+
+.mono {
+    font-family: 'SF Mono', Monaco, Consolas, monospace;
+    font-size: 12px;
+}
+
+body {
+    font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Display', 'Segoe UI', Roboto, sans-serif;
+    background-color: var(--bg-primary);
+    color: var(--text-primary);
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+    font-size: 14px;
+    line-height: 1.5;
+}
+
+/* Main */
+main {
+    flex: 1;
+    padding: 24px;
+    max-width: 1400px;
+    margin: 0 auto;
+    width: 100%;
+}
+
+/* ===========================================
+   Shared Buttons
+   =========================================== */
+
+.btn-primary,
+.btn-secondary {
+    padding: 8px 16px;
+    border-radius: 6px;
+    cursor: pointer;
+    font-size: 13px;
+    font-weight: 500;
+    border: none;
+    transition: all 0.15s ease;
+}
+
+.btn-primary {
+    background-color: var(--accent);
+    color: white;
+}
+
+.btn-primary:hover {
+    background-color: var(--accent-hover);
+}
+
+.btn-secondary {
+    background-color: transparent;
+    border: 1px solid var(--border);
+    color: var(--text-secondary);
+}
+
+.btn-secondary:hover {
+    background-color: var(--bg-hover);
+    color: var(--text-primary);
+}
+
+.btn-danger {
+    background-color: rgba(239, 68, 68, 0.15);
+    color: var(--critical);
+    border: 1px solid rgba(239, 68, 68, 0.3);
+}
+
+.btn-danger:hover {
+    background-color: var(--critical);
+    color: white;
+}
+
+.btn-danger:disabled {
+    opacity: 0.4;
+    cursor: not-allowed;
+}
+
+.btn-danger:disabled:hover {
+    background-color: rgba(239, 68, 68, 0.15);
+    color: var(--critical);
+}
+
+.btn-danger.confirming {
+    pointer-events: none;
+    opacity: 0.7;
+}
+
+.btn-confirm-yes,
+.btn-confirm-no {
+    padding: 6px 10px;
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 12px;
+    transition: all 0.15s ease;
+}
+
+.btn-confirm-yes {
+    background-color: rgba(239, 68, 68, 0.15);
+    color: var(--critical);
+    border: 1px solid rgba(239, 68, 68, 0.3);
+}
+
+.btn-confirm-yes:hover {
+    background-color: var(--critical);
+    color: white;
+}
+
+.btn-confirm-no {
+    background-color: var(--bg-tertiary);
+    color: var(--text-secondary);
+    border: 1px solid var(--border);
+}
+
+.btn-confirm-no:hover {
+    background-color: var(--bg-hover);
+    color: var(--text-primary);
+}
+
+.btn-confirm-yes:disabled,
+.btn-confirm-no:disabled {
+    opacity: 0.4;
+    cursor: not-allowed;
+}
+
+.btn-sm {
+    padding: 5px 12px;
+    font-size: 12px;
+}
+
+.btn-back {
+    background: transparent;
+    border: 1px solid var(--border);
+    color: var(--text-secondary);
+    padding: 6px 12px;
+    border-radius: 6px;
+    cursor: pointer;
+    font-size: 13px;
+    font-weight: 500;
+    transition: all 0.15s ease;
+}
+
+.btn-back:hover {
+    background-color: var(--bg-hover);
+    color: var(--text-primary);
+}
+
+.btn-back i {
+    margin-right: 6px;
+}
+
+.btn-export {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 6px 12px;
+    background-color: var(--bg-hover);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    color: var(--text-primary);
+    font-size: 13px;
+    cursor: pointer;
+    transition: all 0.15s ease;
+}
+
+.btn-export:hover {
+    background-color: var(--accent);
+    border-color: var(--accent);
+}
+
+.btn-export:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+}
+
+.btn-export i {
+    margin-right: 6px;
+}
+
+/* ===========================================
+   Severity Badges (shared by ReportsView, VulnDetail)
+   =========================================== */
+
+.severity-badge {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 28px;
+    padding: 2px 8px;
+    border-radius: 4px;
+    font-size: 12px;
+    font-weight: 600;
+    font-variant-numeric: tabular-nums;
+}
+
+.severity-critical { background-color: rgba(239, 68, 68, 0.15); color: var(--critical); }
+.severity-high { background-color: rgba(249, 115, 22, 0.15); color: var(--high); }
+.severity-medium { background-color: rgba(234, 179, 8, 0.15); color: var(--medium); }
+.severity-low { background-color: rgba(34, 197, 94, 0.15); color: var(--low); }
+.severity-unknown { background-color: rgba(107, 114, 128, 0.15); color: var(--unknown); }
+.severity-zero { color: var(--text-muted); }
+
+.components-badge {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 28px;
+    padding: 2px 8px;
+    border-radius: 4px;
+    font-size: 12px;
+    font-weight: 600;
+    font-variant-numeric: tabular-nums;
+    background-color: rgba(59, 130, 246, 0.15);
+    color: var(--accent);
+}
+
+/* ===========================================
+   Utilities
+   =========================================== */
+
+.loading,
+.no-data {
+    text-align: center;
+    color: var(--text-secondary);
+    padding: 48px 16px !important;
+}
+
+.hidden {
+    display: none !important;
+}
+
+/* ===========================================
+   Detail Layout (shared by DetailView, VersionView, DashboardView)
+   =========================================== */
+
+.detail-container {
+    background-color: var(--bg-secondary);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    overflow: hidden;
+}
+
+.detail-header {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    padding: 16px 20px;
+    border-bottom: 1px solid var(--border);
+    background-color: var(--bg-tertiary);
+}
+
+.detail-header h2 {
+    flex-grow: 1;
+    font-size: 14px;
+    font-weight: 600;
+    color: var(--text-primary);
+}
+
+.detail-summary {
+    padding: 16px 20px;
+    background-color: var(--bg-secondary);
+    display: flex;
+    gap: 24px;
+    flex-wrap: wrap;
+}
+
+.detail-summary.vertical {
+    flex-direction: column;
+    gap: 0;
+}
+
+.detail-summary.vertical .detail-summary-item {
+    flex-direction: row;
+    justify-content: space-between;
+    align-items: center;
+    padding: 10px 0;
+    border-bottom: 1px solid var(--border);
+}
+
+.detail-summary.vertical .detail-summary-item:last-child {
+    border-bottom: none;
+}
+
+.detail-summary.vertical .detail-summary-label {
+    font-size: 13px;
+    text-transform: none;
+    letter-spacing: normal;
+    color: var(--text-secondary);
+}
+
+.detail-summary.vertical .detail-summary-value {
+    text-align: right;
+}
+
+.detail-summary-item {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+}
+
+.detail-summary-label {
+    font-size: 10px;
+    color: var(--text-muted);
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+.detail-summary-value {
+    font-size: 13px;
+    color: var(--text-primary);
+    word-break: break-all;
+}
+
+.detail-summary-value a {
+    color: var(--accent);
+    text-decoration: none;
+}
+
+.detail-summary-value a:hover {
+    text-decoration: underline;
+}
+
+.detail-summary-value.sensitive {
+    color: var(--text-secondary);
+    font-style: italic;
+}
+
+.detail-summary-divider {
+    width: 100%;
+    padding: 6px 0 4px;
+    font-size: 11px;
+    font-weight: 600;
+    color: var(--text-secondary);
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    border-bottom: 1px solid var(--border);
+}
+
+/* ===========================================
+   Graph Section (shared by DetailView, DependencyGraph, DashboardView, VersionView, Notes)
+   =========================================== */
+
+.graph-section {
+    border-bottom: 1px solid var(--border);
+}
+
+.graph-section:last-child {
+    border-bottom: none;
+}
+
+.section-bar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 10px 20px;
+    background-color: var(--bg-tertiary);
+    border-bottom: 1px solid var(--border);
+}
+
+.section-bar .graph-title {
+    margin-bottom: 0;
+}
+
+.graph-title {
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--text-secondary);
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    margin-bottom: 12px;
+}
+
+.section-count {
+    font-weight: 500;
+    color: var(--text-muted);
+    margin-left: 4px;
+}
+
+.section-content {
+    padding: 16px 20px;
+    background-color: var(--bg-secondary);
+}
+
+/* ===========================================
+   Detail Tables (shared by VulnDetail, SbomDetail)
+   =========================================== */
+
+.detail-table-container {
+    overflow-x: auto;
+}
+
+/* ===========================================
+   Footer
+   =========================================== */
+
+footer {
+    background-color: var(--bg-secondary);
+    padding: 16px 24px;
+    text-align: center;
+    border-top: 1px solid var(--border);
+    font-size: 12px;
+    color: var(--text-muted);
+}
+
+/* ===========================================
+   Scrollbar
+   =========================================== */
+
+::-webkit-scrollbar {
+    width: 8px;
+    height: 8px;
+}
+
+::-webkit-scrollbar-track {
+    background: var(--bg-primary);
+}
+
+::-webkit-scrollbar-thumb {
+    background: var(--border);
+    border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+    background: var(--text-muted);
+}

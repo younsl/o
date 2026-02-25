@@ -1,4 +1,4 @@
-.PHONY: help build release run dev test fmt lint check clean install docker-build docker-push podman-build deps build-all
+.PHONY: help build release run dev test fmt lint check clean install docker-build docker-push podman-build deps build-all frontend frontend-install frontend-dev
 
 BINARY_NAME := trivy-collector
 IMAGE_NAME := trivy-collector
@@ -86,3 +86,12 @@ podman-build: ## Build container image with Podman (cross-compiles for Linux wit
 build-all: ## Build for all platforms (requires cargo-zigbuild)
 	cargo zigbuild --release --target x86_64-unknown-linux-musl
 	cargo zigbuild --release --target aarch64-unknown-linux-musl
+
+frontend-install: ## Install frontend dependencies
+	cd frontend && npm install
+
+frontend: frontend-install ## Build frontend (outputs to static/)
+	cd frontend && npm run build
+
+frontend-dev: frontend-install ## Start frontend dev server with HMR
+	cd frontend && npm run dev

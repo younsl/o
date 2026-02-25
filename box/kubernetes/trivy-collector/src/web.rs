@@ -223,11 +223,12 @@ pub async fn run(
         )
         // OpenAPI documentation
         .route("/api-docs/openapi.json", get(serve_openapi))
-        // Static files and UI
+        // Static files and UI (Vite build output)
         .route("/", get(serve_index))
+        .route("/assets/{*path}", get(serve_asset))
         .route("/static/{*path}", get(serve_static))
-        .route("/style.css", get(serve_css))
-        .route("/app.js", get(serve_js))
+        // SPA fallback: serve index.html for unmatched GET requests
+        .fallback(get(serve_index))
         .layer(cors)
         .with_state(state);
 
@@ -270,28 +271,19 @@ async fn serve_index() -> impl IntoResponse {
     }
 }
 
-async fn serve_css() -> impl IntoResponse {
-    match StaticAssets::get("style.css") {
-        Some(content) => (
-            [(header::CONTENT_TYPE, "text/css")],
-            std::str::from_utf8(content.data.as_ref())
-                .unwrap_or("")
-                .to_string(),
-        )
-            .into_response(),
-        None => (StatusCode::NOT_FOUND, "Not found").into_response(),
-    }
-}
-
-async fn serve_js() -> impl IntoResponse {
-    match StaticAssets::get("app.js") {
-        Some(content) => (
-            [(header::CONTENT_TYPE, "application/javascript")],
-            std::str::from_utf8(content.data.as_ref())
-                .unwrap_or("")
-                .to_string(),
-        )
-            .into_response(),
+async fn serve_asset(
+    axum::extract::Path(path): axum::extract::Path<String>,
+) -> impl IntoResponse {
+    let full_path = format!("assets/{}", path.trim_start_matches('/'));
+    match StaticAssets::get(&full_path) {
+        Some(content) => {
+            let mime = mime_guess::from_path(&full_path).first_or_octet_stream();
+            (
+                [(header::CONTENT_TYPE, mime.as_ref())],
+                content.data.to_vec(),
+            )
+                .into_response()
+        }
         None => (StatusCode::NOT_FOUND, "Not found").into_response(),
     }
 }
