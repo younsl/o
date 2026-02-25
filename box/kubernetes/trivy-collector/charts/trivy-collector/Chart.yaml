@@ -4,7 +4,7 @@ description: Multi-cluster Trivy report collector and viewer
 type: application
 deprecated: false
 version: 0.6.0
-appVersion: "1.4.0"
+appVersion: "1.5.0"
 keywords:
   - trivy
   - security
