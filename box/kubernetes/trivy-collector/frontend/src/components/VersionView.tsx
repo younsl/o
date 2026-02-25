@@ -1,13 +1,11 @@
 import { useState, useEffect } from 'react'
+import { useNavigate } from 'react-router-dom'
 import { getVersion, getStatus, getConfig } from '../api'
 import { escapeHtml, formatDate } from '../utils'
 import type { VersionResponse, StatusResponse, ConfigResponse } from '../types'
 
-interface VersionViewProps {
-  onBack: () => void
-}
-
-export default function VersionView({ onBack }: VersionViewProps) {
+export default function VersionView() {
+  const navigate = useNavigate()
   const [version, setVersion] = useState<VersionResponse | null>(null)
   const [status, setStatus] = useState<StatusResponse | null>(null)
   const [config, setConfig] = useState<ConfigResponse | null>(null)
@@ -23,7 +21,7 @@ export default function VersionView({ onBack }: VersionViewProps) {
   return (
     <section className="detail-container">
       <div className="detail-header">
-        <button className="btn-back" onClick={onBack}>
+        <button className="btn-back" onClick={() => navigate('/vulnerabilities')}>
           <i className="fa-solid fa-arrow-left" /> Back to List
         </button>
         <h2>Version Information</h2>

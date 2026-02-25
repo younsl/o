@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
+import { useNavigate } from 'react-router-dom'
 import { Chart as ChartJS, CategoryScale, LinearScale, PointElement, LineElement, BarElement, Filler, Legend, Tooltip } from 'chart.js'
 import { Line, Bar } from 'react-chartjs-2'
 import { getDashboardTrends, getStats, getClusters } from '../api'
@@ -9,11 +10,8 @@ ChartJS.register(CategoryScale, LinearScale, PointElement, LineElement, BarEleme
 
 const REFRESH_INTERVAL = 30
 
-interface DashboardViewProps {
-  onBack: () => void
-}
-
-export default function DashboardView({ onBack }: DashboardViewProps) {
+export default function DashboardView() {
+  const navigate = useNavigate()
   const [range, setRange] = useState('1d')
   const [cluster, setCluster] = useState('')
   const [clusters, setClusters] = useState<ClusterInfo[]>([])
@@ -133,7 +131,7 @@ export default function DashboardView({ onBack }: DashboardViewProps) {
   return (
     <section className="detail-container">
       <div className={styles.header}>
-        <button className="btn-back" onClick={onBack}>
+        <button className="btn-back" onClick={() => navigate('/vulnerabilities')}>
           <i className="fa-solid fa-arrow-left" /> Back to List
         </button>
         <div className={styles.title}><h2 className={styles.titleHeading}>Security Trends Dashboard</h2></div>

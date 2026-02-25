@@ -118,7 +118,6 @@ export interface TrendResponse {
 
 export type ReportType = 'vulnerabilityreport' | 'sbomreport'
 
-export type ViewType = 'reports' | 'detail' | 'dashboard' | 'version'
 
 export interface Filters {
   cluster: string

@@ -1,30 +1,21 @@
-import { useCallback } from 'react'
+import { Link, useLocation } from 'react-router-dom'
 import StatusLed from './StatusLed'
 import styles from './Header.module.css'
-import type { WatcherStatusResponse, VersionResponse, ReportType, ViewType } from '../types'
+import type { WatcherStatusResponse, VersionResponse } from '../types'
 
 interface HeaderProps {
   watcherStatus: WatcherStatusResponse | null
   dbOk: boolean
   version: VersionResponse | null
-  currentView: ViewType
-  reportType: ReportType
-  onNavigate: (view: ViewType) => void
-  onSwitchReportType: (type: ReportType) => void
 }
 
 export default function Header({
   watcherStatus,
   dbOk,
   version,
-  currentView,
-  reportType,
-  onNavigate,
-  onSwitchReportType,
 }: HeaderProps) {
-  const handleVersionClick = useCallback(() => {
-    onNavigate('version')
-  }, [onNavigate])
+  const location = useLocation()
+  const path = location.pathname
 
   const commitShort = version ? version.commit.substring(0, 7) : ''
 
@@ -41,13 +32,13 @@ export default function Header({
           <span className={styles.subtitle}>Powered by Trivy Operator</span>
         </div>
         {version && (
-          <span
+          <Link
+            to="/version"
             className={`${styles.versionInfo} ${styles.clickable}`}
             title="Click to view detailed version info"
-            onClick={handleVersionClick}
           >
             v{version.version} ({commitShort})
-          </span>
+          </Link>
         )}
         <div className={styles.watcherStatus}>
           <span className={styles.watcherTitle}>Status</span>
@@ -59,30 +50,24 @@ export default function Header({
         </div>
       </div>
       <nav className={styles.nav}>
-        <button
-          className={`${styles.navButton}${currentView === 'dashboard' ? ` ${styles.active}` : ''}`}
-          onClick={() => onNavigate('dashboard')}
+        <Link
+          to="/dashboard"
+          className={`${styles.navButton}${path === '/dashboard' ? ` ${styles.active}` : ''}`}
         >
           <i className="fa-solid fa-chart-line" /> Dashboard
-        </button>
-        <button
-          className={`${styles.navButton}${currentView === 'reports' && reportType === 'vulnerabilityreport' ? ` ${styles.active}` : ''}`}
-          onClick={() => {
-            onSwitchReportType('vulnerabilityreport')
-            onNavigate('reports')
-          }}
+        </Link>
+        <Link
+          to="/vulnerabilities"
+          className={`${styles.navButton}${path.startsWith('/vulnerabilities') ? ` ${styles.active}` : ''}`}
         >
           Vulnerabilities
-        </button>
-        <button
-          className={`${styles.navButton}${currentView === 'reports' && reportType === 'sbomreport' ? ` ${styles.active}` : ''}`}
-          onClick={() => {
-            onSwitchReportType('sbomreport')
-            onNavigate('reports')
-          }}
+        </Link>
+        <Link
+          to="/sbom"
+          className={`${styles.navButton}${path.startsWith('/sbom') ? ` ${styles.active}` : ''}`}
         >
           SBOM
-        </button>
+        </Link>
       </nav>
     </header>
   )
