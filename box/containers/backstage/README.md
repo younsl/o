@@ -1,7 +1,7 @@
 # Backstage with GitLab Discovery
 
 [![GHCR](https://img.shields.io/badge/GHCR-ghcr.io%2Fyounsl%2Fbackstage-black?style=flat-square&logo=github&logoColor=white)](https://ghcr.io/younsl/backstage)
-[![Backstage](https://img.shields.io/badge/Backstage-1.47.3-black?style=flat-square&logo=backstage&logoColor=white)](https://backstage.io)
+[![Backstage](https://img.shields.io/badge/Backstage-1.48.1-black?style=flat-square&logo=backstage&logoColor=white)](https://backstage.io)
 
 Custom Backstage image with GitLab Auto Discovery, Keycloak OIDC, and API Docs plugins.
 
@@ -19,6 +19,7 @@ Custom Backstage image with GitLab Auto Discovery, Keycloak OIDC, and API Docs p
 | API Docs | [`@backstage/plugin-api-docs`](https://www.npmjs.com/package/@backstage/plugin-api-docs) | Native | OpenAPI, AsyncAPI, GraphQL spec viewer |
 | OpenAPI Registry | `openapi-registry` | Custom† | Register external OpenAPI specs by URL with search and filters |
 | ArgoCD AppSets | `argocd-appset` | Custom† | View and manage ArgoCD ApplicationSets with mute/unmute and Slack alerts |
+| IAM User Audit | `iam-user-audit` | Custom† | AWS IAM inactive user monitoring with password reset approval workflow |
 | TechDocs | [`@backstage/plugin-techdocs`](https://www.npmjs.com/package/@backstage/plugin-techdocs) | Native | Markdown-based technical documentation |
 | Scaffolder | [`@backstage/plugin-scaffolder`](https://www.npmjs.com/package/@backstage/plugin-scaffolder) | Native | Template-based project creation |
 | Search | [`@backstage/plugin-search`](https://www.npmjs.com/package/@backstage/plugin-search) | Native | Full-text search across catalog |
@@ -54,8 +55,8 @@ make dev    # Run dev server (localhost:3000)
 ### Release
 
 ```bash
-git tag backstage/1.48.0
-git push origin backstage/1.48.0
+git tag backstage/1.48.1-4
+git push origin backstage/1.48.1-4
 ```
 
 ## Environment Variables
@@ -72,6 +73,8 @@ git push origin backstage/1.48.0
 | `AUTH_SESSION_SECRET` | OIDC | Session secret (min 32 chars) |
 | `K8S_SA_TOKEN` | ArgoCD AppSet | Kubernetes service account token |
 | `SLACK_WEBHOOK_URL` | ArgoCD AppSet | Slack Incoming Webhook URL for alerts |
+| `IAM_AUDIT_SLACK_WEBHOOK_URL` | IAM Audit | Slack Webhook URL for inactive user alerts |
+| `IAM_AUDIT_SLACK_BOT_TOKEN` | IAM Audit | Slack Bot Token for DM notifications (`xoxb-...`) |
 
 ## Documentation
 
@@ -79,6 +82,7 @@ git push origin backstage/1.48.0
 - [GitLab Discovery](docs/gitlab-discovery.md) - Auto-discover services from GitLab
 - [GitLab CI/CD](docs/gitlab-cicd.md) - View pipelines, MRs, releases on Entity page
 - [GitLab API Discovery](docs/gitlab-api-discovery.md) - Auto-register APIs from GitLab
+- [IAM User Audit](docs/iam-user-audit.md) - AWS IAM inactive user monitoring and password reset workflow
 - [Helm Chart](docs/helm-chart.md) - Kubernetes deployment with Helm
 
 ## Architecture
@@ -94,6 +98,7 @@ git push origin backstage/1.48.0
 │  ├─ API Docs Viewer         │  ├─ Search Indexer            │
 │  ├─ OpenAPI Registry        │  ├─ OpenAPI Registry API      │
 │  ├─ ArgoCD AppSets          │  ├─ ArgoCD AppSet API         │
+│  ├─ IAM User Audit          │  ├─ IAM User Audit API        │
 │  ├─ TechDocs Reader         │  ├─ TechDocs Builder          │
 │  └─ Scaffolder UI           │  └─ Scaffolder Backend        │
 ├─────────────────────────────────────────────────────────────┤
@@ -113,6 +118,7 @@ backstage/
 │   ├── keycloak-oidc.md
 │   ├── gitlab-discovery.md
 │   ├── gitlab-api-discovery.md
+│   ├── iam-user-audit.md
 │   └── helm-chart.md
 ├── packages/
 │   ├── app/                     # Frontend
@@ -120,6 +126,8 @@ backstage/
 ├── plugins/
 │   ├── argocd-appset/           # ArgoCD AppSet frontend plugin
 │   ├── argocd-appset-backend/   # ArgoCD AppSet backend plugin
+│   ├── iam-user-audit/          # IAM User Audit frontend plugin
+│   ├── iam-user-audit-backend/  # IAM User Audit backend plugin
 │   ├── openapi-registry/        # OpenAPI Registry frontend plugin
 │   └── openapi-registry-backend/# OpenAPI Registry backend plugin
 ├── templates/
