@@ -265,7 +265,7 @@ pub async fn reconcile(obj: Arc<EKSUpgrade>, ctx: Arc<Context>) -> Result<Action
                     && let Some(ref notifier) = ctx.slack
                     && notify::should_notify(spec)
                 {
-                    let msg = notify::build_started_message(spec, &new_status);
+                    let msg = notify::build_started_message(name, spec, &new_status);
                     notifier.send(&msg).await;
                 }
             }
@@ -302,7 +302,7 @@ pub async fn reconcile(obj: Arc<EKSUpgrade>, ctx: Arc<Context>) -> Result<Action
                     if let Some(ref notifier) = ctx.slack
                         && notify::should_notify(spec)
                     {
-                        let slack_msg = notify::build_completed_message(spec, &new_status);
+                        let slack_msg = notify::build_completed_message(name, spec, &new_status);
                         notifier.send(&slack_msg).await;
                     }
                 }
@@ -318,7 +318,7 @@ pub async fn reconcile(obj: Arc<EKSUpgrade>, ctx: Arc<Context>) -> Result<Action
                     if let Some(ref notifier) = ctx.slack
                         && notify::should_notify(spec)
                     {
-                        let slack_msg = notify::build_failed_message(spec, &new_status, msg);
+                        let slack_msg = notify::build_failed_message(name, spec, &new_status, msg);
                         notifier.send(&slack_msg).await;
                     }
                 }
@@ -383,7 +383,8 @@ pub async fn reconcile(obj: Arc<EKSUpgrade>, ctx: Arc<Context>) -> Result<Action
             if let Some(ref notifier) = ctx.slack
                 && notify::should_notify(spec)
             {
-                let slack_msg = notify::build_failed_message(spec, &new_status, &e.to_string());
+                let slack_msg =
+                    notify::build_failed_message(name, spec, &new_status, &e.to_string());
                 notifier.send(&slack_msg).await;
             }
 

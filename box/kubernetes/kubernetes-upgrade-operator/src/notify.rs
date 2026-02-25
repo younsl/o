@@ -2,7 +2,7 @@
 
 pub mod slack;
 
-pub use slack::SlackNotifier;
+pub use slack::{SlackMessage, SlackNotifier};
 
 use crate::crd::{EKSUpgradeSpec, EKSUpgradeStatus};
 
@@ -23,7 +23,11 @@ pub const fn should_notify(spec: &EKSUpgradeSpec) -> bool {
 /// Build the "Started" notification message.
 ///
 /// Called after Planning completes so the upgrade path is available.
-pub fn build_started_message(spec: &EKSUpgradeSpec, status: &EKSUpgradeStatus) -> String {
+pub fn build_started_message(
+    resource_name: &str,
+    spec: &EKSUpgradeSpec,
+    status: &EKSUpgradeStatus,
+) -> SlackMessage {
     let mode = if spec.dry_run {
         "Dry Run"
     } else {
@@ -45,24 +49,28 @@ pub fn build_started_message(spec: &EKSUpgradeSpec, status: &EKSUpgradeStatus) -
         format!("{current} → {upgrade_path}")
     };
 
-    format!(
-        "*[KUO] EKS Upgrade Started*\n\
-         *Cluster*: {cluster}\n\
-         *Region*: {region}\n\
-         *Target*: {target}\n\
-         *Mode*: {mode}\n\
-         *Upgrade Path*: {path}\n\
-         *Phases*: Planning → Preflight → ControlPlane → Addons → NodeGroups",
-        cluster = spec.cluster_name,
-        region = spec.region,
-        target = spec.target_version,
-        mode = mode,
-        path = path_display,
-    )
+    let phases = "Planning → Preflight → ControlPlane → Addons → NodeGroups";
+
+    SlackMessage {
+        header: "EKS Upgrade Started".to_string(),
+        fields: vec![
+            ("Cluster".to_string(), spec.cluster_name.clone()),
+            ("Region".to_string(), spec.region.clone()),
+            ("Target Version".to_string(), spec.target_version.clone()),
+            ("Mode".to_string(), mode.to_string()),
+            ("Upgrade Path".to_string(), path_display),
+            ("Phases".to_string(), phases.to_string()),
+        ],
+        context: format!("Sent by kuo via EKSUpgrade/{resource_name}"),
+    }
 }
 
 /// Build the "Completed" notification message.
-pub fn build_completed_message(spec: &EKSUpgradeSpec, status: &EKSUpgradeStatus) -> String {
+pub fn build_completed_message(
+    resource_name: &str,
+    spec: &EKSUpgradeSpec,
+    status: &EKSUpgradeStatus,
+) -> SlackMessage {
     let upgrade_path = status
         .phases
         .planning
@@ -94,26 +102,25 @@ pub fn build_completed_message(spec: &EKSUpgradeSpec, status: &EKSUpgradeStatus)
         "Live Upgrade"
     };
 
-    format!(
-        "*[KUO] EKS Upgrade Completed*\n\
-         *Cluster*: {cluster} ({region})\n\
-         *Mode*: {mode}\n\
-         *Upgrade Path*: {path}\n\
-         *Duration*: {duration}",
-        cluster = spec.cluster_name,
-        region = spec.region,
-        mode = mode,
-        path = path_display,
-        duration = duration,
-    )
+    SlackMessage {
+        header: "EKS Upgrade Completed".to_string(),
+        fields: vec![
+            ("Cluster".to_string(), spec.cluster_name.clone()),
+            ("Mode".to_string(), mode.to_string()),
+            ("Upgrade Path".to_string(), path_display),
+            ("Duration".to_string(), duration),
+        ],
+        context: format!("Sent by kuo via EKSUpgrade/{resource_name}"),
+    }
 }
 
 /// Build the "Failed" notification message.
 pub fn build_failed_message(
+    resource_name: &str,
     spec: &EKSUpgradeSpec,
     status: &EKSUpgradeStatus,
     error: &str,
-) -> String {
+) -> SlackMessage {
     let phase = status
         .phase
         .as_ref()
@@ -125,18 +132,27 @@ pub fn build_failed_message(
         "Live Upgrade"
     };
 
-    format!(
-        "*[KUO] EKS Upgrade Failed*\n\
-         *Cluster*: {cluster} ({region})\n\
-         *Mode*: {mode}\n\
-         *Phase*: {phase}\n\
-         *Error*: {error}",
-        cluster = spec.cluster_name,
-        region = spec.region,
-        mode = mode,
-        phase = phase,
-        error = error,
-    )
+    let duration = match (status.started_at, status.completed_at) {
+        (Some(start), Some(end)) => {
+            let secs = (end - start).num_seconds().unsigned_abs();
+            let mins = secs / 60;
+            let remaining_secs = secs % 60;
+            format!("{mins}m {remaining_secs}s")
+        }
+        _ => "unknown".to_string(),
+    };
+
+    SlackMessage {
+        header: "EKS Upgrade Failed".to_string(),
+        fields: vec![
+            ("Cluster".to_string(), spec.cluster_name.clone()),
+            ("Mode".to_string(), mode.to_string()),
+            ("Failed Phase".to_string(), phase),
+            ("Duration".to_string(), duration),
+            ("Error".to_string(), error.to_string()),
+        ],
+        context: format!("Sent by kuo via EKSUpgrade/{resource_name}"),
+    }
 }
 
 #[cfg(test)]
@@ -202,21 +218,42 @@ mod tests {
     fn test_build_started_message() {
         let spec = make_spec(None, false);
         let status = make_status_with_path(vec!["1.31".into(), "1.32".into()]);
-        let msg = build_started_message(&spec, &status);
-        assert!(msg.contains("*[KUO] EKS Upgrade Started*"));
-        assert!(msg.contains("my-cluster"));
-        assert!(msg.contains("ap-northeast-2"));
-        assert!(msg.contains("1.33"));
-        assert!(msg.contains("Live Upgrade"));
-        assert!(msg.contains("1.31 → 1.32"));
+        let msg = build_started_message("staging-upgrade", &spec, &status);
+        assert!(msg.header.contains("EKS Upgrade Started"));
+        assert!(
+            msg.fields
+                .iter()
+                .any(|(k, v)| k == "Cluster" && v == "my-cluster")
+        );
+        assert!(
+            msg.fields
+                .iter()
+                .any(|(k, v)| k == "Region" && v == "ap-northeast-2")
+        );
+        assert!(
+            msg.fields
+                .iter()
+                .any(|(k, v)| k == "Target Version" && v == "1.33")
+        );
+        assert!(
+            msg.fields
+                .iter()
+                .any(|(k, v)| k == "Mode" && v == "Live Upgrade")
+        );
+        assert!(msg.fields.iter().any(|(k, _)| k == "Upgrade Path"));
+        assert!(msg.context.contains("EKSUpgrade/staging-upgrade"));
     }
 
     #[test]
     fn test_build_started_message_dry_run() {
         let spec = make_spec(None, true);
         let status = EKSUpgradeStatus::default();
-        let msg = build_started_message(&spec, &status);
-        assert!(msg.contains("Dry Run"));
+        let msg = build_started_message("test", &spec, &status);
+        assert!(
+            msg.fields
+                .iter()
+                .any(|(k, v)| k == "Mode" && v == "Dry Run")
+        );
     }
 
     #[test]
@@ -226,18 +263,31 @@ mod tests {
         let mut status = make_status_with_path(vec!["1.31".into(), "1.32".into()]);
         status.started_at = Some(now - chrono::Duration::seconds(2730));
         status.completed_at = Some(now);
-        let msg = build_completed_message(&spec, &status);
-        assert!(msg.contains("*[KUO] EKS Upgrade Completed*"));
-        assert!(msg.contains("Live Upgrade"));
-        assert!(msg.contains("45m 30s"));
+        let msg = build_completed_message("staging-upgrade", &spec, &status);
+        assert!(msg.header.contains("EKS Upgrade Completed"));
+        assert!(
+            msg.fields
+                .iter()
+                .any(|(k, v)| k == "Mode" && v == "Live Upgrade")
+        );
+        assert!(
+            msg.fields
+                .iter()
+                .any(|(k, v)| k == "Duration" && v == "45m 30s")
+        );
+        assert!(msg.context.contains("EKSUpgrade/staging-upgrade"));
     }
 
     #[test]
     fn test_build_completed_message_dry_run() {
         let spec = make_spec(None, true);
         let status = make_status_with_path(vec!["1.31".into()]);
-        let msg = build_completed_message(&spec, &status);
-        assert!(msg.contains("Dry Run"));
+        let msg = build_completed_message("test", &spec, &status);
+        assert!(
+            msg.fields
+                .iter()
+                .any(|(k, v)| k == "Mode" && v == "Dry Run")
+        );
     }
 
     #[test]
@@ -245,11 +295,29 @@ mod tests {
         let spec = make_spec(None, false);
         let mut status = EKSUpgradeStatus::default();
         status.phase = Some(UpgradePhase::UpgradingControlPlane);
-        let msg = build_failed_message(&spec, &status, "Control plane upgrade timed out");
-        assert!(msg.contains("*[KUO] EKS Upgrade Failed*"));
-        assert!(msg.contains("Live Upgrade"));
-        assert!(msg.contains("UpgradingControlPlane"));
-        assert!(msg.contains("Control plane upgrade timed out"));
+        let msg = build_failed_message(
+            "staging-upgrade",
+            &spec,
+            &status,
+            "Control plane upgrade timed out",
+        );
+        assert!(msg.header.contains("EKS Upgrade Failed"));
+        assert!(
+            msg.fields
+                .iter()
+                .any(|(k, v)| k == "Mode" && v == "Live Upgrade")
+        );
+        assert!(
+            msg.fields
+                .iter()
+                .any(|(k, v)| k == "Failed Phase" && v == "UpgradingControlPlane")
+        );
+        assert!(
+            msg.fields
+                .iter()
+                .any(|(k, v)| k == "Error" && v == "Control plane upgrade timed out")
+        );
+        assert!(msg.context.contains("EKSUpgrade/staging-upgrade"));
     }
 
     #[test]
@@ -257,8 +325,12 @@ mod tests {
         let spec = make_spec(None, true);
         let mut status = EKSUpgradeStatus::default();
         status.phase = Some(UpgradePhase::PreflightChecking);
-        let msg = build_failed_message(&spec, &status, "preflight check failed");
-        assert!(msg.contains("Dry Run"));
+        let msg = build_failed_message("test", &spec, &status, "preflight check failed");
+        assert!(
+            msg.fields
+                .iter()
+                .any(|(k, v)| k == "Mode" && v == "Dry Run")
+        );
     }
 
     fn make_spec(notification: Option<NotificationConfig>, dry_run: bool) -> EKSUpgradeSpec {
