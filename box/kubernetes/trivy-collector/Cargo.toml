@@ -2,8 +2,8 @@
 name = "trivy-collector"
 version = "1.5.0"
 edition = "2024"
-rust-version = "1.93"
-authors = ["younsl"]
+rust-version = "1.93.1"
+authors = ["younsl <cysl@kakao.com>"]
 description = "Multi-cluster Trivy report collector and viewer"
 license = "MIT"
 repository = "https://github.com/younsl/o"
