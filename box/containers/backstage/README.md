@@ -222,9 +222,9 @@ sonarqube:
 
 ## Authentication
 
-Authentication is configured via Keycloak OIDC with [redirect flow](https://backstage.io/docs/auth/oauth/). For better user experience, the sign-in page uses in-window redirect instead of the default popup. Users are redirected to the Keycloak login page immediately without seeing a separate sign-in UI.
+Authentication is configured via Keycloak OIDC with [redirect flow](https://backstage.io/docs/auth/oauth/). For better user experience, [`enableExperimentalRedirectFlow`](https://backstage.io/docs/releases/v1.13.0-changelog/) is enabled to use in-window redirect instead of the default popup on auto sign-in.
 
-**Flow:** Backstage → Keycloak login → Backstage home
+**Flow:** Backstage → `SignInPage` auto trigger → Keycloak login (redirect) → Backstage home
 
 **Config (`app-config.yaml`):**
 
@@ -233,7 +233,10 @@ auth:
   enableExperimentalRedirectFlow: true
 ```
 
-See [Backstage Auth documentation](https://backstage.io/docs/auth/) for details on [`enableExperimentalRedirectFlow`](https://backstage.io/docs/releases/v1.13.0-changelog/).
+> **Note:** `enableExperimentalRedirectFlow` applies to the `auto` sign-in path only.
+> If auto sign-in fails (e.g., Keycloak outage), the sign-in page shows a Keycloak button as fallback.
+> Clicking the button uses popup, which is the standard Backstage behavior.
+> See [Backstage Auth documentation](https://backstage.io/docs/auth/) for details.
 
 ## Ports
 
