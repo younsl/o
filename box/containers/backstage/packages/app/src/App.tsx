@@ -26,7 +26,7 @@ import { orgPlugin } from '@backstage/plugin-org';
 import { SearchPage } from '@backstage/plugin-search';
 import { TechDocsIndexPage, TechDocsReaderPage } from '@backstage/plugin-techdocs';
 import { UserSettingsPage } from '@backstage/plugin-user-settings';
-import { apis } from './apis';
+import { apis, keycloakOIDCAuthApiRef } from './apis';
 import { entityPage } from './components/catalog/EntityPage';
 import { searchPage } from './components/search/SearchPage';
 import { Root } from './components/Root';
@@ -36,9 +36,8 @@ import { PlatformsPage } from './components/platforms';
 import {
   AlertDisplay,
   OAuthRequestDialog,
-  Progress,
+  SignInPage,
 } from '@backstage/core-components';
-import { configApiRef, useApi } from '@backstage/core-plugin-api';
 import { createApp } from '@backstage/app-defaults';
 import { FlatRoutes } from '@backstage/core-app-api';
 import { CatalogGraphPage } from '@backstage/plugin-catalog-graph';
@@ -50,23 +49,20 @@ import { OpenApiRegistryPage } from '@internal/plugin-openapi-registry';
 import { ArgocdAppsetPage } from '@internal/plugin-argocd-appset';
 import { IamUserAuditPage } from '@internal/plugin-iam-user-audit';
 
-/**
- * Custom sign-in page that always redirects to Keycloak OIDC.
- * Uses in-window redirect instead of popup (OAuthRequestDialog bypass).
- */
-const CustomSignInPage = () => {
-  const configApi = useApi(configApiRef);
-
-  React.useEffect(() => {
-    const baseUrl = configApi.getString('backend.baseUrl');
-    const environment = configApi.getOptionalString('auth.environment') ?? 'development';
-    window.location.replace(
-      `${baseUrl}/api/auth/oidc/start?env=${environment}&flow=redirect`,
-    );
-  }, [configApi]);
-
-  return <Progress />;
-};
+const CustomSignInPage = (props: any) => (
+  <SignInPage
+    {...props}
+    auto
+    providers={[
+      {
+        id: 'keycloak',
+        title: 'Keycloak',
+        message: 'Sign in using Keycloak',
+        apiRef: keycloakOIDCAuthApiRef,
+      },
+    ]}
+  />
+);
 
 const app = createApp({
   apis,
