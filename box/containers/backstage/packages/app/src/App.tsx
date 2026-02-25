@@ -36,8 +36,7 @@ import { PlatformsPage } from './components/platforms';
 import {
   AlertDisplay,
   OAuthRequestDialog,
-  ProxiedSignInPage,
-  SignInPage,
+  Progress,
 } from '@backstage/core-components';
 import { configApiRef, useApi } from '@backstage/core-plugin-api';
 import { createApp } from '@backstage/app-defaults';
@@ -52,18 +51,21 @@ import { ArgocdAppsetPage } from '@internal/plugin-argocd-appset';
 import { IamUserAuditPage } from '@internal/plugin-iam-user-audit';
 
 /**
- * Sign-in page that switches based on auth.environment config:
- * - "development": Guest login for local testing
- * - otherwise: Keycloak OIDC redirect (no popup)
+ * Custom sign-in page that always redirects to Keycloak OIDC.
+ * Uses in-window redirect instead of popup (OAuthRequestDialog bypass).
  */
-const CustomSignInPage = (props: any) => {
+const CustomSignInPage = () => {
   const configApi = useApi(configApiRef);
-  const environment = configApi.getOptionalString('auth.environment');
 
-  if (environment === 'development') {
-    return <SignInPage {...props} providers={['guest']} />;
-  }
-  return <ProxiedSignInPage {...props} provider="oidc" />;
+  React.useEffect(() => {
+    const baseUrl = configApi.getString('backend.baseUrl');
+    const environment = configApi.getOptionalString('auth.environment') ?? 'development';
+    window.location.replace(
+      `${baseUrl}/api/auth/oidc/start?env=${environment}&flow=redirect`,
+    );
+  }, [configApi]);
+
+  return <Progress />;
 };
 
 const app = createApp({

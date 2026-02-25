@@ -95,6 +95,7 @@ catalog:
         - allow: [Template]
 
 auth:
+  enableExperimentalRedirectFlow: true
   environment: development
   session:
     secret: ${AUTH_SESSION_SECRET}
