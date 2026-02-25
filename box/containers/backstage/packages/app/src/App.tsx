@@ -26,7 +26,7 @@ import { orgPlugin } from '@backstage/plugin-org';
 import { SearchPage } from '@backstage/plugin-search';
 import { TechDocsIndexPage, TechDocsReaderPage } from '@backstage/plugin-techdocs';
 import { UserSettingsPage } from '@backstage/plugin-user-settings';
-import { apis, keycloakOIDCAuthApiRef } from './apis';
+import { apis } from './apis';
 import { entityPage } from './components/catalog/EntityPage';
 import { searchPage } from './components/search/SearchPage';
 import { Root } from './components/Root';
@@ -36,8 +36,10 @@ import { PlatformsPage } from './components/platforms';
 import {
   AlertDisplay,
   OAuthRequestDialog,
+  ProxiedSignInPage,
   SignInPage,
 } from '@backstage/core-components';
+import { configApiRef, useApi } from '@backstage/core-plugin-api';
 import { createApp } from '@backstage/app-defaults';
 import { FlatRoutes } from '@backstage/core-app-api';
 import { CatalogGraphPage } from '@backstage/plugin-catalog-graph';
@@ -49,20 +51,20 @@ import { OpenApiRegistryPage } from '@internal/plugin-openapi-registry';
 import { ArgocdAppsetPage } from '@internal/plugin-argocd-appset';
 import { IamUserAuditPage } from '@internal/plugin-iam-user-audit';
 
-const CustomSignInPage = (props: any) => (
-  <SignInPage
-    {...props}
-    auto
-    providers={[
-      {
-        id: 'keycloak',
-        title: 'Keycloak',
-        message: 'Sign in using Keycloak',
-        apiRef: keycloakOIDCAuthApiRef,
-      },
-    ]}
-  />
-);
+/**
+ * Sign-in page that switches based on auth.environment config:
+ * - "development": Guest login for local testing
+ * - otherwise: Keycloak OIDC redirect (no popup)
+ */
+const CustomSignInPage = (props: any) => {
+  const configApi = useApi(configApiRef);
+  const environment = configApi.getOptionalString('auth.environment');
+
+  if (environment === 'development') {
+    return <SignInPage {...props} providers={['guest']} />;
+  }
+  return <ProxiedSignInPage {...props} provider="oidc" />;
+};
 
 const app = createApp({
   apis,
