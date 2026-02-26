@@ -119,3 +119,12 @@ eksUpgrades: []
   #     region: ap-northeast-2
   #     assumeRoleArn: arn:aws:iam::123456789012:role/kuo-target-role
   #     dryRun: false
+
+# -- (list) Additional Kubernetes resources to create alongside the chart.
+extraObjects: []
+  # - apiVersion: v1
+  #   kind: ConfigMap
+  #   metadata:
+  #     name: extra-config
+  #   data:
+  #     key: value

@@ -3,7 +3,7 @@ name: kuo
 description: Kubernetes Upgrade Operator for EKS clusters
 type: application
 deprecated: false
-version: 0.1.0
+version: 0.2.0
 appVersion: "0.1.0"
 home: https://github.com/younsl/o
 sources:
@@ -21,4 +21,4 @@ keywords:
 annotations:
   artifacthub.io/changes: |
     - kind: added
-      description: "Initial release of kubernetes-upgrade-operator Helm chart"
+      description: "Add extraObjects value for deploying additional Kubernetes resources"

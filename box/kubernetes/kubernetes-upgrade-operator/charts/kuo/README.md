@@ -1,6 +1,6 @@
 # kuo
 
-![Version: 0.1.0](https://img.shields.io/badge/Version-0.1.0-informational?style=flat-square) ![Type: application](https://img.shields.io/badge/Type-application-informational?style=flat-square) ![AppVersion: 0.1.0](https://img.shields.io/badge/AppVersion-0.1.0-informational?style=flat-square)
+![Version: 0.2.0](https://img.shields.io/badge/Version-0.2.0-informational?style=flat-square) ![Type: application](https://img.shields.io/badge/Type-application-informational?style=flat-square) ![AppVersion: 0.1.0](https://img.shields.io/badge/AppVersion-0.1.0-informational?style=flat-square)
 
 Kubernetes Upgrade Operator for EKS clusters
 
@@ -39,7 +39,7 @@ helm install kuo oci://ghcr.io/younsl/charts/kuo -f values.yaml
 Install a specific version:
 
 ```console
-helm install kuo oci://ghcr.io/younsl/charts/kuo --version 0.1.0
+helm install kuo oci://ghcr.io/younsl/charts/kuo --version 0.2.0
 ```
 
 ### Install from local chart
@@ -47,7 +47,7 @@ helm install kuo oci://ghcr.io/younsl/charts/kuo --version 0.1.0
 Download kuo chart and install from local directory:
 
 ```console
-helm pull oci://ghcr.io/younsl/charts/kuo --untar --version 0.1.0
+helm pull oci://ghcr.io/younsl/charts/kuo --untar --version 0.2.0
 helm install kuo ./kuo
 ```
 
@@ -101,6 +101,7 @@ The following table lists the configurable parameters and their default values.
 | slack.enabled | bool | `false` | Whether to create a Slack webhook Secret and inject the URL into the operator. |
 | slack.webhookUrl | string | `""` | Slack Incoming Webhook URL. |
 | eksUpgrades | list | `[]` | EKSUpgrade custom resources to create. Each entry creates an EKSUpgrade CR that the operator will reconcile. |
+| extraObjects | list | `[]` | Additional Kubernetes resources to create alongside the chart. |
 
 ## Source Code
 
