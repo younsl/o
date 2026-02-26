@@ -9,6 +9,16 @@ html, body, #root {
   overflow-x: hidden;
 }
 
+/* @backstage/ui typography scale override
+   Bump each step by ~2px for better readability */
+:root {
+  --bui-font-size-1: 0.75rem;    /* 12px (default 10px) */
+  --bui-font-size-2: 0.875rem;   /* 14px (default 12px) */
+  --bui-font-size-3: 1rem;       /* 16px (default 14px) */
+  --bui-font-size-4: 1.125rem;   /* 18px (default 16px) */
+  --bui-font-size-5: 1.375rem;   /* 22px (default 20px) */
+}
+
 /* Remove PluginHeader top color bar (conflicts with custom body background) */
 [class*="bui-PluginHeaderToolbar"]::before {
   background-color: transparent !important;
@@ -61,6 +71,17 @@ main {
 ::-webkit-scrollbar-thumb {
   background: #424242;
   border-radius: 4px;
+}
+
+/* Platform card wrapper hover effect */
+.platform-card-wrapper {
+  transition: transform 0.2s ease, box-shadow 0.2s ease;
+  border-radius: 8px;
+}
+
+.platform-card-wrapper:hover {
+  transform: translateY(-4px);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
 }
 
 /* @backstage/ui and legacy layout fixes - unified width */

@@ -1,240 +1,37 @@
 import React, { useState, useMemo, useEffect, useCallback } from 'react';
 import {
-  Grid,
-  Card,
-  CardContent,
-  CardActionArea,
-  Typography,
-  Chip,
-  TextField,
-  InputAdornment,
-  IconButton,
-  makeStyles,
-  FormControl,
-  InputLabel,
-  Select,
-  MenuItem,
-  Checkbox,
-  ListItemText,
+  Box,
   Button,
-  Collapse,
-} from '@material-ui/core';
-import { Header } from '@backstage/core-components';
-import { Container } from '@backstage/ui';
+  Card,
+  CardBody,
+  Container,
+  Flex,
+  Grid,
+  PluginHeader,
+  SearchField,
+  Text,
+} from '@backstage/ui';
 import { configApiRef, useApi } from '@backstage/core-plugin-api';
-import SearchIcon from '@material-ui/icons/Search';
-import OpenInNewIcon from '@material-ui/icons/OpenInNew';
-import WarningIcon from '@material-ui/icons/Warning';
-import StarIcon from '@material-ui/icons/Star';
-import StarBorderIcon from '@material-ui/icons/StarBorder';
-import ExpandMoreIcon from '@material-ui/icons/ExpandMore';
-import ExpandLessIcon from '@material-ui/icons/ExpandLess';
 
 const FALLBACK_LOGO = 'https://backstage.io/logo_assets/svg/Icon_Teal.svg';
 const FAVORITES_STORAGE_KEY = 'backstage-platforms-favorites';
 
-const useStyles = makeStyles(theme => ({
-  content: {
-    paddingLeft: theme.spacing(3),
-    paddingRight: theme.spacing(3),
-  },
-  searchContainer: {
-    marginBottom: theme.spacing(3),
-  },
-  searchField: {
-    maxWidth: 400,
-  },
-  headerRow: {
-    display: 'flex',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    flexWrap: 'wrap',
-    gap: theme.spacing(2),
-    marginTop: theme.spacing(3),
-    marginBottom: theme.spacing(3),
-  },
-  filterControls: {
-    display: 'flex',
-    alignItems: 'center',
-    gap: theme.spacing(2),
-  },
-  tagSelect: {
-    minWidth: 200,
-  },
-  selectedTagsChips: {
-    display: 'flex',
-    flexWrap: 'wrap',
-    gap: theme.spacing(0.5),
-  },
-  tagChipInSelect: {
-    margin: 2,
-  },
-  categorySection: {
-    marginBottom: theme.spacing(3),
-  },
-  categoryHeader: {
-    display: 'flex',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    cursor: 'pointer',
-    padding: theme.spacing(1.5, 2),
-    marginBottom: theme.spacing(1),
-    borderRadius: theme.shape.borderRadius,
-    backgroundColor: theme.palette.type === 'dark'
-      ? 'rgba(255, 255, 255, 0.05)'
-      : 'rgba(0, 0, 0, 0.02)',
-    '&:hover': {
-      backgroundColor: theme.palette.type === 'dark'
-        ? 'rgba(255, 255, 255, 0.08)'
-        : 'rgba(0, 0, 0, 0.04)',
-    },
-  },
-  categoryTitleRow: {
-    display: 'flex',
-    alignItems: 'center',
-    gap: theme.spacing(1),
-  },
-  categoryTitle: {
-    fontWeight: 500,
-    color: theme.palette.text.primary,
-  },
-  categoryCount: {
-    fontSize: '1.1rem',
-    fontWeight: 500,
-    color: theme.palette.text.secondary,
-  },
-  categoryDescription: {
-    marginBottom: theme.spacing(2),
-    marginLeft: theme.spacing(2),
-    color: theme.palette.text.secondary,
-    fontSize: '0.875rem',
-  },
-  expandIcon: {
-    color: theme.palette.text.secondary,
-  },
-  categoryContent: {
-    paddingLeft: theme.spacing(1),
-    paddingRight: theme.spacing(1),
-  },
-  card: {
-    height: '100%',
-    display: 'flex',
-    flexDirection: 'column',
-    transition: 'transform 0.2s, box-shadow 0.2s',
-    '&:hover': {
-      transform: 'translateY(-4px)',
-      boxShadow: theme.shadows[8],
-    },
-  },
-  cardActionArea: {
-    display: 'flex',
-    flexDirection: 'column',
-    alignItems: 'stretch',
-    height: '100%',
-  },
-  titleRow: {
-    display: 'flex',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    marginBottom: theme.spacing(0.5),
-  },
-  externalIcon: {
-    fontSize: 16,
-    color: theme.palette.text.secondary,
-    opacity: 0.6,
-  },
-  logoContainer: {
-    height: 100,
-    display: 'flex',
-    alignItems: 'center',
-    justifyContent: 'center',
-    padding: theme.spacing(2),
-    backgroundColor: theme.palette.background.default,
-    overflow: 'hidden',
-  },
-  logo: {
-    maxHeight: 60,
-    maxWidth: '80%',
-    width: 'auto',
-    height: 'auto',
-    objectFit: 'contain',
-  },
-  cardContent: {
-    flexGrow: 1,
-  },
-  tagChip: {
-    height: 20,
-    fontSize: '0.7rem',
-    fontWeight: 500,
-    backgroundColor: theme.palette.type === 'dark'
-      ? 'rgba(255, 255, 255, 0.12)'
-      : 'rgba(0, 0, 0, 0.08)',
-    color: theme.palette.text.secondary,
-    border: `1px solid ${theme.palette.divider}`,
-  },
-  chipContainer: {
-    display: 'flex',
-    flexWrap: 'wrap',
-    gap: 4,
-    marginTop: theme.spacing(1),
-  },
-  noResults: {
-    textAlign: 'center',
-    padding: theme.spacing(4),
-    color: theme.palette.text.secondary,
-  },
-  vpnWarning: {
-    display: 'flex',
-    alignItems: 'center',
-    gap: theme.spacing(0.5),
-    marginTop: theme.spacing(1),
-    padding: theme.spacing(0.5, 1),
-    backgroundColor: theme.palette.type === 'dark'
-      ? 'rgba(255, 152, 0, 0.15)'
-      : 'rgba(255, 152, 0, 0.1)',
-    borderRadius: 4,
-    fontSize: '0.7rem',
-    color: theme.palette.warning.main,
-  },
-  starButton: {
-    position: 'absolute',
-    top: theme.spacing(0.5),
-    right: theme.spacing(0.5),
-    zIndex: 1,
-    padding: theme.spacing(0.5),
-  },
-  starIcon: {
-    fontSize: 20,
-    color: '#ffc107',
-  },
-  starIconEmpty: {
-    fontSize: 20,
-    color: theme.palette.text.secondary,
-    opacity: 0.5,
-  },
-  cardWrapper: {
-    position: 'relative',
-  },
-  favoritesSection: {
-    marginBottom: theme.spacing(4),
-    padding: theme.spacing(2),
-    backgroundColor: theme.palette.type === 'dark'
-      ? 'rgba(255, 193, 7, 0.08)'
-      : 'rgba(255, 193, 7, 0.05)',
-    borderRadius: theme.shape.borderRadius,
-    border: `1px solid ${theme.palette.type === 'dark' ? 'rgba(255, 193, 7, 0.2)' : 'rgba(255, 193, 7, 0.3)'}`,
-  },
-  favoritesTitleRow: {
-    display: 'flex',
-    alignItems: 'center',
-    gap: theme.spacing(1),
-    marginBottom: theme.spacing(2),
-  },
-  favoritesTitle: {
-    fontWeight: 500,
-    color: theme.palette.text.primary,
-  },
-}));
+const tagStyle: React.CSSProperties = {
+  display: 'inline-block',
+  padding: '2px 8px',
+  borderRadius: 4,
+  fontSize: 13,
+  backgroundColor: 'var(--bui-color-bg-elevated, #2a2a2a)',
+  border: '1px solid var(--bui-color-border-default, #444)',
+  cursor: 'pointer',
+};
+
+const activeTagStyle: React.CSSProperties = {
+  ...tagStyle,
+  backgroundColor: 'var(--bui-color-bg-accent, #1e40af)',
+  borderColor: 'var(--bui-color-border-accent, #3b82f6)',
+  color: '#fff',
+};
 
 interface Platform {
   name: string;
@@ -250,28 +47,197 @@ interface CategoryGroup {
   platforms: Platform[];
 }
 
+const StarFilledIcon = () => (
+  <svg width="20" height="20" viewBox="0 0 24 24" fill="#ffc107">
+    <path d="M12 17.27L18.18 21l-1.64-7.03L22 9.24l-7.19-.61L12 2 9.19 8.63 2 9.24l5.46 4.73L5.82 21z" />
+  </svg>
+);
+
+const StarOutlineIcon = () => (
+  <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor" style={{ opacity: 0.5 }}>
+    <path d="M22 9.24l-7.19-.62L12 2 9.19 8.63 2 9.24l5.46 4.73L5.82 21 12 17.27 18.18 21l-1.63-7.03L22 9.24zM12 15.4l-3.76 2.27 1-4.28-3.32-2.88 4.38-.38L12 6.1l1.71 4.04 4.38.38-3.32 2.88 1 4.28L12 15.4z" />
+  </svg>
+);
+
+const ExternalLinkIcon = () => (
+  <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" style={{ opacity: 0.6 }}>
+    <path d="M19 19H5V5h7V3H5c-1.11 0-2 .9-2 2v14c0 1.1.89 2 2 2h14c1.1 0 2-.9 2-2v-7h-2v7zM14 3v2h3.59l-9.83 9.83 1.41 1.41L19 6.41V10h2V3h-7z" />
+  </svg>
+);
+
+const WarningIcon = () => (
+  <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor">
+    <path d="M1 21h22L12 2 1 21zm12-3h-2v-2h2v2zm0-4h-2v-4h2v4z" />
+  </svg>
+);
+
+const ChevronIcon = ({ expanded }: { expanded: boolean }) => (
+  <svg
+    width="18"
+    height="18"
+    viewBox="0 0 24 24"
+    fill="currentColor"
+    style={{
+      transition: 'transform 0.15s',
+      transform: expanded ? 'rotate(90deg)' : 'rotate(0deg)',
+      opacity: 0.6,
+    }}
+  >
+    <path d="M8.59 16.59L13.17 12 8.59 7.41 10 6l6 6-6 6z" />
+  </svg>
+);
+
+const highlightStyle: React.CSSProperties = {
+  backgroundColor: 'rgba(250, 204, 21, 0.4)',
+  color: 'inherit',
+  borderRadius: 2,
+  padding: '0 1px',
+};
+
+function highlightText(text: string, query: string): React.ReactNode {
+  if (!query.trim()) return text;
+  const regex = new RegExp(`(${query.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')})`, 'gi');
+  const parts = text.split(regex);
+  if (parts.length === 1) return text;
+  return parts.map((part, i) =>
+    regex.test(part) ? <mark key={i} style={highlightStyle}>{part}</mark> : part,
+  );
+}
+
+const PlatformCard = ({
+  platform,
+  isFavorite,
+  onToggleFavorite,
+  onTagClick,
+  selectedTags,
+  searchQuery,
+}: {
+  platform: Platform;
+  isFavorite: boolean;
+  onToggleFavorite: (name: string, e: React.MouseEvent) => void;
+  onTagClick: (tag: string) => void;
+  selectedTags: string[];
+  searchQuery: string;
+}) => (
+  <div className="platform-card-wrapper" style={{ position: 'relative', height: '100%' }}>
+    <button
+      onClick={e => onToggleFavorite(platform.name, e)}
+      style={{
+        position: 'absolute',
+        top: 4,
+        right: 4,
+        zIndex: 1,
+        background: 'none',
+        border: 'none',
+        cursor: 'pointer',
+        padding: 4,
+        borderRadius: 4,
+        display: 'inline-flex',
+        color: 'inherit',
+      }}
+      aria-label={isFavorite ? 'Remove from favorites' : 'Add to favorites'}
+    >
+      {isFavorite ? <StarFilledIcon /> : <StarOutlineIcon />}
+    </button>
+    <a
+      href={platform.url || '#'}
+      target="_blank"
+      rel="noopener noreferrer"
+      style={{ textDecoration: 'none', color: 'inherit', display: 'block', height: '100%' }}
+    >
+      <Card style={{ height: '100%', cursor: 'pointer', overflow: 'hidden', display: 'flex', flexDirection: 'column', padding: 0 }}>
+        {/* Logo area */}
+        <div
+          style={{
+            height: 96,
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            padding: 16,
+            overflow: 'hidden',
+          }}
+        >
+          <img
+            src={platform.logo}
+            alt={platform.name}
+            style={{ maxHeight: 56, maxWidth: '80%', objectFit: 'contain' }}
+            onError={e => {
+              e.currentTarget.src = FALLBACK_LOGO;
+            }}
+          />
+        </div>
+        {/* Info area */}
+        <div
+          style={{
+            backgroundColor: 'var(--bui-color-bg-default, #121212)',
+            padding: '12px 16px',
+            flex: 1,
+          }}
+        >
+          <Flex justify="between" align="center" mb="1">
+            <Text variant="body-medium" weight="bold">
+              {highlightText(platform.name, searchQuery)}
+            </Text>
+            <ExternalLinkIcon />
+          </Flex>
+          <Text variant="body-small" color="secondary" style={{ lineHeight: 1.5 }}>
+            {highlightText(platform.description, searchQuery)}
+          </Text>
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4, marginTop: 10 }}>
+            {platform.tags.map(tag => (
+              <span
+                key={tag}
+                role="button"
+                tabIndex={0}
+                onClick={e => {
+                  e.preventDefault();
+                  e.stopPropagation();
+                  onTagClick(tag);
+                }}
+                onKeyDown={e => {
+                  if (e.key === 'Enter') {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    onTagClick(tag);
+                  }
+                }}
+                style={selectedTags.includes(tag) ? activeTagStyle : tagStyle}
+              >
+                {highlightText(tag, searchQuery)}
+              </span>
+            ))}
+          </div>
+          {platform.tags.includes('prd') && (
+            <div
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: 4,
+                marginTop: 10,
+                padding: '4px 8px',
+                backgroundColor: 'rgba(255, 152, 0, 0.15)',
+                borderRadius: 4,
+                fontSize: 12,
+                color: '#ff9800',
+              }}
+            >
+              <WarningIcon />
+              운영망 VPN 연결 필요
+            </div>
+          )}
+        </div>
+      </Card>
+    </a>
+  </div>
+);
+
 export const PlatformsPage = () => {
-  const classes = useStyles();
   const configApi = useApi(configApiRef);
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedTags, setSelectedTags] = useState<string[]>([]);
   const [favorites, setFavorites] = useState<string[]>([]);
-  const [tagDropdownOpen, setTagDropdownOpen] = useState(false);
   const [expandedSections, setExpandedSections] = useState<Record<string, boolean>>({});
 
-  // Close tag dropdown on scroll
-  useEffect(() => {
-    if (!tagDropdownOpen) return;
-
-    const handleScroll = () => {
-      setTagDropdownOpen(false);
-    };
-
-    window.addEventListener('scroll', handleScroll, true);
-    return () => window.removeEventListener('scroll', handleScroll, true);
-  }, [tagDropdownOpen]);
-
-  // Load favorites from localStorage on mount
   useEffect(() => {
     try {
       const stored = localStorage.getItem(FAVORITES_STORAGE_KEY);
@@ -283,7 +249,6 @@ export const PlatformsPage = () => {
     }
   }, []);
 
-  // Save favorites to localStorage
   const saveFavorites = useCallback((newFavorites: string[]) => {
     setFavorites(newFavorites);
     try {
@@ -293,29 +258,32 @@ export const PlatformsPage = () => {
     }
   }, []);
 
-  // Toggle favorite status
-  const handleToggleFavorite = useCallback((platformName: string, e: React.MouseEvent) => {
-    e.preventDefault();
-    e.stopPropagation();
-    saveFavorites(
-      favorites.includes(platformName)
-        ? favorites.filter(f => f !== platformName)
-        : [...favorites, platformName]
-    );
-  }, [favorites, saveFavorites]);
+  const handleToggleFavorite = useCallback(
+    (platformName: string, e: React.MouseEvent) => {
+      e.preventDefault();
+      e.stopPropagation();
+      saveFavorites(
+        favorites.includes(platformName)
+          ? favorites.filter(f => f !== platformName)
+          : [...favorites, platformName],
+      );
+    },
+    [favorites, saveFavorites],
+  );
 
-  // Read platforms from app-config.yaml (flat structure)
-  const platformsConfig = configApi.getOptionalConfigArray('app.platforms') ?? [];
+  const platformsConfig =
+    configApi.getOptionalConfigArray('app.platforms') ?? [];
   const allPlatforms: Platform[] = platformsConfig.map(item => ({
     name: item.getString('name'),
     category: item.getString('category'),
     description: item.getString('description'),
     url: item.getOptionalString('url') ?? '',
     logo: item.getString('logo'),
-    tags: (item.getOptionalString('tags') ?? '').split(',').filter(t => t.trim()),
+    tags: (item.getOptionalString('tags') ?? '')
+      .split(',')
+      .filter(t => t.trim()),
   }));
 
-  // Extract all unique tags
   const allTags = useMemo(() => {
     const tagSet = new Set<string>();
     allPlatforms.forEach(platform => {
@@ -324,43 +292,38 @@ export const PlatformsPage = () => {
     return Array.from(tagSet).sort();
   }, [allPlatforms]);
 
-  // Toggle tag selection
   const handleTagToggle = (tag: string) => {
     setSelectedTags(prev =>
-      prev.includes(tag)
-        ? prev.filter(t => t !== tag)
-        : [...prev, tag]
+      prev.includes(tag) ? prev.filter(t => t !== tag) : [...prev, tag],
     );
   };
 
-  // Clear all filters
   const handleClearFilters = () => {
     setSearchQuery('');
     setSelectedTags([]);
   };
 
-  // Toggle section expansion
   const toggleSection = (sectionName: string) => {
     setExpandedSections(prev => ({
       ...prev,
-      [sectionName]: prev[sectionName] === undefined ? false : !prev[sectionName],
+      [sectionName]:
+        prev[sectionName] === undefined ? false : !prev[sectionName],
     }));
   };
 
-  // Check if section is expanded (default: true)
   const isSectionExpanded = (sectionName: string) => {
-    return expandedSections[sectionName] === undefined ? true : expandedSections[sectionName];
+    return expandedSections[sectionName] === undefined
+      ? true
+      : expandedSections[sectionName];
   };
 
-  // Filter platforms based on search query and selected tags
   const filteredPlatforms = allPlatforms.filter(platform => {
-    // Tag filter
     if (selectedTags.length > 0) {
-      const hasSelectedTag = selectedTags.some(tag => platform.tags.includes(tag));
+      const hasSelectedTag = selectedTags.some(tag =>
+        platform.tags.includes(tag),
+      );
       if (!hasSelectedTag) return false;
     }
-
-    // Text search filter
     if (searchQuery.trim()) {
       const query = searchQuery.toLowerCase();
       return (
@@ -370,27 +333,41 @@ export const PlatformsPage = () => {
         platform.tags.some(tag => tag.toLowerCase().includes(query))
       );
     }
-
     return true;
   });
 
-  // Separate favorites from filtered platforms
-  const favoritePlatforms = filteredPlatforms.filter(p => favorites.includes(p.name));
-  const nonFavoritePlatforms = filteredPlatforms.filter(p => !favorites.includes(p.name));
+  const favoritePlatforms = filteredPlatforms.filter(p =>
+    favorites.includes(p.name),
+  );
+  const nonFavoritePlatforms = filteredPlatforms.filter(
+    p => !favorites.includes(p.name),
+  );
 
-  // Group by category (only non-favorites)
-  const categoryOrder = ['Developer Portal', 'Observability', 'CI/CD', 'Security', 'Infrastructure', 'Data', 'Registry', 'Documentation'];
+  const categoryOrder = [
+    'Developer Portal',
+    'Observability',
+    'CI/CD',
+    'Security',
+    'Infrastructure',
+    'Data',
+    'Registry',
+    'Documentation',
+  ];
   const categoryDescriptions: Record<string, string> = {
-    'Developer Portal': '개발자 경험(Developer Experience) 향상을 위한 통합 포털 및 플랫폼',
-    'Observability': '시스템 상태를 모니터링하고 문제를 신속하게 파악하기 위한 도구',
+    'Developer Portal':
+      '개발자 경험(Developer Experience) 향상을 위한 통합 포털 및 플랫폼',
+    Observability:
+      '시스템 상태를 모니터링하고 문제를 신속하게 파악하기 위한 도구',
     'CI/CD': '코드 변경사항을 자동으로 빌드, 테스트, 배포하기 위한 도구',
-    'Security': '보안 취약점 분석 및 접근 제어를 위한 도구',
-    'Infrastructure': '인프라 및 네트워크 자원을 관리하기 위한 도구',
-    'Data': '데이터 분석, 저장 및 거버넌스를 위한 도구',
-    'Registry': '컨테이너 이미지 및 아티팩트를 저장하기 위한 도구',
-    'Documentation': '문서화 및 프로젝트 관리를 위한 도구',
+    Security: '보안 취약점 분석 및 접근 제어를 위한 도구',
+    Infrastructure: '인프라 및 네트워크 자원을 관리하기 위한 도구',
+    Data: '데이터 분석, 저장 및 거버넌스를 위한 도구',
+    Registry: '컨테이너 이미지 및 아티팩트를 저장하기 위한 도구',
+    Documentation: '문서화 및 프로젝트 관리를 위한 도구',
   };
-  const groupedByCategory = nonFavoritePlatforms.reduce<Record<string, Platform[]>>((acc, platform) => {
+  const groupedByCategory = nonFavoritePlatforms.reduce<
+    Record<string, Platform[]>
+  >((acc, platform) => {
     if (!acc[platform.category]) {
       acc[platform.category] = [];
     }
@@ -411,257 +388,275 @@ export const PlatformsPage = () => {
 
   return (
     <>
-      <Header title="Platforms" subtitle="Internal tech stack and platform services for developers" />
-      <Container className={classes.content}>
-        <div className={classes.headerRow}>
-          <Typography variant="h4" style={{ fontWeight: 500 }}>
-            {hasActiveFilters ? `${filteredCount} / ${totalPlatforms}` : totalPlatforms} Platforms
-          </Typography>
-          <div className={classes.filterControls}>
-            <TextField
-              className={classes.searchField}
-              variant="outlined"
-              size="small"
-              placeholder="Search platforms..."
-              value={searchQuery}
-              onChange={e => setSearchQuery(e.target.value)}
-              InputProps={{
-                startAdornment: (
-                  <InputAdornment position="start">
-                    <SearchIcon color="action" />
-                  </InputAdornment>
-                ),
+      <PluginHeader title="Platforms" />
+      <Container>
+        <Flex direction="column" gap="3" p="3">
+          <Flex justify="between" align="center">
+            <Text variant="body-medium" color="secondary">
+              Internal tech stack and platform services for developers
+            </Text>
+            <span
+              style={{
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: 8,
               }}
-            />
-            {allTags.length > 0 && (
-              <FormControl variant="outlined" size="small" className={classes.tagSelect}>
-                <InputLabel>Tags ({allTags.length})</InputLabel>
-                <Select
-                  multiple
-                  open={tagDropdownOpen}
-                  onOpen={() => setTagDropdownOpen(true)}
-                  onClose={() => setTagDropdownOpen(false)}
-                  value={selectedTags}
-                  onChange={(e) => setSelectedTags(e.target.value as string[])}
-                  label={`Tags (${allTags.length})`}
-                  renderValue={(selected) => (
-                    <div className={classes.selectedTagsChips}>
-                      {(selected as string[]).map(tag => (
-                        <Chip key={tag} label={tag} size="small" className={classes.tagChipInSelect} />
-                      ))}
-                    </div>
-                  )}
+            >
+              <span
+                style={{
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  minWidth: 24,
+                  height: 24,
+                  padding: '0 8px',
+                  borderRadius: 12,
+                  fontSize: 14,
+                  fontWeight: 700,
+                  backgroundColor: hasActiveFilters
+                    ? '#f59e0b'
+                    : 'rgba(128,128,128,0.25)',
+                  color: hasActiveFilters ? '#fff' : 'rgba(255,255,255,0.7)',
+                }}
+              >
+                {hasActiveFilters
+                  ? `${filteredCount} / ${totalPlatforms}`
+                  : totalPlatforms}
+              </span>
+              <Text variant="body-medium" weight="bold" color="secondary">
+                Platforms
+              </Text>
+              <span
+                style={{
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  minWidth: 24,
+                  height: 24,
+                  padding: '0 8px',
+                  borderRadius: 12,
+                  fontSize: 14,
+                  fontWeight: 700,
+                  backgroundColor: 'rgba(128,128,128,0.25)',
+                  color: 'rgba(255,255,255,0.7)',
+                }}
+              >
+                {categories.length}
+              </span>
+              <Text variant="body-medium" weight="bold" color="secondary">
+                Categories
+              </Text>
+            </span>
+          </Flex>
+
+          <Box
+            mt="4"
+            p="3"
+            style={{
+              backgroundColor: 'var(--bui-color-bg-elevated, #1a1a1a)',
+              borderRadius: 8,
+            }}
+          >
+            {/* Filter Bar */}
+            <Flex
+              gap="2"
+              mb="3"
+              align="end"
+              direction={{ initial: 'column', sm: 'row' }}
+            >
+              <Box style={{ minWidth: 300 }}>
+                <SearchField
+                  label="Search"
+                  placeholder="Search platforms..."
+                  size="small"
+                  value={searchQuery}
+                  onChange={setSearchQuery}
+                />
+              </Box>
+              {hasActiveFilters && (
+                <Button
+                  variant="secondary"
+                  size="small"
+                  onPress={handleClearFilters}
                 >
-                  {allTags.map(tag => (
-                    <MenuItem key={tag} value={tag}>
-                      <Checkbox checked={selectedTags.includes(tag)} color="primary" />
-                      <ListItemText primary={tag} />
-                    </MenuItem>
-                  ))}
-                </Select>
-              </FormControl>
-            )}
-            {hasActiveFilters && (
-              <Button
-                size="small"
-                variant="outlined"
-                color="secondary"
-                onClick={handleClearFilters}
-              >
-                Clear
-              </Button>
-            )}
-          </div>
-        </div>
+                  Clear
+                </Button>
+              )}
+            </Flex>
 
-        {categories.length === 0 && favoritePlatforms.length === 0 ? (
-          <Typography className={classes.noResults}>
-            No platforms found {searchQuery && `matching "${searchQuery}"`}
-            {selectedTags.length > 0 && ` with tags: ${selectedTags.join(', ')}`}
-          </Typography>
-        ) : (
-          <>
-            {/* Favorites Section */}
-            {favoritePlatforms.length > 0 && (
-              <div className={classes.favoritesSection}>
-                <div className={classes.favoritesTitleRow}>
-                  <StarIcon style={{ color: '#ffc107' }} />
-                  <Typography variant="h5" className={classes.favoritesTitle}>
-                    즐겨찾기 ({favoritePlatforms.length})
-                  </Typography>
-                </div>
-                <Grid container spacing={3}>
-                  {favoritePlatforms.map(platform => (
-                    <Grid item xs={12} sm={6} md={4} lg={3} key={platform.name}>
-                      <Card className={`${classes.card} ${classes.cardWrapper}`}>
-                        <IconButton
-                          className={classes.starButton}
-                          onClick={e => handleToggleFavorite(platform.name, e)}
-                          size="small"
-                        >
-                          <StarIcon className={classes.starIcon} />
-                        </IconButton>
-                        <CardActionArea
-                            component="a"
-                            href={platform.url || '#'}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            className={classes.cardActionArea}
-                          >
-                            <div className={classes.logoContainer}>
-                              <img
-                                className={classes.logo}
-                                src={platform.logo}
-                                alt={platform.name}
-                                onError={e => {
-                                  e.currentTarget.src = FALLBACK_LOGO;
-                                }}
-                              />
-                            </div>
-                            <CardContent className={classes.cardContent}>
-                              <div className={classes.titleRow}>
-                                <Typography variant="h6">
-                                  {platform.name}
-                                </Typography>
-                                <OpenInNewIcon className={classes.externalIcon} />
-                              </div>
-                              <Typography variant="body2" color="textSecondary">
-                                {platform.description}
-                              </Typography>
-                              <div className={classes.chipContainer}>
-                                {platform.tags.map(tag => (
-                                  <Chip
-                                    key={tag}
-                                    label={tag}
-                                    size="small"
-                                    className={classes.tagChip}
-                                    onClick={e => {
-                                      e.preventDefault();
-                                      e.stopPropagation();
-                                      handleTagToggle(tag);
-                                    }}
-                                  />
-                                ))}
-                              </div>
-                              {platform.tags.includes('prd') && (
-                                <div className={classes.vpnWarning}>
-                                  <WarningIcon style={{ fontSize: 14 }} />
-                                  운영망 VPN 연결 필요
-                                </div>
-                              )}
-                            </CardContent>
-                          </CardActionArea>
-                        </Card>
-                    </Grid>
-                  ))}
-                </Grid>
-              </div>
-            )}
-
-            {/* Categories */}
-            {categories.map(category => (
-            <div key={category.name} className={classes.categorySection}>
-              <div
-                className={classes.categoryHeader}
-                onClick={() => toggleSection(category.name)}
-                role="button"
-                tabIndex={0}
-                onKeyDown={e => e.key === 'Enter' && toggleSection(category.name)}
+            {/* Tag Chips */}
+            {allTags.length > 0 && (
+              <Flex
+                gap="1"
+                mb="4"
+                align="center"
+                style={{ flexWrap: 'wrap' }}
               >
-                <div className={classes.categoryTitleRow}>
-                  <Typography variant="h6" className={classes.categoryTitle}>
-                    {category.name}
-                  </Typography>
-                  <Typography className={classes.categoryCount}>
-                    ({category.platforms.length})
-                  </Typography>
-                </div>
-                {isSectionExpanded(category.name) ? (
-                  <ExpandLessIcon className={classes.expandIcon} />
-                ) : (
-                  <ExpandMoreIcon className={classes.expandIcon} />
-                )}
-              </div>
-              <Collapse in={isSectionExpanded(category.name)}>
-                <Typography className={classes.categoryDescription}>
-                  {categoryDescriptions[category.name]}
-                </Typography>
-                <div className={classes.categoryContent}>
-                  <Grid container spacing={3}>
-                    {category.platforms.map(platform => (
-                  <Grid item xs={12} sm={6} md={4} lg={3} key={platform.name}>
-                    <Card className={`${classes.card} ${classes.cardWrapper}`}>
-                      <IconButton
-                        className={classes.starButton}
-                        onClick={e => handleToggleFavorite(platform.name, e)}
-                        size="small"
-                      >
-                        {favorites.includes(platform.name) ? (
-                          <StarIcon className={classes.starIcon} />
-                        ) : (
-                          <StarBorderIcon className={classes.starIconEmpty} />
-                        )}
-                      </IconButton>
-                        <CardActionArea
-                          component="a"
-                          href={platform.url || '#'}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className={classes.cardActionArea}
-                        >
-                          <div className={classes.logoContainer}>
-                            <img
-                              className={classes.logo}
-                              src={platform.logo}
-                              alt={platform.name}
-                              onError={e => {
-                                e.currentTarget.src = FALLBACK_LOGO;
-                              }}
-                            />
-                          </div>
-                          <CardContent className={classes.cardContent}>
-                            <div className={classes.titleRow}>
-                              <Typography variant="h6">
-                                {platform.name}
-                              </Typography>
-                              <OpenInNewIcon className={classes.externalIcon} />
-                            </div>
-                            <Typography variant="body2" color="textSecondary">
-                              {platform.description}
-                            </Typography>
-                            <div className={classes.chipContainer}>
-                              {platform.tags.map(tag => (
-                                <Chip
-                                  key={tag}
-                                  label={tag}
-                                  size="small"
-                                  className={classes.tagChip}
-                                  onClick={e => {
-                                    e.preventDefault();
-                                    e.stopPropagation();
-                                    handleTagToggle(tag);
-                                  }}
-                                />
-                              ))}
-                            </div>
-                            {platform.tags.includes('prd') && (
-                              <div className={classes.vpnWarning}>
-                                <WarningIcon style={{ fontSize: 14 }} />
-                                운영망 VPN 연결 필요
-                              </div>
-                            )}
-                          </CardContent>
-                        </CardActionArea>
-                    </Card>
-                  </Grid>
+                <Text
+                  variant="body-small"
+                  color="secondary"
+                  style={{ marginRight: 4 }}
+                >
+                  Tags:
+                </Text>
+                {allTags.map(tag => (
+                  <span
+                    key={tag}
+                    role="button"
+                    tabIndex={0}
+                    onClick={() => handleTagToggle(tag)}
+                    onKeyDown={e => e.key === 'Enter' && handleTagToggle(tag)}
+                    style={
+                      selectedTags.includes(tag) ? activeTagStyle : tagStyle
+                    }
+                  >
+                    {tag}
+                  </span>
                 ))}
-                  </Grid>
-                </div>
-              </Collapse>
-            </div>
-          ))}
-          </>
-        )}
+                {selectedTags.length > 0 && (
+                  <span
+                    role="button"
+                    tabIndex={0}
+                    onClick={() => setSelectedTags([])}
+                    onKeyDown={e =>
+                      e.key === 'Enter' && setSelectedTags([])
+                    }
+                    style={{
+                      ...tagStyle,
+                      marginLeft: 4,
+                      color: 'var(--bui-color-text-secondary, #aaa)',
+                    }}
+                  >
+                    Clear
+                  </span>
+                )}
+              </Flex>
+            )}
+
+            {/* Content */}
+            {categories.length === 0 && favoritePlatforms.length === 0 ? (
+              <Flex justify="center" p="4">
+                <Text color="secondary">
+                  No platforms found
+                  {searchQuery && ` matching "${searchQuery}"`}
+                  {selectedTags.length > 0 &&
+                    ` with tags: ${selectedTags.join(', ')}`}
+                </Text>
+              </Flex>
+            ) : (
+              <Flex direction="column" gap="4">
+                {/* Favorites Section */}
+                {favoritePlatforms.length > 0 && (
+                  <div
+                    style={{
+                      padding: 16,
+                      backgroundColor: 'rgba(255, 193, 7, 0.08)',
+                      borderRadius: 8,
+                      border: '1px solid rgba(255, 193, 7, 0.2)',
+                    }}
+                  >
+                    <Flex align="center" gap="2" mb="3">
+                      <StarFilledIcon />
+                      <Text variant="body-medium" weight="bold">
+                        즐겨찾기 ({favoritePlatforms.length})
+                      </Text>
+                    </Flex>
+                    <Grid.Root
+                      columns={{ initial: '1', sm: '2', md: '3', lg: '4' }}
+                      gap="3"
+                    >
+                      {favoritePlatforms.map(platform => (
+                        <Grid.Item key={platform.name}>
+                          <PlatformCard
+                            platform={platform}
+                            isFavorite
+                            onToggleFavorite={handleToggleFavorite}
+                            onTagClick={handleTagToggle}
+                            selectedTags={selectedTags}
+                            searchQuery={searchQuery}
+                          />
+                        </Grid.Item>
+                      ))}
+                    </Grid.Root>
+                  </div>
+                )}
+
+                {/* Categories */}
+                {categories.map(category => {
+                  const expanded = isSectionExpanded(category.name);
+                  return (
+                    <div key={category.name}>
+                      <div
+                        role="button"
+                        tabIndex={0}
+                        onClick={() => toggleSection(category.name)}
+                        onKeyDown={e =>
+                          e.key === 'Enter' && toggleSection(category.name)
+                        }
+                        style={{
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'space-between',
+                          cursor: 'pointer',
+                          padding: '12px 16px',
+                          borderRadius: 8,
+                          backgroundColor: 'rgba(255, 255, 255, 0.05)',
+                        }}
+                      >
+                        <Flex align="center" gap="2">
+                          <Text variant="body-medium" weight="bold">
+                            {category.name}
+                          </Text>
+                          <Text variant="body-small" color="secondary">
+                            ({category.platforms.length})
+                          </Text>
+                        </Flex>
+                        <ChevronIcon
+                          expanded={expanded}
+                        />
+                      </div>
+                      {expanded && (
+                        <Flex direction="column" gap="3" mt="3">
+                          <Text
+                            variant="body-small"
+                            color="secondary"
+                            style={{ paddingLeft: 16 }}
+                          >
+                            {categoryDescriptions[category.name]}
+                          </Text>
+                          <Grid.Root
+                            columns={{
+                              initial: '1',
+                              sm: '2',
+                              md: '3',
+                              lg: '4',
+                            }}
+                            gap="3"
+                          >
+                            {category.platforms.map(platform => (
+                              <Grid.Item key={platform.name}>
+                                <PlatformCard
+                                  platform={platform}
+                                  isFavorite={favorites.includes(
+                                    platform.name,
+                                  )}
+                                  onToggleFavorite={handleToggleFavorite}
+                                  onTagClick={handleTagToggle}
+                                  selectedTags={selectedTags}
+                                  searchQuery={searchQuery}
+                                />
+                              </Grid.Item>
+                            ))}
+                          </Grid.Root>
+                        </Flex>
+                      )}
+                    </div>
+                  );
+                })}
+              </Flex>
+            )}
+          </Box>
+        </Flex>
       </Container>
     </>
   );

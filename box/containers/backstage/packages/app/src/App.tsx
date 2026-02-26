@@ -11,7 +11,7 @@
 
 import React from 'react';
 import { Route } from 'react-router-dom';
-import { apiDocsPlugin, ApiExplorerPage } from '@backstage/plugin-api-docs';
+import { apiDocsPlugin } from '@backstage/plugin-api-docs';
 import {
   CatalogEntityPage,
   CatalogIndexPage,
@@ -32,6 +32,7 @@ import { searchPage } from './components/search/SearchPage';
 import { Root } from './components/Root';
 import { HomePage } from './components/home/HomePage';
 import { PlatformsPage } from './components/platforms';
+import { ApisPage } from './components/apis';
 
 import {
   AlertDisplay,
@@ -54,6 +55,7 @@ const CustomSignInPage = (props: any) => (
     {...props}
     auto
     providers={[
+      'guest',
       {
         id: 'keycloak',
         title: 'Keycloak',
@@ -109,7 +111,7 @@ const routes = (
     >
       {entityPage}
     </Route>
-    <Route path="/api-docs" element={<ApiExplorerPage />} />
+    <Route path="/api-docs" element={<ApisPage />} />
     <Route path="/docs" element={<TechDocsIndexPage />} />
     <Route
       path="/docs/:namespace/:kind/:name/*"
