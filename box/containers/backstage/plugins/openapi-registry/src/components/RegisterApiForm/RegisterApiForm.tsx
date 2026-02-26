@@ -1,24 +1,9 @@
 import React, { useState } from 'react';
-import {
-  Button,
-  CircularProgress,
-  FormControl,
-  Grid,
-  InputLabel,
-  MenuItem,
-  Select,
-  TextField,
-  Typography,
-  makeStyles,
-  Chip,
-} from '@material-ui/core';
-import { Alert } from '@material-ui/lab';
+import { Alert, Button, Flex, Grid as BuiGrid, Select, Text, TextField, Box } from '@backstage/ui';
 import { useApi } from '@backstage/core-plugin-api';
 import { openApiRegistryApiRef } from '../../api';
 import { PreviewResult, RegisterApiRequest } from '../../api/types';
 
-// Backstage entity name validation: lowercase, numbers, hyphens, underscores, dots
-// Must start and end with alphanumeric character
 const ENTITY_NAME_PATTERN = /^[a-z0-9]([a-z0-9\-_.]*[a-z0-9])?$/;
 
 const validateEntityName = (value: string): string | null => {
@@ -32,43 +17,24 @@ const validateEntityName = (value: string): string | null => {
   return null;
 };
 
-const useStyles = makeStyles(theme => ({
-  form: {
-    width: '100%',
-  },
-  formControl: {
-    marginBottom: theme.spacing(2),
-    width: '100%',
-  },
-  previewBox: {
-    backgroundColor: theme.palette.background.default,
-    padding: theme.spacing(2),
-    borderRadius: theme.shape.borderRadius,
-    marginBottom: theme.spacing(2),
-  },
-  previewTitle: {
-    fontWeight: 'bold',
-    marginBottom: theme.spacing(1),
-  },
-  buttonGroup: {
-    display: 'flex',
-    gap: theme.spacing(2),
-    marginTop: theme.spacing(2),
-  },
-  tagsInput: {
-    display: 'flex',
-    flexWrap: 'wrap',
-    gap: theme.spacing(0.5),
-    marginTop: theme.spacing(1),
-  },
-}));
+const protocolOptions = [
+  { value: 'https://', label: 'https://' },
+  { value: 'http://', label: 'http://' },
+];
+
+const lifecycleOptions = [
+  { value: 'development', label: 'Development' },
+  { value: 'sandbox', label: 'Sandbox' },
+  { value: 'staging', label: 'Staging' },
+  { value: 'production', label: 'Production' },
+  { value: 'deprecated', label: 'Deprecated' },
+];
 
 export interface RegisterApiFormProps {
   onSuccess?: () => void;
 }
 
 export const RegisterApiForm = ({ onSuccess }: RegisterApiFormProps) => {
-  const classes = useStyles();
   const api = useApi(openApiRegistryApiRef);
 
   const [protocol, setProtocol] = useState('https://');
@@ -148,7 +114,6 @@ export const RegisterApiForm = ({ onSuccess }: RegisterApiFormProps) => {
       await api.registerApi(request);
       setSuccess(`API "${name}" registered successfully! The entity will appear in the Catalog within 1-2 minutes.`);
 
-      // Reset form
       setProtocol('https://');
       setSpecUrl('');
       setName('');
@@ -178,194 +143,176 @@ export const RegisterApiForm = ({ onSuccess }: RegisterApiFormProps) => {
   };
 
   return (
-    <div className={classes.form}>
-      {error && (
-        <Alert severity="error" style={{ marginBottom: 16 }}>
-          {error}
-        </Alert>
-      )}
-      {success && (
-        <Alert severity="success" style={{ marginBottom: 16 }}>
-          {success}
-        </Alert>
-      )}
+    <Flex direction="column" gap="3">
+      {error && <Alert status="danger" description={error} mb="2" />}
+      {success && <Alert status="success" description={success} mb="2" />}
 
-      <Grid container spacing={2}>
-        <Grid item xs={12}>
-          <Grid container spacing={1} alignItems="flex-start">
-            <Grid item xs={12} sm={2}>
-              <FormControl variant="outlined" fullWidth>
-                <InputLabel>Protocol</InputLabel>
-                <Select
-                  value={protocol}
-                  onChange={e => setProtocol(e.target.value as string)}
-                  label="Protocol"
-                >
-                  <MenuItem value="https://">https://</MenuItem>
-                  <MenuItem value="http://">http://</MenuItem>
-                </Select>
-              </FormControl>
-            </Grid>
-            <Grid item xs={12} sm={10}>
-              <TextField
-                fullWidth
-                label="OpenAPI Spec URL"
-                placeholder="petstore.swagger.io/v2/swagger.json"
-                value={specUrl}
-                onChange={e => setSpecUrl(e.target.value)}
-                variant="outlined"
-                required
-                helperText={
-                  <>
-                    Enter the URL of an OpenAPI or Swagger spec (JSON or YAML)
-                    <br />
-                    Test URLs: <code>petstore.swagger.io/v2/swagger.json</code> | <code>petstore3.swagger.io/api/v3/openapi.json</code>
-                  </>
-                }
-              />
-            </Grid>
-          </Grid>
-        </Grid>
+      {/* Protocol + Spec URL */}
+      <Flex gap="2" direction={{ initial: 'column', sm: 'row' }} align="end">
+        <Box style={{ minWidth: 140 }}>
+          <Select
+            label="Protocol"
+            options={protocolOptions}
+            selectedKey={protocol}
+            onSelectionChange={(key) => setProtocol(key as string)}
+          />
+        </Box>
+        <Box style={{ flex: 1 }}>
+          <TextField
+            label="OpenAPI Spec URL"
+            placeholder="petstore.swagger.io/v2/swagger.json"
+            value={specUrl}
+            onChange={setSpecUrl}
+            isRequired
+          />
+        </Box>
+      </Flex>
+      <Text variant="body-x-small" color="secondary">
+        Enter the URL of an OpenAPI or Swagger spec (JSON or YAML). Test: petstore.swagger.io/v2/swagger.json
+      </Text>
 
-        <Grid item xs={12}>
-          <div className={classes.buttonGroup}>
-            <Button
-              variant="outlined"
-              color="primary"
-              onClick={handlePreview}
-              disabled={isLoading || !specUrl}
-            >
-              {isLoading ? <CircularProgress size={24} /> : 'Preview'}
-            </Button>
-          </div>
-        </Grid>
+      {/* Preview button */}
+      <Flex>
+        <Button
+          variant="secondary"
+          onPress={handlePreview}
+          isDisabled={isLoading || !specUrl}
+          loading={isLoading && !preview}
+        >
+          Preview
+        </Button>
+      </Flex>
 
-        {preview && (
-          <Grid item xs={12}>
-            <div className={classes.previewBox}>
-              <Typography className={classes.previewTitle}>
-                Preview {preview.valid ? '✓' : '✗'}
-              </Typography>
-              {preview.valid ? (
-                <>
-                  <Typography>
-                    <strong>Title:</strong> {preview.title}
-                  </Typography>
-                  <Typography>
-                    <strong>Version:</strong> {preview.version}
-                  </Typography>
-                  {preview.description && (
-                    <Typography>
-                      <strong>Description:</strong> {preview.description}
-                    </Typography>
-                  )}
-                  <Typography>
-                    <strong>Spec:</strong>{' '}
-                    {preview.spec?.openapi
-                      ? `OpenAPI ${preview.spec.openapi}`
-                      : `Swagger ${preview.spec?.swagger}`}
-                  </Typography>
-                </>
-              ) : (
-                <Typography color="error">{preview.error}</Typography>
+      {/* Preview result */}
+      {preview && (
+        <Box p="3" style={{ backgroundColor: 'var(--bui-color-bg-default, #121212)', borderRadius: 4 }}>
+          <Text weight="bold">
+            Preview {preview.valid ? '✓' : '✗'}
+          </Text>
+          {preview.valid ? (
+            <Flex direction="column" gap="0.5" mt="1">
+              <Text variant="body-small"><strong>Title:</strong> {preview.title}</Text>
+              <Text variant="body-small"><strong>Version:</strong> {preview.version}</Text>
+              {preview.description && (
+                <Text variant="body-small"><strong>Description:</strong> {preview.description}</Text>
               )}
-            </div>
-          </Grid>
-        )}
+              <Text variant="body-small">
+                <strong>Spec:</strong>{' '}
+                {preview.spec?.openapi
+                  ? `OpenAPI ${preview.spec.openapi}`
+                  : `Swagger ${preview.spec?.swagger}`}
+              </Text>
+            </Flex>
+          ) : (
+            <Box mt="1">
+              <Text color="danger">{preview.error}</Text>
+            </Box>
+          )}
+        </Box>
+      )}
 
-        {preview?.valid && (
-          <>
-            <Grid item xs={12} md={6}>
-              <TextField
-                className={classes.formControl}
-                label="API Name"
-                value={name}
-                onChange={e => handleNameChange(e.target.value)}
-                variant="outlined"
-                required
-                error={!!nameError}
-                helperText={nameError || 'Lowercase letters, numbers, hyphens, underscores only'}
-              />
-            </Grid>
+      {/* Registration form fields (shown after valid preview) */}
+      {preview?.valid && (
+        <>
+          <BuiGrid.Root columns={{ initial: '1', md: '2' }} gap="3">
+            <TextField
+              label="API Name"
+              value={name}
+              onChange={handleNameChange}
+              isRequired
+              isInvalid={!!nameError}
+              description={nameError || 'Lowercase letters, numbers, hyphens, underscores only'}
+            />
+            <TextField
+              label="Title"
+              value={title}
+              onChange={setTitle}
+              description="Display name for this API"
+            />
+            <TextField
+              label="Owner"
+              value={owner}
+              onChange={setOwner}
+              isRequired
+              placeholder="team-platform"
+              description="Team or user that owns this API"
+            />
+            <Select
+              label="Lifecycle"
+              options={lifecycleOptions}
+              selectedKey={lifecycle}
+              onSelectionChange={(key) => setLifecycle(key as string)}
+              description="Current stage of this API"
+            />
+          </BuiGrid.Root>
 
-            <Grid item xs={12} md={6}>
-              <TextField
-                className={classes.formControl}
-                label="Title"
-                value={title}
-                onChange={e => setTitle(e.target.value)}
-                variant="outlined"
-                helperText="Display name for this API"
-              />
-            </Grid>
-
-            <Grid item xs={12} md={6}>
-              <TextField
-                className={classes.formControl}
-                label="Owner"
-                value={owner}
-                onChange={e => setOwner(e.target.value)}
-                variant="outlined"
-                required
-                placeholder="team-platform"
-                helperText="Team or user that owns this API"
-              />
-            </Grid>
-
-            <Grid item xs={12} md={6}>
-              <FormControl variant="outlined" className={classes.formControl}>
-                <InputLabel>Lifecycle</InputLabel>
-                <Select
-                  value={lifecycle}
-                  onChange={e => setLifecycle(e.target.value as string)}
-                  label="Lifecycle"
+          {/* Tags */}
+          <div onKeyDown={(e) => {
+            if (e.key === 'Enter') {
+              e.preventDefault();
+              handleAddTag();
+            }
+          }}>
+            <TextField
+              label="Add Tag"
+              value={tagInput}
+              onChange={setTagInput}
+              size="small"
+              description="Press Enter to add a tag"
+            />
+          </div>
+          {tags.length > 0 && (
+            <Flex gap="1" style={{ flexWrap: 'wrap' }}>
+              {tags.map(tag => (
+                <span
+                  key={tag}
+                  style={{
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    gap: 4,
+                    padding: '2px 8px',
+                    borderRadius: 4,
+                    fontSize: 12,
+                    backgroundColor: 'var(--bui-color-bg-elevated, #2a2a2a)',
+                    border: '1px solid var(--bui-color-border-default, #444)',
+                  }}
                 >
-                  <MenuItem value="development">Development</MenuItem>
-                  <MenuItem value="sandbox">Sandbox</MenuItem>
-                  <MenuItem value="staging">Staging</MenuItem>
-                  <MenuItem value="production">Production</MenuItem>
-                  <MenuItem value="deprecated">Deprecated</MenuItem>
-                </Select>
-              </FormControl>
-            </Grid>
+                  {tag}
+                  <button
+                    type="button"
+                    aria-label={`Remove ${tag}`}
+                    onClick={() => handleRemoveTag(tag)}
+                    style={{
+                      background: 'none',
+                      border: 'none',
+                      cursor: 'pointer',
+                      padding: 0,
+                      lineHeight: 1,
+                      fontSize: 14,
+                      color: 'inherit',
+                      opacity: 0.6,
+                    }}
+                  >
+                    ✕
+                  </button>
+                </span>
+              ))}
+            </Flex>
+          )}
 
-            <Grid item xs={12}>
-              <TextField
-                label="Add Tag"
-                value={tagInput}
-                onChange={e => setTagInput(e.target.value)}
-                onKeyPress={e => e.key === 'Enter' && handleAddTag()}
-                variant="outlined"
-                size="small"
-                helperText="Press Enter to add a tag"
-              />
-              <div className={classes.tagsInput}>
-                {tags.map(tag => (
-                  <Chip
-                    key={tag}
-                    label={tag}
-                    onDelete={() => handleRemoveTag(tag)}
-                    size="small"
-                  />
-                ))}
-              </div>
-            </Grid>
-
-            <Grid item xs={12}>
-              <div className={classes.buttonGroup}>
-                <Button
-                  variant="contained"
-                  color="primary"
-                  onClick={handleRegister}
-                  disabled={isLoading || !name || !owner || !!nameError}
-                >
-                  {isLoading ? <CircularProgress size={24} /> : 'Register API'}
-                </Button>
-              </div>
-            </Grid>
-          </>
-        )}
-      </Grid>
-    </div>
+          {/* Register button */}
+          <Flex>
+            <Button
+              variant="primary"
+              onPress={handleRegister}
+              isDisabled={isLoading || !name || !owner || !!nameError}
+              loading={isLoading}
+            >
+              Register API
+            </Button>
+          </Flex>
+        </>
+      )}
+    </Flex>
   );
 };

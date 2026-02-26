@@ -252,6 +252,23 @@ const IamAuditSidebarItem = () => {
   );
 };
 
+const PlatformsSidebarItem = () => {
+  const configApi = useApi(configApiRef);
+  const platformsCount = (configApi.getOptionalConfigArray('app.platforms') ?? []).length;
+
+  return (
+    <SidebarItem icon={KubernetesIcon} to="platforms" text="Platforms">
+      <span
+        className={
+          platformsCount > 0 ? 'sidebar-badge' : 'sidebar-badge sidebar-badge-zero'
+        }
+      >
+        {platformsCount}
+      </span>
+    </SidebarItem>
+  );
+};
+
 export const Root = ({ children }: PropsWithChildren<{}>) => {
   const config = useApi(configApiRef);
   const argocdAppSetEnabled = config.getOptionalBoolean('argocdApplicationSet.enabled') ?? true;
@@ -266,7 +283,7 @@ export const Root = ({ children }: PropsWithChildren<{}>) => {
       </SidebarGroup>
       <SidebarDivider />
       <SidebarItem icon={HomeIcon} to="/" text="Home" />
-      <SidebarItem icon={KubernetesIcon} to="platforms" text="Platforms" />
+      <PlatformsSidebarItem />
       <SidebarDivider />
 
       {/* Resources Section */}

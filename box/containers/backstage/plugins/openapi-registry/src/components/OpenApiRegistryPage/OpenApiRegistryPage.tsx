@@ -1,79 +1,87 @@
 import React, { useState } from 'react';
-import { makeStyles, IconButton, Tooltip } from '@material-ui/core';
-import HelpOutlineIcon from '@material-ui/icons/HelpOutline';
-import { Header, HeaderLabel } from '@backstage/core-components';
-import { Container, Flex, Text } from '@backstage/ui';
+import { PluginHeader, Container, Flex, Text, Box, Tabs, TabList, Tab, TabPanel } from '@backstage/ui';
+import { useApi } from '@backstage/core-plugin-api';
+import { useAsyncRetry } from 'react-use';
 import { RegisterApiForm } from '../RegisterApiForm';
 import { RegisteredApisList } from '../RegisteredApisList';
-
-const useStyles = makeStyles(theme => ({
-  content: {
-    display: 'flex',
-    flexDirection: 'column',
-    gap: theme.spacing(4),
-    padding: theme.spacing(3),
-  },
-  section: {
-    backgroundColor: theme.palette.background.paper,
-    padding: theme.spacing(3),
-    borderRadius: theme.shape.borderRadius,
-  },
-  helpButton: {
-    padding: 4,
-    marginLeft: 1,
-  },
-  helpIcon: {
-    fontSize: 20,
-    color: theme.palette.text.secondary,
-  },
-}));
+import { openApiRegistryApiRef } from '../../api';
 
 export const OpenApiRegistryPage = () => {
-  const classes = useStyles();
+  const api = useApi(openApiRegistryApiRef);
   const [refreshTrigger, setRefreshTrigger] = useState(0);
-  const [apiCount, setApiCount] = useState(0);
+  const [selectedTab, setSelectedTab] = useState<string | number>('register');
+
+  const {
+    value: registrations,
+    loading,
+    error: loadError,
+    retry,
+  } = useAsyncRetry(async () => {
+    return api.listRegistrations();
+  }, [refreshTrigger]);
+
+  const apiCount = registrations?.length ?? 0;
 
   const handleRegisterSuccess = () => {
     setRefreshTrigger(prev => prev + 1);
+    setSelectedTab('list');
   };
 
   return (
     <>
-      <Header
-        title="OpenAPI Registry"
-        subtitle="Register external API specs from URL and sync them to Backstage Catalog automatically"
-      >
-        <HeaderLabel label="Owner" value="Platform Team" />
-        <HeaderLabel label="Lifecycle" value="Production" />
-      </Header>
+      <PluginHeader title="OpenAPI Registry" />
       <Container>
-        <div className={classes.content}>
-          <Flex align="center">
-            <Text variant="title-small">Register New API</Text>
-            <Tooltip title="Register OpenAPI/Swagger specs by URL. The spec will be fetched, validated, and automatically synced to the Backstage Catalog as an API entity. Supports both JSON and YAML formats (OpenAPI 3.x and Swagger 2.0).">
-              <IconButton className={classes.helpButton} size="small">
-                <HelpOutlineIcon className={classes.helpIcon} />
-              </IconButton>
-            </Tooltip>
-          </Flex>
+        <Flex direction="column" gap="3" p="3">
+          <Text variant="body-medium" color="secondary">
+            Register external API specs from URL and sync them to Backstage Catalog automatically
+          </Text>
 
-          <div className={classes.section}>
-            <RegisterApiForm onSuccess={handleRegisterSuccess} />
-          </div>
+          <Tabs selectedKey={selectedTab} onSelectionChange={setSelectedTab}>
+            <TabList>
+              <Tab id="register">Register</Tab>
+              <Tab id="list">
+                <span style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}>
+                  Status
+                  <span style={{
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    minWidth: 20,
+                    height: 20,
+                    padding: '0 6px',
+                    borderRadius: 10,
+                    fontSize: 11,
+                    fontWeight: 700,
+                    lineHeight: 1,
+                    ...(apiCount > 0
+                      ? { backgroundColor: '#f59e0b', color: '#fff' }
+                      : { backgroundColor: 'rgba(128,128,128,0.2)', color: 'rgba(128,128,128,0.8)' }
+                    ),
+                  }}>
+                    {apiCount}
+                  </span>
+                </span>
+              </Tab>
+            </TabList>
 
-          <Flex align="center">
-            <Text variant="title-small">{`Registered APIs (${apiCount})`}</Text>
-            <Tooltip title="List of registered APIs synced to the Backstage Catalog. You can refresh, view spec URL, or delete registrations.">
-              <IconButton className={classes.helpButton} size="small">
-                <HelpOutlineIcon className={classes.helpIcon} />
-              </IconButton>
-            </Tooltip>
-          </Flex>
+            <TabPanel id="register">
+              <Box mt="3" p="3" style={{ backgroundColor: 'var(--bui-color-bg-elevated, #1a1a1a)', borderRadius: 4 }}>
+                <RegisterApiForm onSuccess={handleRegisterSuccess} />
+              </Box>
+            </TabPanel>
 
-          <div className={classes.section}>
-            <RegisteredApisList refreshTrigger={refreshTrigger} onCountChange={setApiCount} />
-          </div>
-        </div>
+            <TabPanel id="list">
+              <Box mt="3" p="3" style={{ backgroundColor: 'var(--bui-color-bg-elevated, #1a1a1a)', borderRadius: 4 }}>
+                <RegisteredApisList
+                  registrations={registrations}
+                  loading={loading}
+                  loadError={loadError}
+                  onRetry={retry}
+                />
+              </Box>
+            </TabPanel>
+          </Tabs>
+        </Flex>
       </Container>
     </>
   );

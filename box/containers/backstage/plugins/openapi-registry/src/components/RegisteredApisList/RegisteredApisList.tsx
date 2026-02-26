@@ -1,90 +1,76 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useMemo } from 'react';
 import {
+  Alert,
+  Box,
   Button,
-  CircularProgress,
-  IconButton,
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableRow,
-  Tooltip,
-  Typography,
-  makeStyles,
-  Chip,
   Dialog,
-  DialogTitle,
-  DialogContent,
-  DialogContentText,
-  DialogActions,
-  TextField,
-  FormControl,
-  InputLabel,
+  DialogBody,
+  DialogFooter,
+  DialogHeader,
+  DialogTrigger,
+  Flex,
+  SearchField,
   Select,
-  MenuItem,
-  Grid,
-  InputAdornment,
-} from '@material-ui/core';
-import SearchIcon from '@material-ui/icons/Search';
-import ClearIcon from '@material-ui/icons/Clear';
-import RefreshIcon from '@material-ui/icons/Refresh';
-import DeleteIcon from '@material-ui/icons/Delete';
-import OpenInNewIcon from '@material-ui/icons/OpenInNew';
-import { Alert } from '@material-ui/lab';
+  Text,
+} from '@backstage/ui';
 import { useApi } from '@backstage/core-plugin-api';
-import { useAsyncRetry } from 'react-use';
 import { Link } from '@backstage/core-components';
 import { openApiRegistryApiRef } from '../../api';
 import { OpenApiRegistration } from '../../api/types';
 
-const useStyles = makeStyles(theme => ({
-  filterBar: {
-    marginBottom: theme.spacing(3),
-  },
-  searchField: {
-    minWidth: 300,
-  },
-  filterSelect: {
-    minWidth: 150,
-  },
-  table: {
-    minWidth: 650,
-  },
-  refreshButton: {
-    marginRight: theme.spacing(1),
-  },
-  emptyState: {
-    textAlign: 'center',
-    padding: theme.spacing(4),
-  },
-  loadingState: {
-    display: 'flex',
-    justifyContent: 'center',
-    padding: theme.spacing(4),
-  },
-  urlCell: {
-    maxWidth: 300,
-    overflow: 'hidden',
-    textOverflow: 'ellipsis',
-    whiteSpace: 'nowrap',
-  },
-  tagsCell: {
-    display: 'flex',
-    flexWrap: 'wrap',
-    gap: theme.spacing(0.5),
-  },
-  actionCell: {
-    whiteSpace: 'nowrap',
-  },
-}));
+const tagStyle: React.CSSProperties = {
+  display: 'inline-block',
+  padding: '2px 8px',
+  borderRadius: 4,
+  fontSize: 12,
+  backgroundColor: 'var(--bui-color-bg-elevated, #2a2a2a)',
+  border: '1px solid var(--bui-color-border-default, #444)',
+};
+
+const iconButtonStyle: React.CSSProperties = {
+  background: 'none',
+  border: 'none',
+  cursor: 'pointer',
+  padding: 4,
+  borderRadius: 4,
+  display: 'inline-flex',
+  alignItems: 'center',
+  color: 'inherit',
+  opacity: 0.7,
+};
+
+const thStyle: React.CSSProperties = {
+  padding: '12px 16px',
+  textAlign: 'left',
+  fontWeight: 600,
+  fontSize: 13,
+  borderBottom: '1px solid var(--bui-color-border-default, #444)',
+  color: 'var(--bui-color-text-secondary, #aaa)',
+};
+
+const tdStyle: React.CSSProperties = {
+  padding: '10px 16px',
+  fontSize: 13,
+  borderBottom: '1px solid var(--bui-color-border-default, #333)',
+};
+
+const lifecycleOptions = [
+  { value: 'all', label: 'All' },
+  { value: 'production', label: 'Production' },
+  { value: 'staging', label: 'Staging' },
+  { value: 'development', label: 'Development' },
+  { value: 'sandbox', label: 'Sandbox' },
+  { value: 'deprecated', label: 'Deprecated' },
+];
 
 export interface RegisteredApisListProps {
-  refreshTrigger?: number;
-  onCountChange?: (count: number) => void;
+  registrations: OpenApiRegistration[] | undefined;
+  loading: boolean;
+  loadError: Error | undefined;
+  onRetry: () => void;
 }
 
-export const RegisteredApisList = ({ refreshTrigger, onCountChange }: RegisteredApisListProps) => {
-  const classes = useStyles();
+export const RegisteredApisList = ({ registrations, loading, loadError, onRetry }: RegisteredApisListProps) => {
   const api = useApi(openApiRegistryApiRef);
 
   const [refreshingId, setRefreshingId] = useState<string | null>(null);
@@ -99,20 +85,16 @@ export const RegisteredApisList = ({ refreshTrigger, onCountChange }: Registered
   const [lifecycleFilter, setLifecycleFilter] = useState<string>('all');
   const [ownerFilter, setOwnerFilter] = useState<string>('all');
 
-  const {
-    value: registrations,
-    loading,
-    error: loadError,
-    retry,
-  } = useAsyncRetry(async () => {
-    return api.listRegistrations();
-  }, [refreshTrigger]);
-
   // Get unique owners for filter dropdown
   const uniqueOwners = useMemo(() => {
     if (!registrations) return [];
     return [...new Set(registrations.map(r => r.owner))].sort();
   }, [registrations]);
+
+  const ownerOptions = useMemo(() => [
+    { value: 'all', label: 'All' },
+    ...uniqueOwners.map(owner => ({ value: owner, label: owner })),
+  ], [uniqueOwners]);
 
   // Filter registrations
   const filteredRegistrations = useMemo(() => {
@@ -128,12 +110,6 @@ export const RegisteredApisList = ({ refreshTrigger, onCountChange }: Registered
     });
   }, [registrations, searchQuery, lifecycleFilter, ownerFilter]);
 
-  useEffect(() => {
-    if (onCountChange) {
-      onCountChange(filteredRegistrations?.length ?? 0);
-    }
-  }, [filteredRegistrations, onCountChange]);
-
   const handleRefresh = async (registration: OpenApiRegistration) => {
     setRefreshingId(registration.id);
     setError(null);
@@ -142,7 +118,7 @@ export const RegisteredApisList = ({ refreshTrigger, onCountChange }: Registered
     try {
       await api.refreshApi(registration.id);
       setSuccess(`API "${registration.name}" refreshed. Changes will reflect in the Catalog shortly.`);
-      retry();
+      onRetry();
     } catch (err) {
       setError(
         err instanceof Error ? err.message : 'Failed to refresh API',
@@ -166,7 +142,7 @@ export const RegisteredApisList = ({ refreshTrigger, onCountChange }: Registered
       await api.deleteRegistration(deletingRegistration.id);
       setDeleteDialogOpen(false);
       setDeletingRegistration(null);
-      retry();
+      onRetry();
     } catch (err) {
       setError(
         err instanceof Error ? err.message : 'Failed to delete registration',
@@ -185,216 +161,174 @@ export const RegisteredApisList = ({ refreshTrigger, onCountChange }: Registered
 
   if (loading) {
     return (
-      <div className={classes.loadingState}>
-        <CircularProgress />
-      </div>
+      <Flex justify="center" p="4">
+        <Text color="secondary">Loading...</Text>
+      </Flex>
     );
   }
 
   if (loadError) {
-    return (
-      <Alert severity="error">
-        Failed to load registrations: {loadError.message}
-      </Alert>
-    );
+    return <Alert status="danger" description={`Failed to load registrations: ${loadError.message}`} />;
   }
 
   if (!registrations || registrations.length === 0) {
     return (
-      <div className={classes.emptyState}>
-        <Typography variant="h6" color="textSecondary">
-          No APIs registered yet
-        </Typography>
-        <Typography variant="body2" color="textSecondary">
-          Register your first API using the form above
-        </Typography>
-      </div>
+      <Flex direction="column" align="center" p="4">
+        <Text weight="bold" color="secondary">No APIs registered yet</Text>
+        <Text variant="body-small" color="secondary">
+          Register your first API using the Register tab
+        </Text>
+      </Flex>
     );
   }
 
   return (
     <>
-      {error && (
-        <Alert severity="error" style={{ marginBottom: 16 }}>
-          {error}
-        </Alert>
-      )}
-      {success && (
-        <Alert severity="success" style={{ marginBottom: 16 }}>
-          {success}
-        </Alert>
-      )}
+      {error && <Alert status="danger" description={error} mb="2" />}
+      {success && <Alert status="success" description={success} mb="2" />}
 
       {/* Filter Bar */}
-      <Grid container spacing={2} className={classes.filterBar} alignItems="center">
-        <Grid item>
-          <TextField
-            className={classes.searchField}
+      <Flex gap="2" mb="3" align="end" direction={{ initial: 'column', sm: 'row' }}>
+        <Box style={{ minWidth: 300 }}>
+          <SearchField
+            label="Search"
             placeholder="Search by name, title, or owner..."
-            variant="outlined"
-            size="small"
             value={searchQuery}
-            onChange={e => setSearchQuery(e.target.value)}
-            InputProps={{
-              startAdornment: (
-                <InputAdornment position="start">
-                  <SearchIcon color="disabled" />
-                </InputAdornment>
-              ),
-              endAdornment: searchQuery && (
-                <InputAdornment position="end">
-                  <IconButton
-                    size="small"
-                    onClick={() => setSearchQuery('')}
-                    aria-label="clear search"
-                  >
-                    <ClearIcon fontSize="small" />
-                  </IconButton>
-                </InputAdornment>
-              ),
-            }}
+            onChange={setSearchQuery}
+            size="small"
           />
-        </Grid>
-        <Grid item>
-          <FormControl variant="outlined" size="small" className={classes.filterSelect}>
-            <InputLabel>Lifecycle</InputLabel>
-            <Select
-              value={lifecycleFilter}
-              onChange={e => setLifecycleFilter(e.target.value as string)}
-              label="Lifecycle"
-            >
-              <MenuItem value="all">All</MenuItem>
-              <MenuItem value="production">Production</MenuItem>
-              <MenuItem value="staging">Staging</MenuItem>
-              <MenuItem value="development">Development</MenuItem>
-              <MenuItem value="deprecated">Deprecated</MenuItem>
-            </Select>
-          </FormControl>
-        </Grid>
-        <Grid item>
-          <FormControl variant="outlined" size="small" className={classes.filterSelect}>
-            <InputLabel>Owner</InputLabel>
-            <Select
-              value={ownerFilter}
-              onChange={e => setOwnerFilter(e.target.value as string)}
-              label="Owner"
-            >
-              <MenuItem value="all">All</MenuItem>
-              {uniqueOwners.map(owner => (
-                <MenuItem key={owner} value={owner}>{owner}</MenuItem>
-              ))}
-            </Select>
-          </FormControl>
-        </Grid>
-      </Grid>
+        </Box>
+        <Box style={{ minWidth: 150 }}>
+          <Select
+            label="Lifecycle"
+            options={lifecycleOptions}
+            selectedKey={lifecycleFilter}
+            onSelectionChange={(key) => setLifecycleFilter(key as string)}
+          />
+        </Box>
+        <Box style={{ minWidth: 150 }}>
+          <Select
+            label="Owner"
+            options={ownerOptions}
+            selectedKey={ownerFilter}
+            onSelectionChange={(key) => setOwnerFilter(key as string)}
+          />
+        </Box>
+      </Flex>
 
       {filteredRegistrations.length === 0 ? (
-        <div className={classes.emptyState}>
-          <Typography variant="body1" color="textSecondary">
-            No APIs match the current filters
-          </Typography>
-        </div>
+        <Flex direction="column" align="center" p="4">
+          <Text color="secondary">No APIs match the current filters</Text>
+        </Flex>
       ) : (
-      <Table className={classes.table}>
-        <TableHead>
-          <TableRow>
-            <TableCell>Name</TableCell>
-            <TableCell>Title</TableCell>
-            <TableCell>Owner</TableCell>
-            <TableCell>Lifecycle</TableCell>
-            <TableCell>Tags</TableCell>
-            <TableCell>Registered At</TableCell>
-            <TableCell>Last Synced</TableCell>
-            <TableCell>Actions</TableCell>
-          </TableRow>
-        </TableHead>
-        <TableBody>
-          {filteredRegistrations.map(registration => (
-            <TableRow key={registration.id}>
-              <TableCell>
-                <Link to={`/catalog/default/api/${registration.name}`}>
-                  {registration.name}
-                </Link>
-              </TableCell>
-              <TableCell>{registration.title || '-'}</TableCell>
-              <TableCell>{registration.owner}</TableCell>
-              <TableCell>
-                <Chip
-                  label={registration.lifecycle}
-                  size="small"
-                  color={
-                    registration.lifecycle === 'production'
-                      ? 'primary'
-                      : 'default'
-                  }
-                />
-              </TableCell>
-              <TableCell>
-                <div className={classes.tagsCell}>
-                  {registration.tags?.map(tag => (
-                    <Chip key={tag} label={tag} size="small" variant="outlined" />
-                  ))}
-                </div>
-              </TableCell>
-              <TableCell>{formatDate(registration.createdAt)}</TableCell>
-              <TableCell>{formatDate(registration.lastSyncedAt)}</TableCell>
-              <TableCell className={classes.actionCell}>
-                <Tooltip title="Refresh API spec">
-                  <IconButton
-                    size="small"
-                    className={classes.refreshButton}
-                    onClick={() => handleRefresh(registration)}
-                    disabled={refreshingId === registration.id}
-                  >
-                    {refreshingId === registration.id ? (
-                      <CircularProgress size={20} />
-                    ) : (
-                      <RefreshIcon />
-                    )}
-                  </IconButton>
-                </Tooltip>
-                <Tooltip title="View spec URL">
-                  <IconButton
-                    size="small"
-                    className={classes.refreshButton}
-                    href={registration.specUrl}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                  >
-                    <OpenInNewIcon />
-                  </IconButton>
-                </Tooltip>
-                <Tooltip title="Delete registration">
-                  <IconButton
-                    size="small"
-                    onClick={() => handleDeleteClick(registration)}
-                  >
-                    <DeleteIcon />
-                  </IconButton>
-                </Tooltip>
-              </TableCell>
-            </TableRow>
-          ))}
-        </TableBody>
-      </Table>
+        <div style={{ overflowX: 'auto' }}>
+          <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+            <thead>
+              <tr>
+                <th style={thStyle}>Name</th>
+                <th style={thStyle}>Title</th>
+                <th style={thStyle}>Owner</th>
+                <th style={thStyle}>Lifecycle</th>
+                <th style={thStyle}>Tags</th>
+                <th style={thStyle}>Registered At</th>
+                <th style={thStyle}>Last Synced</th>
+                <th style={thStyle}>Actions</th>
+              </tr>
+            </thead>
+            <tbody>
+              {filteredRegistrations.map(registration => (
+                <tr key={registration.id}>
+                  <td style={tdStyle}>
+                    <Link to={`/catalog/default/api/${registration.name}`}>
+                      {registration.name}
+                    </Link>
+                  </td>
+                  <td style={tdStyle}>{registration.title || '-'}</td>
+                  <td style={tdStyle}>{registration.owner}</td>
+                  <td style={tdStyle}>
+                    <span style={tagStyle}>{registration.lifecycle}</span>
+                  </td>
+                  <td style={tdStyle}>
+                    <span style={{ display: 'flex', flexWrap: 'wrap', gap: 4 }}>
+                      {registration.tags?.map(tag => (
+                        <span key={tag} style={tagStyle}>{tag}</span>
+                      ))}
+                    </span>
+                  </td>
+                  <td style={tdStyle}>{formatDate(registration.createdAt)}</td>
+                  <td style={tdStyle}>{formatDate(registration.lastSyncedAt)}</td>
+                  <td style={{ ...tdStyle, whiteSpace: 'nowrap' }}>
+                    <span style={{ display: 'flex', gap: 4 }}>
+                      <button
+                        title="Refresh API spec"
+                        aria-label="Refresh API spec"
+                        style={{ ...iconButtonStyle, ...(refreshingId === registration.id ? { opacity: 0.3, pointerEvents: 'none' as const } : {}) }}
+                        onClick={() => handleRefresh(registration)}
+                        disabled={refreshingId === registration.id}
+                      >
+                        {refreshingId === registration.id ? (
+                          <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" style={{ animation: 'spin 1s linear infinite' }}>
+                            <path d="M12 4V1L8 5l4 4V6c3.31 0 6 2.69 6 6 0 1.01-.25 1.97-.7 2.8l1.46 1.46A7.93 7.93 0 0020 12c0-4.42-3.58-8-8-8zm0 14c-3.31 0-6-2.69-6-6 0-1.01.25-1.97.7-2.8L5.24 7.74A7.93 7.93 0 004 12c0 4.42 3.58 8 8 8v3l4-4-4-4v3z"/>
+                          </svg>
+                        ) : (
+                          <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
+                            <path d="M17.65 6.35C16.2 4.9 14.21 4 12 4c-4.42 0-7.99 3.58-7.99 8s3.57 8 7.99 8c3.73 0 6.84-2.55 7.73-6h-2.08c-.82 2.33-3.04 4-5.65 4-3.31 0-6-2.69-6-6s2.69-6 6-6c1.66 0 3.14.69 4.22 1.78L13 11h7V4l-2.35 2.35z"/>
+                          </svg>
+                        )}
+                      </button>
+                      <a
+                        title="View spec URL"
+                        aria-label="View spec URL"
+                        href={registration.specUrl}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        style={iconButtonStyle}
+                      >
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
+                          <path d="M19 19H5V5h7V3H5c-1.11 0-2 .9-2 2v14c0 1.1.89 2 2 2h14c1.1 0 2-.9 2-2v-7h-2v7zM14 3v2h3.59l-9.83 9.83 1.41 1.41L19 6.41V10h2V3h-7z"/>
+                        </svg>
+                      </a>
+                      <button
+                        title="Delete registration"
+                        aria-label="Delete registration"
+                        style={iconButtonStyle}
+                        onClick={() => handleDeleteClick(registration)}
+                      >
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
+                          <path d="M6 19c0 1.1.9 2 2 2h8c1.1 0 2-.9 2-2V7H6v12zM19 4h-3.5l-1-1h-5l-1 1H5v2h14V4z"/>
+                        </svg>
+                      </button>
+                    </span>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
       )}
 
-      <Dialog open={deleteDialogOpen} onClose={handleDeleteCancel}>
-        <DialogTitle>Delete API Registration</DialogTitle>
-        <DialogContent>
-          <DialogContentText>
-            Are you sure you want to delete the registration for "
-            {deletingRegistration?.name}"? This will also remove the API entity
-            from the catalog.
-          </DialogContentText>
-        </DialogContent>
-        <DialogActions>
-          <Button onClick={handleDeleteCancel}>Cancel</Button>
-          <Button onClick={handleDeleteConfirm} color="secondary">
-            Delete
-          </Button>
-        </DialogActions>
-      </Dialog>
+      {/* Delete confirmation dialog */}
+      {deleteDialogOpen && (
+        <DialogTrigger defaultOpen onOpenChange={(open) => { if (!open) handleDeleteCancel(); }}>
+          <button aria-hidden style={{ position: 'fixed', opacity: 0, pointerEvents: 'none', width: 0, height: 0 }}>trigger</button>
+          <Dialog>
+            <DialogHeader>Delete API Registration</DialogHeader>
+            <DialogBody>
+              <Text>
+                Are you sure you want to delete the registration for "
+                {deletingRegistration?.name}"? This will also remove the API entity
+                from the catalog.
+              </Text>
+            </DialogBody>
+            <DialogFooter>
+              <Flex gap="2" justify="end">
+                <Button variant="secondary" onPress={handleDeleteCancel}>Cancel</Button>
+                <Button variant="primary" onPress={handleDeleteConfirm}>Delete</Button>
+              </Flex>
+            </DialogFooter>
+          </Dialog>
+        </DialogTrigger>
+      )}
     </>
   );
 };
