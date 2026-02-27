@@ -1,4 +1,4 @@
-{{- if and (eq .Values.mode "server") (eq .Values.auth.mode "keycloak") }}
+{{- if and (eq .Values.mode "server") (eq .Values.server.auth.mode "keycloak") }}
 apiVersion: v1
 kind: ConfigMap
 metadata:
@@ -7,8 +7,8 @@ metadata:
   labels:
     {{- include "trivy-collector.labels" . | nindent 4 }}
 data:
-  AUTH_MODE: {{ .Values.auth.mode | quote }}
-  OIDC_ISSUER_URL: {{ .Values.auth.sso.issuer | quote }}
-  OIDC_REDIRECT_URL: {{ .Values.auth.sso.redirectUrl | quote }}
-  OIDC_SCOPES: {{ join " " .Values.auth.sso.scopes | quote }}
+  AUTH_MODE: {{ .Values.server.auth.mode | quote }}
+  OIDC_ISSUER_URL: {{ .Values.server.auth.sso.issuer | quote }}
+  OIDC_REDIRECT_URL: {{ .Values.server.auth.sso.redirectUrl | quote }}
+  OIDC_SCOPES: {{ join " " .Values.server.auth.sso.scopes | quote }}
 {{- end }}

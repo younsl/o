@@ -107,7 +107,7 @@ The following table lists the configurable parameters and their default values.
 | collector.collectSbomReports | bool | `true` | Collect SbomReports |
 | collector.retryAttempts | int | `3` | Number of retry attempts on failure |
 | collector.retryDelaySecs | int | `5` | Delay between retries in seconds |
-| server | object | `{"gateway":{"enabled":false,"hostnames":["trivy.example.com"],"name":"","parentRefs":[{"group":"gateway.networking.k8s.io","kind":"Gateway","name":"main-gateway","namespace":"gateway-system","sectionName":"https"}],"rules":[{"backendRefs":[{"name":"","port":3000}],"filters":[],"matches":[{"path":{"type":"PathPrefix","value":"/"}}]}]},"ingress":{"annotations":{},"className":"","enabled":false,"hosts":[{"host":"trivy.example.com","paths":[{"path":"/","pathType":"Prefix"}]}],"tls":[]},"persistence":{"accessMode":"ReadWriteOnce","annotations":{},"enabled":true,"existingClaim":"","labels":{},"size":"1Gi","storageClass":""},"port":3000}` | Server mode configuration (for Central cluster) |
+| server | object | `{"auth":{"mode":"none","sso":{"clientId":{"key":"client-id","name":"","value":""},"clientSecret":{"key":"client-secret","name":"","value":""},"issuer":"","redirectUrl":"","scopes":["openid","profile","email","groups"]}},"gateway":{"enabled":false,"hostnames":["trivy.example.com"],"name":"","parentRefs":[{"group":"gateway.networking.k8s.io","kind":"Gateway","name":"main-gateway","namespace":"gateway-system","sectionName":"https"}],"rules":[{"backendRefs":[{"name":"","port":3000}],"filters":[],"matches":[{"path":{"type":"PathPrefix","value":"/"}}]}]},"ingress":{"annotations":{},"className":"","enabled":false,"hosts":[{"host":"trivy.example.com","paths":[{"path":"/","pathType":"Prefix"}]}],"tls":[]},"persistence":{"accessMode":"ReadWriteOnce","annotations":{},"enabled":true,"existingClaim":"","labels":{},"size":"1Gi","storageClass":""},"port":3000}` | Server mode configuration (for Central cluster) |
 | server.port | int | `3000` | HTTP server port |
 | server.persistence | object | `{"accessMode":"ReadWriteOnce","annotations":{},"enabled":true,"existingClaim":"","labels":{},"size":"1Gi","storageClass":""}` | Persistent volume configuration |
 | server.persistence.enabled | bool | `true` | Enable persistent storage |
@@ -130,18 +130,20 @@ The following table lists the configurable parameters and their default values.
 | server.gateway.hostnames | list | `["trivy.example.com"]` | Hostnames for the route |
 | server.gateway.rules | list | `[{"backendRefs":[{"name":"","port":3000}],"filters":[],"matches":[{"path":{"type":"PathPrefix","value":"/"}}]}]` | HTTP route rules |
 | server.gateway.rules[0].filters | list | `[]` | HTTPRoute filters (RequestHeaderModifier, ResponseHeaderModifier, RequestRedirect, URLRewrite, RequestMirror, ExtensionRef) |
-| auth | object | `{"mode":"none","sso":{"clientId":{"key":"client-id","name":""},"clientSecret":{"key":"client-secret","name":""},"issuer":"","redirectUrl":"","scopes":["openid","profile","email","groups"]}}` | Authentication configuration |
-| auth.mode | string | `"none"` | Authentication mode: "none" (anonymous) or "keycloak" (OIDC) |
-| auth.sso | object | `{"clientId":{"key":"client-id","name":""},"clientSecret":{"key":"client-secret","name":""},"issuer":"","redirectUrl":"","scopes":["openid","profile","email","groups"]}` | SSO configuration (only used when auth.mode is "keycloak") |
-| auth.sso.issuer | string | `""` | OIDC issuer URL (e.g., https://keycloak.example.com/realms/trivy) |
-| auth.sso.clientId | object | `{"key":"client-id","name":""}` | Secret reference for OIDC client ID |
-| auth.sso.clientId.name | string | `""` | Secret name containing client ID |
-| auth.sso.clientId.key | string | `"client-id"` | Secret key for client ID |
-| auth.sso.clientSecret | object | `{"key":"client-secret","name":""}` | Secret reference for OIDC client secret |
-| auth.sso.clientSecret.name | string | `""` | Secret name containing client secret |
-| auth.sso.clientSecret.key | string | `"client-secret"` | Secret key for client secret |
-| auth.sso.redirectUrl | string | `""` | OIDC redirect URL (full callback URL, e.g., https://trivy.example.com/auth/callback) |
-| auth.sso.scopes | list | `["openid","profile","email","groups"]` | OIDC scopes |
+| server.auth | object | `{"mode":"none","sso":{"clientId":{"key":"client-id","name":"","value":""},"clientSecret":{"key":"client-secret","name":"","value":""},"issuer":"","redirectUrl":"","scopes":["openid","profile","email","groups"]}}` | Authentication configuration (server mode only) |
+| server.auth.mode | string | `"none"` | Authentication mode: "none" (anonymous) or "keycloak" (OIDC) |
+| server.auth.sso | object | `{"clientId":{"key":"client-id","name":"","value":""},"clientSecret":{"key":"client-secret","name":"","value":""},"issuer":"","redirectUrl":"","scopes":["openid","profile","email","groups"]}` | SSO configuration (only used when auth.mode is "keycloak") |
+| server.auth.sso.issuer | string | `""` | OIDC issuer URL (e.g., https://keycloak.example.com/realms/trivy) |
+| server.auth.sso.clientId | object | `{"key":"client-id","name":"","value":""}` | OIDC client ID configuration |
+| server.auth.sso.clientId.value | string | `""` | Plaintext client ID value (used if set, takes precedence over secret reference) |
+| server.auth.sso.clientId.name | string | `""` | Secret name containing client ID |
+| server.auth.sso.clientId.key | string | `"client-id"` | Secret key for client ID |
+| server.auth.sso.clientSecret | object | `{"key":"client-secret","name":"","value":""}` | OIDC client secret configuration |
+| server.auth.sso.clientSecret.value | string | `""` | Plaintext client secret value (used if set, takes precedence over secret reference) |
+| server.auth.sso.clientSecret.name | string | `""` | Secret name containing client secret |
+| server.auth.sso.clientSecret.key | string | `"client-secret"` | Secret key for client secret |
+| server.auth.sso.redirectUrl | string | `""` | OIDC redirect URL (full callback URL, e.g., https://trivy.example.com/auth/callback) |
+| server.auth.sso.scopes | list | `["openid","profile","email","groups"]` | OIDC scopes |
 | service | object | `{"port":3000,"type":"ClusterIP"}` | Service configuration |
 | service.type | string | `"ClusterIP"` | Service type |
 | service.port | int | `3000` | Service port |

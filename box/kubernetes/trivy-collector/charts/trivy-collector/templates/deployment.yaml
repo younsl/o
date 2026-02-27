@@ -68,7 +68,7 @@ spec:
               value: {{ .Values.server.port | quote }}
             - name: STORAGE_PATH
               value: "/data"
-            {{- if eq .Values.auth.mode "keycloak" }}
+            {{- if eq .Values.server.auth.mode "keycloak" }}
             - name: AUTH_MODE
               valueFrom:
                 configMapKeyRef:
@@ -90,15 +90,23 @@ spec:
                   name: {{ include "trivy-collector.fullname" . }}-auth
                   key: OIDC_SCOPES
             - name: OIDC_CLIENT_ID
+              {{- if .Values.server.auth.sso.clientId.value }}
+              value: {{ .Values.server.auth.sso.clientId.value | quote }}
+              {{- else }}
               valueFrom:
                 secretKeyRef:
-                  name: {{ .Values.auth.sso.clientId.name }}
-                  key: {{ .Values.auth.sso.clientId.key }}
+                  name: {{ .Values.server.auth.sso.clientId.name }}
+                  key: {{ .Values.server.auth.sso.clientId.key }}
+              {{- end }}
             - name: OIDC_CLIENT_SECRET
+              {{- if .Values.server.auth.sso.clientSecret.value }}
+              value: {{ .Values.server.auth.sso.clientSecret.value | quote }}
+              {{- else }}
               valueFrom:
                 secretKeyRef:
-                  name: {{ .Values.auth.sso.clientSecret.name }}
-                  key: {{ .Values.auth.sso.clientSecret.key }}
+                  name: {{ .Values.server.auth.sso.clientSecret.name }}
+                  key: {{ .Values.server.auth.sso.clientSecret.key }}
+              {{- end }}
             {{- end }}
             {{- end }}
           ports:
