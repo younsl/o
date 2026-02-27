@@ -634,6 +634,8 @@ pub async fn get_config(State(state): State<AppState>) -> impl IntoResponse {
     // Use ConfigItem::public() for normal values
     // Use ConfigItem::sensitive() for values that should be masked (e.g., API keys, passwords)
     // ENV names are defined in crate::config::env module (single source of truth)
+    let auth_mode_str = c.auth_mode.as_deref().unwrap_or("none");
+
     let items = vec![
         ConfigItem::public(env::MODE, &c.mode),
         ConfigItem::public(env::CLUSTER_NAME, &c.cluster_name),
@@ -646,8 +648,7 @@ pub async fn get_config(State(state): State<AppState>) -> impl IntoResponse {
         ConfigItem::public(env::WATCH_LOCAL, c.watch_local),
         ConfigItem::public(env::COLLECT_VULN, c.collect_vulnerability_reports),
         ConfigItem::public(env::COLLECT_SBOM, c.collect_sbom_reports),
-        // Example of sensitive config (uncomment when adding sensitive values):
-        // ConfigItem::sensitive(env::API_KEY, &c.api_key),
+        ConfigItem::public(env::AUTH_MODE, auth_mode_str),
     ];
 
     (StatusCode::OK, Json(ConfigResponse { items }))

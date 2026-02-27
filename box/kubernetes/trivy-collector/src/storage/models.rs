@@ -138,6 +138,25 @@ pub struct Stats {
     pub sqlite_version: String,
 }
 
+/// API token info (without the hash)
+#[derive(Debug, Clone, serde::Serialize)]
+pub struct TokenInfo {
+    /// Token ID
+    pub id: i64,
+    /// User-given name for the token
+    pub name: String,
+    /// User-given description for the token
+    pub description: String,
+    /// First 11 chars of the token (e.g. "tc_ab12cd34")
+    pub token_prefix: String,
+    /// Creation timestamp
+    pub created_at: String,
+    /// Expiration timestamp
+    pub expires_at: String,
+    /// Last time this token was used
+    pub last_used_at: Option<String>,
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

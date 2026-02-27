@@ -1,6 +1,6 @@
 # trivy-collector
 
-![Version: 0.6.0](https://img.shields.io/badge/Version-0.6.0-informational?style=flat-square) ![Type: application](https://img.shields.io/badge/Type-application-informational?style=flat-square) ![AppVersion: 1.5.0](https://img.shields.io/badge/AppVersion-1.5.0-informational?style=flat-square)
+![Version: 0.7.0](https://img.shields.io/badge/Version-0.7.0-informational?style=flat-square) ![Type: application](https://img.shields.io/badge/Type-application-informational?style=flat-square) ![AppVersion: 1.5.0](https://img.shields.io/badge/AppVersion-1.5.0-informational?style=flat-square)
 
 Multi-cluster Trivy report collector and viewer
 
@@ -39,7 +39,7 @@ helm install trivy-collector oci://ghcr.io/younsl/charts/trivy-collector -f valu
 Install a specific version:
 
 ```console
-helm install trivy-collector oci://ghcr.io/younsl/charts/trivy-collector --version 0.6.0
+helm install trivy-collector oci://ghcr.io/younsl/charts/trivy-collector --version 0.7.0
 ```
 
 ### Install from local chart
@@ -47,7 +47,7 @@ helm install trivy-collector oci://ghcr.io/younsl/charts/trivy-collector --versi
 Download trivy-collector chart and install from local directory:
 
 ```console
-helm pull oci://ghcr.io/younsl/charts/trivy-collector --untar --version 0.6.0
+helm pull oci://ghcr.io/younsl/charts/trivy-collector --untar --version 0.7.0
 helm install trivy-collector ./trivy-collector
 ```
 
@@ -130,6 +130,18 @@ The following table lists the configurable parameters and their default values.
 | server.gateway.hostnames | list | `["trivy.example.com"]` | Hostnames for the route |
 | server.gateway.rules | list | `[{"backendRefs":[{"name":"","port":3000}],"filters":[],"matches":[{"path":{"type":"PathPrefix","value":"/"}}]}]` | HTTP route rules |
 | server.gateway.rules[0].filters | list | `[]` | HTTPRoute filters (RequestHeaderModifier, ResponseHeaderModifier, RequestRedirect, URLRewrite, RequestMirror, ExtensionRef) |
+| auth | object | `{"mode":"none","sso":{"clientId":{"key":"client-id","name":""},"clientSecret":{"key":"client-secret","name":""},"issuer":"","redirectUrl":"","scopes":["openid","profile","email","groups"]}}` | Authentication configuration |
+| auth.mode | string | `"none"` | Authentication mode: "none" (anonymous) or "keycloak" (OIDC) |
+| auth.sso | object | `{"clientId":{"key":"client-id","name":""},"clientSecret":{"key":"client-secret","name":""},"issuer":"","redirectUrl":"","scopes":["openid","profile","email","groups"]}` | SSO configuration (only used when auth.mode is "keycloak") |
+| auth.sso.issuer | string | `""` | OIDC issuer URL (e.g., https://keycloak.example.com/realms/trivy) |
+| auth.sso.clientId | object | `{"key":"client-id","name":""}` | Secret reference for OIDC client ID |
+| auth.sso.clientId.name | string | `""` | Secret name containing client ID |
+| auth.sso.clientId.key | string | `"client-id"` | Secret key for client ID |
+| auth.sso.clientSecret | object | `{"key":"client-secret","name":""}` | Secret reference for OIDC client secret |
+| auth.sso.clientSecret.name | string | `""` | Secret name containing client secret |
+| auth.sso.clientSecret.key | string | `"client-secret"` | Secret key for client secret |
+| auth.sso.redirectUrl | string | `""` | OIDC redirect URL (full callback URL, e.g., https://trivy.example.com/auth/callback) |
+| auth.sso.scopes | list | `["openid","profile","email","groups"]` | OIDC scopes |
 | service | object | `{"port":3000,"type":"ClusterIP"}` | Service configuration |
 | service.type | string | `"ClusterIP"` | Service type |
 | service.port | int | `3000` | Service port |

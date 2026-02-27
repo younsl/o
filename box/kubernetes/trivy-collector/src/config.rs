@@ -21,6 +21,9 @@ pub mod env {
     pub const SERVER_PORT: &str = "SERVER_PORT";
     pub const STORAGE_PATH: &str = "STORAGE_PATH";
     pub const WATCH_LOCAL: &str = "WATCH_LOCAL";
+
+    // Authentication
+    pub use crate::auth::config::env::*;
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, ValueEnum, Serialize, Deserialize)]
@@ -122,6 +125,33 @@ pub struct Config {
     /// Enable local Kubernetes API watching in server mode
     #[arg(long, env = env::WATCH_LOCAL, default_value = "true")]
     pub watch_local: bool,
+
+    // ============================================
+    // Authentication settings (server mode only)
+    // ============================================
+    /// Authentication mode: "none" or "keycloak"
+    #[arg(long, env = env::AUTH_MODE, default_value = "none")]
+    pub auth_mode: String,
+
+    /// OIDC issuer URL (required for keycloak mode)
+    #[arg(long, env = env::OIDC_ISSUER_URL)]
+    pub oidc_issuer_url: Option<String>,
+
+    /// OIDC client ID (required for keycloak mode)
+    #[arg(long, env = env::OIDC_CLIENT_ID)]
+    pub oidc_client_id: Option<String>,
+
+    /// OIDC client secret (required for keycloak mode)
+    #[arg(long, env = env::OIDC_CLIENT_SECRET)]
+    pub oidc_client_secret: Option<String>,
+
+    /// OIDC redirect URL (required for keycloak mode)
+    #[arg(long, env = env::OIDC_REDIRECT_URL)]
+    pub oidc_redirect_url: Option<String>,
+
+    /// OIDC scopes (space-separated)
+    #[arg(long, env = env::OIDC_SCOPES, default_value = "openid profile email groups")]
+    pub oidc_scopes: String,
 }
 
 impl Config {
@@ -138,7 +168,14 @@ impl Config {
                 }
             }
             Mode::Server => {
-                // Server mode has sensible defaults, no required fields
+                if self.auth_mode == "keycloak" {
+                    crate::auth::config::validate_keycloak_config(
+                        &self.oidc_issuer_url,
+                        &self.oidc_client_id,
+                        &self.oidc_client_secret,
+                        &self.oidc_redirect_url,
+                    )?;
+                }
             }
         }
         Ok(())
@@ -182,6 +219,12 @@ mod tests {
             server_port: 3000,
             storage_path: "/data".to_string(),
             watch_local: true,
+            auth_mode: "none".to_string(),
+            oidc_issuer_url: None,
+            oidc_client_id: None,
+            oidc_client_secret: None,
+            oidc_redirect_url: None,
+            oidc_scopes: "openid profile email groups".to_string(),
         }
     }
 
@@ -244,5 +287,31 @@ mod tests {
     fn test_get_cluster_name() {
         let config = default_config(Mode::Collector);
         assert_eq!(config.get_cluster_name(), "local");
+    }
+
+    #[test]
+    fn test_validate_server_keycloak_missing_oidc() {
+        let mut config = default_config(Mode::Server);
+        config.auth_mode = "keycloak".to_string();
+        let result = config.validate();
+        assert!(result.is_err());
+        assert!(result.unwrap_err().contains("OIDC_ISSUER_URL"));
+    }
+
+    #[test]
+    fn test_validate_server_keycloak_all_present() {
+        let mut config = default_config(Mode::Server);
+        config.auth_mode = "keycloak".to_string();
+        config.oidc_issuer_url = Some("https://keycloak.example.com/realms/test".to_string());
+        config.oidc_client_id = Some("trivy-collector".to_string());
+        config.oidc_client_secret = Some("secret".to_string());
+        config.oidc_redirect_url = Some("http://localhost:3000/auth/callback".to_string());
+        assert!(config.validate().is_ok());
+    }
+
+    #[test]
+    fn test_validate_server_auth_none() {
+        let config = default_config(Mode::Server);
+        assert!(config.validate().is_ok());
     }
 }

@@ -58,6 +58,22 @@ pub fn init_schema(conn: &Connection) -> Result<()> {
         CREATE INDEX IF NOT EXISTS idx_reports_severity ON reports(critical_count, high_count);
         CREATE INDEX IF NOT EXISTS idx_reports_received_at ON reports(received_at);
 
+        -- API tokens table
+        CREATE TABLE IF NOT EXISTS api_tokens (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_sub TEXT NOT NULL,
+            name TEXT NOT NULL,
+            description TEXT DEFAULT '',
+            token_hash TEXT NOT NULL,
+            token_prefix TEXT NOT NULL,
+            created_at TEXT NOT NULL,
+            expires_at TEXT NOT NULL,
+            last_used_at TEXT,
+            UNIQUE(user_sub, name)
+        );
+        CREATE INDEX IF NOT EXISTS idx_api_tokens_user_sub ON api_tokens(user_sub);
+        CREATE INDEX IF NOT EXISTS idx_api_tokens_hash ON api_tokens(token_hash);
+
         -- Clusters view for quick cluster listing
         CREATE VIEW IF NOT EXISTS clusters_view AS
         SELECT
@@ -116,17 +132,70 @@ fn run_migrations(conn: &Connection) -> Result<()> {
             .context("Failed to add notes_updated_at column")?;
     }
 
+    // Migration: Create api_tokens table if it doesn't exist
+    if !table_exists_check(conn, "api_tokens")? {
+        info!("Migrating database: creating api_tokens table");
+        conn.execute_batch(
+            r#"
+            CREATE TABLE IF NOT EXISTS api_tokens (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                user_sub TEXT NOT NULL,
+                name TEXT NOT NULL,
+                description TEXT DEFAULT '',
+                token_hash TEXT NOT NULL,
+                token_prefix TEXT NOT NULL,
+                created_at TEXT NOT NULL,
+                expires_at TEXT NOT NULL,
+                last_used_at TEXT,
+                UNIQUE(user_sub, name)
+            );
+            CREATE INDEX IF NOT EXISTS idx_api_tokens_user_sub ON api_tokens(user_sub);
+            CREATE INDEX IF NOT EXISTS idx_api_tokens_hash ON api_tokens(token_hash);
+            "#,
+        )
+        .context("Failed to create api_tokens table")?;
+    }
+
+    // Migration: Add description column to api_tokens if it doesn't exist
+    if table_exists_check(conn, "api_tokens")?
+        && !column_exists_in(conn, "api_tokens", "description")?
+    {
+        info!("Migrating database: adding description column to api_tokens");
+        conn.execute(
+            "ALTER TABLE api_tokens ADD COLUMN description TEXT DEFAULT ''",
+            [],
+        )
+        .context("Failed to add description column to api_tokens")?;
+    }
+
     Ok(())
+}
+
+/// Check if a table exists in the database
+fn table_exists_check(conn: &Connection, table_name: &str) -> Result<bool> {
+    let exists: bool = conn
+        .query_row(
+            "SELECT COUNT(*) > 0 FROM sqlite_master WHERE type='table' AND name=?1",
+            [table_name],
+            |row| row.get(0),
+        )
+        .unwrap_or(false);
+    Ok(exists)
 }
 
 /// Check if a column exists in the reports table
 fn column_exists(conn: &Connection, column_name: &str) -> Result<bool> {
+    column_exists_in(conn, "reports", column_name)
+}
+
+/// Check if a column exists in the given table
+fn column_exists_in(conn: &Connection, table_name: &str, column_name: &str) -> Result<bool> {
+    let query = format!(
+        "SELECT COUNT(*) > 0 FROM pragma_table_info('{}') WHERE name=?1",
+        table_name
+    );
     let exists: bool = conn
-        .query_row(
-            "SELECT COUNT(*) > 0 FROM pragma_table_info('reports') WHERE name=?1",
-            [column_name],
-            |row| row.get(0),
-        )
+        .query_row(&query, [column_name], |row| row.get(0))
         .unwrap_or(false);
     Ok(exists)
 }

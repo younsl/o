@@ -1,5 +1,7 @@
 import { Link, useLocation } from 'react-router-dom'
 import StatusLed from './StatusLed'
+import { useAuth } from '../contexts/AuthContext'
+import { logout } from '../auth'
 import styles from './Header.module.css'
 import type { WatcherStatusResponse, VersionResponse } from '../types'
 
@@ -16,6 +18,7 @@ export default function Header({
 }: HeaderProps) {
   const location = useLocation()
   const path = location.pathname
+  const { authMode, authenticated, user } = useAuth()
 
   const commitShort = version ? version.commit.substring(0, 7) : ''
 
@@ -49,26 +52,58 @@ export default function Header({
           </div>
         </div>
       </div>
-      <nav className={styles.nav}>
-        <Link
-          to="/dashboard"
-          className={`${styles.navButton}${path === '/dashboard' ? ` ${styles.active}` : ''}`}
-        >
-          <i className="fa-solid fa-chart-line" /> Dashboard
-        </Link>
-        <Link
-          to="/vulnerabilities"
-          className={`${styles.navButton}${path.startsWith('/vulnerabilities') ? ` ${styles.active}` : ''}`}
-        >
-          Vulnerabilities
-        </Link>
-        <Link
-          to="/sbom"
-          className={`${styles.navButton}${path.startsWith('/sbom') ? ` ${styles.active}` : ''}`}
-        >
-          SBOM
-        </Link>
-      </nav>
+      <div className={styles.headerRight}>
+        <nav className={styles.nav}>
+          <Link
+            to="/dashboard"
+            className={`${styles.navButton}${path === '/dashboard' ? ` ${styles.active}` : ''}`}
+          >
+            <i className="fa-solid fa-chart-line" /> Dashboard
+          </Link>
+          <Link
+            to="/vulnerabilities"
+            className={`${styles.navButton}${path.startsWith('/vulnerabilities') ? ` ${styles.active}` : ''}`}
+          >
+            Vulnerabilities
+          </Link>
+          <Link
+            to="/sbom"
+            className={`${styles.navButton}${path.startsWith('/sbom') ? ` ${styles.active}` : ''}`}
+          >
+            SBOM
+          </Link>
+          {authMode === 'keycloak' && (
+            <Link
+              to="/auth"
+              className={`${styles.navButton}${path === '/auth' ? ` ${styles.active}` : ''}`}
+            >
+              <i className="fa-solid fa-key" /> Auth
+            </Link>
+          )}
+        </nav>
+        {authMode === 'keycloak' && authenticated && user && (
+          <div className={styles.userInfo}>
+            <div className={styles.userDetails}>
+              <span className={styles.userName}>
+                {user.name ?? user.preferred_username ?? user.email ?? user.sub}
+              </span>
+              {user.email && (
+                <span className={styles.userEmail}>{user.email}</span>
+              )}
+              <span className={styles.userGroups} title={user.groups.length > 0 ? user.groups.join(', ') : 'No groups assigned'}>
+                {user.groups.length > 0 ? user.groups.join(', ') : 'No groups'}
+              </span>
+            </div>
+            <button
+              className={styles.logoutButton}
+              onClick={logout}
+              title="Logout"
+            >
+              <i className="fa-solid fa-right-from-bracket" />
+            </button>
+          </div>
+        )}
+      </div>
     </header>
   )
 }

@@ -4,6 +4,7 @@ use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::Instant;
 
+use crate::auth::AuthState;
 use crate::config::Config;
 use crate::storage::Database;
 
@@ -52,10 +53,17 @@ pub struct ConfigInfo {
     pub server_port: u16,
     pub storage_path: String,
     pub watch_local: bool,
+    pub auth_mode: Option<String>,
 }
 
 impl From<&Config> for ConfigInfo {
     fn from(config: &Config) -> Self {
+        let auth_mode = if config.auth_mode == "none" {
+            None
+        } else {
+            Some(config.auth_mode.clone())
+        };
+
         Self {
             mode: config.mode.to_string(),
             log_format: config.log_format.clone(),
@@ -68,6 +76,7 @@ impl From<&Config> for ConfigInfo {
             server_port: config.server_port,
             storage_path: config.storage_path.clone(),
             watch_local: config.watch_local,
+            auth_mode,
         }
     }
 }
@@ -124,6 +133,19 @@ pub struct AppState {
     pub watcher_status: Arc<WatcherStatus>,
     pub config: Arc<ConfigInfo>,
     pub runtime: Arc<RuntimeInfo>,
+    /// Authentication state (None when auth_mode == "none")
+    pub auth: Option<Arc<AuthState>>,
+}
+
+/// Allow axum-extra PrivateCookieJar to extract the cookie Key from AppState
+impl axum::extract::FromRef<AppState> for cookie::Key {
+    fn from_ref(state: &AppState) -> Self {
+        state
+            .auth
+            .as_ref()
+            .map(|a| a.cookie_key.clone())
+            .unwrap_or_else(cookie::Key::generate)
+    }
 }
 
 #[cfg(test)]

@@ -15,8 +15,9 @@ mod extractors;
 mod models;
 mod operations;
 mod schema;
+mod tokens;
 
 // Re-export public types
 pub use dashboard::{TrendDataPoint, TrendMeta, TrendResponse};
 pub use database::Database;
-pub use models::{ClusterInfo, FullReport, QueryParams, ReportMeta, Stats, VulnSummary};
+pub use models::{ClusterInfo, FullReport, QueryParams, ReportMeta, Stats, TokenInfo, VulnSummary};

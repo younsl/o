@@ -1,6 +1,7 @@
 import type {
   ClusterInfo,
   ConfigResponse,
+  CreateTokenResponse,
   Filters,
   FullReport,
   ListResponse,
@@ -8,6 +9,7 @@ import type {
   ReportType,
   Stats,
   StatusResponse,
+  TokenInfo,
   TrendResponse,
   VersionResponse,
   WatcherStatusResponse,
@@ -15,6 +17,13 @@ import type {
 
 async function fetchApi<T>(endpoint: string): Promise<T> {
   const response = await fetch(endpoint)
+  if (response.status === 401) {
+    // Redirect to login on authentication failure
+    const returnTo = encodeURIComponent(window.location.pathname)
+    window.location.href = `/auth/login?return_to=${returnTo}`
+    // Return a never-resolving promise to prevent further processing
+    return new Promise(() => {})
+  }
   return response.json() as Promise<T>
 }
 
@@ -90,6 +99,50 @@ export function getDashboardTrends(
   const params = new URLSearchParams({ range })
   if (cluster) params.append('cluster', cluster)
   return fetchApi(`/api/v1/dashboard/trends?${params}`)
+}
+
+export async function listTokens(): Promise<{ tokens: TokenInfo[] }> {
+  return fetchApi('/api/v1/auth/tokens')
+}
+
+export async function createToken(
+  name: string,
+  description: string,
+  expiresDays: number,
+): Promise<CreateTokenResponse> {
+  const response = await fetch('/api/v1/auth/tokens', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ name, description, expires_days: expiresDays }),
+  })
+  if (response.status === 401) {
+    const returnTo = encodeURIComponent(window.location.pathname)
+    window.location.href = `/auth/login?return_to=${returnTo}`
+    return new Promise(() => {})
+  }
+  if (!response.ok) {
+    let message = 'Failed to create token'
+    try {
+      const err = await response.json()
+      if (err.error) message = err.error
+    } catch {
+      // response body is not JSON
+    }
+    throw new Error(message)
+  }
+  return response.json()
+}
+
+export async function deleteToken(tokenId: number): Promise<boolean> {
+  const response = await fetch(`/api/v1/auth/tokens/${tokenId}`, {
+    method: 'DELETE',
+  })
+  if (response.status === 401) {
+    const returnTo = encodeURIComponent(window.location.pathname)
+    window.location.href = `/auth/login?return_to=${returnTo}`
+    return new Promise(() => {})
+  }
+  return response.ok
 }
 
 export async function updateNotes(

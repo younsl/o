@@ -104,6 +104,7 @@ use anyhow::Result;
 use axum::{
     Router,
     http::{Method, StatusCode, header},
+    middleware as axum_middleware,
     response::{Html, IntoResponse},
     routing::{delete, get, post, put},
 };
@@ -113,6 +114,7 @@ use std::sync::Arc;
 use tower_http::cors::{Any, CorsLayer};
 use tracing::{error, info, warn};
 
+use crate::auth;
 use crate::config::Config;
 use crate::health::HealthServer;
 use crate::storage::Database;
@@ -172,65 +174,78 @@ pub async fn run(
 
     let config_info = Arc::new(state::ConfigInfo::from(&config));
     let runtime_info = Arc::new(state::RuntimeInfo::new());
+
+    // Initialize authentication
+    let auth_mode = auth::AuthMode::from_str_lossy(&config.auth_mode);
+    info!(auth_mode = %auth_mode, "Authentication mode configured");
+
+    let auth_state = if auth_mode == auth::AuthMode::Keycloak {
+        let issuer_url = config.oidc_issuer_url.as_deref().unwrap();
+        let client_id = config.oidc_client_id.as_deref().unwrap();
+        let redirect_url = config.oidc_redirect_url.as_deref().unwrap();
+
+        info!(
+            issuer_url = %issuer_url,
+            client_id = %client_id,
+            redirect_url = %redirect_url,
+            scopes = %config.oidc_scopes,
+            "Connecting to OIDC provider"
+        );
+
+        let discover_start = std::time::Instant::now();
+        match auth::oidc::OidcClient::discover(
+            issuer_url,
+            client_id,
+            config.oidc_client_secret.as_deref().unwrap(),
+            redirect_url,
+            &config.oidc_scopes,
+        )
+        .await
+        {
+            Ok(oidc_client) => {
+                let elapsed = discover_start.elapsed();
+                info!(
+                    issuer_url = %issuer_url,
+                    elapsed_ms = elapsed.as_millis() as u64,
+                    "OIDC provider connected successfully"
+                );
+                let cookie_key = cookie::Key::generate();
+                Some(Arc::new(auth::AuthState {
+                    oidc_client,
+                    cookie_key,
+                }))
+            }
+            Err(e) => {
+                let elapsed = discover_start.elapsed();
+                error!(
+                    issuer_url = %issuer_url,
+                    elapsed_ms = elapsed.as_millis() as u64,
+                    error = %e,
+                    "Failed to connect to OIDC provider"
+                );
+                return Err(e);
+            }
+        }
+    } else {
+        None
+    };
+
     let state = AppState {
         db,
         watcher_status,
         config: config_info,
         runtime: runtime_info,
+        auth: auth_state,
     };
 
     // Configure CORS
     let cors = CorsLayer::new()
         .allow_methods([Method::GET, Method::POST, Method::PUT, Method::DELETE])
         .allow_origin(Any)
-        .allow_headers([header::CONTENT_TYPE]);
+        .allow_headers([header::CONTENT_TYPE, header::AUTHORIZATION]);
 
-    // Build router
-    let app = Router::new()
-        // Health check endpoint (for collector health checks)
-        .route("/healthz", get(healthz))
-        // API routes
-        .route("/api/v1/reports", post(receive_report))
-        .route(
-            "/api/v1/vulnerabilityreports",
-            get(list_vulnerability_reports),
-        )
-        .route(
-            "/api/v1/vulnerabilityreports/{cluster}/{namespace}/{name}",
-            get(get_vulnerability_report),
-        )
-        .route("/api/v1/sbomreports", get(list_sbom_reports))
-        .route(
-            "/api/v1/sbomreports/{cluster}/{namespace}/{name}",
-            get(get_sbom_report),
-        )
-        .route("/api/v1/clusters", get(list_clusters))
-        .route("/api/v1/stats", get(get_stats))
-        .route("/api/v1/namespaces", get(list_namespaces))
-        .route("/api/v1/watcher/status", get(get_watcher_status))
-        .route("/api/v1/version", get(get_version))
-        .route("/api/v1/status", get(get_status))
-        .route("/api/v1/config", get(get_config))
-        // Dashboard endpoints
-        .route("/api/v1/dashboard/trends", get(get_dashboard_trends))
-        .route(
-            "/api/v1/reports/{cluster}/{report_type}/{namespace}/{name}",
-            delete(delete_report),
-        )
-        .route(
-            "/api/v1/reports/{cluster}/{report_type}/{namespace}/{name}/notes",
-            put(update_notes),
-        )
-        // OpenAPI documentation
-        .route("/api-docs/openapi.json", get(serve_openapi))
-        // Static files and UI (Vite build output)
-        .route("/", get(serve_index))
-        .route("/assets/{*path}", get(serve_asset))
-        .route("/static/{*path}", get(serve_static))
-        // SPA fallback: serve index.html for unmatched GET requests
-        .fallback(get(serve_index))
-        .layer(cors)
-        .with_state(state);
+    // Build router based on auth mode
+    let app = build_router(state, auth_mode).layer(cors);
 
     let addr = SocketAddr::from(([0, 0, 0, 0], config.server_port));
     let listener = tokio::net::TcpListener::bind(addr).await?;
@@ -257,6 +272,83 @@ pub async fn run(
     }
 
     Ok(())
+}
+
+/// Build the router with conditional auth middleware
+fn build_router(state: AppState, auth_mode: auth::AuthMode) -> Router {
+    // Public routes (never require auth)
+    let public_routes = Router::new()
+        .route("/healthz", get(healthz))
+        .route("/api/v1/reports", post(receive_report))
+        .route("/api/v1/auth/me", get(auth::handlers::auth_me))
+        .route("/api-docs/openapi.json", get(serve_openapi))
+        .route("/assets/{*path}", get(serve_asset))
+        .route("/static/{*path}", get(serve_static));
+
+    // Auth routes (login, callback, logout, error)
+    let auth_routes = Router::new()
+        .route("/auth/login", get(auth::handlers::login))
+        .route("/auth/callback", get(auth::handlers::callback))
+        .route("/auth/logout", get(auth::handlers::logout))
+        .route("/auth/error", get(auth::handlers::auth_error));
+
+    // Protected routes (require auth when keycloak is enabled)
+    let protected_routes = Router::new()
+        .route(
+            "/api/v1/vulnerabilityreports",
+            get(list_vulnerability_reports),
+        )
+        .route(
+            "/api/v1/vulnerabilityreports/{cluster}/{namespace}/{name}",
+            get(get_vulnerability_report),
+        )
+        .route("/api/v1/sbomreports", get(list_sbom_reports))
+        .route(
+            "/api/v1/sbomreports/{cluster}/{namespace}/{name}",
+            get(get_sbom_report),
+        )
+        .route("/api/v1/clusters", get(list_clusters))
+        .route("/api/v1/stats", get(get_stats))
+        .route("/api/v1/namespaces", get(list_namespaces))
+        .route("/api/v1/watcher/status", get(get_watcher_status))
+        .route("/api/v1/version", get(get_version))
+        .route("/api/v1/status", get(get_status))
+        .route("/api/v1/config", get(get_config))
+        .route("/api/v1/dashboard/trends", get(get_dashboard_trends))
+        .route(
+            "/api/v1/reports/{cluster}/{report_type}/{namespace}/{name}",
+            delete(delete_report),
+        )
+        .route(
+            "/api/v1/reports/{cluster}/{report_type}/{namespace}/{name}/notes",
+            put(update_notes),
+        )
+        .route(
+            "/api/v1/auth/tokens",
+            get(auth::handlers::list_tokens).post(auth::handlers::create_token),
+        )
+        .route(
+            "/api/v1/auth/tokens/{id}",
+            delete(auth::handlers::delete_token),
+        )
+        .route("/", get(serve_index))
+        .fallback(get(serve_index));
+
+    // Apply auth middleware only when keycloak is enabled
+    let protected_routes = if auth_mode == auth::AuthMode::Keycloak {
+        protected_routes.layer(axum_middleware::from_fn_with_state(
+            state.clone(),
+            auth::middleware::require_auth,
+        ))
+    } else {
+        protected_routes
+    };
+
+    Router::new()
+        .merge(public_routes)
+        .merge(auth_routes)
+        .merge(protected_routes)
+        .with_state(state)
 }
 
 async fn serve_index() -> impl IntoResponse {

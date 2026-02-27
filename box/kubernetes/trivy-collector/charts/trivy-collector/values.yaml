@@ -164,6 +164,38 @@ server:
           - name: ""
             port: 3000
 
+# ============================================
+# Authentication settings (server mode only)
+# ============================================
+# -- Authentication configuration
+auth:
+  # -- (string) Authentication mode: "none" (anonymous) or "keycloak" (OIDC)
+  mode: "none"
+  # -- SSO configuration (only used when auth.mode is "keycloak")
+  sso:
+    # -- (string) OIDC issuer URL (e.g., https://keycloak.example.com/realms/trivy)
+    issuer: ""
+    # -- Secret reference for OIDC client ID
+    clientId:
+      # -- (string) Secret name containing client ID
+      name: ""
+      # -- (string) Secret key for client ID
+      key: client-id
+    # -- Secret reference for OIDC client secret
+    clientSecret:
+      # -- (string) Secret name containing client secret
+      name: ""
+      # -- (string) Secret key for client secret
+      key: client-secret
+    # -- (string) OIDC redirect URL (full callback URL, e.g., https://trivy.example.com/auth/callback)
+    redirectUrl: ""
+    # -- (list) OIDC scopes
+    scopes:
+      - openid
+      - profile
+      - email
+      - groups
+
 # -- Service configuration
 service:
   # -- (string) Service type

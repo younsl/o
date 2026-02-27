@@ -116,7 +116,36 @@ export interface TrendResponse {
   series: TrendDataPoint[]
 }
 
+export interface TokenInfo {
+  id: number
+  name: string
+  description: string
+  token_prefix: string
+  created_at: string
+  expires_at: string
+  last_used_at: string | null
+}
+
+export interface CreateTokenResponse {
+  token: string
+  info: TokenInfo
+}
+
 export type ReportType = 'vulnerabilityreport' | 'sbomreport'
+
+export interface AuthUser {
+  sub: string
+  email: string | null
+  name: string | null
+  preferred_username: string | null
+  groups: string[]
+}
+
+export interface AuthStatus {
+  authenticated: boolean
+  auth_mode: string
+  user?: AuthUser
+}
 
 
 export interface Filters {

@@ -50,6 +50,20 @@ hyper = { version = "1.8", features = ["server", "http1"] }
 hyper-util = { version = "0.1", features = ["tokio"] }
 http-body-util = "0.1"
 
+# Authentication (OIDC)
+axum-extra = { version = "0.12", features = ["cookie", "cookie-private"] }
+cookie = "0.18"
+jsonwebtoken = "9"
+sha2 = "0.10"
+base64 = "0.22"
+rand = "0.8"
+
+# Hex encoding
+hex = "0.4"
+
+# URL encoding
+urlencoding = "2.1"
+
 # Utilities
 futures = "0.3"
 chrono = { version = "0.4", features = ["serde"] }
