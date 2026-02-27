@@ -50,6 +50,7 @@ For detailed architecture documentation, see [Architecture](docs/architecture.md
 - **SbomReports**: Collect and view Software Bill of Materials
 - **Namespace filtering**: Watch specific namespaces or all namespaces
 - **Health endpoints**: Kubernetes-ready health check endpoints
+- **Keycloak OIDC authentication**: Two auth modes (`none`, `keycloak`) — optional SSO with [Keycloak](https://www.keycloak.org/) and self-issued API tokens for programmatic access
 - **Structured logging**: JSON/pretty format with configurable levels
 - **OpenAPI documentation**: Auto-generated API specification at `/api-docs/openapi.json`
 - **Helm chart**: Easy deployment with customizable values
@@ -102,6 +103,7 @@ rules:
 ## Documentation
 
 - [Architecture](docs/architecture.md): System architecture and deployment modes
+- [Authentication](docs/authentication.md): [Keycloak](https://www.keycloak.org/) OIDC setup, API token management, and security best practices
 - [Configuration](docs/configuration.md): CLI options, environment variables, and API endpoints
 - [Helm Chart](docs/helm-chart.md): Helm values reference and installation examples
 - [Development](docs/development.md): Build commands, local testing, and release workflow
