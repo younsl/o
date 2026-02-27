@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import {
   Alert,
   Box,
@@ -6,7 +6,8 @@ import {
   Card,
   CardBody,
   Flex,
-  Grid,
+  SearchField,
+  Select,
   Skeleton,
   Text,
 } from '@backstage/ui';
@@ -14,7 +15,13 @@ import { useApi } from '@backstage/core-plugin-api';
 import { useAsyncRetry } from 'react-use';
 import { iamUserAuditApiRef } from '../../api';
 import { PasswordResetRequest } from '../../api/types';
+import {
+  RiCheckLine,
+  RiCloseLine,
+  RiTimeLine,
+} from '@remixicon/react';
 import { ReviewDialog } from './ReviewDialog';
+import { HighlightText } from '../HighlightText';
 import './PasswordResetRequests.css';
 
 interface PasswordResetRequestsProps {
@@ -46,11 +53,26 @@ export const PasswordResetRequests = ({
     action: 'approve' | 'reject';
   } | null>(null);
 
+  const [searchQuery, setSearchQuery] = useState('');
+  const [statusFilter, setStatusFilter] = useState<string>('all');
+
   const isAdmin = adminStatus?.isAdmin ?? false;
 
-  const filteredRequests = filter === 'pending'
-    ? (requests ?? []).filter(r => r.status === 'pending')
-    : requests;
+  const filteredRequests = useMemo(() => {
+    let list = requests ?? [];
+    if (filter === 'pending') {
+      list = list.filter(r => r.status === 'pending');
+    }
+    return list.filter(r => {
+      const matchesSearch =
+        searchQuery === '' ||
+        r.iamUserName.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        r.requesterRef.toLowerCase().includes(searchQuery.toLowerCase());
+      const matchesStatus =
+        statusFilter === 'all' || r.status === statusFilter;
+      return matchesSearch && matchesStatus;
+    });
+  }, [requests, filter, searchQuery, statusFilter]);
 
   const formatDate = (dateString: string) => {
     return new Date(dateString).toLocaleString();
@@ -60,6 +82,12 @@ export const PasswordResetRequests = ({
     if (status === 'approved') return 'pr-status-approved';
     if (status === 'rejected') return 'pr-status-rejected';
     return 'pr-status-pending';
+  };
+
+  const getStatusIcon = (status: string) => {
+    if (status === 'approved') return <RiCheckLine size={14} />;
+    if (status === 'rejected') return <RiCloseLine size={14} />;
+    return <RiTimeLine size={14} />;
   };
 
   if (loading) {
@@ -78,7 +106,7 @@ export const PasswordResetRequests = ({
     );
   }
 
-  if (!filteredRequests || filteredRequests.length === 0) {
+  if (!requests || requests.length === 0) {
     return (
       <Box mt="4">
         <div className="pr-empty-state">
@@ -90,21 +118,54 @@ export const PasswordResetRequests = ({
     );
   }
 
+  const statusOptions = [
+    { value: 'all', label: 'All' },
+    { value: 'pending', label: 'Pending' },
+    { value: 'approved', label: 'Approved' },
+    { value: 'rejected', label: 'Rejected' },
+  ];
+
   return (
     <>
-      <Grid.Root columns={{ initial: '1', sm: '2', md: '3' }} gap="3">
+      {!filter && (
+        <div className="pr-filter-bar">
+          <SearchField
+            label="Search"
+            placeholder="Search by username or requester..."
+            size="small"
+            value={searchQuery}
+            onChange={setSearchQuery}
+          />
+          <Select
+            label="Status"
+            size="small"
+            options={statusOptions}
+            selectedKey={statusFilter}
+            onSelectionChange={key => setStatusFilter(key as string)}
+          />
+        </div>
+      )}
+
+      {filteredRequests.length === 0 ? (
+        <div className="pr-empty-state">
+          <Text variant="body-medium" color="secondary">
+            No requests match the current filters
+          </Text>
+        </div>
+      ) : (
+      <div className="pr-grid">
         {filteredRequests.map(request => (
-          <Grid.Item key={request.id}>
-            <Card className="pr-card">
+          <div key={request.id} className="pr-card-wrapper">
+            <Card>
               <CardBody className="pr-card-body">
-                <Flex justify="between" align="start">
+                <div>
                   <Text variant="body-medium" weight="bold">
-                    {request.iamUserName}
+                    <HighlightText text={request.iamUserName} query={searchQuery} />
                   </Text>
-                  <span className={getStatusClassName(request.status)}>
-                    {request.status}
-                  </span>
-                </Flex>
+                  <Text variant="body-x-small" color="secondary" className="pr-arn">
+                    {request.iamUserArn}
+                  </Text>
+                </div>
 
                 <div className="pr-field">
                   <Text
@@ -127,7 +188,9 @@ export const PasswordResetRequests = ({
                   >
                     Requester
                   </Text>
-                  <Text variant="body-small">{request.requesterRef}</Text>
+                  <Text variant="body-small">
+                    <HighlightText text={request.requesterRef} query={searchQuery} />
+                  </Text>
                 </div>
 
                 <div className="pr-field">
@@ -167,12 +230,18 @@ export const PasswordResetRequests = ({
                   </div>
                 )}
 
-                <Text variant="body-x-small" color="secondary">
-                  {formatDate(request.createdAt)}
-                </Text>
+                <div className="pr-card-footer">
+                  <Text variant="body-x-small" color="secondary">
+                    {formatDate(request.createdAt)}
+                  </Text>
+                  <span className={getStatusClassName(request.status)}>
+                    {request.status}
+                    {getStatusIcon(request.status)}
+                  </span>
+                </div>
 
                 {showActions && isAdmin && request.status === 'pending' && (
-                  <Flex gap="2" mt="2" justify="end">
+                  <Flex gap="2" mt="2" className="pr-card-actions">
                     <Button
                       variant="primary"
                       size="small"
@@ -183,8 +252,9 @@ export const PasswordResetRequests = ({
                       Approve
                     </Button>
                     <Button
-                      variant="secondary"
+                      variant="primary"
                       size="small"
+                      destructive
                       onPress={() =>
                         setReviewTarget({ request, action: 'reject' })
                       }
@@ -195,9 +265,10 @@ export const PasswordResetRequests = ({
                 )}
               </CardBody>
             </Card>
-          </Grid.Item>
+          </div>
         ))}
-      </Grid.Root>
+      </div>
+      )}
 
       {reviewTarget && (
         <ReviewDialog

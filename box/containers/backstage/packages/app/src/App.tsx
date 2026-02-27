@@ -25,7 +25,10 @@ import { ScaffolderPage, scaffolderPlugin } from '@backstage/plugin-scaffolder';
 import { orgPlugin } from '@backstage/plugin-org';
 import { SearchPage } from '@backstage/plugin-search';
 import { TechDocsIndexPage, TechDocsReaderPage } from '@backstage/plugin-techdocs';
-import { UserSettingsPage } from '@backstage/plugin-user-settings';
+import {
+  UserSettingsPage,
+  SettingsLayout,
+} from '@backstage/plugin-user-settings';
 import { apis, keycloakOIDCAuthApiRef } from './apis';
 import { entityPage } from './components/catalog/EntityPage';
 import { searchPage } from './components/search/SearchPage';
@@ -48,13 +51,14 @@ import {
 } from '@backstage/theme';
 import { OpenApiRegistryPage } from '@internal/plugin-openapi-registry';
 import { ArgocdAppsetPage } from '@internal/plugin-argocd-appset';
-import { IamUserAuditPage } from '@internal/plugin-iam-user-audit';
+import { IamUserAuditPage, AwsIdentitySettings } from '@internal/plugin-iam-user-audit';
 
 const CustomSignInPage = (props: any) => (
   <SignInPage
     {...props}
     auto
     providers={[
+      'guest',
       {
         id: 'keycloak',
         title: 'Keycloak',
@@ -125,7 +129,11 @@ const routes = (
     <Route path="/openapi-registry" element={<OpenApiRegistryPage />} />
     <Route path="/argocd-appset" element={<ArgocdAppsetPage />} />
     <Route path="/iam-user-audit" element={<IamUserAuditPage />} />
-    <Route path="/settings" element={<UserSettingsPage />} />
+    <Route path="/settings" element={<UserSettingsPage />}>
+      <SettingsLayout.Route path="/aws-identity" title="AWS Identity">
+        <AwsIdentitySettings />
+      </SettingsLayout.Route>
+    </Route>
   </FlatRoutes>
 );
 

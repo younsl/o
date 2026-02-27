@@ -21,6 +21,7 @@ import { useApi } from '@backstage/core-plugin-api';
 import { useAsyncRetry } from 'react-use';
 import { iamUserAuditApiRef } from '../../api';
 import { PasswordResetDialog } from '../PasswordResetDialog';
+import { HighlightText } from '../HighlightText';
 import './IamUserTable.css';
 
 interface IamUserTableProps {
@@ -184,7 +185,7 @@ export const IamUserTable = ({ onPasswordResetSubmitted }: IamUserTableProps) =>
           <Grid.Root columns={{ initial: '1', sm: '2', md: '4' }} gap="3">
             {filteredUsers.map(user => (
               <Grid.Item key={user.userId}>
-                <Card className={getSeverityClass(user.inactiveDays)}>
+                <Card className={`iam-card ${getSeverityClass(user.inactiveDays)}`}>
                   <CardBody className="iam-card-body">
                     <div className="iam-card-header">
                       <div>
@@ -192,7 +193,7 @@ export const IamUserTable = ({ onPasswordResetSubmitted }: IamUserTableProps) =>
                           variant="body-medium"
                           className="iam-card-name"
                         >
-                          {user.userName}
+                          <HighlightText text={user.userName} query={searchQuery} />
                         </Text>
                       </div>
                       <div className="iam-inactive-badge">
