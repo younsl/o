@@ -1,0 +1,156 @@
+/* Summary */
+.iam-summary-bar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--bui-space-2);
+  margin-top: var(--bui-space-2);
+}
+
+.iam-summary-card {
+  display: flex;
+  align-items: center;
+  padding: var(--bui-space-2) var(--bui-space-3);
+  border-radius: var(--bui-radius-3);
+  background-color: var(--bui-bg-neutral-2);
+  border: 1px solid var(--bui-border-1);
+  gap: var(--bui-space-2);
+}
+
+.iam-summary-value {
+  font-weight: var(--bui-font-weight-bold);
+  font-size: 1.25rem;
+}
+
+.iam-cron-badge {
+  padding: 2px var(--bui-space-2);
+  border-radius: var(--bui-radius-2);
+  border: 1px solid var(--bui-border-1);
+  font-family: var(--bui-font-monospace);
+}
+
+/* Section */
+.iam-section-title {
+  font-size: var(--bui-font-size-2);
+  font-weight: var(--bui-font-weight-bold);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+/* Filter bar */
+.iam-filter-bar {
+  display: flex;
+  gap: var(--bui-space-3);
+  align-items: flex-end;
+  margin-top: var(--bui-space-2);
+  margin-bottom: var(--bui-space-4);
+}
+
+.iam-filter-bar .bui-SearchField {
+  min-width: 280px;
+}
+
+.iam-filter-bar .bui-Select {
+  min-width: 150px;
+}
+
+/* Card */
+.iam-card {
+  height: 100%;
+  transition: transform 0.2s ease, box-shadow 0.2s ease;
+}
+
+.iam-card:hover {
+  transform: translateY(-4px);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
+}
+
+.iam-card-caution {
+  border-left: 4px solid var(--bui-border-warning);
+}
+
+.iam-card-warning {
+  border-left: 4px solid var(--bui-border-warning);
+}
+
+.iam-card-critical {
+  border-left: 4px solid var(--bui-border-danger);
+}
+
+/* CardBody inner spacing */
+.iam-card-body {
+  display: flex;
+  flex-direction: column;
+  gap: var(--bui-space-3);
+  height: 100%;
+}
+
+.iam-card-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+}
+
+.iam-card-name {
+  font-weight: var(--bui-font-weight-bold);
+  word-break: break-word;
+}
+
+.iam-inactive-badge {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  flex-shrink: 0;
+  margin-left: var(--bui-space-2);
+}
+
+.iam-inactive-days {
+  min-width: 36px;
+  min-height: 36px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: var(--bui-radius-full);
+  background-color: var(--bui-bg-neutral-2);
+  border: 1px solid var(--bui-border-1);
+  font-weight: var(--bui-font-weight-bold);
+  font-size: var(--bui-font-size-3);
+}
+
+.iam-card-critical .iam-inactive-days {
+  background-color: var(--bui-bg-danger-2);
+  border-color: var(--bui-border-danger);
+}
+
+.iam-card-warning .iam-inactive-days {
+  background-color: var(--bui-bg-warning-2);
+  border-color: var(--bui-border-warning);
+}
+
+.iam-card-caution .iam-inactive-days {
+  background-color: var(--bui-bg-warning-2);
+  border-color: var(--bui-border-warning);
+}
+
+.iam-field-label {
+  display: block;
+  font-size: var(--bui-font-size-2);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  margin-bottom: var(--bui-space-1);
+}
+
+/* Card footer */
+.iam-card-footer {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-top: auto;
+  border-top: 1px solid var(--bui-border-1);
+  padding-top: var(--bui-space-3);
+}
+
+/* Empty state */
+.iam-empty-state {
+  text-align: center;
+  padding: var(--bui-space-8);
+}

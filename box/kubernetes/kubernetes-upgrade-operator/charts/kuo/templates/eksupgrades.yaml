@@ -1,0 +1,34 @@
+{{- range .Values.eksUpgrades }}
+---
+apiVersion: kuo.io/v1alpha1
+kind: EKSUpgrade
+metadata:
+  name: {{ .name }}
+  labels:
+    {{- include "kuo.labels" $ | nindent 4 }}
+spec:
+  clusterName: {{ .spec.clusterName }}
+  targetVersion: {{ .spec.targetVersion | quote }}
+  region: {{ .spec.region }}
+  {{- with .spec.assumeRoleArn }}
+  assumeRoleArn: {{ . }}
+  {{- end }}
+  {{- with .spec.dryRun }}
+  dryRun: {{ . }}
+  {{- end }}
+  {{- with .spec.skipPdbCheck }}
+  skipPdbCheck: {{ . }}
+  {{- end }}
+  {{- with .spec.addonVersions }}
+  addonVersions:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+  {{- with .spec.timeouts }}
+  timeouts:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+  {{- with .spec.notification }}
+  notification:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+{{- end }}

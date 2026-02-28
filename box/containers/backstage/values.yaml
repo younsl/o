@@ -1,0 +1,227 @@
+# ==============================================================================
+# Backstage Helm Chart Values
+# ==============================================================================
+# Official Helm chart: https://github.com/backstage/charts
+#
+# Install:
+#   helm repo add backstage https://backstage.github.io/charts
+#   helm install backstage backstage/backstage -n backstage -f values.yaml
+#
+# Prerequisites:
+#   kubectl create secret generic backstage-secrets -n backstage \
+#     --from-literal=GITLAB_TOKEN=glpat-xxxxxxxxxxxx \
+#     --from-literal=SONARQUBE_TOKEN=squ_xxxxxxxxxxxx \
+#     --from-literal=POSTGRES_PASSWORD=your-password
+# ==============================================================================
+
+backstage:
+  image:
+    registry: ghcr.io
+    repository: younsl/backstage
+    tag: "latest"
+    pullPolicy: IfNotPresent
+
+  extraEnvVars:
+    - name: GITLAB_HOST
+      value: "gitlab.com"
+    - name: GITLAB_TOKEN
+      valueFrom:
+        secretKeyRef:
+          name: backstage-secrets
+          key: GITLAB_TOKEN
+    - name: POSTGRES_HOST
+      value: "{{ .Release.Name }}-postgresql"
+    - name: POSTGRES_PORT
+      value: "5432"
+    - name: POSTGRES_USER
+      value: backstage
+    - name: POSTGRES_PASSWORD
+      valueFrom:
+        secretKeyRef:
+          name: backstage-secrets
+          key: POSTGRES_PASSWORD
+    - name: SONARQUBE_TOKEN
+      valueFrom:
+        secretKeyRef:
+          name: backstage-secrets
+          key: SONARQUBE_TOKEN
+
+  appConfig:
+    app:
+      title: Backstage
+      baseUrl: https://backstage.example.com
+      gitlab:
+        host: ${GITLAB_HOST}
+
+    organization:
+      name: DevOps Portal
+
+    backend:
+      baseUrl: https://backstage.example.com
+      listen:
+        port: 7007
+      csp:
+        connect-src: ["'self'", "http:", "https:"]
+        img-src: ["'self'", "data:", "https:"]
+      cors:
+        origin: https://backstage.example.com
+        methods: [GET, HEAD, PATCH, POST, PUT, DELETE]
+        credentials: true
+      database:
+        client: pg
+        connection:
+          host: ${POSTGRES_HOST}
+          port: ${POSTGRES_PORT}
+          user: ${POSTGRES_USER}
+          password: ${POSTGRES_PASSWORD}
+          database: backstage
+      auth:
+        dangerouslyDisableDefaultAuthPolicy: true
+      auditor:
+        severityLogLevelMappings:
+          low: debug
+          medium: info
+          high: info
+          critical: error
+
+    integrations:
+      gitlab:
+        - host: ${GITLAB_HOST}
+          token: ${GITLAB_TOKEN}
+          apiBaseUrl: https://${GITLAB_HOST}/api/v4
+
+    catalog:
+      import:
+        entityFilename: catalog-info.yaml
+        pullRequestBranchName: backstage-integration
+      rules:
+        - allow: [Component, System, API, Resource, Location, Domain, Group, User, Template]
+      # Allow catalog to read entity YAML from openapi-registry plugin
+      reading:
+        allow:
+          - host: localhost:7007
+      providers:
+        gitlab:
+          yourProviderId:
+            host: ${GITLAB_HOST}
+            branch: main
+            fallbackBranch: master
+            skipForkedRepos: false
+            entityFilename: catalog-info.yaml
+            schedule:
+              frequency:
+                minutes: 30
+              timeout:
+                minutes: 3
+        gitlabOrg:
+          yourOrgProviderId:
+            host: ${GITLAB_HOST}
+            schedule:
+              frequency:
+                hours: 1
+              timeout:
+                minutes: 5
+      locations:
+        - type: file
+          target: /app/templates/register-component/template.yaml
+          rules:
+            - allow: [Template]
+
+    enableExperimentalRedirectFlow: true
+
+    auth:
+      providers:
+        guest:
+          dangerouslyAllowOutsideDevelopment: true
+
+    scaffolder:
+      defaultScmIntegrations: true
+
+    techdocs:
+      builder: local
+      generator:
+        runIn: local
+      publisher:
+        type: local
+
+    sonarqube:
+      baseUrl: https://sonarqube.example.com
+      apiKey: ${SONARQUBE_TOKEN}
+
+    proxy:
+      endpoints: {}
+
+    search:
+      collators:
+        catalog:
+          schedule:
+            frequency:
+              minutes: 10
+            timeout:
+              minutes: 15
+            initialDelay:
+              seconds: 3
+
+  resources:
+    requests:
+      memory: 512Mi
+      cpu: 250m
+    limits:
+      memory: 1Gi
+      cpu: 1000m
+
+  readinessProbe:
+    httpGet:
+      path: /.backstage/health/v1/readiness
+      port: 7007
+    initialDelaySeconds: 30
+    periodSeconds: 10
+    timeoutSeconds: 5
+    failureThreshold: 3
+
+  livenessProbe:
+    httpGet:
+      path: /.backstage/health/v1/liveness
+      port: 7007
+    initialDelaySeconds: 60
+    periodSeconds: 30
+    timeoutSeconds: 5
+    failureThreshold: 3
+
+ingress:
+  enabled: true
+  className: nginx
+  annotations:
+    nginx.ingress.kubernetes.io/ssl-redirect: "true"
+  hosts:
+    - host: backstage.example.com
+      paths:
+        - path: /
+          pathType: Prefix
+  tls:
+    - secretName: backstage-tls
+      hosts:
+        - backstage.example.com
+
+postgresql:
+  enabled: true
+  auth:
+    username: backstage
+    database: backstage
+    existingSecret: backstage-secrets
+    secretKeys:
+      userPasswordKey: POSTGRES_PASSWORD
+  primary:
+    persistence:
+      enabled: true
+      size: 8Gi
+
+service:
+  type: ClusterIP
+  ports:
+    backend: 7007
+
+serviceAccount:
+  create: true
+  name: backstage
+  annotations: {}

@@ -1,0 +1,145 @@
+# ==============================================================================
+# Backstage Custom Image with GitLab Auto Discovery
+# ==============================================================================
+# Compatible with official Backstage Helm chart (https://github.com/backstage/charts)
+#
+# Build pattern follows official Backstage Dockerfile:
+#   Stage 1 (build): Build with devDependencies
+#   Stage 2 (runner): Extract skeleton → install prod deps → extract bundle
+#
+# Requires: Yarn Berry (4.x) with nodeLinker: node-modules
+# ==============================================================================
+
+# ------------------------------------------------------------------------------
+# Stage 1: Build the Backstage app
+# ------------------------------------------------------------------------------
+FROM node:25-bookworm-slim AS build
+
+# Install build dependencies
+RUN apt-get update && \
+    apt-get install -y --no-install-recommends \
+        python3 \
+        g++ \
+        build-essential \
+        git \
+        ca-certificates \
+    && rm -rf /var/lib/apt/lists/*
+
+# Install and enable corepack for Yarn Berry (not included in slim image)
+RUN npm install -g corepack --force && corepack enable
+
+WORKDIR /app
+
+# Copy Yarn Berry configuration
+COPY .yarn ./.yarn
+COPY .yarnrc.yml ./
+
+# Copy package files for dependency caching
+# Uses find + cp to preserve directory structure for all workspace package.json files
+COPY package.json yarn.lock ./
+COPY packages/ /tmp/packages/
+COPY plugins/ /tmp/plugins/
+RUN find /tmp/packages /tmp/plugins -name 'package.json' | while read f; do \
+      rel="${f#/tmp/}"; \
+      mkdir -p "$(dirname "$rel")" && cp "$f" "$rel"; \
+    done && rm -rf /tmp/packages /tmp/plugins
+
+# Install all dependencies (including devDependencies for build)
+RUN yarn install --immutable
+
+# Copy source files
+COPY . .
+
+# Build backend and frontend
+RUN yarn tsc && \
+    yarn build:backend && \
+    yarn build:all
+
+# ------------------------------------------------------------------------------
+# Stage 2: Production image (official Backstage pattern)
+# ------------------------------------------------------------------------------
+FROM node:25-bookworm-slim AS runner
+
+LABEL org.opencontainers.image.title="Backstage with GitLab Discovery" \
+      org.opencontainers.image.description="Backstage instance with GitLab auto-discovery and API docs plugins" \
+      org.opencontainers.image.source="https://github.com/younsl/o" \
+      org.opencontainers.image.deprecated="false"
+
+# Install runtime dependencies and build tools for native modules
+# Build tools (python3, g++, build-essential) are needed for yarn workspaces focus
+# to compile native dependencies like better-sqlite3, tree-sitter, etc.
+RUN apt-get update && \
+    apt-get install -y --no-install-recommends \
+        ca-certificates \
+        curl \
+        python3 \
+        g++ \
+        build-essential \
+    && rm -rf /var/lib/apt/lists/*
+
+# Install and enable corepack for Yarn Berry (not included in slim image)
+RUN npm install -g corepack --force && corepack enable
+
+# Set production environment
+ENV NODE_ENV=production
+ENV NODE_OPTIONS=--no-node-snapshot
+
+# Use /app as working directory (required by official Helm chart)
+WORKDIR /app
+
+# Change ownership to node user
+RUN chown node:node /app
+
+USER node
+
+# Copy root package.json and yarn.lock (required for workspaces)
+COPY --from=build --chown=node:node /app/package.json ./
+COPY --from=build --chown=node:node /app/yarn.lock ./
+
+# Copy skeleton from build stage
+COPY --from=build --chown=node:node /app/packages/backend/dist/skeleton.tar.gz ./
+
+# Extract skeleton (package.json for backend workspace)
+RUN tar xzf skeleton.tar.gz && rm skeleton.tar.gz
+
+# Copy Yarn Berry configuration AFTER skeleton extraction
+COPY --from=build --chown=node:node /app/.yarn ./.yarn
+COPY --from=build --chown=node:node /app/.yarnrc.yml ./
+
+# Copy all workspace package.json files for yarn workspace resolution
+# Includes packages/app and all plugins (auto-discovers new plugins)
+COPY --from=build --chown=node:node /app/packages/app/package.json ./packages/app/
+COPY --from=build --chown=node:node /app/plugins/ /tmp/plugins/
+RUN find /tmp/plugins -name 'package.json' | while read f; do \
+      dir="plugins/$(echo "$f" | sed 's|^/tmp/plugins/||' | xargs dirname)"; \
+      mkdir -p "$dir" && cp "$f" "$dir/"; \
+    done && rm -rf /tmp/plugins
+
+# Install production dependencies only (Yarn Berry feature)
+# Uses cached packages from .yarn/cache
+RUN yarn workspaces focus --all --production
+
+# Copy and extract bundle (compiled backend code)
+COPY --from=build --chown=node:node /app/packages/backend/dist/bundle.tar.gz ./
+RUN tar xzf bundle.tar.gz && rm bundle.tar.gz
+
+# Copy frontend build (served by plugin-app-backend)
+COPY --from=build --chown=node:node /app/packages/app/dist ./packages/app/dist
+
+# Copy config schema for Backstage config-loader
+# Required: package.json references configSchema: "config.d.ts"
+COPY --from=build --chown=node:node /app/packages/app/config.d.ts ./packages/app/
+
+# Copy templates for scaffolder
+COPY --from=build --chown=node:node /app/templates ./templates
+
+# Expose Backstage backend port
+EXPOSE 7007
+
+# Health check compatible with official Helm chart probes
+HEALTHCHECK --interval=30s --timeout=10s --start-period=60s --retries=3 \
+    CMD curl -f http://localhost:7007/.backstage/health/v1/readiness || exit 1
+
+# Default command (official Helm chart uses: node packages/backend)
+# Config files should be mounted via Helm chart's appConfig or extraVolumes
+CMD ["node", "packages/backend"]

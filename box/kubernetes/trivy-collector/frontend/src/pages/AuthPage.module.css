@@ -1,0 +1,559 @@
+.container {
+    max-width: 800px;
+    margin: 0 auto;
+}
+
+.section {
+    background-color: var(--bg-secondary);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 24px;
+    margin-bottom: 24px;
+}
+
+.sectionTitle {
+    font-size: 16px;
+    font-weight: 600;
+    margin-bottom: 16px;
+    color: var(--text-primary);
+}
+
+/* User Info */
+.infoGrid {
+    display: grid;
+    grid-template-columns: 140px 1fr;
+    gap: 8px 16px;
+    align-items: baseline;
+}
+
+.infoLabel {
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--text-secondary);
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+.infoValue {
+    font-size: 13px;
+    color: var(--text-primary);
+    word-break: break-all;
+}
+
+.mono {
+    font-family: 'SF Mono', Monaco, Consolas, monospace;
+    font-size: 12px;
+}
+
+.muted {
+    color: var(--text-muted);
+    font-style: italic;
+}
+
+/* Token Section */
+.tokenHeader {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 16px;
+}
+
+.createBtn {
+    background-color: var(--accent);
+    color: white;
+    border: none;
+    padding: 8px 16px;
+    border-radius: 6px;
+    cursor: pointer;
+    font-size: 13px;
+    font-weight: 500;
+    transition: all 0.15s ease;
+}
+
+.createBtn:hover {
+    background-color: var(--accent-hover);
+}
+
+.createBtn:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+}
+
+/* Token Table */
+.tokenTable {
+    width: 100%;
+    border-collapse: collapse;
+}
+
+.tokenTable th {
+    font-size: 11px;
+    font-weight: 600;
+    color: var(--text-secondary);
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    text-align: left;
+    padding: 8px 12px;
+    border-bottom: 1px solid var(--border);
+}
+
+.tokenTable td {
+    font-size: 13px;
+    padding: 10px 12px;
+    border-bottom: 1px solid var(--border);
+    color: var(--text-primary);
+}
+
+.tokenTable tr:last-child td {
+    border-bottom: none;
+}
+
+.tokenPrefix {
+    font-family: 'SF Mono', Monaco, Consolas, monospace;
+    font-size: 12px;
+    color: var(--text-secondary);
+}
+
+.tokenDesc {
+    font-size: 11px;
+    color: var(--text-muted);
+    margin-top: 2px;
+}
+
+.deleteBtn {
+    background: transparent;
+    border: 1px solid var(--border);
+    color: var(--text-secondary);
+    padding: 4px 10px;
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 12px;
+    transition: all 0.15s ease;
+}
+
+.deleteBtn:hover {
+    border-color: var(--critical);
+    color: var(--critical);
+    background-color: rgba(239, 68, 68, 0.1);
+}
+
+.emptyState {
+    text-align: center;
+    padding: 32px;
+    color: var(--text-muted);
+    font-size: 13px;
+}
+
+.expired {
+    color: var(--critical);
+}
+
+/* Modal Overlay */
+.overlay {
+    position: fixed;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.6);
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    z-index: 200;
+}
+
+.modal {
+    background: var(--bg-secondary);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 24px;
+    width: 420px;
+    max-width: 90vw;
+}
+
+.modalTitle {
+    font-size: 16px;
+    font-weight: 600;
+    margin-bottom: 16px;
+    color: var(--text-primary);
+}
+
+.formGroup {
+    margin-bottom: 16px;
+}
+
+.formLabel {
+    display: block;
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--text-secondary);
+    margin-bottom: 6px;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+.formInput {
+    width: 100%;
+    padding: 8px 12px;
+    background: var(--bg-tertiary);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    color: var(--text-primary);
+    font-size: 13px;
+    outline: none;
+    transition: border-color 0.15s ease;
+}
+
+.formInput:focus {
+    border-color: var(--accent);
+}
+
+.formInputError {
+    border-color: var(--critical);
+}
+
+.formInputError:focus {
+    border-color: var(--critical);
+}
+
+/* Dropdown */
+.dropdown {
+    position: relative;
+}
+
+.dropdownToggle {
+    width: 100%;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 8px 12px;
+    background: var(--bg-tertiary);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    color: var(--text-primary);
+    font-size: 13px;
+    cursor: pointer;
+    transition: border-color 0.15s ease;
+}
+
+.dropdownToggle:hover {
+    border-color: var(--text-muted);
+}
+
+.dropdownOpen {
+    border-color: var(--accent);
+    border-bottom-left-radius: 0;
+    border-bottom-right-radius: 0;
+}
+
+.dropdownIcon {
+    font-size: 10px;
+    color: var(--text-muted);
+    transition: transform 0.15s ease;
+}
+
+.dropdownIconOpen {
+    transform: rotate(180deg);
+}
+
+.dropdownMenu {
+    position: absolute;
+    top: 100%;
+    left: 0;
+    right: 0;
+    margin: 0;
+    padding: 4px 0;
+    list-style: none;
+    background: var(--bg-tertiary);
+    border: 1px solid var(--accent);
+    border-top: none;
+    border-bottom-left-radius: 6px;
+    border-bottom-right-radius: 6px;
+    z-index: 10;
+}
+
+.dropdownItem {
+    width: 100%;
+    display: block;
+    padding: 7px 12px;
+    background: transparent;
+    border: none;
+    color: var(--text-primary);
+    font-size: 13px;
+    text-align: left;
+    cursor: pointer;
+    transition: background-color 0.1s ease;
+}
+
+.dropdownItem:hover {
+    background-color: var(--bg-secondary);
+}
+
+.dropdownItemActive {
+    color: var(--accent);
+    font-weight: 500;
+}
+
+.formHint {
+    font-size: 12px;
+    color: var(--text-secondary);
+    margin-bottom: 6px;
+}
+
+.formHintError {
+    font-size: 12px;
+    color: var(--critical);
+    margin-bottom: 6px;
+}
+
+.required {
+    font-size: 10px;
+    font-weight: 500;
+    color: var(--critical);
+    text-transform: none;
+    letter-spacing: 0;
+    margin-left: 4px;
+}
+
+.modalActions {
+    display: flex;
+    justify-content: flex-end;
+    gap: 8px;
+    margin-top: 20px;
+}
+
+.cancelBtn {
+    background: transparent;
+    border: 1px solid var(--border);
+    color: var(--text-secondary);
+    padding: 8px 16px;
+    border-radius: 6px;
+    cursor: pointer;
+    font-size: 13px;
+    transition: all 0.15s ease;
+}
+
+.cancelBtn:hover {
+    border-color: var(--text-muted);
+    color: var(--text-primary);
+}
+
+/* Token reveal */
+.tokenReveal {
+    margin-top: 12px;
+}
+
+.tokenWarning {
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--high);
+    background: rgba(234, 179, 8, 0.1);
+    border: 1px solid rgba(234, 179, 8, 0.3);
+    border-radius: 6px;
+    padding: 10px 12px;
+    margin-bottom: 12px;
+}
+
+.tokenDisplay {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    background: var(--bg-tertiary);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 10px 12px;
+}
+
+.tokenText {
+    flex: 1;
+    font-family: 'SF Mono', Monaco, Consolas, monospace;
+    font-size: 12px;
+    color: var(--text-primary);
+    word-break: break-all;
+    user-select: all;
+}
+
+.copyBtn {
+    background: transparent;
+    border: 1px solid var(--border);
+    color: var(--text-secondary);
+    padding: 4px 10px;
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 12px;
+    white-space: nowrap;
+    transition: all 0.15s ease;
+    min-width: 56px;
+    text-align: center;
+}
+
+.copyBtn:hover {
+    border-color: var(--accent);
+    color: var(--accent);
+}
+
+/* Test command snippet */
+.snippetSection {
+    margin-top: 12px;
+}
+
+.snippetHeader {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 6px;
+}
+
+.snippetLabel {
+    font-size: 11px;
+    font-weight: 600;
+    color: var(--text-secondary);
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+.snippetToggle {
+    display: flex;
+    background: var(--bg-tertiary);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    overflow: hidden;
+}
+
+.snippetToggleBtn {
+    background: transparent;
+    border: none;
+    color: var(--text-muted);
+    padding: 3px 10px;
+    font-size: 11px;
+    font-family: 'SF Mono', Monaco, Consolas, monospace;
+    cursor: pointer;
+    transition: all 0.1s ease;
+}
+
+.snippetToggleBtn:not(:last-child) {
+    border-right: 1px solid var(--border);
+}
+
+.snippetToggleActive {
+    background: var(--accent);
+    color: white;
+}
+
+.snippetDisplay {
+    display: flex;
+    align-items: flex-start;
+    gap: 8px;
+    background: var(--bg-tertiary);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 10px 12px;
+}
+
+.snippetText {
+    flex: 1;
+    font-family: 'SF Mono', Monaco, Consolas, monospace;
+    font-size: 11px;
+    color: var(--text-secondary);
+    word-break: break-all;
+    user-select: all;
+    line-height: 1.5;
+}
+
+/* Best practices */
+.bestPractices {
+    margin-top: 12px;
+    background: var(--bg-tertiary);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 10px 12px;
+}
+
+.bestPracticesLabel {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    font-size: 11px;
+    font-weight: 600;
+    color: var(--text-secondary);
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    cursor: pointer;
+}
+
+.toggle {
+    appearance: none;
+    width: 32px;
+    height: 18px;
+    background: var(--border);
+    border-radius: 9px;
+    position: relative;
+    cursor: pointer;
+    transition: background 0.2s ease;
+    flex-shrink: 0;
+}
+
+.toggle::after {
+    content: '';
+    position: absolute;
+    top: 2px;
+    left: 2px;
+    width: 14px;
+    height: 14px;
+    background: white;
+    border-radius: 50%;
+    transition: transform 0.2s ease;
+}
+
+.toggle:checked {
+    background: var(--accent);
+}
+
+.toggle:checked::after {
+    transform: translateX(14px);
+}
+
+.bestPracticesList {
+    margin: 0;
+    padding-left: 16px;
+    font-size: 12px;
+    color: var(--text-muted);
+    line-height: 1.7;
+}
+
+.errorText {
+    font-size: 12px;
+    color: var(--critical);
+    margin-top: 8px;
+}
+
+.deleteWarning {
+    font-size: 13px;
+    color: var(--text-secondary);
+    margin-bottom: 16px;
+    line-height: 1.5;
+}
+
+.deleteBtnConfirm {
+    background-color: var(--critical);
+    color: white;
+    border: none;
+    padding: 8px 16px;
+    border-radius: 6px;
+    cursor: pointer;
+    font-size: 13px;
+    font-weight: 500;
+    transition: all 0.15s ease;
+}
+
+.deleteBtnConfirm:hover:not(:disabled) {
+    filter: brightness(1.1);
+}
+
+.deleteBtnConfirm:disabled {
+    opacity: 0.4;
+    cursor: not-allowed;
+}
+
+.noAuth {
+    text-align: center;
+    padding: 48px 24px;
+    color: var(--text-muted);
+    font-size: 14px;
+}

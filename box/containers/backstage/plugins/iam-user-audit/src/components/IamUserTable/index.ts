@@ -1,0 +1,1 @@
+export { IamUserTable } from './IamUserTable';

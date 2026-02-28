@@ -1,0 +1,221 @@
+# kup
+
+[![GitHub release](https://img.shields.io/github/v/release/younsl/o?filter=kup*&style=flat-square&color=black)](https://github.com/younsl/o/releases?q=kup&expanded=true)
+[![Rust](https://img.shields.io/badge/rust-1.93-black?style=flat-square&logo=rust&logoColor=white)](https://www.rust-lang.org/)
+[![GitHub license](https://img.shields.io/github/license/younsl/o?style=flat-square&color=black)](https://github.com/younsl/o/blob/main/LICENSE)
+
+<img src="https://cdn.jsdelivr.net/gh/devicons/devicon/icons/kubernetes/kubernetes-plain.svg" width="40" height="40"/>
+
+> [!WARNING]
+> kup is deprecated and will be removed in a future release. Use [kubernetes-upgrade-operator](https://github.com/younsl/kubernetes-upgrade-operator) instead.
+
+[**K**ubernetes](https://github.com/kubernetes/kubernetes) **Up**grade - Interactive EKS cluster upgrade CLI tool. Analyzes cluster insights, plans sequential control plane upgrades, and updates add-ons and managed node groups. Inspired by [clowdhaus/eksup](https://github.com/clowdhaus/eksup).
+
+## Features
+
+- Interactive cluster and version selection
+- Cluster Insights analysis (deprecated APIs, add-on compatibility)
+- Sequential control plane upgrades (1 minor version at a time)
+- **Sync mode**: Update only addons/nodegroups without control plane upgrade
+- Automatic add-on version upgrades
+- Managed node group rolling updates
+- [Preflight checks](#preflight-checks) before upgrade (EKS deletion protection, PDB drain deadlock, Karpenter EC2NodeClass AMI selector)
+- Dry-run mode for planning
+- HTML upgrade report auto-generated on every run
+
+## Usage
+
+Run interactive upgrade workflow.
+
+```bash
+kup                              # Interactive mode
+kup --dry-run                    # Plan only, no execution
+kup -c my-cluster -t 1.34 --yes  # Non-interactive mode
+```
+
+## Prerequisites
+
+Requires [AWS CLI v2](https://github.com/aws/aws-cli) and valid credentials with the following IAM permissions.
+
+<details>
+<summary>IAM Policy JSON</summary>
+
+```json
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Sid": "EKSClusterReadWrite",
+      "Effect": "Allow",
+      "Action": [
+        "eks:ListClusters",
+        "eks:DescribeCluster",
+        "eks:UpdateClusterVersion",
+        "eks:DescribeUpdate",
+        "eks:DescribeClusterVersions"
+      ],
+      "Resource": "*"
+    },
+    {
+      "Sid": "EKSInsightsRead",
+      "Effect": "Allow",
+      "Action": [
+        "eks:ListInsights",
+        "eks:DescribeInsight"
+      ],
+      "Resource": "*"
+    },
+    {
+      "Sid": "EKSAddonsReadWrite",
+      "Effect": "Allow",
+      "Action": [
+        "eks:ListAddons",
+        "eks:DescribeAddon",
+        "eks:DescribeAddonVersions",
+        "eks:UpdateAddon"
+      ],
+      "Resource": "*"
+    },
+    {
+      "Sid": "EKSNodegroupsReadWrite",
+      "Effect": "Allow",
+      "Action": [
+        "eks:ListNodegroups",
+        "eks:DescribeNodegroup",
+        "eks:UpdateNodegroupVersion"
+      ],
+      "Resource": "*"
+    },
+    {
+      "Sid": "AutoScalingRead",
+      "Effect": "Allow",
+      "Action": [
+        "autoscaling:DescribeAutoScalingGroups"
+      ],
+      "Resource": "*"
+    }
+  ]
+}
+```
+
+</details>
+
+## Installation
+
+```bash
+brew install younsl/tap/kup
+kup --version
+```
+
+Or build from source:
+
+```bash
+make install
+mv ~/.cargo/bin/kup /usr/local/bin/
+```
+
+## How It Works
+
+```
+┌──────────────┐     ┌──────────────┐     ┌──────────────┐
+│ Control Plane│     │   Add-ons    │     │ Node Groups  │
+│              │     │              │     │              │
+│  1.32 → 1.33 │────▶│ Update to    │────▶│ Rolling AMI  │
+│  ~10 min/step│     │ compatible   │     │ update       │
+└──────────────┘     └──────────────┘     └──────────────┘
+```
+
+**Interactive workflow steps:**
+
+1. Select cluster from available EKS clusters
+2. Review upgrade readiness findings (Cluster Insights)
+3. Pick target version (or current for sync mode)
+4. Verify upgrade plan and estimated timeline
+5. Type 'Yes' to confirm and execute
+6. HTML upgrade report auto-generated on completion
+
+## Options
+
+All flags are optional. When both `--cluster` and `--target` are provided, kup runs in non-interactive mode; otherwise it launches an interactive prompt.
+
+| Flag | Required | Default | Description |
+|------|----------|---------|-------------|
+| `--region`, `-r` | optional | `AWS_REGION` env | AWS region |
+| `--profile`, `-p` | optional | `AWS_PROFILE` env | AWS profile name |
+| `--cluster`, `-c` | optional | - | Cluster name (non-interactive) |
+| `--target`, `-t` | optional | - | Target K8s version (non-interactive) |
+| `--yes`, `-y` | optional | `false` | Skip confirmation prompts |
+| `--dry-run` | optional | `false` | Show plan without executing |
+| `--addon-version` | optional | - | Specify add-on version (`ADDON=VERSION`) |
+| `--log-level` | optional | `warn` | Log verbosity (`trace`, `debug`, `info`, `warn`, `error`) |
+
+## Examples
+
+Common usage patterns.
+
+```bash
+# Interactive upgrade with specific region
+kup -r ap-northeast-2
+
+# Plan upgrade without execution
+kup --dry-run
+
+# Non-interactive upgrade for CI/CD
+kup -c prod-cluster -t 1.34 --yes
+
+# Sync mode: update addons/nodegroups only (select current version)
+# Useful when control plane upgrade completed but addons/nodegroups pending
+kup                  # Select "(current)" in Step 3
+
+# Specify add-on version
+kup --addon-version kube-proxy=v1.34.0-eksbuild.1
+```
+
+## Preflight Checks
+
+Before executing upgrades, kup runs preflight checks to detect potential blockers. Mandatory checks block the upgrade on failure; informational checks display warnings only.
+
+### EKS Deletion Protection
+
+**Category: Mandatory**
+
+Verifies that [EKS deletion protection](https://docs.aws.amazon.com/eks/latest/userguide/delete-cluster.html) is enabled on the cluster. If disabled, the upgrade is blocked to prevent accidental cluster deletion during the upgrade process. Operators must enable deletion protection before proceeding.
+
+### PDB Drain Deadlock
+
+**Category: Mandatory**
+
+MNG rolling updates drain nodes to evict pods. A PDB with `status.disruptionsAllowed == 0` will cause the drain to hang indefinitely, permanently stalling the rolling update (e.g., replicas=1 with minAvailable=1). This check detects blocking PDBs upfront so operators can scale up replicas or adjust the PDB before proceeding. Connects to the EKS API server using endpoint/CA from `describe_cluster` and a bearer token from `aws eks get-token`. Skipped when no managed node group upgrades are planned.
+
+### Karpenter EC2NodeClass
+
+**Category: Informational**
+
+[Karpenter](https://github.com/aws/karpenter-provider-aws) determines node AMIs from `amiSelectorTerms` in the [`EC2NodeClass`](https://karpenter.sh/docs/concepts/nodeclasses/) resource. If pinned to a specific version (e.g., `al2023@v20250117`), nodes may continue launching with the old AMI after a control plane upgrade. This check displays the AMI selector configuration of each EC2NodeClass so operators can verify compatibility with the target version. Queries `karpenter.k8s.aws/v1` first, falls back to `v1beta1`. Skipped when no managed node group upgrades are planned.
+
+## Constraints
+
+EKS upgrade limitations to be aware of.
+
+- Control plane upgrades are limited to **1 minor version at a time**
+- Example: 1.28 → 1.30 requires two steps (1.28 → 1.29 → 1.30)
+- `kup` automates this sequential upgrade process
+- **[Managed Node Groups](https://docs.aws.amazon.com/eks/latest/userguide/managed-node-groups.html) only**: Self-managed node groups and Karpenter nodes are not supported. Managed node groups are EC2 instances whose lifecycle (provisioning, updating, terminating) is managed by AWS EKS.
+
+## Sync Mode
+
+When an upgrade is interrupted (e.g., control plane completed but addons/nodegroups pending), use sync mode to resume:
+
+1. Run `kup` in interactive mode
+2. Select the cluster
+3. Choose **current version** `(current)` in Step 3
+4. Only addons and nodegroups will be upgraded to match the control plane
+
+This is useful for:
+- Recovering from interrupted upgrades
+- Updating addons/nodegroups after manual control plane upgrade
+- Synchronizing cluster components to current control plane version
+
+## License
+
+This project is licensed under the MIT License. See the [LICENSE](../../../LICENSE) file for details.
