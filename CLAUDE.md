@@ -19,7 +19,6 @@ Format: `[<TOOLNAME>] <type>(<scope>): <detail message>`
 - 특정 툴에 해당하지 않는 변경은 `[repo]`를 사용합니다.
 
 Examples:
-- `[kup] feat(upgrade): add EKS 1.34 support`
 - `[karc] fix(status): correct nodepool display alignment`
 - `[ij] refactor(scan): improve multi-region parallel scanning`
 - `[repo] chore(docs): update CLAUDE.md`
@@ -30,7 +29,7 @@ Types: `feat`, `fix`, `refactor`, `docs`, `test`, `chore`, etc.
 
 ### Rust Projects
 
-Standard Makefile patterns for Rust tools (ij, kup, kuo, karc, qg, s3vget, gss, filesystem-cleaner, elasticache-backup, redis-console, trivy-collector):
+Standard Makefile patterns for Rust tools (ij, kuo, karc, qg, s3vget, gss, filesystem-cleaner, elasticache-backup, redis-console, trivy-collector):
 
 ```bash
 # Core build commands
@@ -122,7 +121,6 @@ box/
 │   ├── grafana-dashboards/# Grafana dashboard ConfigMaps (Helm chart only)
 │   ├── gss/               # GHES scheduled workflow scanner (Rust, container)
 │   ├── karc/              # Karpenter NodePool consolidation manager CLI (Rust)
-│   ├── kup/               # EKS cluster upgrade CLI tool (Rust)
 │   ├── kubernetes-upgrade-operator/ # EKS declarative upgrade operator (Rust, container)
 │   ├── redis-console/     # Interactive Redis cluster management CLI (Rust, CLI + container)
 │   └── trivy-collector/   # Multi-cluster Trivy report collector/viewer (Rust, container)
@@ -187,7 +185,7 @@ Rust cross-compilation is more complex than Go and requires additional setup:
 - Rust crates often depend on C libraries (openssl, sqlite, etc.)
 - Must install target-specific gcc/g++ and configure linker paths
 
-See `.github/workflows/release-kup.yml` for complete ARM64 cross-compilation example.
+See `.github/workflows/release-ij.yml` for complete ARM64 cross-compilation example.
 
 ## AWS Integration Points
 
@@ -225,41 +223,6 @@ make install    # Install to ~/.cargo/bin/
 - SSH-style escape sequences (`Enter ~ .` to disconnect stuck sessions)
 
 **AWS Permissions Required**: `ec2:DescribeInstances`, `ssm:StartSession` (EC2 instances need `AmazonSSMManagedInstanceCore` policy)
-
-### kup - EKS Cluster Upgrade CLI Tool (Rust)
-
-Interactive EKS cluster upgrade tool. Analyzes cluster insights, plans sequential control plane upgrades, and updates add-ons and managed node groups. Inspired by [clowdhaus/eksup](https://github.com/clowdhaus/eksup).
-
-```bash
-kup                              # Interactive mode
-kup --dry-run                    # Plan only, no execution
-kup -c my-cluster -t 1.34 --yes  # Non-interactive mode
-kup -r ap-northeast-2            # Specific region
-kup --skip-pdb-check             # Skip PDB drain deadlock check
-
-# Build commands
-make build      # Debug build
-make release    # Optimized release build
-make install    # Install to ~/.cargo/bin/
-```
-
-**Features**:
-- Interactive cluster and version selection
-- Cluster Insights analysis (deprecated APIs, add-on compatibility)
-- Sequential control plane upgrades (1 minor version at a time)
-- Sync mode: Update only addons/nodegroups without control plane upgrade
-- Automatic add-on version upgrades
-- Managed node group rolling updates
-- PDB drain deadlock detection before node group rolling updates
-
-**PDB Drain Deadlock Detection**:
-Checks `status.disruptionsAllowed == 0` on all PDBs via Kubernetes API before MNG rolling updates. Connects to the EKS API server using endpoint/CA from `describe_cluster` and a bearer token from `aws eks get-token`. Failures are non-fatal warnings. Use `--skip-pdb-check` to skip.
-
-**Constraints**:
-- Control plane upgrades limited to 1 minor version at a time (e.g., 1.28 → 1.30 requires two steps)
-- Managed Node Groups only (self-managed and Karpenter nodes not supported)
-
-**AWS Permissions Required**: `eks:ListClusters`, `eks:DescribeCluster`, `eks:UpdateClusterVersion`, `eks:DescribeUpdate`, `eks:ListInsights`, `eks:DescribeInsight`, `eks:ListAddons`, `eks:DescribeAddon`, `eks:DescribeAddonVersions`, `eks:UpdateAddon`, `eks:ListNodegroups`, `eks:DescribeNodegroup`, `eks:UpdateNodegroupVersion`, `autoscaling:DescribeAutoScalingGroups`
 
 ### kuo - Kubernetes Upgrade Operator (Rust)
 
@@ -678,7 +641,6 @@ GitHub Actions automatically builds and releases on tag push:
 ```bash
 # CLI tool releases (pattern: {tool}/x.y.z)
 git tag ij/1.0.0 && git push --tags
-git tag kup/1.0.0 && git push --tags
 git tag karc/1.0.0 && git push --tags
 git tag kuo/1.0.0 && git push --tags
 # Container image releases (pattern: {container}/x.y.z)
@@ -701,7 +663,6 @@ git tag grafana-dashboards/charts/1.0.0 && git push --tags
 
 # Available workflows:
 # - release-ij.yml                           (Rust CLI)
-# - release-kup.yml                          (Rust CLI)
 # - release-karc.yml                         (Rust CLI)
 # - release-kuo.yml                          (Rust container + operator)
 # - release-rust-containers.yml              (Unified Rust container release: filesystem-cleaner, elasticache-backup, redis-console, gss)
