@@ -18,6 +18,7 @@ env:
 jobs:
   extract-info:
     runs-on: ubuntu-24.04
+    permissions: {}
     outputs:
       chart_name: ${{ steps.parse.outputs.chart_name }}
       version: ${{ steps.parse.outputs.version }}
