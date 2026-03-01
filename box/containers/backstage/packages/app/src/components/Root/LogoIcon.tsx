@@ -1,19 +1,9 @@
 import React from 'react';
-import { makeStyles } from '@material-ui/core';
-
-const useStyles = makeStyles({
-  svg: {
-    width: 22,
-    height: 28,
-  },
-});
 
 const LogoIcon = () => {
-  const classes = useStyles();
-
   return (
     <svg
-      className={classes.svg}
+      style={{ width: 22, height: 28 }}
       xmlns="http://www.w3.org/2000/svg"
       viewBox="0 0 337.46 428.5"
     >

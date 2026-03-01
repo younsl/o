@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useEffect, useCallback } from 'react';
+import React, { useState, useMemo, useEffect, useCallback, useRef } from 'react';
 import {
   Box,
   Button,
@@ -29,7 +29,7 @@ const tagStyle: React.CSSProperties = {
 const activeTagStyle: React.CSSProperties = {
   ...tagStyle,
   backgroundColor: 'var(--bui-color-bg-accent, #1e40af)',
-  borderColor: 'var(--bui-color-border-accent, #3b82f6)',
+  border: '1px solid var(--bui-color-border-accent, #3b82f6)',
   color: '#fff',
 };
 
@@ -187,21 +187,7 @@ const PlatformCard = ({
             {platform.tags.map(tag => (
               <span
                 key={tag}
-                role="button"
-                tabIndex={0}
-                onClick={e => {
-                  e.preventDefault();
-                  e.stopPropagation();
-                  onTagClick(tag);
-                }}
-                onKeyDown={e => {
-                  if (e.key === 'Enter') {
-                    e.preventDefault();
-                    e.stopPropagation();
-                    onTagClick(tag);
-                  }
-                }}
-                style={selectedTags.includes(tag) ? activeTagStyle : tagStyle}
+                style={selectedTags.includes(tag) ? activeTagStyle : { ...tagStyle, cursor: 'default' }}
               >
                 {highlightText(tag, searchQuery)}
               </span>
@@ -235,8 +221,23 @@ export const PlatformsPage = () => {
   const configApi = useApi(configApiRef);
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedTags, setSelectedTags] = useState<string[]>([]);
+  const [tagDropdownOpen, setTagDropdownOpen] = useState(false);
+  const tagDropdownRef = useRef<HTMLDivElement>(null);
   const [favorites, setFavorites] = useState<string[]>([]);
   const [expandedSections, setExpandedSections] = useState<Record<string, boolean>>({});
+
+  useEffect(() => {
+    const handleClickOutside = (e: MouseEvent) => {
+      if (
+        tagDropdownRef.current &&
+        !tagDropdownRef.current.contains(e.target as Node)
+      ) {
+        setTagDropdownOpen(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
 
   useEffect(() => {
     try {
@@ -319,10 +320,10 @@ export const PlatformsPage = () => {
 
   const filteredPlatforms = allPlatforms.filter(platform => {
     if (selectedTags.length > 0) {
-      const hasSelectedTag = selectedTags.some(tag =>
+      const hasAllTags = selectedTags.every(tag =>
         platform.tags.includes(tag),
       );
-      if (!hasSelectedTag) return false;
+      if (!hasAllTags) return false;
     }
     if (searchQuery.trim()) {
       const query = searchQuery.toLowerCase();
@@ -391,64 +392,11 @@ export const PlatformsPage = () => {
       <PluginHeader title="Platforms" />
       <Container>
         <Flex direction="column" gap="3" p="3">
-          <Flex justify="between" align="center">
-            <Text variant="body-medium" color="secondary">
-              Internal tech stack and platform services for developers
-            </Text>
-            <span
-              style={{
-                display: 'inline-flex',
-                alignItems: 'center',
-                gap: 8,
-              }}
-            >
-              <span
-                style={{
-                  display: 'inline-flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  minWidth: 24,
-                  height: 24,
-                  padding: '0 8px',
-                  borderRadius: 12,
-                  fontSize: 14,
-                  fontWeight: 700,
-                  backgroundColor: hasActiveFilters
-                    ? '#f59e0b'
-                    : 'rgba(128,128,128,0.25)',
-                  color: hasActiveFilters ? '#fff' : 'rgba(255,255,255,0.7)',
-                }}
-              >
-                {hasActiveFilters
-                  ? `${filteredCount} / ${totalPlatforms}`
-                  : totalPlatforms}
-              </span>
-              <Text variant="body-medium" weight="bold" color="secondary">
-                Platforms
-              </Text>
-              <span
-                style={{
-                  display: 'inline-flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  minWidth: 24,
-                  height: 24,
-                  padding: '0 8px',
-                  borderRadius: 12,
-                  fontSize: 14,
-                  fontWeight: 700,
-                  backgroundColor: 'rgba(128,128,128,0.25)',
-                  color: 'rgba(255,255,255,0.7)',
-                }}
-              >
-                {categories.length}
-              </span>
-              <Text variant="body-medium" weight="bold" color="secondary">
-                Categories
-              </Text>
-            </span>
-          </Flex>
+          <Text variant="body-medium" color="secondary">
+            Internal tech stack and platform services for developers
+          </Text>
 
+          {/* Filters Section */}
           <Box
             mt="4"
             p="3"
@@ -457,10 +405,11 @@ export const PlatformsPage = () => {
               borderRadius: 8,
             }}
           >
-            {/* Filter Bar */}
+            <Text variant="body-medium" weight="bold" style={{ marginBottom: 12, display: 'block' }}>
+              Filters
+            </Text>
             <Flex
               gap="2"
-              mb="3"
               align="end"
               direction={{ initial: 'column', sm: 'row' }}
             >
@@ -473,6 +422,109 @@ export const PlatformsPage = () => {
                   onChange={setSearchQuery}
                 />
               </Box>
+              {/* Tags Multi-Select */}
+              {allTags.length > 0 && (
+                <Box style={{ minWidth: 160, position: 'relative' }} ref={tagDropdownRef}>
+                  <div style={{ fontSize: 'var(--bui-font-size-2, 0.75rem)', fontWeight: 400, marginBottom: 'var(--bui-space-3, 12px)', color: 'var(--bui-fg-primary, #fff)' }}>
+                    Tags ({allTags.length})
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setTagDropdownOpen(prev => !prev)}
+                    style={{
+                      width: '100%',
+                      height: '2rem',
+                      padding: '0 var(--bui-space-3, 12px)',
+                      fontSize: 'var(--bui-font-size-3, 0.875rem)',
+                      fontWeight: 400,
+                      fontFamily: 'var(--bui-font-regular, system-ui)',
+                      background: 'var(--bui-bg-neutral-1, rgba(255,255,255,0.1))',
+                      border: '1px solid var(--bui-border-2, #585858)',
+                      borderRadius: 'var(--bui-radius-3, 8px)',
+                      color: 'var(--bui-fg-primary, #fff)',
+                      cursor: 'pointer',
+                      textAlign: 'left',
+                      display: 'flex',
+                      justifyContent: 'space-between',
+                      alignItems: 'center',
+                      gap: 'var(--bui-space-2, 8px)',
+                      boxSizing: 'border-box',
+                    }}
+                  >
+                    <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                      {selectedTags.length === 0
+                        ? 'All'
+                        : `${selectedTags.length} selected`}
+                    </span>
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" style={{ flexShrink: 0, opacity: 0.5, transition: 'transform 0.15s', transform: tagDropdownOpen ? 'rotate(180deg)' : 'rotate(0deg)' }}>
+                      <path d="M7 10l5 5 5-5z" />
+                    </svg>
+                  </button>
+                  {tagDropdownOpen && (
+                    <div
+                      style={{
+                        position: 'absolute',
+                        top: '100%',
+                        left: 0,
+                        zIndex: 100,
+                        marginTop: 4,
+                        minWidth: '100%',
+                        maxHeight: 280,
+                        overflowY: 'auto',
+                        background: 'var(--bui-bg-popover, #1a1a1a)',
+                        border: '1px solid var(--bui-border-1, #434343)',
+                        borderRadius: 'var(--bui-radius-3, 8px)',
+                        boxShadow: '0 10px 15px -3px rgba(0,0,0,0.1), 0 4px 6px -4px rgba(0,0,0,0.1)',
+                      }}
+                    >
+                      {selectedTags.length > 0 && (
+                        <button
+                          type="button"
+                          onClick={() => setSelectedTags([])}
+                          style={{
+                            width: '100%',
+                            padding: '0 var(--bui-space-3, 12px)',
+                            height: '2rem',
+                            fontSize: 'var(--bui-font-size-3, 0.875rem)',
+                            background: 'none',
+                            border: 'none',
+                            borderBottom: '1px solid var(--bui-border-2, #585858)',
+                            color: 'var(--bui-fg-secondary, rgba(255,255,255,0.5))',
+                            cursor: 'pointer',
+                            textAlign: 'left',
+                          }}
+                        >
+                          Clear all
+                        </button>
+                      )}
+                      {allTags.map(tag => (
+                        <label
+                          key={tag}
+                          style={{
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: 'var(--bui-space-2, 8px)',
+                            padding: '0 var(--bui-space-3, 12px)',
+                            minHeight: '2rem',
+                            fontSize: 'var(--bui-font-size-3, 0.875rem)',
+                            cursor: 'pointer',
+                            borderRadius: 'var(--bui-radius-2, 4px)',
+                            backgroundColor: selectedTags.includes(tag) ? 'var(--bui-bg-neutral-2, rgba(255,255,255,0.06))' : 'transparent',
+                          }}
+                        >
+                          <input
+                            type="checkbox"
+                            checked={selectedTags.includes(tag)}
+                            onChange={() => handleTagToggle(tag)}
+                            style={{ accentColor: '#3b82f6' }}
+                          />
+                          {tag}
+                        </label>
+                      ))}
+                    </div>
+                  )}
+                </Box>
+              )}
               {hasActiveFilters && (
                 <Button
                   variant="secondary"
@@ -483,55 +535,73 @@ export const PlatformsPage = () => {
                 </Button>
               )}
             </Flex>
+          </Box>
 
-            {/* Tag Chips */}
-            {allTags.length > 0 && (
-              <Flex
-                gap="1"
-                mb="4"
-                align="center"
-                style={{ flexWrap: 'wrap' }}
+          {/* Platforms Section */}
+          <Box
+            p="3"
+            style={{
+              backgroundColor: 'var(--bui-color-bg-elevated, #1a1a1a)',
+              borderRadius: 8,
+            }}
+          >
+            <Flex justify="between" align="center" mb="3">
+              <Text variant="body-medium" weight="bold">
+                Platforms
+              </Text>
+              <span
+                style={{
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: 8,
+                }}
               >
-                <Text
-                  variant="body-small"
-                  color="secondary"
-                  style={{ marginRight: 4 }}
+                <span
+                  style={{
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    minWidth: 24,
+                    height: 24,
+                    padding: '0 8px',
+                    borderRadius: 12,
+                    fontSize: 14,
+                    fontWeight: 700,
+                    backgroundColor: hasActiveFilters
+                      ? '#f59e0b'
+                      : 'rgba(128,128,128,0.25)',
+                    color: hasActiveFilters ? '#fff' : 'rgba(255,255,255,0.7)',
+                  }}
                 >
-                  Tags:
+                  {hasActiveFilters
+                    ? `${filteredCount} / ${totalPlatforms}`
+                    : totalPlatforms}
+                </span>
+                <Text variant="body-small" color="secondary">
+                  platforms
                 </Text>
-                {allTags.map(tag => (
-                  <span
-                    key={tag}
-                    role="button"
-                    tabIndex={0}
-                    onClick={() => handleTagToggle(tag)}
-                    onKeyDown={e => e.key === 'Enter' && handleTagToggle(tag)}
-                    style={
-                      selectedTags.includes(tag) ? activeTagStyle : tagStyle
-                    }
-                  >
-                    {tag}
-                  </span>
-                ))}
-                {selectedTags.length > 0 && (
-                  <span
-                    role="button"
-                    tabIndex={0}
-                    onClick={() => setSelectedTags([])}
-                    onKeyDown={e =>
-                      e.key === 'Enter' && setSelectedTags([])
-                    }
-                    style={{
-                      ...tagStyle,
-                      marginLeft: 4,
-                      color: 'var(--bui-color-text-secondary, #aaa)',
-                    }}
-                  >
-                    Clear
-                  </span>
-                )}
-              </Flex>
-            )}
+                <span
+                  style={{
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    minWidth: 24,
+                    height: 24,
+                    padding: '0 8px',
+                    borderRadius: 12,
+                    fontSize: 14,
+                    fontWeight: 700,
+                    backgroundColor: 'rgba(128,128,128,0.25)',
+                    color: 'rgba(255,255,255,0.7)',
+                  }}
+                >
+                  {categories.length}
+                </span>
+                <Text variant="body-small" color="secondary">
+                  categories
+                </Text>
+              </span>
+            </Flex>
 
             {/* Content */}
             {categories.length === 0 && favoritePlatforms.length === 0 ? (

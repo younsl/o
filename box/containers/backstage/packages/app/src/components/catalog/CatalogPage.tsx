@@ -2,7 +2,6 @@ import React, { useState, useMemo, useCallback, useRef, useEffect } from 'react'
 import {
   Alert,
   Box,
-  ButtonLink,
   Container,
   Flex,
   PluginHeader,
@@ -12,15 +11,17 @@ import {
   Text,
 } from '@backstage/ui';
 import { Link } from '@backstage/core-components';
-import { useApi } from '@backstage/core-plugin-api';
+import { useApi, attachComponentData } from '@backstage/core-plugin-api';
 import { catalogApiRef } from '@backstage/plugin-catalog-react';
+import { catalogPlugin } from '@backstage/plugin-catalog';
 import { useAsync } from 'react-use';
 import { Entity } from '@backstage/catalog-model';
 
-interface ApiRow {
+interface CatalogRow {
   id: string;
   name: string;
   title: string;
+  kind: string;
   system: string;
   owner: string;
   type: string;
@@ -31,15 +32,17 @@ interface ApiRow {
   createdAt: string;
 }
 
-function toApiRow(entity: Entity): ApiRow {
+function toCatalogRow(entity: Entity): CatalogRow {
   const name = entity.metadata.name;
   const namespace = entity.metadata.namespace ?? 'default';
+  const kind = entity.kind;
   const annotations = entity.metadata.annotations ?? {};
   const createdAt = annotations['backstage.io/created-at'] ?? '';
   return {
-    id: `${namespace}/${name}`,
+    id: `${namespace}/${kind}/${name}`,
     name,
     title: entity.metadata.title ?? '',
+    kind,
     namespace,
     system: (entity.spec as any)?.system ?? '-',
     owner: (entity.spec as any)?.owner ?? '-',
@@ -60,7 +63,7 @@ function formatDate(dateString: string): string {
   }
 }
 
-const COLUMN_COUNT = 8;
+const COLUMN_COUNT = 9;
 
 const thStyle: React.CSSProperties = {
   padding: '12px 16px',
@@ -112,10 +115,11 @@ const detailValueStyle: React.CSSProperties = {
   marginTop: 2,
 };
 
-export const ApisPage = () => {
+export const CatalogPage = () => {
   const catalogApi = useApi(catalogApiRef);
 
   const [searchQuery, setSearchQuery] = useState('');
+  const [kindFilter, setKindFilter] = useState<string>('all');
   const [typeFilter, setTypeFilter] = useState<string>('all');
   const [lifecycleFilter, setLifecycleFilter] = useState<string>('all');
   const [ownerFilter, setOwnerFilter] = useState<string>('all');
@@ -161,7 +165,6 @@ export const ApisPage = () => {
     error,
   } = useAsync(async () => {
     const response = await catalogApi.getEntities({
-      filter: { kind: 'API' },
       fields: [
         'metadata.name',
         'metadata.title',
@@ -169,17 +172,30 @@ export const ApisPage = () => {
         'metadata.description',
         'metadata.tags',
         'metadata.annotations',
+        'kind',
         'spec.type',
         'spec.lifecycle',
         'spec.owner',
         'spec.system',
       ],
     });
-    return response.items.map(toApiRow);
+    return response.items.map(toCatalogRow);
   }, []);
 
   const allRows = entities ?? [];
 
+  const kindCounts = useMemo(() => {
+    const counts = new Map<string, number>();
+    for (const row of allRows) {
+      counts.set(row.kind, (counts.get(row.kind) ?? 0) + 1);
+    }
+    return counts;
+  }, [allRows]);
+
+  const uniqueKinds = useMemo(
+    () => [...kindCounts.keys()].sort(),
+    [kindCounts],
+  );
   const uniqueTypes = useMemo(
     () => [...new Set(allRows.map(r => r.type).filter(t => t !== '-'))].sort(),
     [allRows],
@@ -198,6 +214,13 @@ export const ApisPage = () => {
     [allRows],
   );
 
+  const kindOptions = [
+    { value: 'all', label: `All (${allRows.length})` },
+    ...uniqueKinds.map(k => ({
+      value: k,
+      label: `${k} (${kindCounts.get(k) ?? 0})`,
+    })),
+  ];
   const typeOptions = [
     { value: 'all', label: 'All' },
     ...uniqueTypes.map(t => ({ value: t, label: t })),
@@ -218,6 +241,7 @@ export const ApisPage = () => {
         row.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
         row.description.toLowerCase().includes(searchQuery.toLowerCase()) ||
         row.owner.toLowerCase().includes(searchQuery.toLowerCase());
+      const matchesKind = kindFilter === 'all' || row.kind === kindFilter;
       const matchesType = typeFilter === 'all' || row.type === typeFilter;
       const matchesLifecycle =
         lifecycleFilter === 'all' || row.lifecycle === lifecycleFilter;
@@ -226,6 +250,7 @@ export const ApisPage = () => {
         selectedTags.size === 0 || [...selectedTags].every(t => row.tags.includes(t));
       return (
         matchesSearch &&
+        matchesKind &&
         matchesType &&
         matchesLifecycle &&
         matchesOwner &&
@@ -235,6 +260,7 @@ export const ApisPage = () => {
   }, [
     allRows,
     searchQuery,
+    kindFilter,
     typeFilter,
     lifecycleFilter,
     ownerFilter,
@@ -243,6 +269,7 @@ export const ApisPage = () => {
 
   const hasActiveFilters =
     searchQuery !== '' ||
+    kindFilter !== 'all' ||
     typeFilter !== 'all' ||
     lifecycleFilter !== 'all' ||
     ownerFilter !== 'all' ||
@@ -250,17 +277,13 @@ export const ApisPage = () => {
 
   return (
     <>
-      <PluginHeader title="APIs" />
+      <PluginHeader title="Catalog" />
       <Container>
         <Flex direction="column" gap="3" p="3">
-          <Flex justify="between" align="center">
-            <Text variant="body-medium" color="secondary">
-              Browse and discover APIs registered in the Backstage Catalog
-            </Text>
-            <ButtonLink href="/openapi-registry" variant="secondary">
-              API Registry
-            </ButtonLink>
-          </Flex>
+          <Text variant="body-medium" color="secondary">
+            Browse and discover all entities registered in the Backstage
+            Catalog
+          </Text>
 
           {/* Filters Section */}
           <Box
@@ -286,6 +309,14 @@ export const ApisPage = () => {
                   size="small"
                   value={searchQuery}
                   onChange={setSearchQuery}
+                />
+              </Box>
+              <Box style={{ minWidth: 160 }}>
+                <Select
+                  label="Kind"
+                  options={kindOptions}
+                  selectedKey={kindFilter}
+                  onSelectionChange={key => setKindFilter(key as string)}
                 />
               </Box>
               <Box style={{ minWidth: 140 }}>
@@ -418,7 +449,7 @@ export const ApisPage = () => {
             </Flex>
           </Box>
 
-          {/* APIs Section */}
+          {/* Entities Section */}
           <Box
             p="3"
             style={{
@@ -428,29 +459,41 @@ export const ApisPage = () => {
           >
             <Flex justify="between" align="center" mb="3">
               <Text variant="body-medium" weight="bold">
-                APIs
+                Entities
               </Text>
               {!loading && !error && (
-                <span style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}>
-                  <span style={{
+                <span
+                  style={{
                     display: 'inline-flex',
                     alignItems: 'center',
-                    justifyContent: 'center',
-                    minWidth: 24,
-                    height: 24,
-                    padding: '0 8px',
-                    borderRadius: 12,
-                    fontSize: 14,
-                    fontWeight: 700,
-                    backgroundColor: hasActiveFilters ? '#f59e0b' : 'rgba(128,128,128,0.25)',
-                    color: hasActiveFilters ? '#fff' : 'rgba(255,255,255,0.7)',
-                  }}>
+                    gap: 8,
+                  }}
+                >
+                  <span
+                    style={{
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      minWidth: 24,
+                      height: 24,
+                      padding: '0 8px',
+                      borderRadius: 12,
+                      fontSize: 14,
+                      fontWeight: 700,
+                      backgroundColor: hasActiveFilters
+                        ? '#f59e0b'
+                        : 'rgba(128,128,128,0.25)',
+                      color: hasActiveFilters
+                        ? '#fff'
+                        : 'rgba(255,255,255,0.7)',
+                    }}
+                  >
                     {hasActiveFilters
                       ? `${filteredRows.length} / ${allRows.length}`
                       : allRows.length}
                   </span>
                   <Text variant="body-small" color="secondary">
-                    APIs
+                    Entities
                   </Text>
                 </span>
               )}
@@ -465,13 +508,13 @@ export const ApisPage = () => {
             ) : error ? (
               <Alert
                 status="danger"
-                title="Failed to load APIs"
+                title="Failed to load catalog entities"
                 description={error.message}
               />
             ) : filteredRows.length === 0 ? (
               <Flex justify="center" p="4">
                 <Text color="secondary">
-                  No APIs found matching the current filters
+                  No entities found matching the current filters
                 </Text>
               </Flex>
             ) : (
@@ -479,12 +522,18 @@ export const ApisPage = () => {
                 <table style={{ width: '100%', borderCollapse: 'collapse' }}>
                   <thead>
                     <tr>
-                      <th style={{ ...thStyle, width: 28, padding: '12px 4px' }} />
+                      <th
+                        style={{
+                          ...thStyle,
+                          width: 28,
+                          padding: '12px 4px',
+                        }}
+                      />
                       <th style={{ ...thStyle, paddingLeft: 4 }}>Name</th>
                       <th style={thStyle}>Title</th>
-                      <th style={thStyle}>System</th>
-                      <th style={thStyle}>Owner</th>
+                      <th style={thStyle}>Kind</th>
                       <th style={thStyle}>Type</th>
+                      <th style={thStyle}>Owner</th>
                       <th style={thStyle}>Lifecycle</th>
                       <th style={thStyle}>Tags</th>
                     </tr>
@@ -499,7 +548,15 @@ export const ApisPage = () => {
                             style={{ cursor: 'pointer' }}
                             onClick={() => toggleRow(row.id)}
                           >
-                            <td style={{ ...tdStyle, padding: '10px 4px', ...(isExpanded ? { borderBottom: 'none' } : {}) }}>
+                            <td
+                              style={{
+                                ...tdStyle,
+                                padding: '10px 4px',
+                                ...(isExpanded
+                                  ? { borderBottom: 'none' }
+                                  : {}),
+                              }}
+                            >
                               <button
                                 style={chevronStyle}
                                 aria-label={
@@ -523,27 +580,79 @@ export const ApisPage = () => {
                                 </svg>
                               </button>
                             </td>
-                            <td style={{ ...tdStyle, paddingLeft: 4, ...(isExpanded ? { borderBottom: 'none' } : {}) }}>
-                              <Link to={`/catalog/${row.namespace}/api/${row.name}`}>
+                            <td
+                              style={{
+                                ...tdStyle,
+                                paddingLeft: 4,
+                                ...(isExpanded
+                                  ? { borderBottom: 'none' }
+                                  : {}),
+                              }}
+                            >
+                              <Link
+                                to={`/catalog/${row.namespace}/${row.kind.toLowerCase()}/${row.name}`}
+                              >
                                 {row.name}
                               </Link>
                             </td>
-                            <td style={{ ...tdStyle, ...(isExpanded ? { borderBottom: 'none' } : {}) }}>
+                            <td
+                              style={{
+                                ...tdStyle,
+                                ...(isExpanded
+                                  ? { borderBottom: 'none' }
+                                  : {}),
+                              }}
+                            >
                               {row.title || '-'}
                             </td>
-                            <td style={{ ...tdStyle, ...(isExpanded ? { borderBottom: 'none' } : {}) }}>
-                              {row.system}
+                            <td
+                              style={{
+                                ...tdStyle,
+                                ...(isExpanded
+                                  ? { borderBottom: 'none' }
+                                  : {}),
+                              }}
+                            >
+                              <span style={tagStyle}>{row.kind}</span>
                             </td>
-                            <td style={{ ...tdStyle, ...(isExpanded ? { borderBottom: 'none' } : {}) }}>
-                              {row.owner}
-                            </td>
-                            <td style={{ ...tdStyle, ...(isExpanded ? { borderBottom: 'none' } : {}) }}>
+                            <td
+                              style={{
+                                ...tdStyle,
+                                ...(isExpanded
+                                  ? { borderBottom: 'none' }
+                                  : {}),
+                              }}
+                            >
                               <span style={tagStyle}>{row.type}</span>
                             </td>
-                            <td style={{ ...tdStyle, ...(isExpanded ? { borderBottom: 'none' } : {}) }}>
+                            <td
+                              style={{
+                                ...tdStyle,
+                                ...(isExpanded
+                                  ? { borderBottom: 'none' }
+                                  : {}),
+                              }}
+                            >
+                              {row.owner}
+                            </td>
+                            <td
+                              style={{
+                                ...tdStyle,
+                                ...(isExpanded
+                                  ? { borderBottom: 'none' }
+                                  : {}),
+                              }}
+                            >
                               <span style={tagStyle}>{row.lifecycle}</span>
                             </td>
-                            <td style={{ ...tdStyle, ...(isExpanded ? { borderBottom: 'none' } : {}) }}>
+                            <td
+                              style={{
+                                ...tdStyle,
+                                ...(isExpanded
+                                  ? { borderBottom: 'none' }
+                                  : {}),
+                              }}
+                            >
                               <span
                                 style={{
                                   display: 'flex',
@@ -607,6 +716,12 @@ export const ApisPage = () => {
                                     </div>
                                   </div>
                                   <div style={{ minWidth: 120 }}>
+                                    <div style={detailLabelStyle}>System</div>
+                                    <div style={detailValueStyle}>
+                                      {row.system}
+                                    </div>
+                                  </div>
+                                  <div style={{ minWidth: 120 }}>
                                     <div style={detailLabelStyle}>
                                       Created At
                                     </div>
@@ -631,3 +746,5 @@ export const ApisPage = () => {
     </>
   );
 };
+
+attachComponentData(CatalogPage, 'core.mountPoint', catalogPlugin.routes.catalogIndex);

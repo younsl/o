@@ -51,6 +51,23 @@ export async function createRouter(options: RouterOptions): Promise<Router> {
     res.json({ cron, fetchCron, slackConfigured, lastFetchedAt });
   });
 
+  router.get('/branches', async (req, res) => {
+    const repoUrl = req.query.repoUrl as string | undefined;
+    if (!repoUrl || typeof repoUrl !== 'string') {
+      res.status(400).json({ error: 'repoUrl query parameter is required' });
+      return;
+    }
+    try {
+      const result = await service.listBranches(repoUrl);
+      res.json(result);
+    } catch (error) {
+      logger.error(`Failed to list branches for ${repoUrl}: ${error}`);
+      res.status(500).json({
+        error: error instanceof Error ? error.message : 'Unknown error',
+      });
+    }
+  });
+
   router.get('/application-sets', (_, res) => {
     res.json(cache.getAppSets());
   });
@@ -91,6 +108,33 @@ export async function createRouter(options: RouterOptions): Promise<Router> {
       res.json({ status: 'unmuted' });
     } catch (error) {
       logger.error(`Failed to unmute ${namespace}/${name}: ${error}`);
+      res.status(500).json({
+        error: error instanceof Error ? error.message : 'Unknown error',
+      });
+    }
+  });
+
+  router.post('/application-sets/:namespace/:name/target-revision', async (req, res) => {
+    const { namespace, name } = req.params;
+    const { targetRevision } = req.body ?? {};
+    try {
+      const userRef = await tryGetUserRef(req);
+      if (!userRef || !admins.includes(userRef)) {
+        res.status(403).json({ error: 'Only admins can change target revision' });
+        return;
+      }
+
+      if (!targetRevision || typeof targetRevision !== 'string' || targetRevision.trim() === '') {
+        res.status(400).json({ error: 'targetRevision is required' });
+        return;
+      }
+
+      await service.setTargetRevision(namespace, name, targetRevision.trim());
+      const appSets = await service.listApplicationSets();
+      cache.update(appSets);
+      res.json({ status: 'updated', targetRevision: targetRevision.trim() });
+    } catch (error) {
+      logger.error(`Failed to set targetRevision for ${namespace}/${name}: ${error}`);
       res.status(500).json({
         error: error instanceof Error ? error.message : 'Unknown error',
       });

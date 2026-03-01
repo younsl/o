@@ -4377,6 +4377,28 @@ __metadata:
   languageName: node
   linkType: hard
 
+"@backstage/plugin-mui-to-bui@npm:^0.2.4":
+  version: 0.2.4
+  resolution: "@backstage/plugin-mui-to-bui@npm:0.2.4"
+  dependencies:
+    "@backstage/core-plugin-api": "npm:^1.12.3"
+    "@backstage/frontend-plugin-api": "npm:^0.14.0"
+    "@backstage/theme": "npm:^0.7.2"
+    "@backstage/ui": "npm:^0.12.0"
+    "@mui/material": "npm:^5.12.2"
+    "@mui/system": "npm:^5.16.14"
+  peerDependencies:
+    "@types/react": ^17.0.0 || ^18.0.0
+    react: ^17.0.0 || ^18.0.0
+    react-dom: ^17.0.0 || ^18.0.0
+    react-router-dom: ^6.30.2
+  peerDependenciesMeta:
+    "@types/react":
+      optional: true
+  checksum: 10c0/1df9c1b3ca1099e08df2f66057f2b14565e730ebbfc476d98e27cf3f89e0909041df36e29d0e698fcf6e704c6f3613b83270a591e1ffbc811ba9ce653331e610
+  languageName: node
+  linkType: hard
+
 "@backstage/plugin-org@npm:^0.6.49":
   version: 0.6.49
   resolution: "@backstage/plugin-org@npm:0.6.49"
@@ -8704,7 +8726,7 @@ __metadata:
   languageName: node
   linkType: hard
 
-"@mui/system@npm:^5.18.0":
+"@mui/system@npm:^5.16.14, @mui/system@npm:^5.18.0":
   version: 5.18.0
   resolution: "@mui/system@npm:5.18.0"
   dependencies:
@@ -16361,6 +16383,7 @@ __metadata:
     "@backstage/plugin-catalog-import": "npm:^0.13.10"
     "@backstage/plugin-catalog-react": "npm:^2.0.0"
     "@backstage/plugin-home": "npm:^0.9.2"
+    "@backstage/plugin-mui-to-bui": "npm:^0.2.4"
     "@backstage/plugin-org": "npm:^0.6.49"
     "@backstage/plugin-scaffolder": "npm:^1.35.4"
     "@backstage/plugin-search": "npm:^1.6.1"

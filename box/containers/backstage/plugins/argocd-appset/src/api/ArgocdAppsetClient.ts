@@ -64,6 +64,35 @@ export class ArgocdAppsetClient implements ArgocdAppsetApi {
     }
   }
 
+  async setTargetRevision(namespace: string, name: string, targetRevision: string): Promise<void> {
+    const baseUrl = await this.getBaseUrl();
+    const response = await this.fetchApi.fetch(
+      `${baseUrl}/application-sets/${encodeURIComponent(namespace)}/${encodeURIComponent(name)}/target-revision`,
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ targetRevision }),
+      },
+    );
+
+    if (!response.ok) {
+      throw await ResponseError.fromResponse(response as any);
+    }
+  }
+
+  async listBranches(repoUrl: string): Promise<{ branches: string[]; defaultBranch: string | null }> {
+    const baseUrl = await this.getBaseUrl();
+    const response = await this.fetchApi.fetch(
+      `${baseUrl}/branches?repoUrl=${encodeURIComponent(repoUrl)}`,
+    );
+
+    if (!response.ok) {
+      throw await ResponseError.fromResponse(response as any);
+    }
+
+    return response.json();
+  }
+
   async getAdminStatus(): Promise<{ isAdmin: boolean }> {
     const baseUrl = await this.getBaseUrl();
     const response = await this.fetchApi.fetch(`${baseUrl}/admin-status`);

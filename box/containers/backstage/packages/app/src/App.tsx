@@ -14,7 +14,6 @@ import { Route } from 'react-router-dom';
 import { apiDocsPlugin } from '@backstage/plugin-api-docs';
 import {
   CatalogEntityPage,
-  CatalogIndexPage,
   catalogPlugin,
 } from '@backstage/plugin-catalog';
 import {
@@ -36,12 +35,16 @@ import { Root } from './components/Root';
 import { HomePage } from './components/home/HomePage';
 import { PlatformsPage } from './components/platforms';
 import { ApisPage } from './components/apis';
+import { CatalogPage } from './components/catalog/CatalogPage';
 
 import {
   AlertDisplay,
   OAuthRequestDialog,
   SignInPage,
 } from '@backstage/core-components';
+// TODO: Migrate to New Frontend System (createApp from @backstage/frontend-defaults)
+// when it reaches stable. Currently alpha — not recommended for production.
+// See: https://github.com/backstage/backstage/issues/31467
 import { createApp } from '@backstage/app-defaults';
 import { FlatRoutes } from '@backstage/core-app-api';
 import { CatalogGraphPage } from '@backstage/plugin-catalog-graph';
@@ -52,6 +55,7 @@ import {
 import { OpenApiRegistryPage } from '@internal/plugin-openapi-registry';
 import { ArgocdAppsetPage } from '@internal/plugin-argocd-appset';
 import { IamUserAuditPage, AwsIdentitySettings } from '@internal/plugin-iam-user-audit';
+import { BuiThemerPage } from '@backstage/plugin-mui-to-bui';
 
 const CustomSignInPage = (props: any) => (
   <SignInPage
@@ -106,7 +110,7 @@ const routes = (
   <FlatRoutes>
     <Route path="/" element={<HomePage />} />
     <Route path="/platforms" element={<PlatformsPage />} />
-    <Route path="/catalog" element={<CatalogIndexPage />} />
+    <Route path="/catalog" element={<CatalogPage />} />
     <Route
       path="/catalog/:namespace/:kind/:name"
       element={<CatalogEntityPage />}
@@ -128,6 +132,7 @@ const routes = (
     <Route path="/openapi-registry" element={<OpenApiRegistryPage />} />
     <Route path="/argocd-appset" element={<ArgocdAppsetPage />} />
     <Route path="/iam-user-audit" element={<IamUserAuditPage />} />
+    <Route path="/mui-to-bui" element={<BuiThemerPage />} />
     <Route path="/settings" element={<UserSettingsPage />}>
       <SettingsLayout.Route path="/aws-identity" title="AWS Identity">
         <AwsIdentitySettings />

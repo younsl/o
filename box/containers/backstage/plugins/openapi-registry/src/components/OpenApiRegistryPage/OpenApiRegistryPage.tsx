@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { PluginHeader, Container, Flex, Text, Box, Tabs, TabList, Tab, TabPanel } from '@backstage/ui';
+import { PluginHeader, Container, Flex, Text, Box, Tabs, TabList, Tab, TabPanel, ButtonLink } from '@backstage/ui';
 import { useApi } from '@backstage/core-plugin-api';
 import { useAsyncRetry } from 'react-use';
 import { RegisterApiForm } from '../RegisterApiForm';
@@ -32,9 +32,14 @@ export const OpenApiRegistryPage = () => {
       <PluginHeader title="OpenAPI Registry" />
       <Container>
         <Flex direction="column" gap="3" p="3">
-          <Text variant="body-medium" color="secondary">
-            Register external API specs from URL and sync them to Backstage Catalog automatically
-          </Text>
+          <Flex justify="between" align="center">
+            <Text variant="body-medium" color="secondary">
+              Register external API specs from URL and sync them to Backstage Catalog automatically
+            </Text>
+            <ButtonLink href="/api-docs" variant="secondary">
+              APIs
+            </ButtonLink>
+          </Flex>
 
           <Tabs selectedKey={selectedTab} onSelectionChange={setSelectedTab}>
             <TabList>
@@ -71,7 +76,7 @@ export const OpenApiRegistryPage = () => {
             </TabPanel>
 
             <TabPanel id="list">
-              <Box mt="3" p="3" style={{ backgroundColor: 'var(--bui-color-bg-elevated, #1a1a1a)', borderRadius: 4 }}>
+              <Box mt="3">
                 <RegisteredApisList
                   registrations={registrations}
                   loading={loading}

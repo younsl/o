@@ -1,17 +1,11 @@
 import React from 'react';
-import { Box, makeStyles } from '@material-ui/core';
+import { Box } from '@backstage/ui';
 import { useEntity } from '@backstage/plugin-catalog-react';
 import {
   isGitlabAvailable,
   EntityGitlabReadmeCard,
 } from '@immobiliarelabs/backstage-plugin-gitlab';
 import { IntegrationStatusBadge } from './IntegrationStatusBadge';
-
-const useStyles = makeStyles({
-  wrapper: {
-    position: 'relative',
-  },
-});
 
 const PLUGIN_URL = 'https://github.com/immobiliare/backstage-plugin-gitlab';
 
@@ -20,12 +14,11 @@ const PLUGIN_URL = 'https://github.com/immobiliare/backstage-plugin-gitlab';
  * GitLab connection status in the card header.
  */
 export const EntityGitlabReadmeCardWithStatus = () => {
-  const classes = useStyles();
   const { entity } = useEntity();
   const gitlabConnected = isGitlabAvailable(entity);
 
   return (
-    <Box className={classes.wrapper}>
+    <Box style={{ position: 'relative' }}>
       <IntegrationStatusBadge
         label="GitLab Integration"
         status={gitlabConnected ? 'connected' : 'disconnected'}

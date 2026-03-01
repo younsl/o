@@ -6,7 +6,6 @@ import LibraryBooks from '@material-ui/icons/LibraryBooks';
 import CreateComponentIcon from '@material-ui/icons/AddCircleOutline';
 import SearchIcon from '@material-ui/icons/Search';
 import GroupIcon from '@material-ui/icons/Group';
-import HomeIcon from '@material-ui/icons/Home';
 import DashboardIcon from '@material-ui/icons/Dashboard';
 import CloudUploadIcon from '@material-ui/icons/CloudUpload';
 import ExpandMoreIcon from '@material-ui/icons/ExpandMore';
@@ -282,7 +281,6 @@ export const Root = ({ children }: PropsWithChildren<{}>) => {
         <SidebarSearchModal />
       </SidebarGroup>
       <SidebarDivider />
-      <SidebarItem icon={HomeIcon} to="/" text="Home" />
       <PlatformsSidebarItem />
       <SidebarDivider />
 

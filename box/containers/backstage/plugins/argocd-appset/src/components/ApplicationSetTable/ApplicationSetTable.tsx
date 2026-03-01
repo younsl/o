@@ -1,11 +1,17 @@
-import React, { useState, useMemo, useCallback } from 'react';
+import React, { useState, useMemo, useCallback, useEffect } from 'react';
 import {
   Alert,
   Box,
+  Button,
   ButtonIcon,
   Card,
   CardBody,
   CardFooter,
+  Dialog,
+  DialogBody,
+  DialogFooter,
+  DialogHeader,
+  DialogTrigger,
   Flex,
   Grid,
   Link,
@@ -15,16 +21,19 @@ import {
   Tag,
   TagGroup,
   Text,
+  TextField,
   Tooltip,
   TooltipTrigger,
 } from '@backstage/ui';
 import {
+  RiEditLine,
+  RiInformationLine,
   RiNotificationLine,
   RiNotificationOffLine,
 } from '@remixicon/react';
 import { useApi } from '@backstage/core-plugin-api';
 import { useAsyncRetry } from 'react-use';
-import { argocdAppsetApiRef, ApplicationSetResponse } from '../../api';
+import { argocdAppsetApiRef, ApplicationSetResponse, MUTE_ANNOTATION } from '../../api';
 import './ApplicationSetTable.css';
 
 export const ApplicationSetTable = () => {
@@ -134,6 +143,69 @@ export const ApplicationSetTable = () => {
     }
   }, [api, appSetsRaw]);
 
+  const [editRevisionKey, setEditRevisionKey] = useState<string | null>(null);
+  const [editRevisionValue, setEditRevisionValue] = useState('');
+  const [savingRevisionKey, setSavingRevisionKey] = useState<string | null>(null);
+
+  const [branches, setBranches] = useState<string[]>([]);
+  const [defaultBranch, setDefaultBranch] = useState<string | null>(null);
+  const [branchesLoading, setBranchesLoading] = useState(false);
+  const [branchesFailed, setBranchesFailed] = useState(false);
+
+  useEffect(() => {
+    if (!editRevisionKey || !appSets) return;
+    const appSet = appSets.find(a => `${a.namespace}/${a.name}` === editRevisionKey);
+    if (!appSet?.repoUrl) {
+      setBranchesFailed(true);
+      return;
+    }
+    let cancelled = false;
+    setBranchesLoading(true);
+    setBranchesFailed(false);
+    setBranches([]);
+    setDefaultBranch(null);
+    api.listBranches(appSet.repoUrl).then(
+      result => {
+        if (!cancelled) {
+          setBranches(result.branches);
+          setDefaultBranch(result.defaultBranch);
+          setBranchesLoading(false);
+        }
+      },
+      () => {
+        if (!cancelled) {
+          setBranchesFailed(true);
+          setBranchesLoading(false);
+        }
+      },
+    );
+    return () => { cancelled = true; };
+  }, [editRevisionKey, appSets, api]);
+
+  const handleSaveTargetRevision = useCallback(async (namespace: string, name: string) => {
+    const key = `${namespace}/${name}`;
+    const trimmed = editRevisionValue.trim();
+    if (!trimmed) return;
+    setSavingRevisionKey(key);
+    try {
+      await api.setTargetRevision(namespace, name, trimmed);
+      setLocalAppSets(prev => {
+        const source = prev ?? appSetsRaw;
+        if (!source) return source;
+        return source.map(a =>
+          a.namespace === namespace && a.name === name
+            ? { ...a, targetRevisions: [trimmed] }
+            : a,
+        );
+      });
+      setEditRevisionKey(null);
+    } catch {
+      // silently fail — next fetch cycle will reflect actual state
+    } finally {
+      setSavingRevisionKey(null);
+    }
+  }, [api, appSetsRaw, editRevisionValue]);
+
   if (loading) {
     return (
       <Flex direction="column" gap="3" mt="4">
@@ -191,9 +263,9 @@ export const ApplicationSetTable = () => {
 
   return (
     <>
-      {/* Summary Section */}
-      <Box mb="4" mt="4">
-        <Text as="h3" variant="body-small" weight="bold" color="secondary" className="appset-section-title">
+      {/* Overview Section */}
+      <Box mt="4" p="3" className="appset-section-box">
+        <Text variant="body-medium" weight="bold" style={{ marginBottom: 12, display: 'block' }}>
           Overview
         </Text>
         <div className="appset-summary-bar">
@@ -214,6 +286,16 @@ export const ApplicationSetTable = () => {
           <div className="appset-summary-card">
             <Text weight="bold" className="appset-summary-value">{mutedCount}</Text>
             <Text variant="body-x-small" color="secondary">Muted</Text>
+            <TooltipTrigger delay={200}>
+              <ButtonIcon
+                size="small"
+                variant="tertiary"
+                icon={<RiInformationLine size={14} />}
+                aria-label="Muted info"
+                className="appset-muted-info-btn"
+              />
+              <Tooltip>{`ApplicationSets with ${MUTE_ANNOTATION} annotation are excluded from Slack notifications.`}</Tooltip>
+            </TooltipTrigger>
           </div>
           {status && (
             <div className="appset-summary-card">
@@ -235,12 +317,11 @@ export const ApplicationSetTable = () => {
         </div>
       </Box>
 
-      {/* ApplicationSets Section */}
-      <Box mt="4">
-        <Text as="h3" variant="body-small" weight="bold" color="secondary" className="appset-section-title">
-          ApplicationSets
+      {/* Filters Section */}
+      <Box mt="3" p="3" className="appset-section-box">
+        <Text variant="body-medium" weight="bold" style={{ marginBottom: 12, display: 'block' }}>
+          Filters
         </Text>
-
         <div className="appset-filter-bar">
           <SearchField
             label="Search"
@@ -271,6 +352,23 @@ export const ApplicationSetTable = () => {
             onSelectionChange={key => setRevisionFilter(key as string)}
           />
         </div>
+      </Box>
+
+      {/* ApplicationSets Section */}
+      <Box mt="3" p="3" className="appset-section-box">
+        <Flex justify="between" align="center" mb="3">
+          <Text variant="body-medium" weight="bold">
+            ApplicationSets
+          </Text>
+          <Flex align="center" gap="2">
+            <span className="appset-count-badge">
+              {filteredAppSets.length !== totalCount
+                ? `${filteredAppSets.length} / ${totalCount}`
+                : totalCount}
+            </span>
+            <Text variant="body-small" color="secondary">results</Text>
+          </Flex>
+        </Flex>
 
         {filteredAppSets.length === 0 ? (
           <div className="appset-empty-state">
@@ -288,33 +386,12 @@ export const ApplicationSetTable = () => {
                 <Grid.Item key={cardKey}>
                   <Card className={`${appSet.isHeadRevision ? 'appset-card' : 'appset-card-warning'}${appSet.muted ? ' appset-card-muted' : ''}`}>
                     <CardBody className="appset-card-body">
-                      <div className="appset-card-header">
-                        <div>
-                          <Text variant="body-medium" className="appset-card-name">
-                            <Text as="span" variant="body-medium" color="secondary">{appSet.namespace}</Text>
-                            {' / '}
-                            {appSet.name}
-                          </Text>
-                        </div>
-                        <div className="appset-app-count-badge">
-                          <TooltipTrigger delay={200}>
-                            <ButtonIcon
-                              size="small"
-                              variant="tertiary"
-                              className="appset-app-count-trigger"
-                              icon={<span>{appSet.applicationCount}</span>}
-                              aria-label={`${appSet.applicationCount} applications`}
-                            />
-                            <Tooltip className="appset-apps-tooltip">
-                              {appSet.applications.length > 0
-                                ? appSet.applications.join(', ')
-                                : 'No applications'}
-                            </Tooltip>
-                          </TooltipTrigger>
-                          <Text variant="body-x-small" color="secondary" className="appset-app-count-label">
-                            Apps
-                          </Text>
-                        </div>
+                      <div>
+                        <Text variant="body-medium" className="appset-card-name">
+                          <Text as="span" variant="body-medium" color="secondary">{appSet.namespace}</Text>
+                          {' / '}
+                          {appSet.name}
+                        </Text>
                       </div>
 
                       <div>
@@ -347,15 +424,151 @@ export const ApplicationSetTable = () => {
                         <Text variant="body-x-small" color="secondary" className="appset-field-label">
                           Target Revision
                         </Text>
-                        <TagGroup>
-                          {appSet.targetRevisions.map((rev, i) => (
-                            <Tag key={i} id={`rev-${i}`} size="small">{rev}</Tag>
-                          ))}
-                          {!appSet.isHeadRevision && (
-                            <Tag id="not-head" size="small">Not HEAD</Tag>
+                        <div className="appset-revision-row">
+                          <TagGroup>
+                            {appSet.targetRevisions.map((rev, i) => (
+                              <Tag key={i} id={`rev-${i}`} size="small">{rev}</Tag>
+                            ))}
+                          </TagGroup>
+                          {isAdmin && (
+                            <DialogTrigger
+                              isOpen={editRevisionKey === cardKey}
+                              onOpenChange={open => {
+                                if (open) {
+                                  setEditRevisionKey(cardKey);
+                                  setEditRevisionValue(appSet.targetRevisions[0] ?? 'HEAD');
+                                } else {
+                                  setEditRevisionKey(null);
+                                }
+                              }}
+                            >
+                              <ButtonIcon
+                                size="small"
+                                variant="tertiary"
+                                icon={<RiEditLine size={14} />}
+                                aria-label="Edit target revision"
+                                className="appset-edit-revision-btn"
+                              />
+                              <Dialog>
+                                <DialogHeader>Edit Target Revision</DialogHeader>
+                                <DialogBody>
+                                  <Flex direction="column" gap="3">
+                                    <Flex direction="column" gap="1">
+                                      <Text variant="body-x-small" color="secondary" weight="bold">ApplicationSet</Text>
+                                      <Text variant="body-medium">{appSet.name}</Text>
+                                    </Flex>
+                                    <Flex direction="column" gap="1">
+                                      <Text variant="body-x-small" color="secondary" weight="bold">Repository</Text>
+                                      {appSet.repoUrl ? (
+                                        <Link href={appSet.repoUrl} target="_blank" rel="noopener noreferrer">
+                                          <Text variant="body-medium">{appSet.repoName}</Text>
+                                        </Link>
+                                      ) : (
+                                        <Text variant="body-medium">{appSet.repoName || '-'}</Text>
+                                      )}
+                                    </Flex>
+                                    <Flex direction="column" gap="1">
+                                      <Flex align="center" gap="2">
+                                        <Text variant="body-x-small" color="secondary" weight="bold">Target Revision</Text>
+                                        {branchesLoading ? (
+                                          <Skeleton width={24} height={18} rounded />
+                                        ) : !branchesFailed && (
+                                          <span style={{
+                                            fontSize: 11,
+                                            lineHeight: '18px',
+                                            padding: '0 6px',
+                                            borderRadius: 9,
+                                            backgroundColor: 'var(--bui-color-background-neutral)',
+                                            color: 'var(--bui-color-text-secondary)',
+                                          }}>
+                                            {branches.length} branches
+                                          </span>
+                                        )}
+                                      </Flex>
+                                      {branchesLoading ? (
+                                        <Skeleton width="100%" height={40} />
+                                      ) : branchesFailed ? (
+                                        <TextField
+                                          aria-label="Target Revision"
+                                          value={editRevisionValue}
+                                          onChange={setEditRevisionValue}
+                                          autoFocus
+                                        />
+                                      ) : (
+                                        <Select
+                                          aria-label="Target Revision"
+                                          searchable
+                                          options={[
+                                            { value: 'HEAD', label: 'HEAD' },
+                                            ...branches.map(b => ({
+                                              value: b,
+                                              label: b === defaultBranch ? `${b} (default)` : b,
+                                            })),
+                                          ]}
+                                          selectedKey={editRevisionValue}
+                                          onSelectionChange={key => setEditRevisionValue(key as string)}
+                                        />
+                                      )}
+                                    </Flex>
+                                  </Flex>
+                                </DialogBody>
+                                <DialogFooter>
+                                  <Flex gap="2" justify="end">
+                                    <Button
+                                      variant="secondary"
+                                      onPress={() => setEditRevisionKey(null)}
+                                    >
+                                      Cancel
+                                    </Button>
+                                    <Button
+                                      variant="primary"
+                                      onPress={() => handleSaveTargetRevision(appSet.namespace, appSet.name)}
+                                      isDisabled={savingRevisionKey === cardKey || editRevisionValue.trim() === ''}
+                                    >
+                                      {savingRevisionKey === cardKey ? 'Saving...' : 'Save'}
+                                    </Button>
+                                  </Flex>
+                                </DialogFooter>
+                              </Dialog>
+                            </DialogTrigger>
                           )}
-                        </TagGroup>
+                        </div>
+                        {!appSet.isHeadRevision && (
+                          <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4, color: '#f59e0b', fontSize: 12, marginTop: 4 }}>
+                            <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor">
+                              <path d="M1 21h22L12 2 1 21zm12-3h-2v-2h2v2zm0-4h-2v-4h2v4z" />
+                            </svg>
+                            Not HEAD
+                          </span>
+                        )}
                       </div>
+
+                      {appSet.applications.length > 0 && (
+                        <div>
+                          <Text variant="body-x-small" color="secondary" className="appset-field-label">
+                            Applications ({appSet.syncedCount} / {appSet.applicationCount} Synced)
+                          </Text>
+                          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4 }}>
+                            {appSet.applications.map(app => {
+                              const isSynced = (appSet.syncedApplications ?? []).includes(app);
+                              return (
+                                <TooltipTrigger key={app} delay={200}>
+                                  <ButtonIcon
+                                    size="small"
+                                    variant="tertiary"
+                                    className={`appset-app-badge ${isSynced ? 'appset-app-synced' : 'appset-app-outofsync'}`}
+                                    icon={<span>{app.charAt(0).toUpperCase()}</span>}
+                                    aria-label={`${app} (${isSynced ? 'Synced' : 'OutOfSync'})`}
+                                  />
+                                  <Tooltip className="appset-apps-tooltip">
+                                    {app} — {isSynced ? 'Synced' : 'OutOfSync'}
+                                  </Tooltip>
+                                </TooltipTrigger>
+                              );
+                            })}
+                          </div>
+                        </div>
+                      )}
                     </CardBody>
 
                     <CardFooter className="appset-card-footer">

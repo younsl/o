@@ -1,8 +1,4 @@
-.iam-tabs .MuiTabs-indicator {
-  background-color: var(--bui-color-primary);
-}
-
-.iam-tabs .MuiTab-root {
+.iam-tabs .bui-Tab {
   text-transform: none;
   font-family: inherit;
   min-width: 120px;

@@ -100,6 +100,80 @@ export class ApplicationSetService {
     }
   }
 
+  async listBranches(repoUrl: string): Promise<{ branches: string[]; defaultBranch: string | null }> {
+    const gitlabConfigs = this.config.getOptionalConfigArray('integrations.gitlab') ?? [];
+    if (gitlabConfigs.length === 0) {
+      throw new Error('No GitLab integration configured');
+    }
+
+    let parsedUrl: URL;
+    try {
+      parsedUrl = new URL(repoUrl);
+    } catch {
+      throw new Error(`Invalid repoUrl: ${repoUrl}`);
+    }
+
+    const gitlabConfig = gitlabConfigs.find(cfg => cfg.getString('host') === parsedUrl.hostname);
+    if (!gitlabConfig) {
+      throw new Error(`No GitLab integration found for host: ${parsedUrl.hostname}`);
+    }
+
+    const token = gitlabConfig.getString('token');
+    const apiBaseUrl = gitlabConfig.getOptionalString('apiBaseUrl')
+      ?? `https://${parsedUrl.hostname}/api/v4`;
+
+    const projectPath = parsedUrl.pathname.replace(/^\//, '').replace(/\.git$/, '');
+    const encodedPath = encodeURIComponent(projectPath);
+
+    const response = await fetch(
+      `${apiBaseUrl}/projects/${encodedPath}/repository/branches?per_page=100`,
+      { headers: { 'PRIVATE-TOKEN': token } },
+    );
+
+    if (!response.ok) {
+      throw new Error(`GitLab API error: ${response.status} ${response.statusText}`);
+    }
+
+    const branches: { name: string; default: boolean }[] = await response.json();
+    const defaultBranch = branches.find(b => b.default)?.name ?? null;
+    return {
+      branches: branches.map(b => b.name),
+      defaultBranch,
+    };
+  }
+
+  async setTargetRevision(namespace: string, name: string, targetRevision: string): Promise<void> {
+    const kc = this.getKubeConfig();
+    const objectApi = k8s.KubernetesObjectApi.makeApiClient(kc);
+
+    const patch = {
+      apiVersion: 'argoproj.io/v1alpha1',
+      kind: 'ApplicationSet',
+      metadata: { name, namespace },
+      spec: {
+        template: {
+          spec: {
+            source: { targetRevision },
+          },
+        },
+      },
+    } as k8s.KubernetesObject;
+
+    try {
+      await objectApi.patch(
+        patch,
+        undefined, // pretty
+        undefined, // dryRun
+        undefined, // fieldManager
+        undefined, // force
+        k8s.PatchStrategy.MergePatch,
+      );
+    } catch (error) {
+      this.logger.error(`Failed to set targetRevision for ${namespace}/${name}: ${error}`);
+      throw error;
+    }
+  }
+
   private mapApplicationSet(item: any): ApplicationSetResponse {
     const metadata = item.metadata ?? {};
     const spec = item.spec ?? {};
@@ -112,10 +186,16 @@ export class ApplicationSetService {
     const targetRevisions: string[] = this.extractTargetRevisions(spec);
     const resources: any[] = status.resources ?? [];
     const applicationCount: number = resources.length;
+    const syncedCount: number = resources.filter(
+      (r: any) => r.status === 'Synced',
+    ).length;
     const applications: string[] = resources
       .map((r: any) => r.name as string)
       .filter(Boolean)
       .sort();
+    const syncedApplications: string[] = resources
+      .filter((r: any) => r.status === 'Synced' && r.name)
+      .map((r: any) => r.name as string);
 
     // Go template expressions (e.g. {{.branch}}) are resolved dynamically by ArgoCD
     const isDynamic = (rev: string) => /\{\{.*\}\}/.test(rev);
@@ -135,7 +215,9 @@ export class ApplicationSetService {
       namespace: metadata.namespace ?? '',
       generators,
       applicationCount,
+      syncedCount,
       applications,
+      syncedApplications,
       repoUrl,
       repoName,
       targetRevisions: targetRevisions.length > 0 ? targetRevisions : ['HEAD'],

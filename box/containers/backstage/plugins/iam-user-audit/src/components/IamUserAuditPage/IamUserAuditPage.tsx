@@ -1,6 +1,5 @@
 import React, { useCallback, useMemo, useReducer, useState } from 'react';
-import { Tabs, Tab } from '@material-ui/core';
-import { PluginHeader, Container, Box, Text } from '@backstage/ui';
+import { PluginHeader, Container, Box, Text, Tabs, TabList, Tab, TabPanel } from '@backstage/ui';
 import { useApi } from '@backstage/core-plugin-api';
 import { useAsyncRetry } from 'react-use';
 import { iamUserAuditApiRef } from '../../api';
@@ -47,7 +46,7 @@ export const IamUserAuditPage = () => {
     ).length;
   }, [users]);
 
-  const [activeTab, setActiveTab] = useState(0);
+  const [activeTab, setActiveTab] = useState<string>('users');
 
   const [resetKey, incrementResetKey] = useReducer(
     (c: number) => c + 1,
@@ -122,17 +121,16 @@ export const IamUserAuditPage = () => {
           </div>
         </Box>
 
-        <Box mt="4">
-          <Tabs
-            className="iam-tabs"
-            value={activeTab}
-            onChange={(_, newValue) => setActiveTab(newValue)}
-            indicatorColor="primary"
-          >
-            <Tab label="IAM Users" />
-            {isAdmin && (
-              <Tab
-                label={
+        <Tabs
+          className="iam-tabs"
+          selectedKey={activeTab}
+          onSelectionChange={key => setActiveTab(key as string)}
+        >
+          <Box mt="4">
+            <TabList>
+              <Tab id="users">IAM Users</Tab>
+              {isAdmin && (
+                <Tab id="admin">
                   <span className="iam-tab-label">
                     Admin Review
                     <span
@@ -145,35 +143,35 @@ export const IamUserAuditPage = () => {
                       {pendingCount}
                     </span>
                   </span>
-                }
+                </Tab>
+              )}
+              <Tab id="reset">Password Reset</Tab>
+            </TabList>
+          </Box>
+
+          <Box mt="4">
+            <TabPanel id="users">
+              <IamUserTable
+                onPasswordResetSubmitted={handlePasswordResetSubmitted}
               />
+            </TabPanel>
+            {isAdmin && (
+              <TabPanel id="admin">
+                <PasswordResetRequests
+                  key={resetKey}
+                  showActions
+                  filter="pending"
+                />
+              </TabPanel>
             )}
-            <Tab label="Password Reset" />
-          </Tabs>
-        </Box>
-
-        <Box mt="4">
-          {activeTab === 0 && (
-            <IamUserTable
-              onPasswordResetSubmitted={handlePasswordResetSubmitted}
-            />
-          )}
-
-          {isAdmin && activeTab === 1 && (
-            <PasswordResetRequests
-              key={resetKey}
-              showActions
-              filter="pending"
-            />
-          )}
-
-          {activeTab === (isAdmin ? 2 : 1) && (
-            <PasswordResetRequests
-              key={resetKey}
-              showActions={false}
-            />
-          )}
-        </Box>
+            <TabPanel id="reset">
+              <PasswordResetRequests
+                key={resetKey}
+                showActions={false}
+              />
+            </TabPanel>
+          </Box>
+        </Tabs>
       </Container>
     </>
   );

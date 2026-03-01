@@ -1,5 +1,5 @@
 import React from 'react';
-import { Grid, Paper } from '@material-ui/core';
+import { Grid, Box } from '@backstage/ui';
 import { CatalogSearchResultListItem } from '@backstage/plugin-catalog';
 import {
   catalogApiRef,
@@ -25,13 +25,13 @@ export const searchPage = (
   <Page themeId="home">
     <Header title="Search" />
     <Content>
-      <Grid container direction="row">
-        <Grid item xs={12}>
-          <Paper style={{ padding: '16px' }}>
+      <Grid.Root columns="12">
+        <Grid.Item colSpan="12">
+          <Box p="3" style={{ borderRadius: 4, background: 'var(--bui-color-background-elevation-1)' }}>
             <SearchBar />
-          </Paper>
-        </Grid>
-        <Grid item xs={3}>
+          </Box>
+        </Grid.Item>
+        <Grid.Item colSpan="3">
           <SearchFilter.Select
             label="Kind"
             name="kind"
@@ -42,15 +42,15 @@ export const searchPage = (
             name="lifecycle"
             values={['experimental', 'production', 'deprecated']}
           />
-        </Grid>
-        <Grid item xs={9}>
+        </Grid.Item>
+        <Grid.Item colSpan="9">
           <SearchPagination />
           <SearchResult>
             <CatalogSearchResultListItem icon={<CatalogIcon />} />
             <TechDocsSearchResultListItem icon={<DocsIcon />} />
           </SearchResult>
-        </Grid>
-      </Grid>
+        </Grid.Item>
+      </Grid.Root>
     </Content>
   </Page>
 );

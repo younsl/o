@@ -41,7 +41,7 @@ function makeItem(options: {
   source?: Record<string, any>;
   sources?: Record<string, any>[];
   gitGeneratorRevision?: string;
-  resources?: { name: string }[];
+  resources?: { name: string; status?: string }[];
 } = {}): any {
   const spec: any = {
     generators: options.generators ?? [{ git: {} }],
@@ -225,6 +225,30 @@ describe('ApplicationSetService', () => {
       );
       expect(result.applications).toEqual(['alpha', 'bravo', 'charlie']);
       expect(result.applicationCount).toBe(3);
+    });
+
+    it('counts synced applications from status.resources[].status', async () => {
+      const result = await listOne(
+        makeItem({
+          source: { repoURL: 'https://github.com/org/repo.git', targetRevision: 'HEAD' },
+          resources: [
+            { name: 'app-a', status: 'Synced' },
+            { name: 'app-b', status: 'OutOfSync' },
+            { name: 'app-c', status: 'Synced' },
+          ],
+        }),
+      );
+      expect(result.syncedCount).toBe(2);
+      expect(result.syncedApplications).toEqual(['app-a', 'app-c']);
+      expect(result.applicationCount).toBe(3);
+    });
+
+    it('returns syncedCount 0 when no resources', async () => {
+      const result = await listOne(
+        makeItem({ source: { repoURL: 'https://github.com/org/repo.git', targetRevision: 'HEAD' } }),
+      );
+      expect(result.syncedCount).toBe(0);
+      expect(result.syncedApplications).toEqual([]);
     });
   });
 });

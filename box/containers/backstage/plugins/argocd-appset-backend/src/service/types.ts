@@ -5,7 +5,9 @@ export interface ApplicationSetResponse {
   namespace: string;
   generators: string[];
   applicationCount: number;
+  syncedCount: number;
   applications: string[];
+  syncedApplications: string[];
   repoUrl: string;
   repoName: string;
   targetRevisions: string[];

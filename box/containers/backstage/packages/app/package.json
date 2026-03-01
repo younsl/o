@@ -27,6 +27,7 @@
     "@backstage/plugin-catalog-import": "^0.13.10",
     "@backstage/plugin-catalog-react": "^2.0.0",
     "@backstage/plugin-home": "^0.9.2",
+    "@backstage/plugin-mui-to-bui": "^0.2.4",
     "@backstage/plugin-org": "^0.6.49",
     "@backstage/plugin-scaffolder": "^1.35.4",
     "@backstage/plugin-search": "^1.6.1",
