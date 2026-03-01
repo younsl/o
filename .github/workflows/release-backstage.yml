@@ -117,11 +117,8 @@ jobs:
           docker push ghcr.io/${{ env.IMAGE_NAME }}:latest
 
       - name: Summary
-        run: |
-          echo "## Backstage Image Released" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
-          echo "| Item | Value |" >> $GITHUB_STEP_SUMMARY
-          echo "|------|-------|" >> $GITHUB_STEP_SUMMARY
-          echo "| Image | \`ghcr.io/${{ env.IMAGE_NAME }}:${{ needs.check.outputs.version }}\` |" >> $GITHUB_STEP_SUMMARY
-          echo "| Backstage Version | ${{ needs.check.outputs.version }} |" >> $GITHUB_STEP_SUMMARY
-          echo "| Commit | ${{ github.sha }} |" >> $GITHUB_STEP_SUMMARY
+        env:
+          FULL_IMAGE: ghcr.io/${{ env.IMAGE_NAME }}:${{ needs.check.outputs.version }}
+          VERSION: ${{ needs.check.outputs.version }}
+          COMMIT_SHA: ${{ github.sha }}
+        run: .github/scripts/summary-backstage.sh "$FULL_IMAGE" "$VERSION" "$COMMIT_SHA"
