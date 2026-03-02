@@ -968,4 +968,71 @@ mod tests {
         assert_eq!(stats.total_critical, 2);
         assert_eq!(stats.total_high, 5);
     }
+
+    #[test]
+    fn test_query_sbom_reports() {
+        let db = Database::new(":memory:").expect("Failed to create database");
+
+        db.upsert_report(&create_test_payload(
+            "prod",
+            "default",
+            "app1",
+            "vulnerabilityreport",
+        ))
+        .unwrap();
+        db.upsert_report(&create_test_payload(
+            "prod",
+            "default",
+            "app2",
+            "sbomreport",
+        ))
+        .unwrap();
+        db.upsert_report(&create_test_payload(
+            "prod",
+            "kube-system",
+            "app3",
+            "sbomreport",
+        ))
+        .unwrap();
+
+        let params = QueryParams::default();
+        let results = db
+            .query_reports("sbomreport", &params)
+            .expect("Failed to query");
+        assert_eq!(results.len(), 2);
+        assert!(results.iter().all(|r| r.report_type == "sbomreport"));
+    }
+
+    #[test]
+    fn test_severity_filter_ignored_for_sbom() {
+        let db = Database::new(":memory:").expect("Failed to create database");
+
+        db.upsert_report(&create_test_payload(
+            "prod",
+            "default",
+            "sbom1",
+            "sbomreport",
+        ))
+        .unwrap();
+
+        // Severity filter should be ignored for SBOM reports
+        let params = QueryParams {
+            severity: Some(vec!["critical".to_string()]),
+            ..Default::default()
+        };
+        let results = db
+            .query_reports("sbomreport", &params)
+            .expect("Failed to query");
+        assert_eq!(results.len(), 1);
+    }
+
+    #[test]
+    fn test_get_report_not_found_directly() {
+        let db = Database::new(":memory:").expect("Failed to create database");
+
+        let report = db
+            .get_report("prod", "default", "nonexistent", "vulnerabilityreport")
+            .expect("Failed to query");
+        assert!(report.is_none());
+    }
 }

@@ -715,3 +715,840 @@ pub async fn get_dashboard_trends(
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use axum::Router;
+    use axum::routing::{delete, get, post, put};
+    use http_body_util::BodyExt;
+    use std::sync::Arc;
+    use tower::ServiceExt;
+
+    use crate::collector::types::{ReportEvent, ReportEventType, ReportPayload};
+    use crate::storage::Database;
+    use crate::web::state::{ConfigInfo, RuntimeInfo, WatcherStatus};
+
+    fn create_test_state() -> AppState {
+        let db = Arc::new(Database::new(":memory:").expect("Failed to create test database"));
+        let watcher_status = Arc::new(WatcherStatus::new());
+        let config = Arc::new(ConfigInfo {
+            mode: "server".to_string(),
+            log_format: "json".to_string(),
+            log_level: "info".to_string(),
+            health_port: 8080,
+            cluster_name: "test-cluster".to_string(),
+            namespaces: vec![],
+            collect_vulnerability_reports: true,
+            collect_sbom_reports: true,
+            server_port: 3000,
+            storage_path: ":memory:".to_string(),
+            watch_local: false,
+            auth_mode: None,
+        });
+        let runtime = Arc::new(RuntimeInfo::new());
+
+        AppState {
+            db,
+            watcher_status,
+            config,
+            runtime,
+            auth: None,
+        }
+    }
+
+    fn create_test_router(state: AppState) -> Router {
+        Router::new()
+            .route("/api/v1/reports", post(receive_report))
+            .route(
+                "/api/v1/vulnerabilityreports",
+                get(list_vulnerability_reports),
+            )
+            .route(
+                "/api/v1/vulnerabilityreports/{cluster}/{namespace}/{name}",
+                get(get_vulnerability_report),
+            )
+            .route("/api/v1/sbomreports", get(list_sbom_reports))
+            .route(
+                "/api/v1/sbomreports/{cluster}/{namespace}/{name}",
+                get(get_sbom_report),
+            )
+            .route("/api/v1/clusters", get(list_clusters))
+            .route("/api/v1/stats", get(get_stats))
+            .route("/api/v1/namespaces", get(list_namespaces))
+            .route("/api/v1/watcher/status", get(get_watcher_status))
+            .route("/api/v1/version", get(get_version))
+            .route("/api/v1/status", get(get_status))
+            .route("/api/v1/config", get(get_config))
+            .route("/api/v1/dashboard/trends", get(get_dashboard_trends))
+            .route(
+                "/api/v1/reports/{cluster}/{report_type}/{namespace}/{name}",
+                delete(delete_report),
+            )
+            .route(
+                "/api/v1/reports/{cluster}/{report_type}/{namespace}/{name}/notes",
+                put(update_notes),
+            )
+            .with_state(state)
+    }
+
+    fn create_test_payload(
+        cluster: &str,
+        namespace: &str,
+        name: &str,
+        report_type: &str,
+    ) -> ReportPayload {
+        ReportPayload {
+            cluster: cluster.to_string(),
+            namespace: namespace.to_string(),
+            name: name.to_string(),
+            report_type: report_type.to_string(),
+            data_json: serde_json::json!({
+                "metadata": {
+                    "labels": {
+                        "trivy-operator.resource.name": "test-app"
+                    }
+                },
+                "report": {
+                    "artifact": {
+                        "repository": "nginx",
+                        "tag": "1.25"
+                    },
+                    "registry": {
+                        "server": "docker.io"
+                    },
+                    "summary": {
+                        "criticalCount": 2,
+                        "highCount": 5,
+                        "mediumCount": 10,
+                        "lowCount": 3,
+                        "unknownCount": 1,
+                        "componentsCount": 50
+                    }
+                }
+            })
+            .to_string(),
+            received_at: chrono::Utc::now(),
+        }
+    }
+
+    /// Seed 3 vulnerability reports + 1 SBOM report across 2 clusters
+    fn seed_test_data(state: &AppState) {
+        state
+            .db
+            .upsert_report(&create_test_payload(
+                "prod",
+                "default",
+                "nginx-vuln",
+                "vulnerabilityreport",
+            ))
+            .unwrap();
+        state
+            .db
+            .upsert_report(&create_test_payload(
+                "prod",
+                "kube-system",
+                "coredns-vuln",
+                "vulnerabilityreport",
+            ))
+            .unwrap();
+        state
+            .db
+            .upsert_report(&create_test_payload(
+                "staging",
+                "default",
+                "redis-vuln",
+                "vulnerabilityreport",
+            ))
+            .unwrap();
+        state
+            .db
+            .upsert_report(&create_test_payload(
+                "prod",
+                "default",
+                "nginx-sbom",
+                "sbomreport",
+            ))
+            .unwrap();
+    }
+
+    async fn response_json(response: axum::http::Response<axum::body::Body>) -> serde_json::Value {
+        let body = response.into_body().collect().await.unwrap().to_bytes();
+        serde_json::from_slice(&body).unwrap()
+    }
+
+    // ===== receive_report =====
+
+    #[tokio::test]
+    async fn test_receive_report_apply() {
+        let state = create_test_state();
+        let app = create_test_router(state.clone());
+
+        let event = ReportEvent {
+            event_type: ReportEventType::Apply,
+            payload: create_test_payload("prod", "default", "app1", "vulnerabilityreport"),
+        };
+
+        let response = app
+            .oneshot(
+                axum::http::Request::builder()
+                    .method("POST")
+                    .uri("/api/v1/reports")
+                    .header("content-type", "application/json")
+                    .body(axum::body::Body::from(
+                        serde_json::to_string(&event).unwrap(),
+                    ))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(response.status(), StatusCode::OK);
+        let json = response_json(response).await;
+        assert_eq!(json["status"], "ok");
+
+        let report = state
+            .db
+            .get_report("prod", "default", "app1", "vulnerabilityreport")
+            .unwrap();
+        assert!(report.is_some());
+    }
+
+    #[tokio::test]
+    async fn test_receive_report_delete() {
+        let state = create_test_state();
+        state
+            .db
+            .upsert_report(&create_test_payload(
+                "prod",
+                "default",
+                "app1",
+                "vulnerabilityreport",
+            ))
+            .unwrap();
+        let app = create_test_router(state);
+
+        let event = ReportEvent {
+            event_type: ReportEventType::Delete,
+            payload: create_test_payload("prod", "default", "app1", "vulnerabilityreport"),
+        };
+
+        let response = app
+            .oneshot(
+                axum::http::Request::builder()
+                    .method("POST")
+                    .uri("/api/v1/reports")
+                    .header("content-type", "application/json")
+                    .body(axum::body::Body::from(
+                        serde_json::to_string(&event).unwrap(),
+                    ))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(response.status(), StatusCode::OK);
+        let json = response_json(response).await;
+        assert_eq!(json["deleted"], true);
+    }
+
+    #[tokio::test]
+    async fn test_receive_report_delete_nonexistent() {
+        let state = create_test_state();
+        let app = create_test_router(state);
+
+        let event = ReportEvent {
+            event_type: ReportEventType::Delete,
+            payload: create_test_payload("prod", "default", "nonexistent", "vulnerabilityreport"),
+        };
+
+        let response = app
+            .oneshot(
+                axum::http::Request::builder()
+                    .method("POST")
+                    .uri("/api/v1/reports")
+                    .header("content-type", "application/json")
+                    .body(axum::body::Body::from(
+                        serde_json::to_string(&event).unwrap(),
+                    ))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(response.status(), StatusCode::OK);
+        let json = response_json(response).await;
+        assert_eq!(json["deleted"], false);
+    }
+
+    // ===== list_vulnerability_reports =====
+
+    #[tokio::test]
+    async fn test_list_vulnerability_reports_empty() {
+        let state = create_test_state();
+        let app = create_test_router(state);
+
+        let response = app
+            .oneshot(
+                axum::http::Request::builder()
+                    .uri("/api/v1/vulnerabilityreports")
+                    .body(axum::body::Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(response.status(), StatusCode::OK);
+        let json = response_json(response).await;
+        assert_eq!(json["total"], 0);
+        assert!(json["items"].as_array().unwrap().is_empty());
+    }
+
+    #[tokio::test]
+    async fn test_list_vulnerability_reports_with_data() {
+        let state = create_test_state();
+        seed_test_data(&state);
+        let app = create_test_router(state);
+
+        let response = app
+            .oneshot(
+                axum::http::Request::builder()
+                    .uri("/api/v1/vulnerabilityreports")
+                    .body(axum::body::Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(response.status(), StatusCode::OK);
+        let json = response_json(response).await;
+        assert_eq!(json["total"], 3);
+    }
+
+    #[tokio::test]
+    async fn test_list_vulnerability_reports_with_cluster_filter() {
+        let state = create_test_state();
+        seed_test_data(&state);
+        let app = create_test_router(state);
+
+        let response = app
+            .oneshot(
+                axum::http::Request::builder()
+                    .uri("/api/v1/vulnerabilityreports?cluster=prod")
+                    .body(axum::body::Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(response.status(), StatusCode::OK);
+        let json = response_json(response).await;
+        assert_eq!(json["total"], 2);
+    }
+
+    // ===== get_vulnerability_report =====
+
+    #[tokio::test]
+    async fn test_get_vulnerability_report_found() {
+        let state = create_test_state();
+        seed_test_data(&state);
+        let app = create_test_router(state);
+
+        let response = app
+            .oneshot(
+                axum::http::Request::builder()
+                    .uri("/api/v1/vulnerabilityreports/prod/default/nginx-vuln")
+                    .body(axum::body::Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(response.status(), StatusCode::OK);
+        let json = response_json(response).await;
+        assert!(json["meta"].is_object());
+        assert!(json["data"].is_object());
+        assert_eq!(json["meta"]["cluster"], "prod");
+    }
+
+    #[tokio::test]
+    async fn test_get_vulnerability_report_not_found() {
+        let state = create_test_state();
+        let app = create_test_router(state);
+
+        let response = app
+            .oneshot(
+                axum::http::Request::builder()
+                    .uri("/api/v1/vulnerabilityreports/prod/default/nonexistent")
+                    .body(axum::body::Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(response.status(), StatusCode::NOT_FOUND);
+    }
+
+    // ===== list_sbom_reports =====
+
+    #[tokio::test]
+    async fn test_list_sbom_reports_empty() {
+        let state = create_test_state();
+        let app = create_test_router(state);
+
+        let response = app
+            .oneshot(
+                axum::http::Request::builder()
+                    .uri("/api/v1/sbomreports")
+                    .body(axum::body::Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(response.status(), StatusCode::OK);
+        let json = response_json(response).await;
+        assert_eq!(json["total"], 0);
+    }
+
+    #[tokio::test]
+    async fn test_list_sbom_reports_with_data() {
+        let state = create_test_state();
+        seed_test_data(&state);
+        let app = create_test_router(state);
+
+        let response = app
+            .oneshot(
+                axum::http::Request::builder()
+                    .uri("/api/v1/sbomreports")
+                    .body(axum::body::Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(response.status(), StatusCode::OK);
+        let json = response_json(response).await;
+        assert_eq!(json["total"], 1);
+    }
+
+    // ===== get_sbom_report =====
+
+    #[tokio::test]
+    async fn test_get_sbom_report_found() {
+        let state = create_test_state();
+        seed_test_data(&state);
+        let app = create_test_router(state);
+
+        let response = app
+            .oneshot(
+                axum::http::Request::builder()
+                    .uri("/api/v1/sbomreports/prod/default/nginx-sbom")
+                    .body(axum::body::Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(response.status(), StatusCode::OK);
+        let json = response_json(response).await;
+        assert!(json["meta"].is_object());
+        assert!(json["data"].is_object());
+    }
+
+    #[tokio::test]
+    async fn test_get_sbom_report_not_found() {
+        let state = create_test_state();
+        let app = create_test_router(state);
+
+        let response = app
+            .oneshot(
+                axum::http::Request::builder()
+                    .uri("/api/v1/sbomreports/prod/default/nonexistent")
+                    .body(axum::body::Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(response.status(), StatusCode::NOT_FOUND);
+    }
+
+    // ===== list_clusters =====
+
+    #[tokio::test]
+    async fn test_list_clusters_empty() {
+        let state = create_test_state();
+        let app = create_test_router(state);
+
+        let response = app
+            .oneshot(
+                axum::http::Request::builder()
+                    .uri("/api/v1/clusters")
+                    .body(axum::body::Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(response.status(), StatusCode::OK);
+        let json = response_json(response).await;
+        assert_eq!(json["total"], 0);
+    }
+
+    #[tokio::test]
+    async fn test_list_clusters_with_data() {
+        let state = create_test_state();
+        seed_test_data(&state);
+        let app = create_test_router(state);
+
+        let response = app
+            .oneshot(
+                axum::http::Request::builder()
+                    .uri("/api/v1/clusters")
+                    .body(axum::body::Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(response.status(), StatusCode::OK);
+        let json = response_json(response).await;
+        assert_eq!(json["total"], 2);
+    }
+
+    // ===== get_stats =====
+
+    #[tokio::test]
+    async fn test_get_stats_empty() {
+        let state = create_test_state();
+        let app = create_test_router(state);
+
+        let response = app
+            .oneshot(
+                axum::http::Request::builder()
+                    .uri("/api/v1/stats")
+                    .body(axum::body::Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(response.status(), StatusCode::OK);
+        let json = response_json(response).await;
+        assert_eq!(json["total_clusters"], 0);
+        assert_eq!(json["total_vuln_reports"], 0);
+        assert_eq!(json["total_sbom_reports"], 0);
+        assert_eq!(json["total_critical"], 0);
+    }
+
+    #[tokio::test]
+    async fn test_get_stats_with_data() {
+        let state = create_test_state();
+        seed_test_data(&state);
+        let app = create_test_router(state);
+
+        let response = app
+            .oneshot(
+                axum::http::Request::builder()
+                    .uri("/api/v1/stats")
+                    .body(axum::body::Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(response.status(), StatusCode::OK);
+        let json = response_json(response).await;
+        assert_eq!(json["total_clusters"], 2);
+        assert_eq!(json["total_vuln_reports"], 3);
+        assert_eq!(json["total_sbom_reports"], 1);
+        assert_eq!(json["total_critical"], 6);
+        assert_eq!(json["total_high"], 15);
+    }
+
+    // ===== list_namespaces =====
+
+    #[tokio::test]
+    async fn test_list_namespaces_all() {
+        let state = create_test_state();
+        seed_test_data(&state);
+        let app = create_test_router(state);
+
+        let response = app
+            .oneshot(
+                axum::http::Request::builder()
+                    .uri("/api/v1/namespaces")
+                    .body(axum::body::Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(response.status(), StatusCode::OK);
+        let json = response_json(response).await;
+        assert_eq!(json["total"], 2);
+    }
+
+    #[tokio::test]
+    async fn test_list_namespaces_with_cluster_filter() {
+        let state = create_test_state();
+        seed_test_data(&state);
+        let app = create_test_router(state);
+
+        let response = app
+            .oneshot(
+                axum::http::Request::builder()
+                    .uri("/api/v1/namespaces?cluster=staging")
+                    .body(axum::body::Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(response.status(), StatusCode::OK);
+        let json = response_json(response).await;
+        assert_eq!(json["total"], 1);
+    }
+
+    // ===== delete_report =====
+
+    #[tokio::test]
+    async fn test_delete_report_found() {
+        let state = create_test_state();
+        seed_test_data(&state);
+        let app = create_test_router(state);
+
+        let response = app
+            .oneshot(
+                axum::http::Request::builder()
+                    .method("DELETE")
+                    .uri("/api/v1/reports/prod/vulnerabilityreport/default/nginx-vuln")
+                    .body(axum::body::Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(response.status(), StatusCode::OK);
+        let json = response_json(response).await;
+        assert_eq!(json["status"], "deleted");
+    }
+
+    #[tokio::test]
+    async fn test_delete_report_not_found() {
+        let state = create_test_state();
+        let app = create_test_router(state);
+
+        let response = app
+            .oneshot(
+                axum::http::Request::builder()
+                    .method("DELETE")
+                    .uri("/api/v1/reports/prod/vulnerabilityreport/default/nonexistent")
+                    .body(axum::body::Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(response.status(), StatusCode::NOT_FOUND);
+    }
+
+    // ===== update_notes =====
+
+    #[tokio::test]
+    async fn test_update_notes_success() {
+        let state = create_test_state();
+        seed_test_data(&state);
+        let app = create_test_router(state);
+
+        let body = serde_json::json!({"notes": "Reviewed, patch scheduled"});
+
+        let response = app
+            .oneshot(
+                axum::http::Request::builder()
+                    .method("PUT")
+                    .uri("/api/v1/reports/prod/vulnerabilityreport/default/nginx-vuln/notes")
+                    .header("content-type", "application/json")
+                    .body(axum::body::Body::from(
+                        serde_json::to_string(&body).unwrap(),
+                    ))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(response.status(), StatusCode::OK);
+        let json = response_json(response).await;
+        assert_eq!(json["status"], "updated");
+    }
+
+    #[tokio::test]
+    async fn test_update_notes_not_found() {
+        let state = create_test_state();
+        let app = create_test_router(state);
+
+        let body = serde_json::json!({"notes": "test"});
+
+        let response = app
+            .oneshot(
+                axum::http::Request::builder()
+                    .method("PUT")
+                    .uri("/api/v1/reports/prod/vulnerabilityreport/default/nonexistent/notes")
+                    .header("content-type", "application/json")
+                    .body(axum::body::Body::from(
+                        serde_json::to_string(&body).unwrap(),
+                    ))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(response.status(), StatusCode::NOT_FOUND);
+    }
+
+    // ===== get_watcher_status =====
+
+    #[tokio::test]
+    async fn test_get_watcher_status_default() {
+        let state = create_test_state();
+        let app = create_test_router(state);
+
+        let response = app
+            .oneshot(
+                axum::http::Request::builder()
+                    .uri("/api/v1/watcher/status")
+                    .body(axum::body::Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(response.status(), StatusCode::OK);
+        let json = response_json(response).await;
+        assert_eq!(json["vuln_watcher"]["running"], false);
+        assert_eq!(json["sbom_watcher"]["running"], false);
+        assert_eq!(json["vuln_watcher"]["initial_sync_done"], false);
+        assert_eq!(json["sbom_watcher"]["initial_sync_done"], false);
+    }
+
+    #[tokio::test]
+    async fn test_get_watcher_status_running() {
+        let state = create_test_state();
+        state.watcher_status.set_vuln_running(true);
+        state.watcher_status.set_sbom_sync_done(true);
+        let app = create_test_router(state);
+
+        let response = app
+            .oneshot(
+                axum::http::Request::builder()
+                    .uri("/api/v1/watcher/status")
+                    .body(axum::body::Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(response.status(), StatusCode::OK);
+        let json = response_json(response).await;
+        assert_eq!(json["vuln_watcher"]["running"], true);
+        assert_eq!(json["sbom_watcher"]["initial_sync_done"], true);
+    }
+
+    // ===== get_version =====
+
+    #[tokio::test]
+    async fn test_get_version() {
+        let state = create_test_state();
+        let app = create_test_router(state);
+
+        let response = app
+            .oneshot(
+                axum::http::Request::builder()
+                    .uri("/api/v1/version")
+                    .body(axum::body::Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(response.status(), StatusCode::OK);
+        let json = response_json(response).await;
+        assert!(!json["version"].as_str().unwrap().is_empty());
+        assert!(!json["commit"].as_str().unwrap().is_empty());
+        assert!(!json["platform"].as_str().unwrap().is_empty());
+    }
+
+    // ===== get_status =====
+
+    #[tokio::test]
+    async fn test_get_status() {
+        let state = create_test_state();
+        let app = create_test_router(state);
+
+        let response = app
+            .oneshot(
+                axum::http::Request::builder()
+                    .uri("/api/v1/status")
+                    .body(axum::body::Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(response.status(), StatusCode::OK);
+        let json = response_json(response).await;
+        assert!(json["hostname"].is_string());
+        assert!(json["uptime"].is_string());
+    }
+
+    // ===== get_config =====
+
+    #[tokio::test]
+    async fn test_get_config() {
+        let state = create_test_state();
+        let app = create_test_router(state);
+
+        let response = app
+            .oneshot(
+                axum::http::Request::builder()
+                    .uri("/api/v1/config")
+                    .body(axum::body::Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(response.status(), StatusCode::OK);
+        let json = response_json(response).await;
+        let items = json["items"].as_array().unwrap();
+        assert!(!items.is_empty());
+
+        let env_names: Vec<&str> = items.iter().map(|i| i["env"].as_str().unwrap()).collect();
+        assert!(env_names.contains(&"MODE"));
+        assert!(env_names.contains(&"CLUSTER_NAME"));
+    }
+
+    // ===== get_dashboard_trends =====
+
+    #[tokio::test]
+    async fn test_get_dashboard_trends_empty() {
+        let state = create_test_state();
+        let app = create_test_router(state);
+
+        let response = app
+            .oneshot(
+                axum::http::Request::builder()
+                    .uri("/api/v1/dashboard/trends?range=7d")
+                    .body(axum::body::Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(response.status(), StatusCode::OK);
+        let json = response_json(response).await;
+        assert!(json["meta"].is_object());
+        assert!(json["series"].is_array());
+    }
+}
