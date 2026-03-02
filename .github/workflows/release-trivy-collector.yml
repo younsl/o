@@ -18,6 +18,7 @@ env:
 jobs:
   extract-version:
     runs-on: ubuntu-24.04
+    permissions: {}
     outputs:
       version: ${{ steps.get-version.outputs.version }}
     steps:

@@ -27,6 +27,7 @@ on:
 jobs:
   extract-info:
     runs-on: ubuntu-24.04
+    permissions: {}
     outputs:
       project_name: ${{ steps.get-info.outputs.project_name }}
       version: ${{ steps.get-info.outputs.version }}
