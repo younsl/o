@@ -1,5 +1,6 @@
 import { Router } from 'express';
 import express from 'express';
+import rateLimit from 'express-rate-limit';
 import {
   HttpAuthService,
   LoggerService,
@@ -238,7 +239,15 @@ export async function createRouter(options: RouterOptions): Promise<Router> {
     }
   });
 
-  router.post('/password-reset/requests/:id/review', async (req, res) => {
+  const reviewLimiter = rateLimit({
+    windowMs: 15 * 60 * 1000,
+    max: 10,
+    standardHeaders: true,
+    legacyHeaders: false,
+    message: { error: 'Too many review requests, please try again later' },
+  });
+
+  router.post('/password-reset/requests/:id/review', reviewLimiter, async (req, res) => {
     try {
       const reviewerRef = await tryGetUserRef(req);
 
