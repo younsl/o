@@ -59,6 +59,7 @@ pub async fn login(
     let pending_cookie = Cookie::build((PENDING_AUTH_COOKIE_NAME, pending_json))
         .path("/")
         .http_only(true)
+        .secure(true)
         .same_site(cookie::SameSite::Lax)
         .max_age(cookie::time::Duration::minutes(10))
         .build();
@@ -177,6 +178,7 @@ pub async fn callback(
     let session_cookie = Cookie::build((SESSION_COOKIE_NAME, session_json))
         .path("/")
         .http_only(true)
+        .secure(true)
         .same_site(cookie::SameSite::Lax)
         .max_age(cookie::time::Duration::hours(8))
         .build();
@@ -184,6 +186,7 @@ pub async fn callback(
     // Remove pending auth cookie
     let remove_pending = Cookie::build((PENDING_AUTH_COOKIE_NAME, ""))
         .path("/")
+        .secure(true)
         .max_age(cookie::time::Duration::ZERO)
         .build();
 
@@ -203,6 +206,7 @@ pub async fn callback(
 pub async fn logout(cookie_jar: PrivateCookieJar) -> impl IntoResponse {
     let remove_session = Cookie::build((SESSION_COOKIE_NAME, ""))
         .path("/")
+        .secure(true)
         .max_age(cookie::time::Duration::ZERO)
         .build();
 
@@ -215,17 +219,31 @@ pub async fn logout(cookie_jar: PrivateCookieJar) -> impl IntoResponse {
 
 /// GET /auth/error — Display authentication error page
 pub async fn auth_error(Query(query): Query<ErrorQuery>) -> impl IntoResponse {
-    let reason = query.reason.unwrap_or_else(|| "unknown".to_string());
+    let raw_reason = query.reason.unwrap_or_else(|| "unknown".to_string());
 
-    let message = match reason.as_str() {
-        "token_exchange_failed" => {
-            "Token exchange failed. The authorization server could not verify your credentials."
-        }
-        "csrf_mismatch" => "CSRF token mismatch. Your authentication session may have expired.",
-        "missing_state" => "Authentication state is missing. Please try logging in again.",
-        "missing_code" => "Authorization code is missing from the callback.",
-        "invalid_state" => "Authentication state is invalid. Please try logging in again.",
-        _ => "An unknown authentication error occurred.",
+    // Map user-provided reason to known safe values to prevent XSS
+    let (reason, message) = match raw_reason.as_str() {
+        "token_exchange_failed" => (
+            "token_exchange_failed",
+            "Token exchange failed. The authorization server could not verify your credentials.",
+        ),
+        "csrf_mismatch" => (
+            "csrf_mismatch",
+            "CSRF token mismatch. Your authentication session may have expired.",
+        ),
+        "missing_state" => (
+            "missing_state",
+            "Authentication state is missing. Please try logging in again.",
+        ),
+        "missing_code" => (
+            "missing_code",
+            "Authorization code is missing from the callback.",
+        ),
+        "invalid_state" => (
+            "invalid_state",
+            "Authentication state is invalid. Please try logging in again.",
+        ),
+        _ => ("unknown", "An unknown authentication error occurred."),
     };
 
     let html = format!(
