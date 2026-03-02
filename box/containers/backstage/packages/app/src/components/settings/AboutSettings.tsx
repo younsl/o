@@ -130,7 +130,7 @@ export const BuildInfoSettings = () => {
                         </Flex>
                         <Text variant="body-small" color="secondary">{description}</Text>
                         <TagGroup>
-                          {plugins.map(plugin => (
+                          {plugins.map((plugin: { name: string; version: string }) => (
                             <Tag key={plugin.name} id={`bi-${plugin.name}`} size="small">
                               {plugin.name}@{plugin.version}
                             </Tag>
@@ -226,7 +226,7 @@ export const BuildInfoSettings = () => {
                   Fully migrated to @backstage/ui components.
                 </Text>
                 <TagGroup>
-                  {BUILD_INFO.buiMigration.files.bui.map(f => (
+                  {BUILD_INFO.buiMigration.files.bui.map((f: string) => (
                     <Tag key={f} id={f} size="small">{f.replace(/.*\//, '').replace(/\.tsx$/, '')}</Tag>
                   ))}
                 </TagGroup>
@@ -246,7 +246,7 @@ export const BuildInfoSettings = () => {
                   Uses both @backstage/ui and @material-ui. Needs further migration.
                 </Text>
                 <TagGroup>
-                  {BUILD_INFO.buiMigration.files.mixed.map(f => (
+                  {BUILD_INFO.buiMigration.files.mixed.map((f: string) => (
                     <Tag key={f} id={f} size="small">{f.replace(/.*\//, '').replace(/\.tsx$/, '')}</Tag>
                   ))}
                 </TagGroup>
@@ -266,7 +266,7 @@ export const BuildInfoSettings = () => {
                   Still uses @material-ui only. Migration required.
                 </Text>
                 <TagGroup>
-                  {BUILD_INFO.buiMigration.files.mui.map(f => (
+                  {BUILD_INFO.buiMigration.files.mui.map((f: string) => (
                     <Tag key={f} id={f} size="small">{f.replace(/.*\//, '').replace(/\.tsx$/, '')}</Tag>
                   ))}
                 </TagGroup>
