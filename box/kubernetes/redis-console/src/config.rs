@@ -3,7 +3,7 @@ use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
 
 /// Redis cluster configuration
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Clone, Serialize, Deserialize)]
 pub struct ClusterConfig {
     pub alias: String,
     pub host: String,
@@ -19,21 +19,45 @@ pub struct ClusterConfig {
     pub description: Option<String>,
 }
 
+impl std::fmt::Debug for ClusterConfig {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("ClusterConfig")
+            .field("alias", &self.alias)
+            .field("host", &self.host)
+            .field("port", &self.port)
+            .field("password", &self.password.as_ref().map(|_| "***"))
+            .field("tls", &self.tls)
+            .field("cluster_mode", &self.cluster_mode)
+            .field("description", &self.description)
+            .finish()
+    }
+}
+
 fn default_port() -> u16 {
     6379
 }
 
 impl ClusterConfig {
-    /// Get connection URL for redis client
-    pub fn connection_url(&self) -> String {
-        let scheme = if self.tls { "rediss" } else { "redis" };
-        let auth = self
-            .password
-            .as_ref()
-            .map(|p| format!(":{p}@"))
-            .unwrap_or_default();
+    /// Build connection info for redis client without exposing password in URL strings
+    pub fn connection_info(&self) -> redis::ConnectionInfo {
+        let addr = if self.tls {
+            redis::ConnectionAddr::TcpTls {
+                host: self.host.clone(),
+                port: self.port,
+                insecure: false,
+                tls_params: None,
+            }
+        } else {
+            redis::ConnectionAddr::Tcp(self.host.clone(), self.port)
+        };
 
-        format!("{scheme}://{auth}{}:{}", self.host, self.port)
+        redis::ConnectionInfo {
+            addr,
+            redis: redis::RedisConnectionInfo {
+                password: self.password.clone(),
+                ..Default::default()
+            },
+        }
     }
 }
 
@@ -113,7 +137,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn test_connection_url() {
+    fn test_connection_info() {
         let config = ClusterConfig {
             alias: "test".to_string(),
             host: "localhost".to_string(),
@@ -124,11 +148,16 @@ mod tests {
             description: None,
         };
 
-        assert_eq!(config.connection_url(), "redis://localhost:6379");
+        let info = config.connection_info();
+        assert_eq!(
+            info.addr,
+            redis::ConnectionAddr::Tcp("localhost".to_string(), 6379)
+        );
+        assert_eq!(info.redis.password, None);
     }
 
     #[test]
-    fn test_connection_url_with_password() {
+    fn test_connection_info_with_password() {
         let config = ClusterConfig {
             alias: "test".to_string(),
             host: "localhost".to_string(),
@@ -139,11 +168,16 @@ mod tests {
             description: None,
         };
 
-        assert_eq!(config.connection_url(), "redis://:secret@localhost:6379");
+        let info = config.connection_info();
+        assert_eq!(
+            info.addr,
+            redis::ConnectionAddr::Tcp("localhost".to_string(), 6379)
+        );
+        assert_eq!(info.redis.password, Some("secret".to_string()));
     }
 
     #[test]
-    fn test_connection_url_with_tls() {
+    fn test_connection_info_with_tls() {
         let config = ClusterConfig {
             alias: "test".to_string(),
             host: "localhost".to_string(),
@@ -154,6 +188,25 @@ mod tests {
             description: None,
         };
 
-        assert_eq!(config.connection_url(), "rediss://localhost:6380");
+        let info = config.connection_info();
+        assert!(matches!(info.addr, redis::ConnectionAddr::TcpTls { .. }));
+        assert_eq!(info.redis.password, None);
+    }
+
+    #[test]
+    fn test_debug_masks_password() {
+        let config = ClusterConfig {
+            alias: "test".to_string(),
+            host: "localhost".to_string(),
+            port: 6379,
+            password: Some("supersecret".to_string()),
+            tls: false,
+            cluster_mode: false,
+            description: None,
+        };
+
+        let debug_str = format!("{:?}", config);
+        assert!(!debug_str.contains("supersecret"));
+        assert!(debug_str.contains("***"));
     }
 }

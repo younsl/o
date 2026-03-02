@@ -13,7 +13,7 @@ pub struct RedisClient {
 impl RedisClient {
     /// Create a new Redis client connection
     pub async fn connect(config: ClusterConfig) -> Result<Self> {
-        let client = redis::Client::open(config.connection_url())
+        let client = redis::Client::open(config.connection_info())
             .context("Failed to create Redis client")?;
 
         let manager = timeout(Duration::from_secs(5), ConnectionManager::new(client))
