@@ -1,7 +1,7 @@
 # Backstage with GitLab Discovery
 
 [![GHCR](https://img.shields.io/badge/GHCR-ghcr.io%2Fyounsl%2Fbackstage-black?style=flat-square&logo=github&logoColor=white)](https://ghcr.io/younsl/backstage)
-[![Backstage](https://img.shields.io/badge/Backstage-1.48.1-black?style=flat-square&logo=backstage&logoColor=white)](https://backstage.io)
+[![Backstage](https://img.shields.io/badge/Backstage-1.48.3-black?style=flat-square&logo=backstage&logoColor=white)](https://backstage.io)
 
 Custom Backstage image with GitLab Auto Discovery, Keycloak OIDC, and API Docs plugins.
 
@@ -9,23 +9,25 @@ Custom Backstage image with GitLab Auto Discovery, Keycloak OIDC, and API Docs p
 
 | Feature | Plugin | Type | Description |
 |---------|--------|:----:|-------------|
-| Home Dashboard | [`@backstage/plugin-home`](https://www.npmjs.com/package/@backstage/plugin-home) | Native | Customizable home page with widgets |
-| Platforms | - | Custom† | Internal platform services link cards with search and tag filtering |
+| Home Dashboard | [`@backstage/plugin-home`](https://www.npmjs.com/package/@backstage/plugin-home) | Native | Home page with search autocomplete, quick links, starred/owned entities |
+| Platforms | - | Custom | Internal platform services link cards with search and tag filtering |
 | GitLab Auto Discovery | [`@backstage/plugin-catalog-backend-module-gitlab`](https://www.npmjs.com/package/@backstage/plugin-catalog-backend-module-gitlab) | Native | Auto-discover `catalog-info.yaml` from GitLab repos |
 | GitLab Org Sync | [`@backstage/plugin-catalog-backend-module-gitlab-org`](https://www.npmjs.com/package/@backstage/plugin-catalog-backend-module-gitlab-org) | Native | Sync GitLab groups/users to Backstage |
 | GitLab CI/CD | [`@immobiliarelabs/backstage-plugin-gitlab`](https://www.npmjs.com/package/@immobiliarelabs/backstage-plugin-gitlab) | Community | View pipelines, MRs, releases, README on Entity page |
 | SonarQube | [`@backstage-community/plugin-sonarqube`](https://www.npmjs.com/package/@backstage-community/plugin-sonarqube) | Community | Code quality metrics with auto annotation injection |
 | OIDC Authentication | [`@backstage/plugin-auth-backend-module-oidc-provider`](https://www.npmjs.com/package/@backstage/plugin-auth-backend-module-oidc-provider) | Native | Keycloak/OIDC SSO authentication |
 | API Docs | [`@backstage/plugin-api-docs`](https://www.npmjs.com/package/@backstage/plugin-api-docs) | Native | OpenAPI, AsyncAPI, GraphQL spec viewer |
-| OpenAPI Registry | `openapi-registry` | Custom† | Register external OpenAPI specs by URL with search and filters |
-| ArgoCD AppSets | `argocd-appset` | Custom† | View and manage ArgoCD ApplicationSets with mute/unmute and Slack alerts |
-| IAM User Audit | `iam-user-audit` | Custom† | AWS IAM inactive user monitoring with password reset approval workflow |
+| OpenAPI Registry | `openapi-registry` | Custom | Register external OpenAPI specs by URL with search and filters |
+| ArgoCD AppSets | `argocd-appset` | Custom | View/manage ArgoCD ApplicationSets with mute/unmute, Slack alerts, and audit log |
+| IAM User Audit | `iam-user-audit` | Custom | AWS IAM inactive user monitoring with password reset, warning DM, and Slack notifications |
+| Catalog Health | `catalog-health` | Custom | Track `catalog-info.yaml` coverage across GitLab projects with trend charts |
 | TechDocs | [`@backstage/plugin-techdocs`](https://www.npmjs.com/package/@backstage/plugin-techdocs) | Native | Markdown-based technical documentation |
 | Scaffolder | [`@backstage/plugin-scaffolder`](https://www.npmjs.com/package/@backstage/plugin-scaffolder) | Native | Template-based project creation |
 | Search | [`@backstage/plugin-search`](https://www.npmjs.com/package/@backstage/plugin-search) | Native | Full-text search across catalog |
+| Build Info | - | Custom | Settings page showing build metadata, installed plugins, and BUI migration progress |
 | Simple Icons | [`@dweber019/backstage-plugin-simple-icons`](https://www.npmjs.com/package/@dweber019/backstage-plugin-simple-icons) | Community | Brand icons from [simpleicons.org](https://simpleicons.org/) for sidebar and links |
 
-† Custom plugins currently use legacy `@backstage/core-components` with Material-UI v4. Migration to [`@backstage/ui`](https://www.npmjs.com/package/@backstage/ui) is recommended as `@backstage/core-components` will be deprecated in favor of the new design system.
+Custom plugins use [`@backstage/ui`](https://www.npmjs.com/package/@backstage/ui) (Backstage's new CSS-first design system). BUI migration progress is tracked in Settings > Build Info.
 
 ## Quick Start
 
@@ -55,8 +57,8 @@ make dev    # Run dev server (localhost:3000)
 ### Release
 
 ```bash
-git tag backstage/1.48.1-4
-git push origin backstage/1.48.1-4
+git tag backstage/1.48.3-1
+git push origin backstage/1.48.3-1
 ```
 
 ## Environment Variables
@@ -75,6 +77,8 @@ git push origin backstage/1.48.1-4
 | `SLACK_WEBHOOK_URL` | ArgoCD AppSet | Slack Incoming Webhook URL for alerts |
 | `IAM_AUDIT_SLACK_WEBHOOK_URL` | IAM Audit | Slack Webhook URL for inactive user alerts |
 | `IAM_AUDIT_SLACK_BOT_TOKEN` | IAM Audit | Slack Bot Token for DM notifications (`xoxb-...`) |
+
+> Guest login is disabled. Authentication is Keycloak OIDC only.
 
 ## Documentation
 
@@ -99,6 +103,7 @@ git push origin backstage/1.48.1-4
 │  ├─ OpenAPI Registry        │  ├─ OpenAPI Registry API      │
 │  ├─ ArgoCD AppSets          │  ├─ ArgoCD AppSet API         │
 │  ├─ IAM User Audit          │  ├─ IAM User Audit API        │
+│  ├─ Catalog Health          │  ├─ Catalog Health API        │
 │  ├─ TechDocs Reader         │  ├─ TechDocs Builder          │
 │  └─ Scaffolder UI           │  └─ Scaffolder Backend        │
 ├─────────────────────────────────────────────────────────────┤
@@ -126,10 +131,14 @@ backstage/
 ├── plugins/
 │   ├── argocd-appset/           # ArgoCD AppSet frontend plugin
 │   ├── argocd-appset-backend/   # ArgoCD AppSet backend plugin
+│   ├── catalog-health/          # Catalog Health frontend plugin
+│   ├── catalog-health-backend/  # Catalog Health backend plugin
 │   ├── iam-user-audit/          # IAM User Audit frontend plugin
 │   ├── iam-user-audit-backend/  # IAM User Audit backend plugin
 │   ├── openapi-registry/        # OpenAPI Registry frontend plugin
 │   └── openapi-registry-backend/# OpenAPI Registry backend plugin
+├── scripts/
+│   └── generate-build-info.js   # Auto-generate buildInfo.ts at build time
 ├── templates/
 │   └── register-component/      # Scaffolder template for catalog-info.yaml
 ├── app-config.yaml              # Default config
@@ -196,6 +205,39 @@ Audit target criteria:
 - **Not audited**: Read-only operations (List, Get, Health check)
 
 Audit logs include `isAuditEvent=true` for easy filtering and capture actor info (IP, User-Agent), request details, and success/failure status.
+
+## Catalog Health
+
+Custom plugin for tracking `catalog-info.yaml` registration coverage across GitLab projects.
+
+**Features:**
+- Coverage metrics with progress bars (registered / ignored / uncovered)
+- Coverage trend chart tracking historical progress over time
+- Team breakdown distribution
+- Project search and filtering
+- Generate `catalog-info.yaml` for unregistered projects
+- Scheduled scanning via configurable cron
+
+**Configuration:**
+
+```yaml
+# app-config.yaml
+catalogHealth:
+  concurrency: 10
+  schedule:
+    cron: '0 * * * *'
+```
+
+## Build Info
+
+Build metadata and plugin inventory, accessible from Settings > Build Info.
+
+**Features:**
+- Backstage version, commit SHA, build date, and container uptime
+- Installed plugins list organized by category (Official, Community, Custom)
+- BUI migration progress bar with per-file breakdown
+
+Build metadata is auto-generated at container build time by `scripts/generate-build-info.js`.
 
 ## SonarQube
 
