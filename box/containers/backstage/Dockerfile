@@ -53,8 +53,9 @@ RUN yarn install --immutable
 # Copy source files
 COPY . .
 
-# Build backend and frontend
-RUN yarn tsc && \
+# Generate build metadata and build backend and frontend
+RUN node scripts/generate-build-info.js && \
+    yarn tsc && \
     yarn build:backend && \
     yarn build:all
 
