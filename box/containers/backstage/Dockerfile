@@ -53,12 +53,11 @@ RUN yarn install --immutable
 # Copy source files
 COPY . .
 
-# Generate build metadata and build all packages then backend bundle
-# backstage-cli repo build --all auto-discovers all workspace packages
-# and generates .d.ts files, eliminating the need for tsconfig references
+# Generate build metadata and build backend and frontend
 RUN node scripts/generate-build-info.js && \
-    yarn build:all && \
-    yarn build:backend
+    yarn tsc && \
+    yarn build:backend && \
+    yarn build:all
 
 # ------------------------------------------------------------------------------
 # Stage 2: Production image (official Backstage pattern)

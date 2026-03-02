@@ -21,6 +21,8 @@
     { "path": "plugins/openapi-registry-backend" },
     { "path": "plugins/argocd-appset" },
     { "path": "plugins/argocd-appset-backend" },
+    { "path": "plugins/catalog-health" },
+    { "path": "plugins/catalog-health-backend" },
     { "path": "plugins/iam-user-audit" },
     { "path": "plugins/iam-user-audit-backend" }
   ],
