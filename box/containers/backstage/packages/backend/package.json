@@ -35,6 +35,7 @@
     "@backstage/plugin-techdocs-backend": "^2.1.5",
     "@immobiliarelabs/backstage-plugin-gitlab-backend": "^6.13.0",
     "@internal/plugin-argocd-appset-backend": "workspace:*",
+    "@internal/plugin-catalog-health-backend": "workspace:*",
     "@internal/plugin-iam-user-audit-backend": "workspace:*",
     "@internal/plugin-openapi-registry-backend": "workspace:*",
     "better-sqlite3": "^12.6.2",

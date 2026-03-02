@@ -1,15 +1,26 @@
 export interface Config {
-  /**
-   * ArgoCD ApplicationSet plugin configuration
-   */
-  argocdApplicationSet?: {
+  app: {
     /**
-     * Enable or disable the plugin
+     * Feature flags for custom plugins
      * @visibility frontend
      */
-    enabled?: boolean;
-  };
-  app: {
+    plugins?: {
+      /**
+       * Enable or disable Catalog Health (catalog-health) plugin
+       * @visibility frontend
+       */
+      catalogHealth?: boolean;
+      /**
+       * Enable or disable ArgoCD AppSet plugin
+       * @visibility frontend
+       */
+      argocdAppSet?: boolean;
+      /**
+       * Enable or disable IAM User Audit plugin
+       * @visibility frontend
+       */
+      iamUserAudit?: boolean;
+    };
     /**
      * Internal platform services for developers
      * @visibility frontend

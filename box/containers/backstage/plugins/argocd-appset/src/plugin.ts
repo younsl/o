@@ -5,13 +5,14 @@ import {
   discoveryApiRef,
   fetchApiRef,
 } from '@backstage/core-plugin-api';
-import { rootRouteRef } from './routes';
+import { rootRouteRef, auditLogRouteRef } from './routes';
 import { argocdAppsetApiRef, ArgocdAppsetClient } from './api';
 
 export const argocdAppsetPlugin = createPlugin({
   id: 'argocd-appset',
   routes: {
     root: rootRouteRef,
+    auditLog: auditLogRouteRef,
   },
   apis: [
     createApiFactory({

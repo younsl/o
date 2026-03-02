@@ -2,7 +2,7 @@ import React, { useState, useMemo, useCallback } from 'react';
 import {
   Alert,
   Box,
-  Button,
+  ButtonIcon,
   Card,
   CardBody,
   CardFooter,
@@ -17,18 +17,26 @@ import {
   Tooltip,
   TooltipTrigger,
 } from '@backstage/ui';
+import { RiInformationLine, RiLockPasswordLine, RiMailSendLine } from '@remixicon/react';
 import { useApi } from '@backstage/core-plugin-api';
 import { useAsyncRetry } from 'react-use';
 import { iamUserAuditApiRef } from '../../api';
+import { WarningDmLog } from '../../api/types';
 import { PasswordResetDialog } from '../PasswordResetDialog';
+import { StatusDmDialog } from '../StatusDmDialog';
 import { HighlightText } from '../HighlightText';
 import './IamUserTable.css';
 
 interface IamUserTableProps {
+  threshold?: number;
+  warningDays?: number;
+  isAdmin?: boolean;
+  slackUserMap?: Record<string, boolean>;
+  warningDmLogs?: Record<string, WarningDmLog | null>;
   onPasswordResetSubmitted?: () => void;
 }
 
-export const IamUserTable = ({ onPasswordResetSubmitted }: IamUserTableProps) => {
+export const IamUserTable = ({ threshold = 90, warningDays = 14, isAdmin, slackUserMap, warningDmLogs, onPasswordResetSubmitted }: IamUserTableProps) => {
   const api = useApi(iamUserAuditApiRef);
 
   const [searchQuery, setSearchQuery] = useState('');
@@ -38,6 +46,7 @@ export const IamUserTable = ({ onPasswordResetSubmitted }: IamUserTableProps) =>
     userName: string;
     arn: string;
   } | null>(null);
+  const [dmTarget, setDmTarget] = useState<string | null>(null);
 
   const handleResetSubmitted = useCallback(() => {
     onPasswordResetSubmitted?.();
@@ -76,7 +85,7 @@ export const IamUserTable = ({ onPasswordResetSubmitted }: IamUserTableProps) =>
 
   const formatDate = (dateString: string | null) => {
     if (!dateString) return 'Never';
-    return new Date(dateString).toLocaleDateString();
+    return new Date(dateString).toLocaleString();
   };
 
   const getSeverityClass = (inactiveDays: number) => {
@@ -140,17 +149,11 @@ export const IamUserTable = ({ onPasswordResetSubmitted }: IamUserTableProps) =>
 
   return (
     <>
-      <Box mt="4">
-        <Text
-          as="h3"
-          variant="body-small"
-          weight="bold"
-          color="secondary"
-          className="iam-section-title"
-        >
-          IAM Users
+      {/* Filters Section */}
+      <Box mt="3" p="3" className="iam-section-box">
+        <Text variant="body-medium" weight="bold" style={{ marginBottom: 12, display: 'block' }}>
+          Filters
         </Text>
-
         <div className="iam-filter-bar">
           <SearchField
             label="Search"
@@ -174,6 +177,23 @@ export const IamUserTable = ({ onPasswordResetSubmitted }: IamUserTableProps) =>
             onSelectionChange={key => setKeyStatusFilter(key as string)}
           />
         </div>
+      </Box>
+
+      {/* IAM Users Section */}
+      <Box mt="3" p="3" className="iam-section-box">
+        <Flex justify="between" align="center" mb="3">
+          <Text variant="body-medium" weight="bold">
+            IAM Users
+          </Text>
+          <Flex align="center" gap="2">
+            <span className="iam-count-badge">
+              {filteredUsers.length !== visibleUsers.length
+                ? `${filteredUsers.length} / ${visibleUsers.length}`
+                : visibleUsers.length}
+            </span>
+            <Text variant="body-small" color="secondary">results</Text>
+          </Flex>
+        </Flex>
 
         {filteredUsers.length === 0 ? (
           <div className="iam-empty-state">
@@ -184,31 +204,16 @@ export const IamUserTable = ({ onPasswordResetSubmitted }: IamUserTableProps) =>
         ) : (
           <Grid.Root columns={{ initial: '1', sm: '2', md: '4' }} gap="3">
             {filteredUsers.map(user => (
-              <Grid.Item key={user.userId}>
+              <Grid.Item key={user.userId} className="iam-grid-item">
                 <Card className={`iam-card ${getSeverityClass(user.inactiveDays)}`}>
                   <CardBody className="iam-card-body">
-                    <div className="iam-card-header">
-                      <div>
-                        <Text
-                          variant="body-medium"
-                          className="iam-card-name"
-                        >
-                          <HighlightText text={user.userName} query={searchQuery} />
-                        </Text>
-                      </div>
-                      <div className="iam-inactive-badge">
-                        <TooltipTrigger delay={200}>
-                          <Text
-                            weight="bold"
-                            className="iam-inactive-days"
-                          >
-                            {user.inactiveDays}d
-                          </Text>
-                          <Tooltip>
-                            Inactive for {user.inactiveDays} days
-                          </Tooltip>
-                        </TooltipTrigger>
-                      </div>
+                    <div>
+                      <Text
+                        variant="body-medium"
+                        className="iam-card-name"
+                      >
+                        <HighlightText text={user.userName} query={searchQuery} />
+                      </Text>
                     </div>
 
                     <div>
@@ -221,6 +226,10 @@ export const IamUserTable = ({ onPasswordResetSubmitted }: IamUserTableProps) =>
                       </Text>
                       <Text variant="body-small">
                         {formatDate(user.passwordLastUsed)}
+                        {' '}
+                        <Text as="span" variant="body-x-small" color={user.hasConsoleAccess ? 'success' : 'secondary'}>
+                          ({user.hasConsoleAccess ? 'Enabled' : 'Disabled'})
+                        </Text>
                       </Text>
                     </div>
 
@@ -251,9 +260,9 @@ export const IamUserTable = ({ onPasswordResetSubmitted }: IamUserTableProps) =>
                       >
                         Access Keys
                       </Text>
-                      <TagGroup>
-                        {user.accessKeys.length > 0 ? (
-                          user.accessKeys.map(key => (
+                      {user.accessKeys.length > 0 ? (
+                        <TagGroup>
+                          {user.accessKeys.map(key => (
                             <TooltipTrigger key={key.accessKeyId} delay={200}>
                               <Tag
                                 id={key.accessKeyId}
@@ -261,40 +270,168 @@ export const IamUserTable = ({ onPasswordResetSubmitted }: IamUserTableProps) =>
                               >
                                 {key.accessKeyId.slice(-4)} ({key.status})
                               </Tag>
-                              <Tooltip>
-                                {key.lastUsedDate
-                                  ? `Last used: ${formatDate(key.lastUsedDate)}${key.lastUsedService ? ` (${key.lastUsedService})` : ''}`
-                                  : 'Never used'}
+                              <Tooltip style={{ maxWidth: 360 }}>
+                                <div style={{ display: 'flex', flexDirection: 'column', gap: 3, fontSize: 12, lineHeight: 1.5 }}>
+                                  <div style={{ display: 'flex', gap: 8 }}>
+                                    <span style={{ fontWeight: 700, minWidth: 64, flexShrink: 0 }}>Key ID</span>
+                                    <span style={{ opacity: 0.8, wordBreak: 'break-all' }}>{key.accessKeyId}</span>
+                                  </div>
+                                  <div style={{ display: 'flex', gap: 8 }}>
+                                    <span style={{ fontWeight: 700, minWidth: 64, flexShrink: 0 }}>Status</span>
+                                    <span style={{ opacity: 0.8 }}>{key.status}</span>
+                                  </div>
+                                  <div style={{ display: 'flex', gap: 8 }}>
+                                    <span style={{ fontWeight: 700, minWidth: 64, flexShrink: 0 }}>Last Used</span>
+                                    <span style={{ opacity: 0.8 }}>{key.lastUsedDate ? formatDate(key.lastUsedDate) : 'Never'}</span>
+                                  </div>
+                                  {key.lastUsedService && (
+                                    <div style={{ display: 'flex', gap: 8 }}>
+                                      <span style={{ fontWeight: 700, minWidth: 64, flexShrink: 0 }}>Service</span>
+                                      <span style={{ opacity: 0.8 }}>{key.lastUsedService}</span>
+                                    </div>
+                                  )}
+                                </div>
                               </Tooltip>
                             </TooltipTrigger>
-                          ))
-                        ) : (
-                          <Tag id="no-keys" size="small">
-                            None
-                          </Tag>
-                        )}
-                      </TagGroup>
+                          ))}
+                        </TagGroup>
+                      ) : (
+                        <Text variant="body-small" color="secondary">No keys</Text>
+                      )}
                     </div>
+
+                    {(() => {
+                      const ratio = Math.min(user.inactiveDays / threshold, 1);
+                      const pct = Math.min(Math.round((user.inactiveDays / threshold) * 100), 100);
+                      const barColor =
+                        user.inactiveDays >= 365
+                          ? 'var(--bui-color-danger, #ef4444)'
+                          : user.inactiveDays >= threshold
+                            ? 'var(--bui-color-warning, #f59e0b)'
+                            : ratio >= 0.5
+                              ? '#f97316'
+                              : 'var(--bui-color-text-secondary, #999)';
+                      return (
+                        <div>
+                          <Text
+                            variant="body-x-small"
+                            color="secondary"
+                            className="iam-field-label"
+                          >
+                            Inactive Period
+                          </Text>
+                          <div className="iam-progress-row">
+                            <div className="iam-progress-track" style={{ position: 'relative' }}>
+                              <div
+                                className="iam-progress-fill"
+                                style={{ width: `${pct}%`, backgroundColor: barColor }}
+                              >
+                                {pct >= (`${user.inactiveDays}d`.length * 7 + 8) / 1.5 && (
+                                  <span className="iam-progress-text">{user.inactiveDays}d</span>
+                                )}
+                              </div>
+                              {pct < 100 && (
+                                <div
+                                  className="iam-progress-remaining"
+                                  style={{ width: `${100 - pct}%` }}
+                                >
+                                  {(100 - pct) >= (`${threshold - user.inactiveDays}d`.length * 7 + 8) / 1.5 && (
+                                    <span className="iam-progress-text">{threshold - user.inactiveDays}d</span>
+                                  )}
+                                </div>
+                              )}
+                              {threshold > warningDays && (
+                                <div
+                                  className="iam-threshold-marker"
+                                  style={{ left: `${Math.round(((threshold - warningDays) / threshold) * 100)}%` }}
+                                />
+                              )}
+                            </div>
+                            <TooltipTrigger delay={200}>
+                              <ButtonIcon
+                                size="small"
+                                variant="tertiary"
+                                icon={<RiInformationLine size={14} />}
+                                aria-label="Alarm policy info"
+                                className="iam-help-btn"
+                              />
+                              <Tooltip style={{ maxWidth: 320 }}>
+                                <div style={{ display: 'flex', flexDirection: 'column', gap: 4, fontSize: 12, lineHeight: 1.5 }}>
+                                  <div style={{ fontWeight: 700 }}>Global Alarm Policy</div>
+                                  <div>Warning DM: {threshold - warningDays}d ({warningDays}d before threshold)</div>
+                                  <div>Inactive threshold: {threshold}d</div>
+                                  <div style={{ marginTop: 2, opacity: 0.7 }}>Dashed line = warning point</div>
+                                  <div style={{ borderTop: '1px solid rgba(255,255,255,0.2)', marginTop: 4, paddingTop: 4 }}>
+                                    {(() => {
+                                      const dmLog = warningDmLogs?.[user.userName];
+                                      if (!dmLog) return <span>Last Warning DM: None</span>;
+                                      const date = new Date(dmLog.createdAt).toLocaleString();
+                                      const platform = dmLog.platform.charAt(0).toUpperCase() + dmLog.platform.slice(1);
+                                      if (dmLog.status === 'success') {
+                                        return <span>Last Warning DM: {date} via {platform} (Success)</span>;
+                                      }
+                                      return <span>Last Warning DM: {date} via {platform} (Failed{dmLog.errorMessage ? `: ${dmLog.errorMessage}` : ''})</span>;
+                                    })()}
+                                  </div>
+                                </div>
+                              </Tooltip>
+                            </TooltipTrigger>
+                          </div>
+                        </div>
+                      );
+                    })()}
                   </CardBody>
 
                   <CardFooter className="iam-card-footer">
                     <Text variant="body-x-small" color="secondary">
                       Created {formatDate(user.createDate)}
                     </Text>
-                    {user.hasConsoleAccess && (
-                      <Button
-                        variant="secondary"
-                        size="small"
-                        onPress={() =>
-                          setResetTarget({
-                            userName: user.userName,
-                            arn: user.arn,
-                          })
-                        }
-                      >
-                        Reset Password
-                      </Button>
-                    )}
+                    <Flex gap="0" align="center">
+                      {isAdmin && (() => {
+                        const slackExists = slackUserMap?.[user.userName] ?? false;
+                        return (
+                          <TooltipTrigger delay={200}>
+                            <ButtonIcon
+                              size="small"
+                              variant="tertiary"
+                              icon={<RiMailSendLine size={18} style={slackExists ? undefined : { opacity: 0.3 }} />}
+                              aria-label={slackExists ? 'Send status DM' : 'Slack user not found'}
+                              isDisabled={!slackExists}
+                              onPress={() => setDmTarget(user.userName)}
+                            />
+                            <Tooltip>{slackExists ? 'Send status DM' : 'Slack user not found'}</Tooltip>
+                          </TooltipTrigger>
+                        );
+                      })()}
+                      {user.hasConsoleAccess ? (
+                        <TooltipTrigger delay={200}>
+                          <ButtonIcon
+                            size="small"
+                            variant="tertiary"
+                            icon={<RiLockPasswordLine size={18} />}
+                            aria-label="Reset password"
+                            onPress={() =>
+                              setResetTarget({
+                                userName: user.userName,
+                                arn: user.arn,
+                              })
+                            }
+                          />
+                          <Tooltip>Reset password</Tooltip>
+                        </TooltipTrigger>
+                      ) : (
+                        <TooltipTrigger delay={200}>
+                          <ButtonIcon
+                            size="small"
+                            variant="tertiary"
+                            icon={<RiLockPasswordLine size={18} style={{ opacity: 0.3 }} />}
+                            aria-label="No console access"
+                            style={{ cursor: 'default' }}
+                          />
+                          <Tooltip>Console password not set — reset unavailable</Tooltip>
+                        </TooltipTrigger>
+                      )}
+                    </Flex>
                   </CardFooter>
                 </Card>
               </Grid.Item>
@@ -310,6 +447,15 @@ export const IamUserTable = ({ onPasswordResetSubmitted }: IamUserTableProps) =>
           open
           onClose={() => setResetTarget(null)}
           onSubmitted={handleResetSubmitted}
+        />
+      )}
+
+      {dmTarget && (
+        <StatusDmDialog
+          userName={dmTarget}
+          open
+          onClose={() => setDmTarget(null)}
+          onSent={() => setDmTarget(null)}
         />
       )}
     </>

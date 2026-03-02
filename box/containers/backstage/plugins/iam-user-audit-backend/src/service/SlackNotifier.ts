@@ -12,6 +12,103 @@ export class SlackNotifier {
     this.logger = options.logger;
   }
 
+  async healthCheck(): Promise<{
+    webhook: { configured: boolean };
+    bot: { configured: boolean; valid: boolean; botName?: string; teamName?: string };
+    checkedAt: string;
+  }> {
+    const webhookUrl = this.config.getOptionalString('iamUserAudit.slack.webhookUrl');
+    const botToken = this.config.getOptionalString('iamUserAudit.slack.botToken');
+
+    const result = {
+      webhook: { configured: !!webhookUrl },
+      bot: { configured: !!botToken, valid: false } as {
+        configured: boolean;
+        valid: boolean;
+        botName?: string;
+        teamName?: string;
+      },
+      checkedAt: new Date().toISOString(),
+    };
+
+    if (botToken) {
+      try {
+        const res = await fetch('https://slack.com/api/auth.test', {
+          method: 'POST',
+          headers: { Authorization: `Bearer ${botToken}` },
+        });
+        const data = (await res.json()) as {
+          ok: boolean;
+          user?: string;
+          team?: string;
+        };
+        if (data.ok) {
+          result.bot.valid = true;
+          result.bot.botName = data.user;
+          result.bot.teamName = data.team;
+        }
+      } catch {
+        // leave valid as false
+      }
+    }
+
+    return result;
+  }
+
+  async checkSlackUser(email: string): Promise<boolean> {
+    const info = await this.lookupSlackUser(email);
+    return info !== null;
+  }
+
+  async lookupSlackUser(email: string): Promise<{
+    id: string;
+    realName: string;
+    displayName: string;
+    title: string;
+    image48: string;
+    email: string;
+  } | null> {
+    const botToken = this.config.getOptionalString(
+      'iamUserAudit.slack.botToken',
+    );
+    if (!botToken) return null;
+
+    try {
+      const res = await fetch(
+        `https://slack.com/api/users.lookupByEmail?email=${encodeURIComponent(email)}`,
+        {
+          method: 'GET',
+          headers: { Authorization: `Bearer ${botToken}` },
+        },
+      );
+      const data = (await res.json()) as {
+        ok: boolean;
+        user?: {
+          id: string;
+          real_name?: string;
+          profile?: {
+            display_name?: string;
+            title?: string;
+            image_48?: string;
+            email?: string;
+          };
+        };
+      };
+      if (!data.ok || !data.user) return null;
+      const u = data.user;
+      return {
+        id: u.id,
+        realName: u.real_name ?? '',
+        displayName: u.profile?.display_name ?? '',
+        title: u.profile?.title ?? '',
+        image48: u.profile?.image_48 ?? '',
+        email: u.profile?.email ?? email,
+      };
+    } catch {
+      return null;
+    }
+  }
+
   async notify(
     users: IamUserResponse[],
     inactiveDays: number,
@@ -345,6 +442,109 @@ export class SlackNotifier {
     } catch (error) {
       this.logger.error(`[slack] Failed to send password DM to ${email}: ${error}`);
     }
+  }
+
+  async sendStatusDm(
+    email: string,
+    user: IamUserResponse,
+    inactiveDays: number,
+    senderRef: string,
+    message: string,
+  ): Promise<void> {
+    const botToken = this.config.getOptionalString(
+      'iamUserAudit.slack.botToken',
+    );
+    if (!botToken) {
+      throw new Error('Slack bot token not configured');
+    }
+
+    this.logger.info(`[slack] Sending status DM to ${email} for IAM user ${user.userName}`);
+
+    // Lookup Slack user by email
+    const lookupRes = await fetch(
+      `https://slack.com/api/users.lookupByEmail?email=${encodeURIComponent(email)}`,
+      {
+        method: 'GET',
+        headers: { Authorization: `Bearer ${botToken}` },
+      },
+    );
+    const lookupData = (await lookupRes.json()) as {
+      ok: boolean;
+      user?: { id: string };
+      error?: string;
+    };
+
+    if (!lookupData.ok || !lookupData.user) {
+      throw new Error(
+        `Slack user lookup failed for ${email}: ${lookupData.error ?? 'no user returned'}`,
+      );
+    }
+
+    const slackUserId = lookupData.user.id;
+    const baseUrl = this.config.getString('app.baseUrl');
+    const activeKeys = user.accessKeys.filter(k => k.status === 'Active').length;
+    const blocks: Record<string, any>[] = [
+      {
+        type: 'header',
+        text: {
+          type: 'plain_text',
+          text: 'IAM User Status Notification',
+        },
+      },
+      {
+        type: 'section',
+        text: {
+          type: 'mrkdwn',
+          text: message,
+        },
+      },
+      {
+        type: 'section',
+        fields: [
+          { type: 'mrkdwn', text: `*User:*\n${user.userName}` },
+          { type: 'mrkdwn', text: `*Inactive Days:*\n${inactiveDays}` },
+          { type: 'mrkdwn', text: `*Last Activity:*\n${user.lastActivity ?? 'Never'}` },
+          { type: 'mrkdwn', text: `*Active Keys:*\n${activeKeys} / ${user.accessKeyCount}` },
+          { type: 'mrkdwn', text: `*Console Access:*\n${user.hasConsoleAccess ? 'Enabled' : 'Disabled'}` },
+        ],
+      },
+      { type: 'divider' },
+      {
+        type: 'context',
+        elements: [
+          { type: 'mrkdwn', text: senderRef === 'system' ? 'Automatically sent by Backstage IAM User Audit' : `Sent by ${senderRef}` },
+        ],
+      },
+      {
+        type: 'context',
+        elements: [
+          { type: 'mrkdwn', text: `<${baseUrl}/iam-user-audit|View in Backstage>` },
+        ],
+      },
+    ];
+
+    const postRes = await fetch('https://slack.com/api/chat.postMessage', {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${botToken}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        channel: slackUserId,
+        text: `IAM User Status Notification for ${user.userName}`,
+        blocks,
+      }),
+    });
+    const postData = (await postRes.json()) as {
+      ok: boolean;
+      error?: string;
+    };
+
+    if (!postData.ok) {
+      throw new Error(`Slack DM delivery failed for ${email}: ${postData.error}`);
+    }
+
+    this.logger.info(`[slack] Status DM sent to ${email} for IAM user ${user.userName}`);
   }
 
   async sendRejectionDm(

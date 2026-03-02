@@ -1,7 +1,7 @@
 import { DiscoveryApi, FetchApi } from '@backstage/core-plugin-api';
 import { ResponseError } from '@backstage/errors';
 import { ArgocdAppsetApi } from './ArgocdAppsetApi';
-import { ApplicationSetResponse, PluginStatus } from './types';
+import { ApplicationSetResponse, AuditLogEntry, PluginStatus } from './types';
 
 export class ArgocdAppsetClient implements ArgocdAppsetApi {
   private readonly discoveryApi: DiscoveryApi;
@@ -99,6 +99,19 @@ export class ArgocdAppsetClient implements ArgocdAppsetApi {
 
     if (!response.ok) {
       return { isAdmin: false };
+    }
+
+    return response.json();
+  }
+
+  async listAuditLogs(namespace: string, name: string): Promise<AuditLogEntry[]> {
+    const baseUrl = await this.getBaseUrl();
+    const response = await this.fetchApi.fetch(
+      `${baseUrl}/audit-logs?namespace=${encodeURIComponent(namespace)}&name=${encodeURIComponent(name)}`,
+    );
+
+    if (!response.ok) {
+      throw await ResponseError.fromResponse(response as any);
     }
 
     return response.json();

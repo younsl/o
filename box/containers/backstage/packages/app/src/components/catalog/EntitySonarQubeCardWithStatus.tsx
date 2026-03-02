@@ -1,7 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { Box, Chip, Grid, IconButton, Tooltip, Typography, makeStyles } from '@material-ui/core';
-import HelpOutlineIcon from '@material-ui/icons/HelpOutline';
-import { InfoCard } from '@backstage/core-components';
+import { ButtonIcon, Card, CardBody, Flex, Grid, Text, Tooltip, TooltipTrigger } from '@backstage/ui';
 import { useApi } from '@backstage/core-plugin-api';
 import { useEntity } from '@backstage/plugin-catalog-react';
 import { EntitySonarQubeCard } from '@backstage-community/plugin-sonarqube';
@@ -10,68 +8,41 @@ import { IntegrationStatusBadge, ConnectionStatus } from './IntegrationStatusBad
 
 const SONARQUBE_ANNOTATION_PREFIX = 'sonarqube.org/';
 
-const useStyles = makeStyles(theme => ({
-  wrapper: {
-    position: 'relative',
-  },
-  annotationCard: {
-    position: 'relative',
-    marginBottom: theme.spacing(2),
-  },
-  description: {
-    marginBottom: theme.spacing(2),
-    color: theme.palette.text.secondary,
-  },
-  label: {
-    color: theme.palette.text.secondary,
-    textTransform: 'uppercase',
-    fontSize: '0.65rem',
-    fontWeight: 'bold',
-    letterSpacing: 0.5,
-    marginBottom: theme.spacing(0.5),
-  },
-  codeBlock: {
-    fontFamily: 'monospace',
-    fontSize: '0.8rem',
-    backgroundColor: theme.palette.type === 'dark' ? '#1e1e1e' : '#f5f5f5',
-    padding: theme.spacing(1.5),
-    borderRadius: theme.shape.borderRadius,
-    overflow: 'auto',
-    margin: 0,
-    lineHeight: 1.6,
-  },
-  codeLine: {
-    display: 'flex',
-    alignItems: 'center',
-  },
-  codeKey: {
-    color: theme.palette.type === 'dark' ? '#9cdcfe' : '#0451a5',
-  },
-  codeValue: {
-    color: theme.palette.type === 'dark' ? '#ce9178' : '#a31515',
-  },
-  autoChip: {
-    fontSize: '0.65rem',
-    height: 20,
-    backgroundColor: theme.palette.info.light,
-    color: theme.palette.info.contrastText,
-  },
-  manualChip: {
-    fontSize: '0.65rem',
-    height: 20,
-    backgroundColor: theme.palette.success.light,
-    color: theme.palette.success.contrastText,
-  },
-}));
-
 const PLUGIN_URL = 'https://github.com/backstage/community-plugins/tree/main/workspaces/sonarqube/plugins/sonarqube';
+
+const labelStyle: React.CSSProperties = {
+  textTransform: 'uppercase',
+  fontSize: '0.65rem',
+  fontWeight: 700,
+  letterSpacing: 0.5,
+};
+
+const codeBlockStyle: React.CSSProperties = {
+  fontFamily: 'monospace',
+  fontSize: '0.8rem',
+  backgroundColor: 'var(--bui-color-bg-elevated, #1e1e1e)',
+  padding: 12,
+  borderRadius: 4,
+  overflow: 'auto',
+  margin: 0,
+  lineHeight: 1.6,
+};
+
+const chipStyle = (bg: string, fg: string): React.CSSProperties => ({
+  display: 'inline-block',
+  padding: '1px 8px',
+  borderRadius: 4,
+  fontSize: '0.65rem',
+  fontWeight: 700,
+  backgroundColor: bg,
+  color: fg,
+});
 
 /**
  * Wrapper component for EntitySonarQubeCard that displays
  * SonarQube connection status in the card header.
  */
 export const EntitySonarQubeCardWithStatus = () => {
-  const classes = useStyles();
   const { entity } = useEntity();
   const sonarQubeApi = useApi(sonarQubeApiRef);
   const { projectKey, projectInstance } = useProjectInfo(entity);
@@ -115,9 +86,9 @@ export const EntitySonarQubeCardWithStatus = () => {
   }, [sonarQubeApi, projectKey, projectInstance]);
 
   return (
-    <Box className={classes.wrapper}>
+    <Flex direction="column" gap="3">
       {sonarQubeAnnotations.length > 0 && (
-        <Box className={classes.annotationCard}>
+        <Flex direction="column" gap="3">
           <IntegrationStatusBadge
             label="SonarQube Integration"
             status={connectionStatus}
@@ -126,84 +97,86 @@ export const EntitySonarQubeCardWithStatus = () => {
             tooltipDisconnected="Not connected to SonarQube. Check if the project exists, or verify your token and permissions."
             tooltipLoading="Checking SonarQube connection..."
           />
-          <InfoCard
-            title={
-              <Box display="flex" alignItems="center">
-                Annotations
-                <Tooltip title="Learn more about well-known annotations">
-                  <IconButton
-                    size="small"
-                    component="a"
-                    href="https://backstage.io/docs/features/software-catalog/well-known-annotations"
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    style={{ marginLeft: 4 }}
-                  >
-                    <HelpOutlineIcon fontSize="small" />
-                  </IconButton>
-                </Tooltip>
-              </Box>
-            }
-            variant="gridItem"
-          >
-            <Typography variant="body2" className={classes.description}>
-              SonarQube annotations configured for this entity. These settings connect your component to SonarQube for code quality analysis.
-            </Typography>
-            <Grid container spacing={3}>
-              {sourceAnnotation && (
-                <Grid item xs={12} sm={4}>
-                  <Typography className={classes.label}>Source</Typography>
-                  <Tooltip
-                    title={
-                      isAutoInjected
-                        ? 'This annotation was automatically set using your GitLab project name or entity name. No manual configuration required.'
-                        : 'This annotation was manually specified in your catalog-info.yaml file.'
-                    }
-                    arrow
-                  >
-                    <Chip
+          <Card>
+            <CardBody>
+              <Flex direction="column" gap="3">
+                <Flex align="center" gap="1">
+                  <Text variant="title-small" weight="bold">Annotations</Text>
+                  <TooltipTrigger>
+                    <ButtonIcon
                       size="small"
-                      label={isAutoInjected ? 'AUTO' : 'MANUAL'}
-                      className={isAutoInjected ? classes.autoChip : classes.manualChip}
+                      variant="tertiary"
+                      icon={
+                        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" width="16" height="16">
+                          <path d="M11 18h2v-2h-2v2zm1-16C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm0 18c-4.41 0-8-3.59-8-8s3.59-8 8-8 8 3.59 8 8-3.59 8-8 8zm0-14c-2.21 0-4 1.79-4 4h2c0-1.1.9-2 2-2s2 .9 2 2c0 2-3 1.75-3 5h2c0-2.25 3-2.5 3-5 0-2.21-1.79-4-4-4z" />
+                        </svg>
+                      }
+                      onPress={() => window.open('https://backstage.io/docs/features/software-catalog/well-known-annotations', '_blank', 'noopener,noreferrer')}
                     />
-                  </Tooltip>
-                </Grid>
-              )}
-              <Grid item xs={12} sm={sourceAnnotation ? 8 : 12}>
-                <Typography className={classes.label}>Values ({sonarQubeAnnotations.length})</Typography>
-                <pre className={classes.codeBlock}>
-                  {Object.keys(entity).filter(k => k === 'metadata').map(metadataKey => (
-                    <React.Fragment key={metadataKey}>
-                      <Box className={classes.codeLine}>
-                        <span className={classes.codeKey}>{metadataKey}</span>
-                        <span>:</span>
-                      </Box>
-                      {Object.keys(entity.metadata).filter(k => k === 'annotations').map((annotationsKey, level1) => (
-                        <React.Fragment key={annotationsKey}>
-                          <Box className={classes.codeLine}>
-                            <span>{'  '.repeat(level1 + 1)}</span>
-                            <span className={classes.codeKey}>{annotationsKey}</span>
-                            <span>:</span>
-                          </Box>
-                          {sonarQubeAnnotations.map(([key, value]) => (
-                            <Box key={key} className={classes.codeLine}>
-                              <span>{'  '.repeat(level1 + 2)}</span>
-                              <span className={classes.codeKey}>{key}</span>
-                              <span>: </span>
-                              <span className={classes.codeValue}>{value}</span>
-                            </Box>
-                          ))}
-                        </React.Fragment>
-                      ))}
-                    </React.Fragment>
-                  ))}
-                </pre>
-              </Grid>
-            </Grid>
-          </InfoCard>
-        </Box>
+                    <Tooltip>Learn more about well-known annotations</Tooltip>
+                  </TooltipTrigger>
+                </Flex>
+
+                <Text variant="body-small" color="secondary">
+                  SonarQube annotations configured for this entity. These settings connect your component to SonarQube for code quality analysis.
+                </Text>
+
+                <Grid.Root columns={{ initial: '1', sm: sourceAnnotation ? '2' : '1' }} gap="4">
+                  {sourceAnnotation && (
+                    <Grid.Item>
+                      <Flex direction="column" gap="1">
+                        <Text variant="body-small" color="secondary" style={labelStyle}>Source</Text>
+                        <Flex direction="column" gap="1" align="start">
+                          <span
+                            style={isAutoInjected
+                              ? chipStyle('#29b6f633', '#29b6f6')
+                              : chipStyle('#66bb6a33', '#66bb6a')
+                            }
+                          >
+                            {isAutoInjected ? 'AUTO' : 'MANUAL'}
+                          </span>
+                          <Text variant="body-small" color="secondary" style={{ fontSize: '0.75rem' }}>
+                            {isAutoInjected
+                              ? 'Automatically set using your GitLab project name or entity name.'
+                              : 'Manually specified in your catalog-info.yaml file.'}
+                          </Text>
+                        </Flex>
+                      </Flex>
+                    </Grid.Item>
+                  )}
+                  <Grid.Item>
+                    <Flex direction="column" gap="1">
+                      <Text variant="body-small" color="secondary" style={labelStyle}>
+                        Values ({sonarQubeAnnotations.length})
+                      </Text>
+                      <pre style={codeBlockStyle}>
+                        <div style={{ display: 'flex', alignItems: 'center' }}>
+                          <span style={{ color: '#9cdcfe' }}>metadata</span>
+                          <span>:</span>
+                        </div>
+                        <div style={{ display: 'flex', alignItems: 'center' }}>
+                          <span>{'  '}</span>
+                          <span style={{ color: '#9cdcfe' }}>annotations</span>
+                          <span>:</span>
+                        </div>
+                        {sonarQubeAnnotations.map(([key, value]) => (
+                          <div key={key} style={{ display: 'flex', alignItems: 'center' }}>
+                            <span>{'    '}</span>
+                            <span style={{ color: '#9cdcfe' }}>{key}</span>
+                            <span>: </span>
+                            <span style={{ color: '#ce9178' }}>{value}</span>
+                          </div>
+                        ))}
+                      </pre>
+                    </Flex>
+                  </Grid.Item>
+                </Grid.Root>
+              </Flex>
+            </CardBody>
+          </Card>
+        </Flex>
       )}
       <EntitySonarQubeCard variant="gridItem" />
-    </Box>
+    </Flex>
   );
 };

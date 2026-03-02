@@ -28,6 +28,9 @@ RUN apt-get update && \
 # Install and enable corepack for Yarn Berry (not included in slim image)
 RUN npm install -g corepack --force && corepack enable
 
+ARG COMMIT_SHA=unknown
+ENV COMMIT_SHA=${COMMIT_SHA}
+
 WORKDIR /app
 
 # Copy Yarn Berry configuration

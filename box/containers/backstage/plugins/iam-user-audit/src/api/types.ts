@@ -21,9 +21,11 @@ export interface IamUserResponse {
 export interface PluginStatus {
   enabled: boolean;
   inactiveDays: number;
+  warningDays: number;
   cron: string;
   fetchCron: string;
   slackConfigured: boolean;
+  botConfigured: boolean;
   lastFetchedAt: string | null;
   totalUsers: number;
   inactiveUsers: number;
@@ -43,4 +45,17 @@ export interface PasswordResetRequest {
   reviewComment: string | null;
   createdAt: string;
   updatedAt: string;
+}
+
+export interface SlackHealth {
+  webhook: { configured: boolean };
+  bot: { configured: boolean; valid: boolean; botName?: string; teamName?: string };
+  checkedAt: string;
+}
+
+export interface WarningDmLog {
+  platform: string;
+  status: 'success' | 'failed';
+  errorMessage: string | null;
+  createdAt: string;
 }

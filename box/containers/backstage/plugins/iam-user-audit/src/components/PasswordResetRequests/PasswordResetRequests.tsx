@@ -125,34 +125,57 @@ export const PasswordResetRequests = ({
     { value: 'rejected', label: 'Rejected' },
   ];
 
+  const allRequests = requests ?? [];
+  const sectionTitle = filter === 'pending' ? 'Pending Requests' : 'Requests';
+
   return (
     <>
       {!filter && (
-        <div className="pr-filter-bar">
-          <SearchField
-            label="Search"
-            placeholder="Search by username or requester..."
-            size="small"
-            value={searchQuery}
-            onChange={setSearchQuery}
-          />
-          <Select
-            label="Status"
-            size="small"
-            options={statusOptions}
-            selectedKey={statusFilter}
-            onSelectionChange={key => setStatusFilter(key as string)}
-          />
-        </div>
+        <Box mt="3" p="3" className="iam-section-box">
+          <Text variant="body-medium" weight="bold" style={{ marginBottom: 12, display: 'block' }}>
+            Filters
+          </Text>
+          <div className="pr-filter-bar">
+            <SearchField
+              label="Search"
+              placeholder="Search by username or requester..."
+              size="small"
+              value={searchQuery}
+              onChange={setSearchQuery}
+            />
+            <Select
+              label="Status"
+              size="small"
+              options={statusOptions}
+              selectedKey={statusFilter}
+              onSelectionChange={key => setStatusFilter(key as string)}
+            />
+          </div>
+        </Box>
       )}
 
-      {filteredRequests.length === 0 ? (
-        <div className="pr-empty-state">
-          <Text variant="body-medium" color="secondary">
-            No requests match the current filters
+      <Box mt="3" p="3" className="iam-section-box">
+        <Flex justify="between" align="center" mb="3">
+          <Text variant="body-medium" weight="bold">
+            {sectionTitle}
           </Text>
-        </div>
-      ) : (
+          <Flex align="center" gap="2">
+            <span className="iam-count-badge">
+              {filteredRequests.length !== allRequests.length
+                ? `${filteredRequests.length} / ${allRequests.length}`
+                : filteredRequests.length}
+            </span>
+            <Text variant="body-small" color="secondary">results</Text>
+          </Flex>
+        </Flex>
+
+        {filteredRequests.length === 0 ? (
+          <div className="pr-empty-state">
+            <Text variant="body-medium" color="secondary">
+              No requests match the current filters
+            </Text>
+          </div>
+        ) : (
       <div className="pr-grid">
         {filteredRequests.map(request => (
           <div key={request.id} className="pr-card-wrapper">
@@ -268,7 +291,8 @@ export const PasswordResetRequests = ({
           </div>
         ))}
       </div>
-      )}
+        )}
+      </Box>
 
       {reviewTarget && (
         <ReviewDialog

@@ -9,8 +9,12 @@ import {
   Select,
   Skeleton,
   Text,
+  Tooltip,
+  TooltipTrigger,
+  ButtonIcon,
+  Link,
 } from '@backstage/ui';
-import { Link } from '@backstage/core-components';
+import { RiInformationLine } from '@remixicon/react';
 import { useApi, attachComponentData } from '@backstage/core-plugin-api';
 import { catalogApiRef } from '@backstage/plugin-catalog-react';
 import { catalogPlugin } from '@backstage/plugin-catalog';
@@ -280,10 +284,15 @@ export const CatalogPage = () => {
       <PluginHeader title="Catalog" />
       <Container>
         <Flex direction="column" gap="3" p="3">
-          <Text variant="body-medium" color="secondary">
-            Browse and discover all entities registered in the Backstage
-            Catalog
-          </Text>
+          <Flex align="center" gap="2">
+            <Text variant="body-medium" color="secondary">
+              Browse and discover all entities registered in the Backstage
+              Catalog
+            </Text>
+            <Link href="/catalog-health" style={{ whiteSpace: 'nowrap', textDecoration: 'underline', fontSize: 'var(--bui-font-size-2, 0.875rem)' }}>
+              Catalog Health
+            </Link>
+          </Flex>
 
           {/* Filters Section */}
           <Box
@@ -531,7 +540,43 @@ export const CatalogPage = () => {
                       />
                       <th style={{ ...thStyle, paddingLeft: 4 }}>Name</th>
                       <th style={thStyle}>Title</th>
-                      <th style={thStyle}>Kind</th>
+                      <th style={thStyle}>
+                        <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+                          Kind
+                          <TooltipTrigger delay={200}>
+                            <ButtonIcon
+                              size="small"
+                              variant="tertiary"
+                              icon={<RiInformationLine size={14} />}
+                              aria-label="Kind descriptions"
+                              style={{ padding: 0, minWidth: 'auto', minHeight: 'auto' }}
+                            />
+                            <Tooltip style={{ maxWidth: 380 }}>
+                              <div style={{ display: 'flex', flexDirection: 'column', gap: 3, fontSize: 12, lineHeight: 1.5 }}>
+                                <div style={{ marginBottom: 4, opacity: 0.8 }}>
+                                  Kind is the entity classification in the Backstage Software Catalog.
+                                </div>
+                                {[
+                                  ['Component', 'Service, library, or website'],
+                                  ['API', 'Interface exposed by a component'],
+                                  ['System', 'Collection of components and APIs'],
+                                  ['Domain', 'Business domain grouping systems'],
+                                  ['Resource', 'Infrastructure (DB, storage, etc.)'],
+                                  ['Group', 'Team or organizational unit'],
+                                  ['User', 'Individual user'],
+                                  ['Template', 'Scaffolder template'],
+                                  ['Location', 'Entity definition reference'],
+                                ].map(([kind, desc]) => (
+                                  <div key={kind} style={{ display: 'flex', gap: 8, whiteSpace: 'nowrap' }}>
+                                    <span style={{ fontWeight: 700, minWidth: 86 }}>{kind}</span>
+                                    <span style={{ opacity: 0.7 }}>{desc}</span>
+                                  </div>
+                                ))}
+                              </div>
+                            </Tooltip>
+                          </TooltipTrigger>
+                        </span>
+                      </th>
                       <th style={thStyle}>Type</th>
                       <th style={thStyle}>Owner</th>
                       <th style={thStyle}>Lifecycle</th>
@@ -590,7 +635,7 @@ export const CatalogPage = () => {
                               }}
                             >
                               <Link
-                                to={`/catalog/${row.namespace}/${row.kind.toLowerCase()}/${row.name}`}
+                                href={`/catalog/${row.namespace}/${row.kind.toLowerCase()}/${row.name}`}
                               >
                                 {row.name}
                               </Link>
@@ -613,7 +658,7 @@ export const CatalogPage = () => {
                                   : {}),
                               }}
                             >
-                              <span style={tagStyle}>{row.kind}</span>
+                              {row.kind}
                             </td>
                             <td
                               style={{
@@ -658,6 +703,7 @@ export const CatalogPage = () => {
                                   display: 'flex',
                                   flexWrap: 'wrap',
                                   gap: 4,
+                                  alignItems: 'center',
                                 }}
                               >
                                 {row.tags.length > 0

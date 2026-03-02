@@ -6,11 +6,12 @@
     "node": ">=24.0.0"
   },
   "scripts": {
+    "predev": "node scripts/generate-build-info.js",
     "dev": "concurrently \"yarn start\" \"yarn start-backend\"",
     "start": "yarn workspace app start",
     "start-backend": "yarn workspace backend start",
     "build:backend": "yarn workspace backend build",
-    "build:all": "backstage-cli repo build --all",
+    "build:all": "node scripts/generate-build-info.js && backstage-cli repo build --all",
     "tsc": "tsc --build",
     "clean": "backstage-cli repo clean"
   },

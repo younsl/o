@@ -12,9 +12,9 @@ import {
   SearchField,
   Select,
   Text,
+  Link,
 } from '@backstage/ui';
 import { useApi } from '@backstage/core-plugin-api';
-import { Link } from '@backstage/core-components';
 import { openApiRegistryApiRef } from '../../api';
 import { OpenApiRegistration } from '../../api/types';
 
@@ -438,7 +438,7 @@ export const RegisteredApisList = ({ registrations, loading, loadError, onRetry 
                 {filteredRegistrations.map(registration => (
                   <tr key={registration.id}>
                     <td style={tdStyle}>
-                      <Link to={`/catalog/default/api/${registration.name}`}>
+                      <Link href={`/catalog/default/api/${registration.name}`}>
                         {registration.name}
                       </Link>
                     </td>

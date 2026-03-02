@@ -90,7 +90,7 @@ export const ReviewDialog = ({
           <Box mt="3">
             <label className="prd-label">
               <Text variant="body-small" weight="bold">
-                New Password
+                New Password <Text as="span" variant="body-small" color="danger">*</Text>
               </Text>
               <div className="prd-password-wrapper">
                 <input
@@ -117,7 +117,7 @@ export const ReviewDialog = ({
         <Box mt="3">
           <label className="prd-label">
             <Text variant="body-small" weight="bold">
-              Comment
+              Comment <Text as="span" variant="body-small" color="danger">*</Text>
             </Text>
             <textarea
               className="prd-textarea"

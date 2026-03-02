@@ -10,8 +10,8 @@ import {
   Select,
   Skeleton,
   Text,
+  Link,
 } from '@backstage/ui';
-import { Link } from '@backstage/core-components';
 import { useApi } from '@backstage/core-plugin-api';
 import { catalogApiRef } from '@backstage/plugin-catalog-react';
 import { useAsync } from 'react-use';
@@ -524,7 +524,7 @@ export const ApisPage = () => {
                               </button>
                             </td>
                             <td style={{ ...tdStyle, paddingLeft: 4, ...(isExpanded ? { borderBottom: 'none' } : {}) }}>
-                              <Link to={`/catalog/${row.namespace}/api/${row.name}`}>
+                              <Link href={`/catalog/${row.namespace}/api/${row.name}`}>
                                 {row.name}
                               </Link>
                             </td>

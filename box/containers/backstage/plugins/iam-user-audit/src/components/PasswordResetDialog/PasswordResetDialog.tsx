@@ -75,7 +75,7 @@ export const PasswordResetDialog = ({
         <Box mt="3">
           <label className="prd-label">
             <Text variant="body-small" weight="bold">
-              Reason
+              Reason <Text as="span" variant="body-small" color="danger">*</Text>
             </Text>
             <textarea
               className="prd-textarea"

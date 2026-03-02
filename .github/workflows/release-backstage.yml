@@ -105,6 +105,7 @@ jobs:
         run: |
           docker build \
             --platform linux/amd64 \
+            --build-arg COMMIT_SHA=${{ github.sha }} \
             --label "org.opencontainers.image.version=${{ needs.check.outputs.version }}" \
             --label "org.opencontainers.image.revision=${{ github.sha }}" \
             -t ghcr.io/${{ env.IMAGE_NAME }}:${{ needs.check.outputs.version }} \

@@ -80,6 +80,11 @@ backend.add(import('@internal/plugin-argocd-appset-backend'));
 // IAM User Audit plugin for monitoring inactive AWS IAM users
 backend.add(import('@internal/plugin-iam-user-audit-backend'));
 
+// GitLab Coverage plugin for analyzing catalog-info.yaml adoption
+if (!disableGitlab) {
+  backend.add(import('@internal/plugin-catalog-health-backend'));
+}
+
 // SonarQube plugin for code quality metrics
 backend.add(import('@backstage-community/plugin-sonarqube-backend'));
 

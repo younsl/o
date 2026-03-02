@@ -7,6 +7,7 @@ import {
 import { Config } from '@backstage/config';
 import { ApplicationSetService } from './ApplicationSetService';
 import { AppSetCache } from './AppSetCache';
+import { AuditStore } from './AuditStore';
 
 export interface RouterOptions {
   service: ApplicationSetService;
@@ -14,10 +15,11 @@ export interface RouterOptions {
   logger: LoggerService;
   config: Config;
   httpAuth: HttpAuthService;
+  auditStore: AuditStore;
 }
 
 export async function createRouter(options: RouterOptions): Promise<Router> {
-  const { service, cache, logger, config, httpAuth } = options;
+  const { service, cache, logger, config, httpAuth, auditStore } = options;
 
   const admins = config.getOptionalStringArray('permission.admins') ?? [];
 
@@ -84,6 +86,16 @@ export async function createRouter(options: RouterOptions): Promise<Router> {
       await service.setMuted(namespace, name, true);
       const appSets = await service.listApplicationSets();
       cache.update(appSets);
+
+      await auditStore.addEntry({
+        action: 'mute',
+        appsetNamespace: namespace,
+        appsetName: name,
+        userRef,
+        oldValue: 'false',
+        newValue: 'true',
+      });
+
       res.json({ status: 'muted' });
     } catch (error) {
       logger.error(`Failed to mute ${namespace}/${name}: ${error}`);
@@ -105,6 +117,16 @@ export async function createRouter(options: RouterOptions): Promise<Router> {
       await service.setMuted(namespace, name, false);
       const appSets = await service.listApplicationSets();
       cache.update(appSets);
+
+      await auditStore.addEntry({
+        action: 'unmute',
+        appsetNamespace: namespace,
+        appsetName: name,
+        userRef,
+        oldValue: 'true',
+        newValue: 'false',
+      });
+
       res.json({ status: 'unmuted' });
     } catch (error) {
       logger.error(`Failed to unmute ${namespace}/${name}: ${error}`);
@@ -129,12 +151,41 @@ export async function createRouter(options: RouterOptions): Promise<Router> {
         return;
       }
 
+      const currentAppSet = cache.getAppSets().find(
+        a => a.namespace === namespace && a.name === name,
+      );
+      const oldRevision = currentAppSet?.targetRevisions?.join(', ') ?? null;
+
       await service.setTargetRevision(namespace, name, targetRevision.trim());
       const appSets = await service.listApplicationSets();
       cache.update(appSets);
+
+      await auditStore.addEntry({
+        action: 'set_target_revision',
+        appsetNamespace: namespace,
+        appsetName: name,
+        userRef,
+        oldValue: oldRevision,
+        newValue: targetRevision.trim(),
+      });
+
       res.json({ status: 'updated', targetRevision: targetRevision.trim() });
     } catch (error) {
       logger.error(`Failed to set targetRevision for ${namespace}/${name}: ${error}`);
+      res.status(500).json({
+        error: error instanceof Error ? error.message : 'Unknown error',
+      });
+    }
+  });
+
+  router.get('/audit-logs', async (req, res) => {
+    const namespace = req.query.namespace as string | undefined;
+    const name = req.query.name as string | undefined;
+    try {
+      const entries = await auditStore.listEntries({ namespace, name });
+      res.json(entries);
+    } catch (error) {
+      logger.error(`Failed to list audit logs: ${error}`);
       res.status(500).json({
         error: error instanceof Error ? error.message : 'Unknown error',
       });

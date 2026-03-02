@@ -196,6 +196,12 @@ export class ApplicationSetService {
     const syncedApplications: string[] = resources
       .filter((r: any) => r.status === 'Synced' && r.name)
       .map((r: any) => r.name as string);
+    const applicationStatuses: Record<string, string> = {};
+    for (const r of resources) {
+      if (r.name) {
+        applicationStatuses[r.name as string] = (r.status as string) ?? 'Unknown';
+      }
+    }
 
     // Go template expressions (e.g. {{.branch}}) are resolved dynamically by ArgoCD
     const isDynamic = (rev: string) => /\{\{.*\}\}/.test(rev);
@@ -218,6 +224,7 @@ export class ApplicationSetService {
       syncedCount,
       applications,
       syncedApplications,
+      applicationStatuses,
       repoUrl,
       repoName,
       targetRevisions: targetRevisions.length > 0 ? targetRevisions : ['HEAD'],

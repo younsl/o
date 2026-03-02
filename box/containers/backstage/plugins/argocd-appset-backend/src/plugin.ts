@@ -6,6 +6,7 @@ import { createRouter } from './service/router';
 import { ApplicationSetService } from './service/ApplicationSetService';
 import { SlackNotifier } from './service/SlackNotifier';
 import { AppSetCache } from './service/AppSetCache';
+import { AuditStore } from './service/AuditStore';
 import { parseExpression } from 'cron-parser';
 
 export const argocdAppsetPlugin = createBackendPlugin({
@@ -18,9 +19,10 @@ export const argocdAppsetPlugin = createBackendPlugin({
         config: coreServices.rootConfig,
         scheduler: coreServices.scheduler,
         httpAuth: coreServices.httpAuth,
+        database: coreServices.database,
       },
-      async init({ httpRouter, logger, config, scheduler, httpAuth }) {
-        const enabled = config.getOptionalBoolean('argocdApplicationSet.enabled') ?? true;
+      async init({ httpRouter, logger, config, scheduler, httpAuth, database }) {
+        const enabled = config.getOptionalBoolean('app.plugins.argocdAppSet') ?? true;
         if (!enabled) {
           logger.info('ArgoCD AppSet backend plugin is disabled via config');
           return;
@@ -31,8 +33,10 @@ export const argocdAppsetPlugin = createBackendPlugin({
         const appsetService = new ApplicationSetService({ config, logger });
         const slackNotifier = new SlackNotifier({ config, logger });
         const cache = new AppSetCache();
+        const knex = await database.getClient();
+        const auditStore = await AuditStore.create({ database: knex });
 
-        const router = await createRouter({ service: appsetService, cache, logger, config, httpAuth });
+        const router = await createRouter({ service: appsetService, cache, logger, config, httpAuth, auditStore });
 
         httpRouter.use(router as any);
         httpRouter.addAuthPolicy({
@@ -53,6 +57,10 @@ export const argocdAppsetPlugin = createBackendPlugin({
         });
         httpRouter.addAuthPolicy({
           path: '/admin-status',
+          allow: 'unauthenticated',
+        });
+        httpRouter.addAuthPolicy({
+          path: '/audit-logs',
           allow: 'unauthenticated',
         });
 

@@ -52,6 +52,10 @@ backstage:
       baseUrl: https://backstage.example.com
       gitlab:
         host: ${GITLAB_HOST}
+      plugins:
+        catalogHealth: true
+        argocdAppSet: true
+        iamUserAudit: true
 
     organization:
       name: DevOps Portal
@@ -147,6 +151,17 @@ backstage:
     sonarqube:
       baseUrl: https://sonarqube.example.com
       apiKey: ${SONARQUBE_TOKEN}
+
+    iamUserAudit:
+      inactiveDays: 90
+      warningDays: 14
+
+    catalogHealth:
+      # Concurrent requests when checking catalog-info.yaml (default: 10)
+      concurrency: 10
+      schedule:
+        # How often to scan GitLab (default: every 1 hour)
+        cron: '0 * * * *'
 
     proxy:
       endpoints: {}

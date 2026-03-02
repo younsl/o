@@ -10,6 +10,7 @@ import { IamUserCache } from './IamUserCache';
 import { IamUserService } from './IamUserService';
 import { SlackNotifier } from './SlackNotifier';
 import { PasswordResetStore } from './PasswordResetStore';
+import { WarningDmStore } from './WarningDmStore';
 import { CreatePasswordResetInput, ReviewPasswordResetInput } from './types';
 
 export interface RouterOptions {
@@ -17,6 +18,7 @@ export interface RouterOptions {
   logger: LoggerService;
   config: Config;
   store: PasswordResetStore;
+  warningDmStore: WarningDmStore;
   iamUserService: IamUserService;
   slackNotifier: SlackNotifier;
   httpAuth: HttpAuthService;
@@ -28,6 +30,7 @@ export async function createRouter(options: RouterOptions): Promise<Router> {
     config,
     logger,
     store,
+    warningDmStore,
     iamUserService,
     slackNotifier,
     httpAuth,
@@ -78,8 +81,13 @@ export async function createRouter(options: RouterOptions): Promise<Router> {
     const fetchCron =
       config.getOptionalString('iamUserAudit.schedule.fetchCron') ??
       '0 * * * *';
+    const warningDays =
+      config.getOptionalNumber('iamUserAudit.warningDays') ?? 14;
     const slackConfigured = !!config.getOptionalString(
       'iamUserAudit.slack.webhookUrl',
+    );
+    const botConfigured = !!config.getOptionalString(
+      'iamUserAudit.slack.botToken',
     );
     const lastFetchedAt = cache.getLastFetchedAt();
     const users = cache.getUsers();
@@ -87,13 +95,45 @@ export async function createRouter(options: RouterOptions): Promise<Router> {
     res.json({
       enabled,
       inactiveDays,
+      warningDays,
       cron,
       fetchCron,
       slackConfigured,
+      botConfigured,
       lastFetchedAt,
       totalUsers: users.length,
       inactiveUsers: users.filter(u => u.inactiveDays >= inactiveDays).length,
     });
+  });
+
+  router.get('/status/slack-health', async (_, res) => {
+    try {
+      const health = await slackNotifier.healthCheck();
+      res.json(health);
+    } catch (error) {
+      logger.error(`Failed to check Slack health: ${error}`);
+      res.status(500).json({
+        error: error instanceof Error ? error.message : 'Unknown error',
+      });
+    }
+  });
+
+  router.get('/status/warning-dm-logs', async (req, res) => {
+    try {
+      const raw = req.query.userNames as string | undefined;
+      if (!raw) {
+        res.json({});
+        return;
+      }
+      const userNames = raw.split(',').map(n => n.trim()).filter(Boolean);
+      const logs = await warningDmStore.getLastDmMap(userNames);
+      res.json(logs);
+    } catch (error) {
+      logger.error(`Failed to get warning DM logs: ${error}`);
+      res.status(500).json({
+        error: error instanceof Error ? error.message : 'Unknown error',
+      });
+    }
   });
 
   router.get('/users', async (req, res) => {
@@ -325,6 +365,131 @@ export async function createRouter(options: RouterOptions): Promise<Router> {
   router.get('/password-reset/admin-status', async (req, res) => {
     const userRef = await tryGetUserRef(req);
     res.json({ isAdmin: !!userRef && admins.includes(userRef) });
+  });
+
+  // --- Admin routes ---
+
+  const emailDomain = config.getOptionalString('iamUserAudit.slack.emailDomain') ?? '';
+
+  function deriveEmail(userName: string): string {
+    if (userName.includes('@')) return userName;
+    if (!emailDomain) return userName;
+    return `${userName}@${emailDomain}`;
+  }
+
+  router.post('/admin/check-slack-users', async (req, res) => {
+    try {
+      const userRef = await tryGetUserRef(req);
+      if (!userRef || !admins.includes(userRef)) {
+        res.status(403).json({ error: 'Only admins can check Slack users' });
+        return;
+      }
+
+      const { userNames } = req.body as { userNames: string[] };
+      if (!Array.isArray(userNames) || userNames.length === 0) {
+        res.status(400).json({ error: 'userNames array is required' });
+        return;
+      }
+
+      const results: Record<string, boolean> = {};
+      for (const userName of userNames) {
+        const email = deriveEmail(userName);
+        results[userName] = await slackNotifier.checkSlackUser(email);
+      }
+
+      res.json(results);
+    } catch (error) {
+      logger.error(`Failed to check Slack users: ${error}`);
+      res.status(500).json({
+        error: error instanceof Error ? error.message : 'Unknown error',
+      });
+    }
+  });
+
+  router.get('/admin/slack-user-info', async (req, res) => {
+    try {
+      const userRef = await tryGetUserRef(req);
+      if (!userRef || !admins.includes(userRef)) {
+        res.status(403).json({ error: 'Only admins can lookup Slack users' });
+        return;
+      }
+
+      const userName = req.query.userName as string;
+      if (!userName) {
+        res.status(400).json({ error: 'userName query parameter is required' });
+        return;
+      }
+
+      const email = deriveEmail(userName);
+      const slackUser = await slackNotifier.lookupSlackUser(email);
+      if (!slackUser) {
+        res.status(404).json({ error: `Slack user not found for ${email}` });
+        return;
+      }
+
+      res.json(slackUser);
+    } catch (error) {
+      logger.error(`Failed to lookup Slack user: ${error}`);
+      res.status(500).json({
+        error: error instanceof Error ? error.message : 'Unknown error',
+      });
+    }
+  });
+
+  router.post('/admin/notify-user', async (req, res) => {
+    try {
+      const userRef = await tryGetUserRef(req);
+      if (!userRef || !admins.includes(userRef)) {
+        res.status(403).json({ error: 'Only admins can send status notifications' });
+        return;
+      }
+
+      const input = req.body as { userName: string; message: string };
+      if (!input.message?.trim()) {
+        res.status(400).json({ error: 'message is required' });
+        return;
+      }
+
+      const allUsers = cache.getUsers();
+      const user = allUsers.find(u => u.userName === input.userName);
+      if (!user) {
+        res.status(404).json({ error: `IAM user ${input.userName} not found` });
+        return;
+      }
+
+      const email = deriveEmail(input.userName);
+      try {
+        await slackNotifier.sendStatusDm(
+          email,
+          user,
+          user.inactiveDays,
+          userRef,
+          input.message.trim(),
+        );
+        await warningDmStore.recordDm({
+          iamUserName: input.userName,
+          senderRef: userRef,
+          platform: 'slack',
+          status: 'success',
+        });
+      } catch (sendError) {
+        await warningDmStore.recordDm({
+          iamUserName: input.userName,
+          senderRef: userRef,
+          platform: 'slack',
+          status: 'failed',
+          errorMessage: sendError instanceof Error ? sendError.message : String(sendError),
+        });
+        throw sendError;
+      }
+
+      res.json({ success: true });
+    } catch (error) {
+      logger.error(`Failed to send status notification: ${error}`);
+      res.status(500).json({
+        error: error instanceof Error ? error.message : 'Unknown error',
+      });
+    }
   });
 
   return router;

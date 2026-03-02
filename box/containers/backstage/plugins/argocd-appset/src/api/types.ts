@@ -8,6 +8,7 @@ export interface ApplicationSetResponse {
   syncedCount: number;
   applications: string[];
   syncedApplications: string[];
+  applicationStatuses: Record<string, string>;
   repoUrl: string;
   repoName: string;
   targetRevisions: string[];
@@ -21,4 +22,16 @@ export interface PluginStatus {
   fetchCron: string;
   slackConfigured: boolean;
   lastFetchedAt: string | null;
+}
+
+export interface AuditLogEntry {
+  id: string;
+  seq: number;
+  action: 'mute' | 'unmute' | 'set_target_revision';
+  appsetNamespace: string;
+  appsetName: string;
+  userRef: string;
+  oldValue: string | null;
+  newValue: string | null;
+  createdAt: string;
 }

@@ -54,8 +54,10 @@ import {
 } from '@backstage/theme';
 import { OpenApiRegistryPage } from '@internal/plugin-openapi-registry';
 import { ArgocdAppsetPage } from '@internal/plugin-argocd-appset';
-import { IamUserAuditPage, AwsIdentitySettings } from '@internal/plugin-iam-user-audit';
+import { IamUserAuditPage } from '@internal/plugin-iam-user-audit';
+import { CatalogHealthPage, GenerateCatalogInfoPage } from '@internal/plugin-catalog-health';
 import { BuiThemerPage } from '@backstage/plugin-mui-to-bui';
+import { BuildInfoSettings } from './components/settings/AboutSettings';
 
 const CustomSignInPage = (props: any) => (
   <SignInPage
@@ -130,12 +132,14 @@ const routes = (
     <Route path="/catalog-import" element={<CatalogImportPage />} />
     <Route path="/catalog-graph" element={<CatalogGraphPage />} />
     <Route path="/openapi-registry" element={<OpenApiRegistryPage />} />
-    <Route path="/argocd-appset" element={<ArgocdAppsetPage />} />
+    <Route path="/argocd-appset/*" element={<ArgocdAppsetPage />} />
     <Route path="/iam-user-audit" element={<IamUserAuditPage />} />
+    <Route path="/catalog-health" element={<CatalogHealthPage />} />
+    <Route path="/catalog-health/generate" element={<GenerateCatalogInfoPage />} />
     <Route path="/mui-to-bui" element={<BuiThemerPage />} />
     <Route path="/settings" element={<UserSettingsPage />}>
-      <SettingsLayout.Route path="/aws-identity" title="AWS Identity">
-        <AwsIdentitySettings />
+      <SettingsLayout.Route path="/build-info" title="Build Info">
+        <BuildInfoSettings />
       </SettingsLayout.Route>
     </Route>
   </FlatRoutes>

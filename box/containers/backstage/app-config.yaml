@@ -3,6 +3,10 @@ app:
   baseUrl: http://localhost:3000
   gitlab:
     host: ${GITLAB_HOST}
+  plugins:
+    catalogHealth: true
+    argocdAppSet: true
+    iamUserAudit: true
   platforms:
     - name: Grafana
       category: Observability
@@ -134,7 +138,6 @@ sonarqube:
   apiKey: ${SONARQUBE_API_KEY}
 
 argocdApplicationSet:
-  enabled: true 
   kubernetes:
     # Optional: in-cluster mode uses SA token automatically
     # serviceAccountToken: ${K8S_SA_TOKEN}
@@ -150,18 +153,20 @@ argocdApplicationSet:
     cron: '0 10-11,14-18 * * 1-5'
 
 iamUserAudit:
-  enabled: true
   # Skip AWS IAM password reset API call (for local development)
+  # When true, password reset is logged only (no AWS API call, no Slack notification)
   dryRun: true
   # Days of inactivity to flag a user (default: 90)
   inactiveDays: 90
+  # Days before threshold to send warning DM (default: 14)
+  warningDays: 14
   # AWS region for IAM API (IAM is global, but SDK needs a region)
   region: us-east-1
   # Optional: assume this IAM role for API calls (for local dev or cross-account)
   # In production, EKS Pod Identity provides credentials directly.
   # assumeRoleArn: arn:aws:iam::123456789012:role/backstage-iam-user-audit-role
   slack:
-    webhookUrl: ${IAM_AUDIT_SLACK_WEBHOOK_URL}
+    webhookUrl: ${SLACK_WEBHOOK_URL}
     # Bot Token for sending DM to requester on approval (xoxb-...)
     # Required scopes: users:read.email, chat:write
     botToken: ${IAM_AUDIT_SLACK_BOT_TOKEN}
@@ -172,8 +177,16 @@ iamUserAudit:
     # Slack notification schedule (default: weekdays 10 AM UTC)
     cron: '0 10 * * 1-5'
 
+catalogHealth:
+  # Concurrent requests when checking catalog-info.yaml (default: 10)
+  concurrency: 10
+  schedule:
+    # How often to scan GitLab (default: every 1 hour)
+    cron: '0 * * * *'
+
 permission:
   admins:
+    - user:development/guest
     - user:default/admin1
     - user:default/admin2
 

@@ -8,10 +8,23 @@ export interface ApplicationSetResponse {
   syncedCount: number;
   applications: string[];
   syncedApplications: string[];
+  applicationStatuses: Record<string, string>;
   repoUrl: string;
   repoName: string;
   targetRevisions: string[];
   isHeadRevision: boolean;
   muted: boolean;
+  createdAt: string;
+}
+
+export interface AuditLogEntry {
+  id: string;
+  seq: number;
+  action: 'mute' | 'unmute' | 'set_target_revision';
+  appsetNamespace: string;
+  appsetName: string;
+  userRef: string;
+  oldValue: string | null;
+  newValue: string | null;
   createdAt: string;
 }

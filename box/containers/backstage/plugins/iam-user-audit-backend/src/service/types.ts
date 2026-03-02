@@ -21,9 +21,11 @@ export interface IamUserResponse {
 export interface PluginStatus {
   enabled: boolean;
   inactiveDays: number;
+  warningDays: number;
   cron: string;
   fetchCron: string;
   slackConfigured: boolean;
+  botConfigured: boolean;
   lastFetchedAt: string | null;
   totalUsers: number;
   inactiveUsers: number;
@@ -58,4 +60,16 @@ export interface ReviewPasswordResetInput {
   action: 'approve' | 'reject';
   comment?: string;
   newPassword?: string; // required for approve, discarded after AWS API call
+}
+
+// Warning DM types
+
+export interface WarningDmLog {
+  id: string;
+  iamUserName: string;
+  senderRef: string;
+  platform: string;
+  status: 'success' | 'failed';
+  errorMessage: string | null;
+  createdAt: string;
 }

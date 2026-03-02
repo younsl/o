@@ -7,7 +7,7 @@ import {
   Container,
   Flex,
   Grid,
-  PluginHeader,
+  HeaderPage,
   SearchField,
   Text,
 } from '@backstage/ui';
@@ -389,7 +389,12 @@ export const PlatformsPage = () => {
 
   return (
     <>
-      <PluginHeader title="Platforms" />
+      <HeaderPage
+        title="Platforms"
+        breadcrumbs={[
+          { label: 'Home', href: '/' },
+        ]}
+      />
       <Container>
         <Flex direction="column" gap="3" p="3">
           <Text variant="body-medium" color="secondary">

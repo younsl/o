@@ -75,7 +75,8 @@ spec:
           title: Repository Location
           type: string
           ui:field: RepoUrlPicker
-          # allowedHosts is inherited from scaffolder.defaultScmIntegrations in app-config.yaml
+          # allowedHosts is inherited from integrations.gitlab[].host in app-config.yaml
+          # via scaffolder.defaultScmIntegrations: true
         branch:
           title: Target Branch
           type: string

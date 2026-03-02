@@ -6,11 +6,11 @@ import LibraryBooks from '@material-ui/icons/LibraryBooks';
 import CreateComponentIcon from '@material-ui/icons/AddCircleOutline';
 import SearchIcon from '@material-ui/icons/Search';
 import GroupIcon from '@material-ui/icons/Group';
-import DashboardIcon from '@material-ui/icons/Dashboard';
+import BuildIcon from '@material-ui/icons/Build';
 import CloudUploadIcon from '@material-ui/icons/CloudUpload';
 import ExpandMoreIcon from '@material-ui/icons/ExpandMore';
 import ExpandLessIcon from '@material-ui/icons/ExpandLess';
-import AppsIcon from '@material-ui/icons/Apps';
+import FavoriteBorderIcon from '@material-ui/icons/FavoriteBorder';
 import SecurityIcon from '@material-ui/icons/Security';
 import { siArgo, siKubernetes } from 'simple-icons';
 import { createIcon } from '@dweber019/backstage-plugin-simple-icons';
@@ -270,8 +270,9 @@ const PlatformsSidebarItem = () => {
 
 export const Root = ({ children }: PropsWithChildren<{}>) => {
   const config = useApi(configApiRef);
-  const argocdAppSetEnabled = config.getOptionalBoolean('argocdApplicationSet.enabled') ?? true;
-  const iamUserAuditEnabled = config.getOptionalBoolean('iamUserAudit.enabled') ?? true;
+  const catalogHealthEnabled = config.getOptionalBoolean('app.plugins.catalogHealth') ?? true;
+  const argocdAppSetEnabled = config.getOptionalBoolean('app.plugins.argocdAppSet') ?? true;
+  const iamUserAuditEnabled = config.getOptionalBoolean('app.plugins.iamUserAudit') ?? true;
 
   return (
   <SidebarPage>
@@ -281,11 +282,10 @@ export const Root = ({ children }: PropsWithChildren<{}>) => {
         <SidebarSearchModal />
       </SidebarGroup>
       <SidebarDivider />
-      <PlatformsSidebarItem />
-      <SidebarDivider />
 
       {/* Resources Section */}
-      <FoldableSection title="Resources" icon={<AppsIcon />} defaultOpen={false}>
+      <FoldableSection title="Resources" icon={<CategoryIcon />} defaultOpen={false}>
+        <PlatformsSidebarItem />
         <SidebarItem icon={CategoryIcon} to="catalog" text="Catalog" />
         <SidebarItem icon={ExtensionIcon} to="api-docs" text="APIs" />
         <SidebarItem icon={CloudUploadIcon} to="openapi-registry" text="API Registry" />
@@ -293,14 +293,15 @@ export const Root = ({ children }: PropsWithChildren<{}>) => {
       </FoldableSection>
 
       {/* Operations Section */}
-      {(argocdAppSetEnabled || iamUserAuditEnabled) && (
-        <FoldableSection title="Operations" icon={<DashboardIcon />} defaultOpen={false}>
-          {argocdAppSetEnabled && (
-            <SidebarItem icon={ArgocdIcon} to="argocd-appset" text="ArgoCD" />
-          )}
-          {iamUserAuditEnabled && <IamAuditSidebarItem />}
-        </FoldableSection>
-      )}
+      <FoldableSection title="Operations" icon={<BuildIcon />} defaultOpen={false}>
+        {catalogHealthEnabled && (
+          <SidebarItem icon={FavoriteBorderIcon} to="catalog-health" text="Catalog Health" />
+        )}
+        {argocdAppSetEnabled && (
+          <SidebarItem icon={ArgocdIcon} to="argocd-appset" text="ArgoCD" />
+        )}
+        {iamUserAuditEnabled && <IamAuditSidebarItem />}
+      </FoldableSection>
 
       <SidebarDivider />
       <SidebarItem icon={CreateComponentIcon} to="create" text="Create..." />

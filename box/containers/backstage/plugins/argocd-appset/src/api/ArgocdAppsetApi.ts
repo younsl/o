@@ -1,5 +1,5 @@
 import { createApiRef } from '@backstage/core-plugin-api';
-import { ApplicationSetResponse, PluginStatus } from './types';
+import { ApplicationSetResponse, AuditLogEntry, PluginStatus } from './types';
 
 export interface ArgocdAppsetApi {
   listApplicationSets(): Promise<ApplicationSetResponse[]>;
@@ -9,6 +9,7 @@ export interface ArgocdAppsetApi {
   setTargetRevision(namespace: string, name: string, targetRevision: string): Promise<void>;
   getAdminStatus(): Promise<{ isAdmin: boolean }>;
   listBranches(repoUrl: string): Promise<{ branches: string[]; defaultBranch: string | null }>;
+  listAuditLogs(namespace: string, name: string): Promise<AuditLogEntry[]>;
 }
 
 export const argocdAppsetApiRef = createApiRef<ArgocdAppsetApi>({

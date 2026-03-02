@@ -28,12 +28,25 @@
   font-family: var(--bui-font-monospace);
 }
 
-/* Section */
-.iam-section-title {
-  font-size: var(--bui-font-size-2);
-  font-weight: var(--bui-font-weight-bold);
-  text-transform: uppercase;
-  letter-spacing: 0.5px;
+/* Section box */
+.iam-section-box {
+  background-color: var(--bui-color-bg-elevated, #1a1a1a);
+  border-radius: 8px;
+}
+
+/* Count badge */
+.iam-count-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 24px;
+  height: 24px;
+  padding: 0 8px;
+  border-radius: 12px;
+  font-size: 14px;
+  font-weight: 700;
+  background-color: rgba(128, 128, 128, 0.25);
+  color: rgba(255, 255, 255, 0.7);
 }
 
 /* Filter bar */
@@ -41,8 +54,6 @@
   display: flex;
   gap: var(--bui-space-3);
   align-items: flex-end;
-  margin-top: var(--bui-space-2);
-  margin-bottom: var(--bui-space-4);
 }
 
 .iam-filter-bar .bui-SearchField {
@@ -53,15 +64,18 @@
   min-width: 150px;
 }
 
-/* Card */
-.iam-card {
-  height: 100%;
-  transition: transform 0.2s ease, box-shadow 0.2s ease;
+/* Subgrid: align card fields across columns */
+.iam-grid-item {
+  grid-row: span 6;
+  display: grid;
+  grid-template-rows: subgrid;
 }
 
-.iam-card:hover {
-  transform: translateY(-4px);
-  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
+/* Card */
+.iam-card {
+  grid-row: span 6;
+  display: grid;
+  grid-template-rows: subgrid;
 }
 
 .iam-card-caution {
@@ -78,16 +92,10 @@
 
 /* CardBody inner spacing */
 .iam-card-body {
-  display: flex;
-  flex-direction: column;
-  gap: var(--bui-space-3);
-  height: 100%;
-}
-
-.iam-card-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: flex-start;
+  grid-row: span 5;
+  display: grid;
+  grid-template-rows: subgrid;
+  row-gap: var(--bui-space-3);
 }
 
 .iam-card-name {
@@ -95,41 +103,56 @@
   word-break: break-word;
 }
 
-.iam-inactive-badge {
+/* Progress bar */
+.iam-progress-row {
   display: flex;
-  flex-direction: column;
   align-items: center;
-  flex-shrink: 0;
-  margin-left: var(--bui-space-2);
+  gap: var(--bui-space-2);
 }
 
-.iam-inactive-days {
-  min-width: 36px;
-  min-height: 36px;
+.iam-progress-track {
+  flex: 1;
+  height: 18px;
+  border-radius: 9px;
+  background-color: var(--bui-bg-neutral-2, #333);
+  overflow: hidden;
+  display: flex;
+}
+
+.iam-progress-fill {
+  height: 100%;
   display: flex;
   align-items: center;
   justify-content: center;
-  border-radius: var(--bui-radius-full);
-  background-color: var(--bui-bg-neutral-2);
-  border: 1px solid var(--bui-border-1);
-  font-weight: var(--bui-font-weight-bold);
-  font-size: var(--bui-font-size-3);
+  transition: width 0.3s ease;
+  min-width: 0;
 }
 
-.iam-card-critical .iam-inactive-days {
-  background-color: var(--bui-bg-danger-2);
-  border-color: var(--bui-border-danger);
+.iam-progress-remaining {
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 0;
 }
 
-.iam-card-warning .iam-inactive-days {
-  background-color: var(--bui-bg-warning-2);
-  border-color: var(--bui-border-warning);
+.iam-threshold-marker {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 0;
+  border-right: 2px dashed rgba(250, 204, 21, 0.6);
+  pointer-events: none;
 }
 
-.iam-card-caution .iam-inactive-days {
-  background-color: var(--bui-bg-warning-2);
-  border-color: var(--bui-border-warning);
+.iam-progress-text {
+  font-size: 10px;
+  font-weight: 700;
+  color: #fff;
+  white-space: nowrap;
+  padding: 0 4px;
 }
+
 
 .iam-field-label {
   display: block;
@@ -137,6 +160,14 @@
   text-transform: uppercase;
   letter-spacing: 0.5px;
   margin-bottom: var(--bui-space-1);
+}
+
+.iam-help-btn {
+  flex-shrink: 0;
+  width: 18px !important;
+  height: 18px !important;
+  min-width: 18px !important;
+  opacity: 0.5;
 }
 
 /* Card footer */
@@ -147,6 +178,60 @@
   margin-top: auto;
   border-top: 1px solid var(--bui-border-1);
   padding-top: var(--bui-space-3);
+}
+
+/* Integration badge — uses BUI Button as TooltipTrigger child */
+.iam-integration-badge {
+  display: inline-flex !important;
+  align-items: center !important;
+  gap: 6px !important;
+  padding: 2px 10px !important;
+  border-radius: 12px !important;
+  font-size: 11px !important;
+  font-weight: 600 !important;
+  line-height: 20px !important;
+  white-space: nowrap !important;
+  min-height: unset !important;
+  min-width: unset !important;
+  cursor: default !important;
+}
+
+.iam-integration-badge::before {
+  content: '';
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.iam-integration-connected {
+  background-color: rgba(34, 197, 94, 0.12) !important;
+  color: #22c55e !important;
+  border: 1px solid rgba(34, 197, 94, 0.3) !important;
+}
+
+.iam-integration-connected::before {
+  background-color: #22c55e;
+}
+
+.iam-integration-warning {
+  background-color: rgba(245, 158, 11, 0.12) !important;
+  color: #f59e0b !important;
+  border: 1px solid rgba(245, 158, 11, 0.3) !important;
+}
+
+.iam-integration-warning::before {
+  background-color: #f59e0b;
+}
+
+.iam-integration-disconnected {
+  background-color: rgba(156, 163, 175, 0.12) !important;
+  color: #9ca3af !important;
+  border: 1px solid rgba(156, 163, 175, 0.3) !important;
+}
+
+.iam-integration-disconnected::before {
+  background-color: #9ca3af;
 }
 
 /* Empty state */

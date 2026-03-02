@@ -2,7 +2,6 @@ import React, { useState, useMemo, useCallback, useEffect } from 'react';
 import {
   Alert,
   Box,
-  Button,
   ButtonIcon,
   Card,
   CardBody,
@@ -12,6 +11,7 @@ import {
   DialogFooter,
   DialogHeader,
   DialogTrigger,
+  Button,
   Flex,
   Grid,
   Link,
@@ -27,6 +27,7 @@ import {
 } from '@backstage/ui';
 import {
   RiEditLine,
+  RiHistoryLine,
   RiInformationLine,
   RiNotificationLine,
   RiNotificationOffLine,
@@ -34,6 +35,7 @@ import {
 import { useApi } from '@backstage/core-plugin-api';
 import { useAsyncRetry } from 'react-use';
 import { argocdAppsetApiRef, ApplicationSetResponse, MUTE_ANNOTATION } from '../../api';
+import { HighlightText } from '../HighlightText';
 import './ApplicationSetTable.css';
 
 export const ApplicationSetTable = () => {
@@ -192,9 +194,11 @@ export const ApplicationSetTable = () => {
       setLocalAppSets(prev => {
         const source = prev ?? appSetsRaw;
         if (!source) return source;
+        const isDynamic = (rev: string) => /\{\{.*\}\}/.test(rev);
+        const isHead = trimmed === 'HEAD' || trimmed === '' || isDynamic(trimmed);
         return source.map(a =>
           a.namespace === namespace && a.name === name
-            ? { ...a, targetRevisions: [trimmed] }
+            ? { ...a, targetRevisions: [trimmed], isHeadRevision: isHead }
             : a,
         );
       });
@@ -265,9 +269,30 @@ export const ApplicationSetTable = () => {
     <>
       {/* Overview Section */}
       <Box mt="4" p="3" className="appset-section-box">
-        <Text variant="body-medium" weight="bold" style={{ marginBottom: 12, display: 'block' }}>
-          Overview
-        </Text>
+        <Flex justify="between" align="center" style={{ marginBottom: 12 }}>
+          <Text variant="body-medium" weight="bold">
+            Overview
+          </Text>
+          {status && (
+            <TooltipTrigger delay={200}>
+              <Button
+                variant="tertiary"
+                size="small"
+                className={`appset-integration-badge ${status.slackConfigured ? 'appset-integration-connected' : 'appset-integration-disconnected'}`}
+              >
+                Webhook {status.slackConfigured ? 'Connected' : 'Not configured'}
+              </Button>
+              <Tooltip style={{ maxWidth: 280 }}>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 4, fontSize: 12, lineHeight: 1.5 }}>
+                  <div style={{ fontWeight: 700 }}>Slack Incoming Webhook</div>
+                  <div>Status: {status.slackConfigured ? 'Configured' : 'Not configured'}</div>
+                  <div>Usage: Sends non-HEAD revision alerts to Slack channel</div>
+                  <div style={{ opacity: 0.7 }}>Last checked: {new Date().toLocaleString()}</div>
+                </div>
+              </Tooltip>
+            </TooltipTrigger>
+          )}
+        </Flex>
         <div className="appset-summary-bar">
           <div className="appset-summary-card">
             <Text weight="bold" className="appset-summary-value">{totalCount}</Text>
@@ -303,7 +328,7 @@ export const ApplicationSetTable = () => {
                 {status.cron}
               </Text>
               <Text variant="body-x-small" color="secondary">
-                Schedule {status.slackConfigured ? '(Slack ON)' : '(Slack OFF)'}
+                Schedule (UTC)
               </Text>
             </div>
           )}
@@ -383,14 +408,14 @@ export const ApplicationSetTable = () => {
               const isMuting = mutingKey === cardKey;
 
               return (
-                <Grid.Item key={cardKey}>
+                <Grid.Item key={cardKey} className="appset-grid-item">
                   <Card className={`${appSet.isHeadRevision ? 'appset-card' : 'appset-card-warning'}${appSet.muted ? ' appset-card-muted' : ''}`}>
                     <CardBody className="appset-card-body">
                       <div>
                         <Text variant="body-medium" className="appset-card-name">
                           <Text as="span" variant="body-medium" color="secondary">{appSet.namespace}</Text>
                           {' / '}
-                          {appSet.name}
+                          <HighlightText text={appSet.name} query={searchQuery} />
                         </Text>
                       </div>
 
@@ -405,20 +430,22 @@ export const ApplicationSetTable = () => {
                         </TagGroup>
                       </div>
 
-                      {appSet.repoName && (
-                        <div>
-                          <Text variant="body-x-small" color="secondary" className="appset-field-label">
-                            Repository
-                          </Text>
-                          {appSet.repoUrl ? (
+                      <div>
+                        <Text variant="body-x-small" color="secondary" className="appset-field-label">
+                          Repository
+                        </Text>
+                        {appSet.repoName ? (
+                          appSet.repoUrl ? (
                             <Link href={appSet.repoUrl} target="_blank" rel="noopener noreferrer">
                               <Text variant="body-small">{appSet.repoName}</Text>
                             </Link>
                           ) : (
                             <Text variant="body-small">{appSet.repoName}</Text>
-                          )}
-                        </div>
-                      )}
+                          )
+                        ) : (
+                          <Text variant="body-small" color="secondary">-</Text>
+                        )}
+                      </div>
 
                       <div>
                         <Text variant="body-x-small" color="secondary" className="appset-field-label">
@@ -469,7 +496,7 @@ export const ApplicationSetTable = () => {
                                     </Flex>
                                     <Flex direction="column" gap="1">
                                       <Flex align="center" gap="2">
-                                        <Text variant="body-x-small" color="secondary" weight="bold">Target Revision</Text>
+                                        <Text variant="body-x-small" color="secondary" weight="bold">Target Revision <Text as="span" variant="body-x-small" color="danger">*</Text></Text>
                                         {branchesLoading ? (
                                           <Skeleton width={24} height={18} rounded />
                                         ) : !branchesFailed && (
@@ -543,57 +570,76 @@ export const ApplicationSetTable = () => {
                         )}
                       </div>
 
-                      {appSet.applications.length > 0 && (
-                        <div>
-                          <Text variant="body-x-small" color="secondary" className="appset-field-label">
-                            Applications ({appSet.syncedCount} / {appSet.applicationCount} Synced)
-                          </Text>
+                      <div>
+                        <Text variant="body-x-small" color="secondary" className="appset-field-label">
+                          Applications ({appSet.syncedCount} / {appSet.applicationCount} Synced)
+                        </Text>
+                        {appSet.applications.length > 0 ? (
                           <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4 }}>
                             {appSet.applications.map(app => {
-                              const isSynced = (appSet.syncedApplications ?? []).includes(app);
+                              const status = appSet.applicationStatuses?.[app] ?? 'Unknown';
+                              const badgeClass =
+                                status === 'Synced' ? 'appset-app-synced'
+                                : status === 'OutOfSync' ? 'appset-app-outofsync'
+                                : 'appset-app-unknown';
                               return (
                                 <TooltipTrigger key={app} delay={200}>
                                   <ButtonIcon
                                     size="small"
                                     variant="tertiary"
-                                    className={`appset-app-badge ${isSynced ? 'appset-app-synced' : 'appset-app-outofsync'}`}
+                                    className={`appset-app-badge ${badgeClass}`}
                                     icon={<span>{app.charAt(0).toUpperCase()}</span>}
-                                    aria-label={`${app} (${isSynced ? 'Synced' : 'OutOfSync'})`}
+                                    aria-label={`${app} (${status})`}
                                   />
                                   <Tooltip className="appset-apps-tooltip">
-                                    {app} — {isSynced ? 'Synced' : 'OutOfSync'}
+                                    {app} — {status}
                                   </Tooltip>
                                 </TooltipTrigger>
                               );
                             })}
                           </div>
-                        </div>
-                      )}
+                        ) : (
+                          <Text variant="body-small" color="secondary">-</Text>
+                        )}
+                      </div>
                     </CardBody>
 
                     <CardFooter className="appset-card-footer">
                       <Text variant="body-x-small" color="secondary">
                         Created {formatDate(appSet.createdAt)}
                       </Text>
-                      {isAdmin && (
+                      <Flex align="center" gap="0">
                         <TooltipTrigger>
-                          <ButtonIcon
-                            size="small"
-                            variant="tertiary"
-                            icon={
-                              isMuting
-                                ? <Skeleton width={18} height={18} rounded />
-                                : appSet.muted
-                                  ? <RiNotificationOffLine size={18} />
-                                  : <RiNotificationLine size={18} />
-                            }
-                            onPress={() => handleToggleMute(appSet.namespace, appSet.name, appSet.muted)}
-                            isDisabled={isMuting}
-                            aria-label={appSet.muted ? 'Unmute notifications' : 'Mute notifications'}
-                          />
-                          <Tooltip>{appSet.muted ? 'Unmute notifications' : 'Mute notifications'}</Tooltip>
+                          <Link href={`/argocd-appset/audit-logs/${encodeURIComponent(appSet.namespace)}/${encodeURIComponent(appSet.name)}`}>
+                            <ButtonIcon
+                              size="small"
+                              variant="tertiary"
+                              icon={<RiHistoryLine size={18} />}
+                              aria-label="View change history"
+                            />
+                          </Link>
+                          <Tooltip>View change history</Tooltip>
                         </TooltipTrigger>
-                      )}
+                        {isAdmin && (
+                          <TooltipTrigger>
+                            <ButtonIcon
+                              size="small"
+                              variant="tertiary"
+                              icon={
+                                isMuting
+                                  ? <Skeleton width={18} height={18} rounded />
+                                  : appSet.muted
+                                    ? <RiNotificationOffLine size={18} />
+                                    : <RiNotificationLine size={18} />
+                              }
+                              onPress={() => handleToggleMute(appSet.namespace, appSet.name, appSet.muted)}
+                              isDisabled={isMuting}
+                              aria-label={appSet.muted ? 'Unmute notifications' : 'Mute notifications'}
+                            />
+                            <Tooltip>{appSet.muted ? 'Unmute notifications' : 'Mute notifications'}</Tooltip>
+                          </TooltipTrigger>
+                        )}
+                      </Flex>
                     </CardFooter>
                   </Card>
                 </Grid.Item>
@@ -602,6 +648,7 @@ export const ApplicationSetTable = () => {
           </Grid.Root>
         )}
       </Box>
+
     </>
   );
 };
