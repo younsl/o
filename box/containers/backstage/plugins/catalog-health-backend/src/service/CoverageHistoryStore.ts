@@ -41,28 +41,6 @@ export class CoverageHistoryStore {
         table.integer('percent').notNullable();
         table.timestamp('scanned_at').notNullable();
       });
-      await this.seedMockData();
-    }
-  }
-
-  private async seedMockData(): Promise<void> {
-    const now = new Date();
-    const mock = [
-      { daysAgo: 2, total: 120, registered: 42, ignored: 5, percent: 35 },
-      { daysAgo: 1, total: 120, registered: 58, ignored: 5, percent: 48 },
-      { daysAgo: 0, total: 120, registered: 72, ignored: 6, percent: 60 },
-    ];
-    for (const m of mock) {
-      const scannedAt = new Date(now);
-      scannedAt.setDate(scannedAt.getDate() - m.daysAgo);
-      await this.db(TABLE_NAME).insert({
-        id: uuid(),
-        total: m.total,
-        registered: m.registered,
-        ignored: m.ignored,
-        percent: m.percent,
-        scanned_at: scannedAt.toISOString(),
-      });
     }
   }
 
