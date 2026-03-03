@@ -153,3 +153,13 @@ dnsConfig: {}
   #   - name: ndots
   #     value: "2"
   #   - name: edns0
+
+# -- (list) Extra Kubernetes objects to deploy with the release (supports tpl)
+# @default -- `[]`
+extraObjects: []
+  # - apiVersion: v1
+  #   kind: ConfigMap
+  #   metadata:
+  #     name: '{{ include "elasticache-backup.fullname" . }}-extra-config'
+  #   data:
+  #     key: value
