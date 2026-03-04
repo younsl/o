@@ -2,6 +2,7 @@
 
 use anyhow::Result;
 use aws_sdk_eks::Client;
+use chrono::{DateTime, Utc};
 use tracing::debug;
 
 use crate::error::KuoError;
@@ -21,6 +22,24 @@ impl std::fmt::Display for ClusterInfo {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "{} ({}) - {}", self.name, self.version, self.region)
     }
+}
+
+/// EKS version lifecycle information from `DescribeClusterVersions` API.
+#[derive(Debug, Clone)]
+pub struct VersionLifecycle {
+    /// Kubernetes version (e.g., "1.32").
+    pub version: String,
+    /// Version status (e.g., "standard-support", "extended-support").
+    pub status: String,
+    /// End of standard support date.
+    pub end_of_standard_support: Option<DateTime<Utc>>,
+    /// End of extended support date.
+    pub end_of_extended_support: Option<DateTime<Utc>>,
+}
+
+/// Convert an AWS Smithy `DateTime` to a `chrono::DateTime<Utc>`.
+fn smithy_datetime_to_chrono(dt: &aws_smithy_types::DateTime) -> Option<DateTime<Utc>> {
+    DateTime::from_timestamp(dt.secs(), dt.subsec_nanos())
 }
 
 /// EKS client wrapper for cluster operations.
@@ -124,5 +143,88 @@ impl EksClient {
             .map_or_else(|| "Unknown".to_string(), |s| s.as_str().to_string());
 
         Ok(status)
+    }
+
+    /// Describe EKS cluster versions to get lifecycle (support end dates).
+    pub async fn describe_cluster_versions(
+        &self,
+        versions: &[&str],
+    ) -> Result<Vec<VersionLifecycle>> {
+        debug!("Describing cluster versions: {:?}", versions);
+
+        let mut builder = self.client.describe_cluster_versions();
+        for v in versions {
+            builder = builder.cluster_versions(*v);
+        }
+
+        let response = builder
+            .send()
+            .await
+            .map_err(|e| KuoError::aws(module_path!(), e))?;
+
+        let result = response
+            .cluster_versions()
+            .iter()
+            .map(|cv| {
+                let version = cv.cluster_version().unwrap_or_default().to_string();
+                let status = cv
+                    .status()
+                    .map_or_else(String::new, |s| s.as_str().to_string());
+                let end_of_standard_support = cv
+                    .end_of_standard_support_date()
+                    .and_then(smithy_datetime_to_chrono);
+                let end_of_extended_support = cv
+                    .end_of_extended_support_date()
+                    .and_then(smithy_datetime_to_chrono);
+
+                VersionLifecycle {
+                    version,
+                    status,
+                    end_of_standard_support,
+                    end_of_extended_support,
+                }
+            })
+            .collect();
+
+        Ok(result)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_smithy_datetime_to_chrono_valid() {
+        let smithy_dt = aws_smithy_types::DateTime::from_secs(1_742_688_000); // 2025-03-23T00:00:00Z
+        let chrono_dt = smithy_datetime_to_chrono(&smithy_dt);
+        assert!(chrono_dt.is_some());
+        let dt = chrono_dt.unwrap();
+        assert_eq!(
+            dt.format("%Y-%m-%dT%H:%M:%SZ").to_string(),
+            "2025-03-23T00:00:00Z"
+        );
+    }
+
+    #[test]
+    fn test_smithy_datetime_to_chrono_epoch() {
+        let smithy_dt = aws_smithy_types::DateTime::from_secs(0);
+        let chrono_dt = smithy_datetime_to_chrono(&smithy_dt);
+        assert!(chrono_dt.is_some());
+        assert_eq!(chrono_dt.unwrap().timestamp(), 0);
+    }
+
+    #[test]
+    fn test_version_lifecycle_struct() {
+        let lifecycle = VersionLifecycle {
+            version: "1.32".to_string(),
+            status: "standard-support".to_string(),
+            end_of_standard_support: Some("2026-03-23T00:00:00Z".parse().unwrap()),
+            end_of_extended_support: Some("2027-03-23T00:00:00Z".parse().unwrap()),
+        };
+        assert_eq!(lifecycle.version, "1.32");
+        assert_eq!(lifecycle.status, "standard-support");
+        assert!(lifecycle.end_of_standard_support.is_some());
+        assert!(lifecycle.end_of_extended_support.is_some());
     }
 }

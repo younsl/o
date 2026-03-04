@@ -265,6 +265,53 @@ spec:
                     arn:
                       type: string
                       description: IAM ARN of the caller (e.g., the assumed role ARN or pod identity ARN).
+                lifecycle:
+                  type: object
+                  description: EKS version lifecycle information including standard and extended support end dates for current and target versions.
+                  properties:
+                    lastCheckedTime:
+                      type: string
+                      format: date-time
+                      description: Timestamp when lifecycle information was last fetched from the DescribeClusterVersions API.
+                    currentVersion:
+                      type: object
+                      description: Lifecycle info for the current cluster version.
+                      properties:
+                        version:
+                          type: string
+                          description: Kubernetes version (e.g., "1.32").
+                        versionStatus:
+                          type: string
+                          description: "Version support status (e.g., \"standard-support\", \"extended-support\")."
+                        endOfStandardSupportDate:
+                          type: string
+                          format: date-time
+                          description: End of standard support date for this version.
+                        endOfExtendedSupportDate:
+                          type: string
+                          format: date-time
+                          description: End of extended support date for this version.
+                    targetVersion:
+                      type: object
+                      description: Lifecycle info for the target upgrade version.
+                      properties:
+                        version:
+                          type: string
+                          description: Kubernetes version (e.g., "1.34").
+                        versionStatus:
+                          type: string
+                          description: "Version support status (e.g., \"standard-support\", \"extended-support\")."
+                        endOfStandardSupportDate:
+                          type: string
+                          format: date-time
+                          description: End of standard support date for this version.
+                        endOfExtendedSupportDate:
+                          type: string
+                          format: date-time
+                          description: End of extended support date for this version.
+                    error:
+                      type: string
+                      description: Error message if lifecycle information could not be fetched from the DescribeClusterVersions API.
       subresources:
         status: {}
       additionalPrinterColumns:

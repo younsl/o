@@ -149,6 +149,7 @@ The operator pod needs base credentials via **IRSA** or **EKS Pod Identity**.
         "eks:ListAddons",
         "eks:DescribeAddon",
         "eks:DescribeAddonVersions",
+        "eks:DescribeClusterVersions",
         "eks:UpdateAddon"
       ],
       "Resource": "*"
@@ -260,6 +261,7 @@ aws eks create-pod-identity-association \
         "eks:ListAddons",
         "eks:DescribeAddon",
         "eks:DescribeAddonVersions",
+        "eks:DescribeClusterVersions",
         "eks:UpdateAddon"
       ],
       "Resource": "*"

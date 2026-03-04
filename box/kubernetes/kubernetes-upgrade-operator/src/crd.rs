@@ -11,7 +11,8 @@ pub mod types;
 pub use spec::{EKSUpgrade, EKSUpgradeSpec, NotificationConfig, TimeoutConfig};
 #[allow(unused_imports)]
 pub use status::{
-    AddonStatus, AwsIdentity, ControlPlaneStatus, EKSUpgradeStatus, NodegroupStatus, PhaseStatuses,
-    PlanningStatus, PreflightCheckStatus, PreflightStatus, UpgradeCondition,
+    AddonStatus, AwsIdentity, ControlPlaneStatus, EKSUpgradeStatus, LifecycleStatus,
+    NodegroupStatus, PhaseStatuses, PlanningStatus, PreflightCheckStatus, PreflightStatus,
+    UpgradeCondition, VersionLifecycleInfo,
 };
 pub use types::{ComponentStatus, UpgradePhase};

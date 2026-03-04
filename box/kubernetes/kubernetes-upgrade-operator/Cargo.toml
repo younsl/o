@@ -15,6 +15,7 @@ aws-config = "1.8"
 aws-sdk-eks = "1.119"
 aws-sdk-autoscaling = "1.97"
 aws-sdk-sts = "1.56"
+aws-smithy-types = "1"
 
 # Async runtime
 tokio = { version = "1.41", features = ["full"] }

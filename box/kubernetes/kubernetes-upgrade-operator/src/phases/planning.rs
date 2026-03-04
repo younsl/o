@@ -1,12 +1,12 @@
 //! Planning phase: creates the upgrade plan and populates status.
 
 use anyhow::Result;
-use tracing::info;
+use tracing::{info, warn};
 
 use crate::aws::AwsClients;
 use crate::crd::{
     AddonStatus, ComponentStatus, ControlPlaneStatus, EKSUpgradeSpec, EKSUpgradeStatus,
-    NodegroupStatus, PlanningStatus, UpgradePhase,
+    LifecycleStatus, NodegroupStatus, PlanningStatus, UpgradePhase, VersionLifecycleInfo,
 };
 use crate::eks::client::EksClient;
 use crate::eks::upgrade;
@@ -87,6 +87,11 @@ pub async fn execute(
         })
         .collect();
 
+    // Fetch EKS version lifecycle info (non-blocking)
+    new_status.lifecycle = Some(
+        fetch_version_lifecycle(&eks_client, &plan.current_version, &spec.target_version).await,
+    );
+
     // Check if nothing to do
     if plan.is_empty() {
         status::set_phase(&mut new_status, UpgradePhase::Completed);
@@ -115,4 +120,54 @@ pub async fn execute(
     );
 
     Ok(new_status)
+}
+
+/// Fetch EKS version lifecycle information for current and target versions.
+///
+/// Non-blocking: if the API call fails, returns a `LifecycleStatus` with an
+/// error message instead of propagating the error.
+async fn fetch_version_lifecycle(
+    eks_client: &EksClient,
+    current_version: &str,
+    target_version: &str,
+) -> LifecycleStatus {
+    let versions: Vec<&str> = if current_version == target_version {
+        vec![current_version]
+    } else {
+        vec![current_version, target_version]
+    };
+
+    let last_checked_time = chrono::Utc::now();
+
+    let lifecycles = match eks_client.describe_cluster_versions(&versions).await {
+        Ok(v) => v,
+        Err(e) => {
+            warn!("Failed to fetch EKS version lifecycle info: {e}");
+            return LifecycleStatus {
+                last_checked_time,
+                current_version: None,
+                target_version: None,
+                error: Some(format!("Failed to describe cluster versions: {e}")),
+            };
+        }
+    };
+
+    let to_info = |ver: &str| -> Option<VersionLifecycleInfo> {
+        lifecycles
+            .iter()
+            .find(|l| l.version == ver)
+            .map(|l| VersionLifecycleInfo {
+                version: l.version.clone(),
+                version_status: l.status.clone(),
+                end_of_standard_support_date: l.end_of_standard_support,
+                end_of_extended_support_date: l.end_of_extended_support,
+            })
+    };
+
+    LifecycleStatus {
+        last_checked_time,
+        current_version: to_info(current_version),
+        target_version: to_info(target_version),
+        error: None,
+    }
 }

@@ -138,6 +138,43 @@ pub struct PhaseStatuses {
 }
 
 // ============================================================================
+// Lifecycle status (EKS version support dates)
+// ============================================================================
+
+/// Lifecycle information for a single EKS version.
+#[derive(Deserialize, Serialize, Clone, Debug, JsonSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct VersionLifecycleInfo {
+    /// Kubernetes version (e.g., "1.32").
+    pub version: String,
+    /// Version status (e.g., "standard-support", "extended-support").
+    pub version_status: String,
+    /// End of standard support date.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub end_of_standard_support_date: Option<DateTime<Utc>>,
+    /// End of extended support date.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub end_of_extended_support_date: Option<DateTime<Utc>>,
+}
+
+/// Lifecycle status for current and target EKS versions.
+#[derive(Deserialize, Serialize, Clone, Debug, JsonSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct LifecycleStatus {
+    /// Timestamp when lifecycle info was last fetched from the `DescribeClusterVersions` API.
+    pub last_checked_time: DateTime<Utc>,
+    /// Lifecycle info for the current cluster version.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub current_version: Option<VersionLifecycleInfo>,
+    /// Lifecycle info for the target upgrade version.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub target_version: Option<VersionLifecycleInfo>,
+    /// Error message if lifecycle info could not be fetched.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub error: Option<String>,
+}
+
+// ============================================================================
 // Top-level status
 // ============================================================================
 
@@ -202,6 +239,10 @@ pub struct EKSUpgradeStatus {
     /// AWS caller identity used for API calls (from STS `GetCallerIdentity`).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub identity: Option<AwsIdentity>,
+
+    /// EKS version lifecycle information (support end dates).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub lifecycle: Option<LifecycleStatus>,
 }
 
 #[cfg(test)]
@@ -269,6 +310,104 @@ mod tests {
         let deserialized: EKSUpgradeStatus = serde_json::from_str(&json).unwrap();
         assert_eq!(deserialized.phase, Some(UpgradePhase::Planning));
         assert_eq!(deserialized.current_version.as_deref(), Some("1.32"));
+    }
+
+    #[test]
+    fn test_lifecycle_status_serialization() {
+        let now = chrono::Utc::now();
+        let lifecycle = LifecycleStatus {
+            last_checked_time: now,
+            current_version: Some(VersionLifecycleInfo {
+                version: "1.32".to_string(),
+                version_status: "standard-support".to_string(),
+                end_of_standard_support_date: Some(
+                    "2026-03-23T00:00:00Z".parse::<DateTime<Utc>>().unwrap(),
+                ),
+                end_of_extended_support_date: Some(
+                    "2027-03-23T00:00:00Z".parse::<DateTime<Utc>>().unwrap(),
+                ),
+            }),
+            target_version: Some(VersionLifecycleInfo {
+                version: "1.34".to_string(),
+                version_status: "standard-support".to_string(),
+                end_of_standard_support_date: Some(
+                    "2026-12-02T00:00:00Z".parse::<DateTime<Utc>>().unwrap(),
+                ),
+                end_of_extended_support_date: Some(
+                    "2027-12-02T00:00:00Z".parse::<DateTime<Utc>>().unwrap(),
+                ),
+            }),
+            error: None,
+        };
+        let json = serde_json::to_value(&lifecycle).unwrap();
+        let obj = json.as_object().unwrap();
+        assert!(obj.contains_key("lastCheckedTime"));
+        assert!(obj.contains_key("currentVersion"));
+        assert!(obj.contains_key("targetVersion"));
+        assert!(
+            !obj.contains_key("error"),
+            "error should be skipped when None"
+        );
+
+        let current = &json["currentVersion"];
+        assert_eq!(current["version"], "1.32");
+        assert_eq!(current["versionStatus"], "standard-support");
+    }
+
+    #[test]
+    fn test_lifecycle_status_error_only() {
+        let now = chrono::Utc::now();
+        let lifecycle = LifecycleStatus {
+            last_checked_time: now,
+            current_version: None,
+            target_version: None,
+            error: Some("AccessDeniedException".to_string()),
+        };
+        let json = serde_json::to_value(&lifecycle).unwrap();
+        let obj = json.as_object().unwrap();
+        assert!(obj.contains_key("lastCheckedTime"));
+        assert!(!obj.contains_key("currentVersion"));
+        assert!(!obj.contains_key("targetVersion"));
+        assert_eq!(json["error"], "AccessDeniedException");
+    }
+
+    #[test]
+    fn test_lifecycle_status_roundtrip() {
+        let now = chrono::Utc::now();
+        let lifecycle = LifecycleStatus {
+            last_checked_time: now,
+            current_version: Some(VersionLifecycleInfo {
+                version: "1.32".to_string(),
+                version_status: "standard-support".to_string(),
+                end_of_standard_support_date: None,
+                end_of_extended_support_date: None,
+            }),
+            target_version: None,
+            error: None,
+        };
+        let json = serde_json::to_string(&lifecycle).unwrap();
+        let deserialized: LifecycleStatus = serde_json::from_str(&json).unwrap();
+        assert_eq!(deserialized.last_checked_time, now);
+        assert!(deserialized.current_version.is_some());
+        assert!(deserialized.target_version.is_none());
+        assert!(deserialized.error.is_none());
+    }
+
+    #[test]
+    fn test_status_with_lifecycle_field() {
+        let now = chrono::Utc::now();
+        let status = EKSUpgradeStatus {
+            lifecycle: Some(LifecycleStatus {
+                last_checked_time: now,
+                current_version: None,
+                target_version: None,
+                error: Some("test error".to_string()),
+            }),
+            ..Default::default()
+        };
+        let json = serde_json::to_value(&status).unwrap();
+        assert!(json["lifecycle"]["error"] == "test error");
+        assert!(json["lifecycle"]["lastCheckedTime"].is_string());
     }
 
     /// Regression test: ControlPlaneStatus fields that are cleared to None during

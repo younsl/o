@@ -1724,6 +1724,7 @@ dependencies = [
  "aws-sdk-autoscaling",
  "aws-sdk-eks",
  "aws-sdk-sts",
+ "aws-smithy-types",
  "axum",
  "chrono",
  "const_format",
