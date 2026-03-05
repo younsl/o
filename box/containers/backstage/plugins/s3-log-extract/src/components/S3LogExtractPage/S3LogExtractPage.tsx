@@ -754,7 +754,7 @@ const RequestList = ({
                       </Text>
                     </div>
                     {request.status === 'completed' &&
-                      currentUserRef === request.requesterRef && (
+                      (currentUserRef === request.requesterRef || isAdmin) && (
                       <span className={!request.downloadable ? 'sle-btn-expired' : ''}>
                         <Button
                           variant="secondary"

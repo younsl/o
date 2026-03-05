@@ -392,11 +392,11 @@ export async function createRouter(options: RouterOptions): Promise<Router> {
           return;
         }
 
-        // Only the original requester can download
-        if (!userRef || userRef !== request.requesterRef) {
+        // Admins can download any request, others only their own
+        if (!userRef || (userRef !== request.requesterRef && !admins.includes(userRef))) {
           res
             .status(403)
-            .json({ error: 'Only the requester can download' });
+            .json({ error: 'Only the requester or admin can download' });
           return;
         }
 
