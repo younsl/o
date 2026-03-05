@@ -545,8 +545,14 @@ const RequestList = ({
   const isAdmin = adminStatus?.isAdmin ?? false;
 
   const handleDownload = async (id: string) => {
-    const url = await api.downloadUrl(id);
-    window.open(url, '_blank');
+    const blobUrl = await api.downloadUrl(id);
+    const a = document.createElement('a');
+    a.href = blobUrl;
+    a.download = `logs-${id}.tar.gz`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(blobUrl);
   };
 
   const getStatusClassName = (status: string): string => {

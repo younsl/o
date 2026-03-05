@@ -119,7 +119,19 @@ export class S3LogExtractClient implements S3LogExtractApi {
 
   async downloadUrl(id: string): Promise<string> {
     const baseUrl = await this.getBaseUrl();
-    return `${baseUrl}/requests/${id}/download`;
+    const response = await this.fetchApi.fetch(
+      `${baseUrl}/requests/${id}/download`,
+    );
+
+    if (!response.ok) {
+      const body = await response.json().catch(() => ({}));
+      throw new Error(
+        (body as any).error ?? `Download failed: ${response.statusText}`,
+      );
+    }
+
+    const blob = await response.blob();
+    return URL.createObjectURL(blob);
   }
 
   async getAdminStatus(): Promise<{ isAdmin: boolean }> {
