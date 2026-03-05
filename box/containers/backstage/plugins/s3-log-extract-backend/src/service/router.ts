@@ -58,7 +58,40 @@ export async function createRouter(options: RouterOptions): Promise<Router> {
     const bucket = config.getOptionalString('s3LogExtract.bucket') ?? '';
     const region = config.getOptionalString('s3LogExtract.region') ?? 'ap-northeast-2';
     const prefix = config.getOptionalString('s3LogExtract.prefix') ?? '';
-    res.json({ bucket, region, prefix });
+    const maxTimeRangeMinutes =
+      config.getOptionalNumber('s3LogExtract.maxTimeRangeMinutes') ?? 60;
+    res.json({ bucket, region, prefix, maxTimeRangeMinutes });
+  });
+
+  // --- S3 Health Check (cached 1 min) ---
+
+  let healthCache: { connected: boolean; checkedAt: string; error?: string } | null = null;
+  let healthCacheExpiry = 0;
+
+  const runHealthCheck = async () => {
+    const result = await s3LogService.checkHealth();
+    healthCache = result;
+    healthCacheExpiry = Date.now() + 60_000;
+    return result;
+  };
+
+  // Initial health check
+  runHealthCheck().catch(() => {});
+
+  // Background polling every 60s
+  const healthInterval = setInterval(() => {
+    runHealthCheck().catch(() => {});
+  }, 60_000);
+  // Cleanup on process exit
+  process.on('SIGTERM', () => clearInterval(healthInterval));
+
+  router.get('/s3-health', async (_req, res) => {
+    if (healthCache && Date.now() < healthCacheExpiry) {
+      res.json(healthCache);
+      return;
+    }
+    const result = await runHealthCheck();
+    res.json(result);
   });
 
   // --- List apps ---
@@ -131,6 +164,27 @@ export async function createRouter(options: RouterOptions): Promise<Router> {
       if (input.source !== 'k8s' && input.source !== 'ec2') {
         res.status(400).json({ error: 'source must be "k8s" or "ec2"' });
         return;
+      }
+
+      // Validate time range against configured maximum
+      const maxMinutes =
+        config.getOptionalNumber('s3LogExtract.maxTimeRangeMinutes') ?? 60;
+      const parseMinutes = (t: string) => {
+        const m = t.match(/^(\d{2}):(\d{2})$/);
+        return m ? parseInt(m[1], 10) * 60 + parseInt(m[2], 10) : null;
+      };
+      const startMin = parseMinutes(input.startTime);
+      const endMin = parseMinutes(input.endTime);
+      if (startMin !== null && endMin !== null) {
+        const range = endMin >= startMin
+          ? endMin - startMin
+          : 24 * 60 - startMin + endMin;
+        if (range > maxMinutes) {
+          res.status(400).json({
+            error: `Time range ${range}m exceeds maximum of ${maxMinutes}m`,
+          });
+          return;
+        }
       }
 
       const request = await store.createRequest(input, userRef);

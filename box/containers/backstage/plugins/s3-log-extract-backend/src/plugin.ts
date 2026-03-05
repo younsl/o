@@ -59,6 +59,10 @@ export const s3LogExtractPlugin = createBackendPlugin({
           allow: 'unauthenticated',
         });
         httpRouter.addAuthPolicy({
+          path: '/s3-health',
+          allow: 'unauthenticated',
+        });
+        httpRouter.addAuthPolicy({
           path: '/apps',
           allow: 'unauthenticated',
         });

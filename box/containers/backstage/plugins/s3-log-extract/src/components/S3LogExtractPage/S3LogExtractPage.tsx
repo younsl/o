@@ -7,21 +7,21 @@ import {
   CardBody,
   Container,
   Flex,
-  HeaderPage,
+  PluginHeader,
   Select,
   Skeleton,
-  Tab,
-  TabList,
-  TabPanel,
-  Tabs,
   Text,
   TextField,
+  Tooltip,
+  TooltipTrigger,
 } from '@backstage/ui';
 import { useApi, identityApiRef } from '@backstage/core-plugin-api';
 import { useAsyncRetry } from 'react-use';
 import { s3LogExtractApiRef } from '../../api';
 import { LogExtractRequest } from '../../api/types';
 import {
+  RiAddLine,
+  RiArrowLeftLine,
   RiCheckLine,
   RiCloseLine,
   RiDownloadLine,
@@ -184,7 +184,13 @@ const ReviewDialog = ({
 
 // --- Request Form ---
 
-const RequestForm = ({ onSubmitted }: { onSubmitted: () => void }) => {
+const RequestForm = ({
+  onSubmitted,
+  maxTimeRangeMinutes,
+}: {
+  onSubmitted: () => void;
+  maxTimeRangeMinutes: number;
+}) => {
   const api = useApi(s3LogExtractApiRef);
   const [source, setSource] = useState('k8s');
   const [env, setEnv] = useState('dev');
@@ -313,8 +319,36 @@ const RequestForm = ({ onSubmitted }: { onSubmitted: () => void }) => {
     }
   };
 
+  const timeRangeMinutes = useMemo(() => {
+    const parseMinutes = (t: string) => {
+      const m = t.match(/^(\d{2}):(\d{2})$/);
+      return m ? parseInt(m[1], 10) * 60 + parseInt(m[2], 10) : null;
+    };
+    const s = parseMinutes(startTime);
+    const e = parseMinutes(endTime);
+    if (s === null || e === null) return null;
+    return e >= s ? e - s : 24 * 60 - s + e;
+  }, [startTime, endTime]);
+
+  const formatMinutes = (m: number) => {
+    if (m >= 60 && m % 60 === 0) return `${m / 60}h`;
+    if (m >= 60) return `${Math.floor(m / 60)}h ${m % 60}m`;
+    return `${m}m`;
+  };
+
+  const timeRangeError =
+    timeRangeMinutes !== null && timeRangeMinutes > maxTimeRangeMinutes
+      ? `Maximum ${formatMinutes(maxTimeRangeMinutes)} allowed, but ${formatMinutes(timeRangeMinutes)} selected`
+      : null;
+
   const isValid =
-    env && date && selectedApps.length > 0 && startTime && endTime && reason.trim();
+    env &&
+    date &&
+    selectedApps.length > 0 &&
+    startTime &&
+    endTime &&
+    reason.trim() &&
+    !timeRangeError;
 
   return (
     <Box mt="4">
@@ -338,16 +372,15 @@ const RequestForm = ({ onSubmitted }: { onSubmitted: () => void }) => {
           </div>
         </Flex>
 
-        <div className="sle-required-field">
-          <TextField
-            label="Date (KST)"
-            value={date}
-            onChange={setDate}
-            placeholder="YYYY-MM-DD"
-          />
-        </div>
-
         <Flex gap="3">
+          <div className="sle-required-field" style={{ flex: 1 }}>
+            <TextField
+              label="Date (KST)"
+              value={date}
+              onChange={setDate}
+              placeholder="YYYY-MM-DD"
+            />
+          </div>
           <div className="sle-required-field" style={{ flex: 1 }}>
             <TextField
               label="Start Time (KST)"
@@ -367,6 +400,14 @@ const RequestForm = ({ onSubmitted }: { onSubmitted: () => void }) => {
             />
           </div>
         </Flex>
+        <Text variant="body-x-small" color={timeRangeError ? 'danger' : 'secondary'}>
+          {timeRangeMinutes !== null
+            ? `Extractable up to ${formatMinutes(maxTimeRangeMinutes)} per request (current: ${formatMinutes(timeRangeMinutes)})`
+            : `Extractable up to ${formatMinutes(maxTimeRangeMinutes)} per request`}
+        </Text>
+        {timeRangeError && (
+          <Alert status="danger" title={timeRangeError} />
+        )}
 
         <Box>
           <Text
@@ -602,19 +643,34 @@ const RequestList = ({
             <div key={request.id} className="sle-card-wrapper">
               <Card>
                 <CardBody className="sle-card-body">
-                  <div>
-                    <Text variant="body-medium" weight="bold">
-                      {request.source} &middot;{' '}
-                      {request.env.toUpperCase()} &middot; {request.date}
-                    </Text>
-                    <Text
-                      variant="body-x-small"
-                      color="secondary"
-                      style={{ display: 'block', marginTop: 4 }}
-                    >
-                      {request.startTime} - {request.endTime} (KST)
-                    </Text>
-                  </div>
+                  <Flex justify="between" align="start">
+                    <div>
+                      <Text variant="body-medium" weight="bold">
+                        {request.source} &middot;{' '}
+                        {request.env.toUpperCase()} &middot; {request.date}
+                      </Text>
+                      <Text
+                        variant="body-x-small"
+                        color="secondary"
+                        style={{ display: 'block', marginTop: 4 }}
+                      >
+                        {request.startTime} - {request.endTime} (KST)
+                      </Text>
+                    </div>
+                    {request.status === 'completed' &&
+                      currentUserRef === request.requesterRef && (
+                      <Button
+                        variant="secondary"
+                        size="small"
+                        onPress={() => handleDownload(request.id)}
+                      >
+                        <Flex align="center" gap="1">
+                          <RiDownloadLine size={14} />
+                          Download
+                        </Flex>
+                      </Button>
+                    )}
+                  </Flex>
 
                   <div className="sle-field">
                     <Text
@@ -780,22 +836,6 @@ const RequestList = ({
                     </Flex>
                   )}
 
-                  {/* Download for completed requests - only the requester can download */}
-                  {request.status === 'completed' &&
-                    currentUserRef === request.requesterRef && (
-                    <Flex mt="2">
-                      <Button
-                        variant="secondary"
-                        size="small"
-                        onPress={() => handleDownload(request.id)}
-                      >
-                        <Flex align="center" gap="1">
-                          <RiDownloadLine size={14} />
-                          Download
-                        </Flex>
-                      </Button>
-                    </Flex>
-                  )}
                 </CardBody>
               </Card>
             </div>
@@ -821,43 +861,127 @@ const RequestList = ({
 export const S3LogExtractPage = () => {
   const api = useApi(s3LogExtractApiRef);
   const [refreshKey, setRefreshKey] = useState(0);
+  const [view, setView] = useState<'list' | 'create'>('list');
 
   const { value: s3Config } = useAsyncRetry(async () => {
     return api.getConfig();
   }, []);
 
+  const { value: s3Health } = useAsyncRetry(async () => {
+    return api.getS3Health();
+  }, []);
+
+  // Poll S3 health every 60s
+  useEffect(() => {
+    const interval = setInterval(async () => {
+      try {
+        const health = await api.getS3Health();
+        setS3HealthState(health);
+      } catch {
+        // ignore
+      }
+    }, 60_000);
+    return () => clearInterval(interval);
+  }, [api]);
+
+  const [s3HealthState, setS3HealthState] = useState<{
+    connected: boolean;
+    checkedAt: string;
+    error?: string;
+  } | null>(null);
+
+  const currentHealth = s3HealthState ?? s3Health ?? null;
+  const isConnected = currentHealth?.connected ?? false;
+
+  const handleSubmitted = () => {
+    setRefreshKey(k => k + 1);
+    setView('list');
+  };
+
   return (
     <>
-      <HeaderPage title="S3 Log Extract" />
+      <PluginHeader title="S3 Log Extract" />
       <Container my="4">
-        {s3Config && s3Config.bucket && (
-          <Box mb="3">
-            <Text variant="body-small" color="secondary">
-              Bucket: <strong>{s3Config.bucket}</strong> &middot; Region:{' '}
-              <strong>{s3Config.region}</strong>
-              {s3Config.prefix ? (
-                <>
-                  {' '}
-                  &middot; Prefix: <strong>{s3Config.prefix}</strong>
-                </>
-              ) : null}
-            </Text>
-          </Box>
+        <Flex justify="between" align="center" mb="4">
+          <Text variant="body-small" color="secondary">
+            Extract and download Java application logs from S3 with approval workflow
+          </Text>
+          <Flex align="center" gap="3" style={{ flexShrink: 0 }}>
+            <TooltipTrigger delay={200}>
+              <Button
+                variant="tertiary"
+                size="small"
+                className={`sle-integration-badge ${isConnected ? 'sle-integration-connected' : 'sle-integration-disconnected'}`}
+              >
+                S3 API {isConnected ? 'Connected' : 'Disconnected'}
+              </Button>
+              <Tooltip style={{ maxWidth: 280 }}>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 4, fontSize: 12, lineHeight: 1.5 }}>
+                  <div style={{ fontWeight: 700 }}>Amazon S3 Integration</div>
+                  <div>Status: {isConnected ? 'Connected' : 'Disconnected'}</div>
+                  <div>Usage: Extracts Java application logs from S3 buckets</div>
+                  {currentHealth && (
+                    <div style={{ opacity: 0.7 }}>
+                      Last checked: {new Date(currentHealth.checkedAt).toLocaleString()}
+                    </div>
+                  )}
+                  {currentHealth?.error && (
+                    <div style={{ opacity: 0.7 }}>
+                      Error: {currentHealth.error}
+                    </div>
+                  )}
+                </div>
+              </Tooltip>
+            </TooltipTrigger>
+            {view === 'list' ? (
+              <Button variant="primary" onPress={() => setView('create')}>
+                <Flex align="center" gap="1">
+                  <RiAddLine size={16} />
+                  New Request
+                </Flex>
+              </Button>
+            ) : (
+              <Button variant="secondary" onPress={() => setView('list')}>
+                <Flex align="center" gap="1">
+                  <RiArrowLeftLine size={16} />
+                  Back to Requests
+                </Flex>
+              </Button>
+            )}
+          </Flex>
+        </Flex>
+
+        {view === 'list' ? (
+          <RequestList refreshKey={refreshKey} />
+        ) : (
+          <Card>
+            <CardBody>
+              <Text as="h3" variant="body-large" weight="bold">
+                New Log Extract Request
+              </Text>
+              {s3Config && s3Config.bucket && (
+                <Text
+                  variant="body-x-small"
+                  color="secondary"
+                  style={{ marginTop: 8, display: 'block' }}
+                >
+                  Bucket: <strong>{s3Config.bucket}</strong> &middot; Region:{' '}
+                  <strong>{s3Config.region}</strong>
+                  {s3Config.prefix ? (
+                    <>
+                      {' '}
+                      &middot; Prefix: <strong>{s3Config.prefix}</strong>
+                    </>
+                  ) : null}
+                </Text>
+              )}
+              <RequestForm
+                onSubmitted={handleSubmitted}
+                maxTimeRangeMinutes={s3Config?.maxTimeRangeMinutes ?? 60}
+              />
+            </CardBody>
+          </Card>
         )}
-        <Tabs defaultSelectedKey="request">
-          <TabList>
-            <Tab id="request">Request</Tab>
-            <Tab id="requests">Requests</Tab>
-          </TabList>
-          <TabPanel id="request">
-            <RequestForm
-              onSubmitted={() => setRefreshKey(k => k + 1)}
-            />
-          </TabPanel>
-          <TabPanel id="requests">
-            <RequestList refreshKey={refreshKey} />
-          </TabPanel>
-        </Tabs>
       </Container>
     </>
   );

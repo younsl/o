@@ -1,5 +1,6 @@
 import {
   S3Client,
+  HeadBucketCommand,
   ListObjectsV2Command,
   GetObjectCommand,
 } from '@aws-sdk/client-s3';
@@ -33,6 +34,24 @@ export class S3LogService {
     this.prefix =
       options.config.getOptionalString('s3LogExtract.prefix') ?? 'app-logs';
     this.client = new S3Client({ region });
+  }
+
+  async checkHealth(): Promise<{ connected: boolean; checkedAt: string; error?: string }> {
+    const checkedAt = new Date().toISOString();
+    if (!this.bucket) {
+      return { connected: false, checkedAt, error: 'Bucket not configured' };
+    }
+    try {
+      await this.refreshClient();
+      await this.client.send(new HeadBucketCommand({ Bucket: this.bucket }));
+      return { connected: true, checkedAt };
+    } catch (err) {
+      return {
+        connected: false,
+        checkedAt,
+        error: err instanceof Error ? err.message : String(err),
+      };
+    }
   }
 
   private ensureConfigured(): void {

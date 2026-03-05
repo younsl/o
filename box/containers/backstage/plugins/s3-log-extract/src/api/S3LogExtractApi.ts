@@ -5,10 +5,18 @@ export interface S3Config {
   bucket: string;
   region: string;
   prefix: string;
+  maxTimeRangeMinutes: number;
+}
+
+export interface S3HealthStatus {
+  connected: boolean;
+  checkedAt: string;
+  error?: string;
 }
 
 export interface S3LogExtractApi {
   getConfig(): Promise<S3Config>;
+  getS3Health(): Promise<S3HealthStatus>;
   listApps(env: string, date: string, source: string): Promise<string[]>;
   createRequest(input: {
     source: string;

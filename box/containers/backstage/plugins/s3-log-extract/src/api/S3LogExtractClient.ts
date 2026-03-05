@@ -1,6 +1,6 @@
 import { DiscoveryApi, FetchApi } from '@backstage/core-plugin-api';
 import { ResponseError } from '@backstage/errors';
-import { S3LogExtractApi, S3Config } from './S3LogExtractApi';
+import { S3LogExtractApi, S3Config, S3HealthStatus } from './S3LogExtractApi';
 import { LogExtractRequest } from './types';
 
 export class S3LogExtractClient implements S3LogExtractApi {
@@ -22,6 +22,17 @@ export class S3LogExtractClient implements S3LogExtractApi {
 
     if (!response.ok) {
       throw await ResponseError.fromResponse(response as any);
+    }
+
+    return response.json();
+  }
+
+  async getS3Health(): Promise<S3HealthStatus> {
+    const baseUrl = await this.getBaseUrl();
+    const response = await this.fetchApi.fetch(`${baseUrl}/s3-health`);
+
+    if (!response.ok) {
+      return { connected: false, checkedAt: new Date().toISOString(), error: 'Failed to fetch health' };
     }
 
     return response.json();
