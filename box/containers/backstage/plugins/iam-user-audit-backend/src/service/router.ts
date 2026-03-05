@@ -239,12 +239,15 @@ export async function createRouter(options: RouterOptions): Promise<Router> {
     }
   });
 
+  const reviewRateMax = config.getOptionalNumber('iamUserAudit.reviewRateMax') ?? 10;
   const reviewLimiter = rateLimit({
     windowMs: 15 * 60 * 1000,
-    max: 10,
+    max: reviewRateMax,
     standardHeaders: true,
     legacyHeaders: false,
     message: { error: 'Too many review requests, please try again later' },
+    // Disable validation to prevent MemoryStore from keeping open handles in tests
+    validate: false,
   });
 
   router.post('/password-reset/requests/:id/review', reviewLimiter, async (req, res) => {

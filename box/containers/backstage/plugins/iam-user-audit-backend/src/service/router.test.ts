@@ -84,7 +84,10 @@ function setUnauthenticated() {
 async function createTestApp(configOverrides: Record<string, any> = {}) {
   const config = new ConfigReader({
     permission: { admins: ['user:default/admin'] },
-    ...configOverrides,
+    iamUserAudit: { reviewRateMax: 1000, ...configOverrides.iamUserAudit },
+    ...Object.fromEntries(
+      Object.entries(configOverrides).filter(([k]) => k !== 'iamUserAudit'),
+    ),
   });
 
   const router = await createRouter({
