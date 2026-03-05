@@ -18,13 +18,14 @@ import {
 import { useApi, identityApiRef } from '@backstage/core-plugin-api';
 import { useAsyncRetry } from 'react-use';
 import { s3LogExtractApiRef } from '../../api';
-import { LogExtractRequest } from '../../api/types';
+import { Environment, LogExtractRequest, RequestStatus } from '../../api/types';
 import {
   RiAddLine,
   RiArrowLeftLine,
   RiCheckLine,
   RiCloseLine,
   RiDownloadLine,
+  RiInformationLine,
   RiLoader4Line,
   RiTimeLine,
 } from '@remixicon/react';
@@ -542,17 +543,57 @@ const RequestList = ({
     action: 'approve' | 'reject';
   } | null>(null);
 
+  const statusFilters: Array<{ value: RequestStatus | 'all'; label: string }> = [
+    { value: 'all', label: 'All' },
+    { value: 'pending', label: 'Pending' },
+    { value: 'approved', label: 'Approved' },
+    { value: 'extracting', label: 'Extracting' },
+    { value: 'completed', label: 'Completed' },
+    { value: 'rejected', label: 'Rejected' },
+    { value: 'failed', label: 'Failed' },
+  ];
+
+  const [statusFilter, setStatusFilter] = useState<RequestStatus | 'all'>('all');
+
+  const envFilters: Array<{ value: Environment | 'all'; label: string }> = [
+    { value: 'all', label: 'All' },
+    { value: 'dev', label: 'DEV' },
+    { value: 'stg', label: 'STG' },
+    { value: 'sb', label: 'SB' },
+    { value: 'prd', label: 'PRD' },
+  ];
+
+  const [envFilter, setEnvFilter] = useState<Environment | 'all'>('all');
+
+  const filteredRequests = useMemo(() => {
+    if (!requests) return [];
+    return requests.filter(r => {
+      if (statusFilter !== 'all' && r.status !== statusFilter) return false;
+      if (envFilter !== 'all' && r.env !== envFilter) return false;
+      return true;
+    });
+  }, [requests, statusFilter, envFilter]);
+
   const isAdmin = adminStatus?.isAdmin ?? false;
 
+  const [downloadError, setDownloadError] = useState<string | null>(null);
+
   const handleDownload = async (id: string) => {
-    const blobUrl = await api.downloadUrl(id);
-    const a = document.createElement('a');
-    a.href = blobUrl;
-    a.download = `logs-${id}.tar.gz`;
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
-    URL.revokeObjectURL(blobUrl);
+    try {
+      setDownloadError(null);
+      const blobUrl = await api.downloadUrl(id);
+      const a = document.createElement('a');
+      a.href = blobUrl;
+      a.download = `logs-${id}.tar.gz`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(blobUrl);
+    } catch (err) {
+      setDownloadError(
+        err instanceof Error ? err.message : 'Download failed',
+      );
+    }
   };
 
   const getStatusClassName = (status: string): string => {
@@ -631,21 +672,70 @@ const RequestList = ({
 
   return (
     <>
-      <Box mt="4">
-        <Flex justify="between" align="center" mb="3">
+      {/* Filters Section */}
+      <Box mt="3" p="3" className="sle-section-box">
+        <Text variant="body-medium" weight="bold" style={{ marginBottom: 12, display: 'block' }}>
+          Filters
+        </Text>
+        <Flex gap="3" style={{ flexWrap: 'wrap' }}>
+          <div style={{ minWidth: 160 }}>
+            <Select
+              label="Status"
+              value={statusFilter}
+              onChange={val => setStatusFilter(val as RequestStatus | 'all')}
+              options={statusFilters.map(f => {
+                if (f.value === 'all') return { value: f.value, label: f.label };
+                const count = requests?.filter(r => r.status === f.value).length ?? 0;
+                return { value: f.value, label: `${f.label} (${count})` };
+              })}
+            />
+          </div>
+          <div style={{ minWidth: 160 }}>
+            <Select
+              label="Environment"
+              value={envFilter}
+              onChange={val => setEnvFilter(val as Environment | 'all')}
+              options={envFilters.map(f => {
+                if (f.value === 'all') return { value: f.value, label: f.label };
+                const count = requests?.filter(r => r.env === f.value).length ?? 0;
+                return { value: f.value, label: `${f.label} (${count})` };
+              })}
+            />
+          </div>
+        </Flex>
+      </Box>
+
+      {/* Requests Section */}
+      <Box mt="3" p="3" className="sle-section-box">
+        <Flex justify="between" align="center" style={{ marginBottom: 12 }}>
           <Text variant="body-medium" weight="bold">
             Requests
           </Text>
           <Flex align="center" gap="2">
-            <span className="sle-count-badge">{requests.length}</span>
+            <span className="sle-count-badge">{filteredRequests.length}</span>
             <Text variant="body-small" color="secondary">
-              total
+              {statusFilter === 'all' ? 'total' : statusFilter}
             </Text>
           </Flex>
         </Flex>
 
+        {downloadError && (
+          <Alert
+            status="danger"
+            title={downloadError}
+            style={{ marginBottom: 12 }}
+          />
+        )}
+
+        {filteredRequests.length === 0 ? (
+          <div className="sle-empty-state">
+            <Text variant="body-medium" color="secondary">
+              No {statusFilter} requests
+            </Text>
+          </div>
+        ) : (
         <div className="sle-grid">
-          {requests.map(request => (
+          {filteredRequests.map(request => (
             <div key={request.id} className="sle-card-wrapper">
               <Card>
                 <CardBody className="sle-card-body">
@@ -665,16 +755,19 @@ const RequestList = ({
                     </div>
                     {request.status === 'completed' &&
                       currentUserRef === request.requesterRef && (
-                      <Button
-                        variant="secondary"
-                        size="small"
-                        onPress={() => handleDownload(request.id)}
-                      >
-                        <Flex align="center" gap="1">
-                          <RiDownloadLine size={14} />
-                          Download
-                        </Flex>
-                      </Button>
+                      <span className={!request.downloadable ? 'sle-btn-expired' : ''}>
+                        <Button
+                          variant="secondary"
+                          size="small"
+                          isDisabled={!request.downloadable}
+                          onPress={() => handleDownload(request.id)}
+                        >
+                          <Flex align="center" gap="1">
+                            <RiDownloadLine size={14} />
+                            {request.downloadable ? 'Download' : 'Expired'}
+                          </Flex>
+                        </Button>
+                      </span>
                     )}
                   </Flex>
 
@@ -769,20 +862,38 @@ const RequestList = ({
                       >
                         Result
                       </Text>
-                      <Text variant="body-small">
-                        {request.fileCount} files &middot;{' '}
-                        {formatSize(request.archiveSize)}
-                      </Text>
-                      {request.firstTimestamp && request.lastTimestamp && (
-                        <Text
-                          variant="body-x-small"
-                          color="secondary"
-                          style={{ marginTop: '2px' }}
-                        >
-                          {formatTimestamp(request.firstTimestamp)} ~{' '}
-                          {formatTimestamp(request.lastTimestamp)}
+                      <Flex align="center" gap="1">
+                        <Text variant="body-small">
+                          {request.fileCount} files ({formatSize(request.archiveSize)})
                         </Text>
-                      )}
+                        <TooltipTrigger closeDelay={100}>
+                          <Button
+                            variant="tertiary"
+                            size="small"
+                            style={{ padding: 0, minHeight: 'unset', minWidth: 'unset', color: 'var(--bui-color-text-secondary)' }}
+                          >
+                            <RiInformationLine size={14} />
+                          </Button>
+                          <Tooltip style={{ maxWidth: 400 }}>
+                            <div style={{ display: 'flex', flexDirection: 'column', gap: 4, fontSize: 12, lineHeight: 1.5 }}>
+                              {request.firstTimestamp && request.lastTimestamp && (
+                                <div>
+                                  <span style={{ fontWeight: 700 }}>Log period: </span>
+                                  {formatTimestamp(request.firstTimestamp)} ~ {formatTimestamp(request.lastTimestamp)}
+                                </div>
+                              )}
+                              {request.archivePath && (
+                                <div>
+                                  <span style={{ fontWeight: 700 }}>Archive location: </span>
+                                  <span style={{ fontFamily: 'monospace', wordBreak: 'break-all' }}>
+                                    {request.archivePath}
+                                  </span>
+                                </div>
+                              )}
+                            </div>
+                          </Tooltip>
+                        </TooltipTrigger>
+                      </Flex>
                     </div>
                   )}
 
@@ -802,9 +913,16 @@ const RequestList = ({
                   )}
 
                   <div className="sle-card-footer">
-                    <Text variant="body-x-small" color="secondary">
-                      {formatDate(request.createdAt)}
-                    </Text>
+                    <div>
+                      <Text variant="body-x-small" color="secondary" style={{ display: 'block' }}>
+                        Created {formatDate(request.createdAt)}
+                      </Text>
+                      {request.reviewerRef && (
+                        <Text variant="body-x-small" color="secondary" style={{ display: 'block', marginTop: 2 }}>
+                          Reviewed {formatDate(request.updatedAt)}
+                        </Text>
+                      )}
+                    </div>
                     <span className={getStatusClassName(request.status)}>
                       {request.status}
                       {getStatusIcon(request.status)}
@@ -847,6 +965,7 @@ const RequestList = ({
             </div>
           ))}
         </div>
+        )}
       </Box>
 
       {reviewTarget && (
@@ -910,7 +1029,7 @@ export const S3LogExtractPage = () => {
       <Container my="4">
         <Flex justify="between" align="center" mb="4">
           <Text variant="body-small" color="secondary">
-            Extract and download Java application logs from S3 with approval workflow
+            No more digging through S3 buckets at 3 AM. Request, approve, download.
           </Text>
           <Flex align="center" gap="3" style={{ flexShrink: 0 }}>
             <TooltipTrigger delay={200}>
@@ -940,7 +1059,7 @@ export const S3LogExtractPage = () => {
               </Tooltip>
             </TooltipTrigger>
             {view === 'list' ? (
-              <Button variant="primary" onPress={() => setView('create')}>
+              <Button variant="primary" isDisabled={!isConnected} onPress={() => setView('create')}>
                 <Flex align="center" gap="1">
                   <RiAddLine size={16} />
                   New Request

@@ -1,3 +1,4 @@
+import fs from 'fs';
 import { Knex } from 'knex';
 import { v4 as uuid } from 'uuid';
 import {
@@ -86,6 +87,7 @@ export class RequestStore {
       firstTimestamp: null,
       lastTimestamp: null,
       errorMessage: null,
+      downloadable: false,
       createdAt: now,
       updatedAt: now,
     };
@@ -160,6 +162,17 @@ export class RequestStore {
     return this.getRequest(id);
   }
 
+  private isDownloadable(row: Record<string, unknown>): boolean {
+    if (row.status !== 'completed') return false;
+    const archivePath = row.archive_path as string | null;
+    if (!archivePath) return false;
+    try {
+      return fs.existsSync(archivePath);
+    } catch {
+      return false;
+    }
+  }
+
   private rowToRequest(row: Record<string, unknown>): LogExtractRequest {
     let apps: string[];
     try {
@@ -187,6 +200,7 @@ export class RequestStore {
       firstTimestamp: (row.first_timestamp as string) ?? null,
       lastTimestamp: (row.last_timestamp as string) ?? null,
       errorMessage: (row.error_message as string) ?? null,
+      downloadable: this.isDownloadable(row),
       createdAt: row.created_at as string,
       updatedAt: row.updated_at as string,
     };

@@ -185,6 +185,19 @@
   color: var(--bui-color-primary);
 }
 
+/* Section box */
+.sle-section-box {
+  background-color: var(--bui-color-bg-elevated, #1a1a1a);
+  border-radius: 8px;
+}
+
+/* Expired (disabled) download button */
+.sle-btn-expired {
+  opacity: 0.45;
+  cursor: not-allowed !important;
+  pointer-events: none;
+}
+
 /* Action buttons */
 .sle-card-actions .bui-Button {
   flex: 1;

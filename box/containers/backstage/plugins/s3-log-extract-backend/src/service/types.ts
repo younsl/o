@@ -29,6 +29,7 @@ export interface LogExtractRequest {
   firstTimestamp: string | null;
   lastTimestamp: string | null;
   errorMessage: string | null;
+  downloadable: boolean;
   createdAt: string;
   updatedAt: string;
 }

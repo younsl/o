@@ -206,23 +206,16 @@ export async function createRouter(options: RouterOptions): Promise<Router> {
   router.get('/requests', async (req, res) => {
     try {
       const userRef = await tryGetUserRef(req);
-      const requests = await store.listRequests();
-
-      const isGuest = userRef
-        ? parseEntityRef(userRef).name === 'guest'
-        : false;
-      if (userRef && (admins.includes(userRef) || isGuest)) {
-        res.json(requests);
-        return;
-      }
 
       if (!userRef) {
         res.status(403).json({ error: 'Authentication required' });
         return;
       }
 
-      const filtered = requests.filter(r => r.requesterRef === userRef);
-      res.json(filtered);
+      // All authenticated users can view all requests,
+      // but only the original requester can download (enforced by download endpoint)
+      const requests = await store.listRequests();
+      res.json(requests);
     } catch (error) {
       logger.error(`Failed to list requests: ${error}`);
       res.status(500).json({
@@ -368,8 +361,8 @@ export async function createRouter(options: RouterOptions): Promise<Router> {
   // --- Download ---
 
   const downloadLimiter = rateLimit({
-    windowMs: 15 * 60 * 1000,
-    max: 3,
+    windowMs: 10 * 60 * 1000,
+    max: 5,
     standardHeaders: true,
     legacyHeaders: false,
     message: { error: 'Too many download requests, please try again later' },

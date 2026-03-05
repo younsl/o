@@ -13,6 +13,7 @@ import ExpandLessIcon from '@material-ui/icons/ExpandLess';
 import FavoriteBorderIcon from '@material-ui/icons/FavoriteBorder';
 import SecurityIcon from '@material-ui/icons/Security';
 import StorageIcon from '@material-ui/icons/Storage';
+import FindInPageIcon from '@material-ui/icons/FindInPage';
 import { siArgo, siKubernetes } from 'simple-icons';
 import { createIcon } from '@dweber019/backstage-plugin-simple-icons';
 
@@ -252,6 +253,42 @@ const IamAuditSidebarItem = () => {
   );
 };
 
+const S3LogExtractSidebarItem = () => {
+  const discoveryApi = useApi(discoveryApiRef);
+  const fetchApi = useApi(fetchApiRef);
+  const [pendingCount, setPendingCount] = useState(0);
+
+  useEffect(() => {
+    const fetchPending = async () => {
+      try {
+        const baseUrl = await discoveryApi.getBaseUrl('s3-log-extract');
+        const response = await fetchApi.fetch(`${baseUrl}/requests`);
+        const data = await response.json();
+        setPendingCount(
+          data.filter((r: any) => r.status === 'pending').length,
+        );
+      } catch {
+        /* ignore */
+      }
+    };
+    fetchPending();
+    const interval = setInterval(fetchPending, 15_000);
+    return () => clearInterval(interval);
+  }, [discoveryApi, fetchApi]);
+
+  return (
+    <SidebarItem icon={FindInPageIcon} to="s3-log-extract" text="S3 Log Extract">
+      <span
+        className={
+          pendingCount > 0 ? 'sidebar-badge' : 'sidebar-badge sidebar-badge-zero'
+        }
+      >
+        {pendingCount}
+      </span>
+    </SidebarItem>
+  );
+};
+
 const PlatformsSidebarItem = () => {
   const configApi = useApi(configApiRef);
   const platformsCount = (configApi.getOptionalConfigArray('app.platforms') ?? []).length;
@@ -303,9 +340,7 @@ export const Root = ({ children }: PropsWithChildren<{}>) => {
           <SidebarItem icon={ArgocdIcon} to="argocd-appset" text="ArgoCD" />
         )}
         {iamUserAuditEnabled && <IamAuditSidebarItem />}
-        {s3LogExtractEnabled && (
-          <SidebarItem icon={StorageIcon} to="s3-log-extract" text="S3 Log Extract" />
-        )}
+        {s3LogExtractEnabled && <S3LogExtractSidebarItem />}
       </FoldableSection>
 
       <SidebarDivider />
