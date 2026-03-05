@@ -275,7 +275,7 @@ export async function createRouter(options: RouterOptions): Promise<Router> {
         return;
       }
 
-      const existing = await store.getRequest(req.params.id);
+      const existing = await store.getRequest(String(req.params.id));
       if (!existing) {
         res.status(404).json({ error: 'Request not found' });
         return;
@@ -350,7 +350,7 @@ export async function createRouter(options: RouterOptions): Promise<Router> {
         }
       }
       const updated = await store.updateStatus(
-        req.params.id,
+        String(req.params.id),
         status,
         reviewerRef,
         input.comment,
