@@ -55,6 +55,7 @@ import {
 import { OpenApiRegistryPage } from '@internal/plugin-openapi-registry';
 import { ArgocdAppsetPage } from '@internal/plugin-argocd-appset';
 import { IamUserAuditPage } from '@internal/plugin-iam-user-audit';
+import { S3LogExtractPage } from '@internal/plugin-s3-log-extract';
 import { CatalogHealthPage, GenerateCatalogInfoPage } from '@internal/plugin-catalog-health';
 import { BuiThemerPage } from '@backstage/plugin-mui-to-bui';
 import { BuildInfoSettings } from './components/settings/AboutSettings';
@@ -64,6 +65,7 @@ const CustomSignInPage = (props: any) => (
     {...props}
     auto
     providers={[
+      'guest',
       {
         id: 'keycloak',
         title: 'Keycloak',
@@ -134,6 +136,7 @@ const routes = (
     <Route path="/openapi-registry" element={<OpenApiRegistryPage />} />
     <Route path="/argocd-appset/*" element={<ArgocdAppsetPage />} />
     <Route path="/iam-user-audit" element={<IamUserAuditPage />} />
+    <Route path="/s3-log-extract" element={<S3LogExtractPage />} />
     <Route path="/catalog-health" element={<CatalogHealthPage />} />
     <Route path="/catalog-health/generate" element={<GenerateCatalogInfoPage />} />
     <Route path="/mui-to-bui" element={<BuiThemerPage />} />

@@ -24,7 +24,9 @@
     { "path": "plugins/catalog-health" },
     { "path": "plugins/catalog-health-backend" },
     { "path": "plugins/iam-user-audit" },
-    { "path": "plugins/iam-user-audit-backend" }
+    { "path": "plugins/iam-user-audit-backend" },
+    { "path": "plugins/s3-log-extract" },
+    { "path": "plugins/s3-log-extract-backend" }
   ],
   "files": []
 }

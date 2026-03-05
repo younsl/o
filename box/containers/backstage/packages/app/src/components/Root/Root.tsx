@@ -12,6 +12,7 @@ import ExpandMoreIcon from '@material-ui/icons/ExpandMore';
 import ExpandLessIcon from '@material-ui/icons/ExpandLess';
 import FavoriteBorderIcon from '@material-ui/icons/FavoriteBorder';
 import SecurityIcon from '@material-ui/icons/Security';
+import StorageIcon from '@material-ui/icons/Storage';
 import { siArgo, siKubernetes } from 'simple-icons';
 import { createIcon } from '@dweber019/backstage-plugin-simple-icons';
 
@@ -273,6 +274,7 @@ export const Root = ({ children }: PropsWithChildren<{}>) => {
   const catalogHealthEnabled = config.getOptionalBoolean('app.plugins.catalogHealth') ?? true;
   const argocdAppSetEnabled = config.getOptionalBoolean('app.plugins.argocdAppSet') ?? true;
   const iamUserAuditEnabled = config.getOptionalBoolean('app.plugins.iamUserAudit') ?? true;
+  const s3LogExtractEnabled = config.getOptionalBoolean('app.plugins.s3LogExtract') ?? true;
 
   return (
   <SidebarPage>
@@ -301,6 +303,9 @@ export const Root = ({ children }: PropsWithChildren<{}>) => {
           <SidebarItem icon={ArgocdIcon} to="argocd-appset" text="ArgoCD" />
         )}
         {iamUserAuditEnabled && <IamAuditSidebarItem />}
+        {s3LogExtractEnabled && (
+          <SidebarItem icon={StorageIcon} to="s3-log-extract" text="S3 Log Extract" />
+        )}
       </FoldableSection>
 
       <SidebarDivider />

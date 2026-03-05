@@ -80,6 +80,9 @@ backend.add(import('@internal/plugin-argocd-appset-backend'));
 // IAM User Audit plugin for monitoring inactive AWS IAM users
 backend.add(import('@internal/plugin-iam-user-audit-backend'));
 
+// S3 Log Extract plugin for extracting Java logs from S3 with approval workflow
+backend.add(import('@internal/plugin-s3-log-extract-backend'));
+
 // GitLab Coverage plugin for analyzing catalog-info.yaml adoption
 if (!disableGitlab) {
   backend.add(import('@internal/plugin-catalog-health-backend'));
