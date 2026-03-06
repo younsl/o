@@ -346,15 +346,12 @@ async fn run_app(
                     break;
                 }
                 // Drain buffered key events via EventStream (not raw crossterm)
-                loop {
-                    match tokio::time::timeout(Duration::ZERO, reader.next()).await {
-                        Ok(Some(Ok(Event::Key(key)))) => {
-                            if handle_action(terminal, app, cli, &tx, key).await? {
-                                terminal.draw(|f| ui::draw(f, app))?;
-                                return Ok(());
-                            }
-                        }
-                        _ => break,
+                while let Ok(Some(Ok(Event::Key(key)))) =
+                    tokio::time::timeout(Duration::ZERO, reader.next()).await
+                {
+                    if handle_action(terminal, app, cli, &tx, key).await? {
+                        terminal.draw(|f| ui::draw(f, app))?;
+                        return Ok(());
                     }
                 }
                 terminal.draw(|f| ui::draw(f, app))?;
