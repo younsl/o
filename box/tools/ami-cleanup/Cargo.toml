@@ -2,7 +2,7 @@
 name = "ami-cleanup"
 version = "0.1.0"
 edition = "2021"
-rust-version = "1.93"
+rust-version = "1.94"
 description = "TUI tool to find and remove unused AMIs and associated EBS snapshots"
 
 [dependencies]
@@ -19,6 +19,7 @@ futures = "0.3"
 ratatui = "0.28"
 crossterm = { version = "0.28", features = ["event-stream"] }
 dirs = "6"
+const_format = "0.2"
 
 [profile.release]
 lto = true
