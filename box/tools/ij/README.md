@@ -155,4 +155,4 @@ IAM permissions needed for ij to work.
 
 ## License
 
-MIT
+See [LICENSE](../../LICENSE) for more details.
