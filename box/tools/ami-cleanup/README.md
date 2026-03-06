@@ -1,5 +1,6 @@
 # ami-cleanup
 
+[![GitHub release](https://img.shields.io/github/v/release/younsl/o?filter=ami-cleanup*&style=flat-square&color=black)](https://github.com/younsl/o/releases?q=ami-cleanup&expanded=true)
 [![Rust](https://img.shields.io/badge/rust-1.94-black?style=flat-square&logo=rust&logoColor=white)](https://www.rust-lang.org/)
 [![GitHub license](https://img.shields.io/github/license/younsl/o?style=flat-square&color=black)](https://github.com/younsl/o/blob/main/LICENSE)
 
