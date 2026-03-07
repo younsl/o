@@ -217,3 +217,13 @@ excludedRepositoriesList: []
   # - infra-repo
   # - important-repo
   # - another-repo
+
+# -- (list) Extra Kubernetes objects to deploy with the release (supports tpl)
+# @default -- `[]`
+extraObjects: []
+  # - apiVersion: v1
+  #   kind: ConfigMap
+  #   metadata:
+  #     name: extra-config
+  #   data:
+  #     key: value

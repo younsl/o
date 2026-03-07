@@ -3,7 +3,7 @@ name: gss
 description: A Helm chart for deploying the GHES Schedule Scanner
 deprecated: false
 type: application
-version: 0.1.0
+version: 0.2.0
 appVersion: 0.6.1
 
 keywords:
@@ -34,3 +34,6 @@ annotations:
   artifacthub.io/repository: younsl/o
   artifacthub.io/license: Apache-2.0
   artifacthub.io/operator: "false"
+  artifacthub.io/changes: |
+    - kind: added
+      description: "Add extraObjects for deploying extra Kubernetes objects with the release"
