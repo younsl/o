@@ -93,6 +93,23 @@ fn spawn_scan(params: ScanParams, tx: mpsc::UnboundedSender<ScanMsg>) {
     tokio::spawn(async move {
         let base_config = aws::build_config(&profile, None).await;
 
+        // Log scan parameters
+        let consumers = if consumer_profiles.is_empty() {
+            "none".to_string()
+        } else {
+            consumer_profiles.join(", ")
+        };
+        let age_filter = if min_age_days > 0 {
+            format!(" older than {min_age_days}d")
+        } else {
+            String::new()
+        };
+        let param_msg = format!(
+            "Scanning AMIs{age_filter} owned by {profile} with consumers [{consumers}]"
+        );
+        let _ = tx.send(ScanMsg::Log(param_msg.clone()));
+        let _ = tx.send(ScanMsg::Done(param_msg));
+
         // Determine regions
         let regions = if !regions.is_empty() {
             let _ = tx.send(ScanMsg::Log(format!(
@@ -109,7 +126,7 @@ fn spawn_scan(params: ScanParams, tx: mpsc::UnboundedSender<ScanMsg>) {
             let _ = tx.send(ScanMsg::Done(format!("Using profile region: {r}")));
             vec![r]
         } else {
-            let _ = tx.send(ScanMsg::Log("Fetching all enabled regions...".to_string()));
+            let _ = tx.send(ScanMsg::Log("Fetching all enabled regions..".to_string()));
             match aws::get_enabled_regions(&base_config).await {
                 Ok(r) => {
                     let _ = tx.send(ScanMsg::Done(format!("{} regions found", r.len())));
@@ -124,19 +141,25 @@ fn spawn_scan(params: ScanParams, tx: mpsc::UnboundedSender<ScanMsg>) {
 
         let mut scan_results = Vec::new();
 
+        let multi = regions.len() > 1;
+
         for (i, region) in regions.iter().enumerate() {
-            let prefix = format!("[{}/{}] {region}", i + 1, regions.len());
+            let prefix = if multi {
+                format!("[{}/{}] {region}", i + 1, regions.len())
+            } else {
+                region.to_string()
+            };
 
             let config = aws::build_config(&profile, Some(region)).await;
             let ec2 = aws_sdk_ec2::Client::new(&config);
             let asg = aws_sdk_autoscaling::Client::new(&config);
 
             // Step 1: List owned AMIs
-            let _ = tx.send(ScanMsg::Log(format!("{prefix}: Listing owned AMIs...")));
+            let _ = tx.send(ScanMsg::Log(format!("{prefix}: Listing owned AMIs..")));
             let mut owned_amis = match ami::get_owned_amis(&ec2).await {
                 Ok(amis) => {
                     let _ = tx.send(ScanMsg::Done(format!(
-                        "{prefix}: {} owned AMIs",
+                        "{prefix}: Found {} owned AMIs",
                         amis.len()
                     )));
                     amis
@@ -148,11 +171,11 @@ fn spawn_scan(params: ScanParams, tx: mpsc::UnboundedSender<ScanMsg>) {
             };
 
             // Step 2: Collect in-use refs from owner account
-            let _ = tx.send(ScanMsg::Log(format!("{prefix}: Collecting in-use refs...")));
+            let _ = tx.send(ScanMsg::Log(format!("{prefix}: Collecting in-use refs..")));
             let mut used_ami_ids = match ami::get_used_ami_ids(&ec2, &asg).await {
                 Ok(ids) => {
                     let _ = tx.send(ScanMsg::Done(format!(
-                        "{prefix}: {} in-use refs",
+                        "{prefix}: {profile} references {} AMIs",
                         ids.len()
                     )));
                     ids
@@ -166,7 +189,7 @@ fn spawn_scan(params: ScanParams, tx: mpsc::UnboundedSender<ScanMsg>) {
             // Step 2b: Collect in-use refs from consumer accounts
             for cp in &consumer_profiles {
                 let _ = tx.send(ScanMsg::Log(format!(
-                    "{prefix}: Checking consumer [{cp}]..."
+                    "{prefix}: Checking consumer [{cp}].."
                 )));
                 let cp_config = aws::build_config(cp, Some(region)).await;
                 let cp_ec2 = aws_sdk_ec2::Client::new(&cp_config);
@@ -174,7 +197,7 @@ fn spawn_scan(params: ScanParams, tx: mpsc::UnboundedSender<ScanMsg>) {
                 match ami::get_used_ami_ids(&cp_ec2, &cp_asg).await {
                     Ok(ids) => {
                         let _ = tx.send(ScanMsg::Done(format!(
-                            "{prefix}: [{cp}] {} in-use refs",
+                            "{prefix}: {cp} references {} AMIs",
                             ids.len()
                         )));
                         used_ami_ids.extend(ids);
@@ -187,7 +210,7 @@ fn spawn_scan(params: ScanParams, tx: mpsc::UnboundedSender<ScanMsg>) {
 
             // Step 3: Check launch permissions
             let _ = tx.send(ScanMsg::Log(format!(
-                "{prefix}: Checking launch permissions ({} AMIs)...",
+                "{prefix}: Checking launch permissions ({} AMIs)..",
                 owned_amis.len()
             )));
             ami::check_shared_amis(&ec2, &mut owned_amis).await;
@@ -304,10 +327,14 @@ async fn run_app(
                 biased;
 
                 event = reader.next() => {
-                    if let Some(Ok(Event::Key(key))) = event {
-                        if matches!(app.handle_key(key), AppAction::Quit) {
-                            break;
+                    match event {
+                        Some(Ok(Event::Key(key))) => {
+                            if matches!(app.handle_key(key), AppAction::Quit) {
+                                break;
+                            }
                         }
+                        Some(Ok(Event::Resize(_, _))) => {}
+                        _ => {}
                     }
                     terminal.draw(|f| ui::draw(f, app))?;
                 }
@@ -322,6 +349,11 @@ async fn run_app(
                             app.mode = AppMode::Done;
                         }
                         Some(ScanMsg::Finished(results)) => {
+                            let elapsed = app.elapsed_secs();
+                            app.add_scan_log(format!("Scan completed in {elapsed}s"));
+                            app.finish_scan_log(format!("Scan completed in {elapsed}s"));
+                            terminal.draw(|f| ui::draw(f, app))?;
+                            tokio::time::sleep(Duration::from_millis(1500)).await;
                             app.load_scan_results(&results);
                         }
                         None => {
@@ -340,7 +372,9 @@ async fn run_app(
             }
         } else {
             let event = reader.next().await;
-            if let Some(Ok(Event::Key(key))) = event {
+            if let Some(Ok(Event::Resize(_, _))) = event {
+                terminal.draw(|f| ui::draw(f, app))?;
+            } else if let Some(Ok(Event::Key(key))) = event {
                 let action = handle_action(terminal, app, cli, &tx, key).await?;
                 if action {
                     break;

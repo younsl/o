@@ -1,4 +1,7 @@
+use std::collections::HashSet;
+
 use crate::app::{AmiStatus, App, AppMode, SortField, SortOrder};
+use crate::cli;
 use ratatui::{
     layout::{Constraint, Layout, Rect},
     style::{Color, Modifier, Style},
@@ -27,12 +30,15 @@ fn draw_profile_select(frame: &mut Frame, app: &mut App) {
     .split(frame.area());
 
     // Header
-    let title = if is_owner {
+    let subtitle = if is_owner {
         " Select Owner Profile (AMI source) "
     } else {
         " Select Consumer Profiles (AMI usage check) "
     };
-    let block = Block::default().borders(Borders::ALL).title(title);
+    let block = Block::default()
+        .borders(Borders::ALL)
+        .title(build_title())
+        .title_bottom(subtitle);
 
     let desc = if is_owner {
         "Choose the AWS profile that owns the AMIs"
@@ -131,13 +137,18 @@ fn draw_scanning(frame: &mut Frame, app: &App) {
     .split(frame.area());
 
     // Header
-    let block = Block::default()
-        .borders(Borders::ALL)
-        .title(format!(" {} ", app.header));
-    let paragraph = Paragraph::new(Line::from(vec![Span::styled(
-        " Scanning for unused AMIs...",
-        Style::default().fg(Color::Yellow),
-    )]))
+    let elapsed = app.elapsed_secs();
+    let block = Block::default().borders(Borders::ALL).title(build_title());
+    let paragraph = Paragraph::new(Line::from(vec![
+        Span::styled(
+            format!(" {} ", app.header),
+            Style::default().fg(Color::DarkGray),
+        ),
+        Span::styled(
+            format!("Scanning... ({elapsed}s)"),
+            Style::default().fg(Color::Yellow),
+        ),
+    ]))
     .block(block);
     frame.render_widget(paragraph, chunks[0]);
 
@@ -239,9 +250,7 @@ fn draw_header(frame: &mut Frame, app: &App, area: Rect) {
         }
     }
 
-    let block = Block::default()
-        .borders(Borders::ALL)
-        .title(format!(" {} ", app.header));
+    let block = Block::default().borders(Borders::ALL).title(build_title());
 
     let paragraph = Paragraph::new(Line::from(spans)).block(block);
     frame.render_widget(paragraph, area);
@@ -251,8 +260,12 @@ fn draw_table(frame: &mut Frame, app: &mut App, area: Rect) {
     let title = if app.mode == AppMode::Done && app.rows.is_empty() {
         " No unused AMIs found ".to_string()
     } else {
+        let sel = app.selected_count();
+        let total = app.rows.len();
+        let sel_gb = app.selected_size_gb();
+        let total_gb = app.total_size_gb();
         let sort = app.sort_label();
-        format!(" Unused AMIs ({} selected){sort} ", app.selected_count())
+        format!(" Unused AMIs ({sel}/{total} selected, {sel_gb}G/{total_gb}G){sort} ")
     };
 
     let block = Block::default().borders(Borders::ALL).title(title);
@@ -296,6 +309,29 @@ fn draw_table(frame: &mut Frame, app: &mut App, area: Rect) {
         Cell::from("STATUS").style(header_style),
     ]);
 
+    // Compute bottom 25% by last_launched (oldest/never launched)
+    let bottom_quartile: HashSet<usize> = if app.rows.len() >= 4 {
+        let now = chrono::Utc::now();
+        let mut indexed: Vec<(usize, i64)> = app
+            .rows
+            .iter()
+            .enumerate()
+            .map(|(i, row)| {
+                let days_ago = row
+                    .ami
+                    .last_launched
+                    .map(|d| (now - d).num_days())
+                    .unwrap_or(i64::MAX);
+                (i, days_ago)
+            })
+            .collect();
+        indexed.sort_by(|a, b| b.1.cmp(&a.1));
+        let count = ((app.rows.len() as f64) * 0.25).ceil() as usize;
+        indexed.iter().take(count).map(|(i, _)| *i).collect()
+    } else {
+        HashSet::new()
+    };
+
     let rows: Vec<Row> = app
         .rows
         .iter()
@@ -305,27 +341,27 @@ fn draw_table(frame: &mut Frame, app: &mut App, area: Rect) {
         .map(|(i, row)| {
             let check = if row.selected { "x" } else { "_" };
             let age = row
-                .age_days
-                .map(|d| format!("{d}d"))
+                .ami
+                .creation_date
+                .map(|d| format_elapsed(d))
                 .unwrap_or_else(|| "-".to_string());
             let launched = row
                 .ami
                 .last_launched
-                .map(|d| {
-                    let days = (chrono::Utc::now() - d).num_days();
-                    format!("{days}d")
-                })
+                .map(|d| format_elapsed(d))
                 .unwrap_or_else(|| "never".to_string());
             let snaps = row.ami.snapshot_ids.len().to_string();
             let status = match &row.status {
                 AmiStatus::Pending => String::new(),
-                AmiStatus::Deleting => "deleting...".to_string(),
+                AmiStatus::Deleting => "deleting..".to_string(),
                 AmiStatus::Deleted => "deleted".to_string(),
                 AmiStatus::Failed(e) => {
                     let short = if e.len() > 30 { &e[..30] } else { e };
                     format!("FAIL: {short}")
                 }
             };
+
+            let is_bottom_quartile = bottom_quartile.contains(&i);
 
             let style = if i == app.cursor {
                 Style::default()
@@ -337,6 +373,9 @@ fn draw_table(frame: &mut Frame, app: &mut App, area: Rect) {
                     AmiStatus::Deleted => Style::default().fg(Color::Green),
                     AmiStatus::Failed(_) => Style::default().fg(Color::Red),
                     AmiStatus::Deleting => Style::default().fg(Color::Yellow),
+                    AmiStatus::Pending if is_bottom_quartile => {
+                        Style::default().fg(Color::Rgb(255, 140, 0))
+                    }
                     AmiStatus::Pending => Style::default(),
                 }
             };
@@ -387,7 +426,7 @@ fn draw_table(frame: &mut Frame, app: &mut App, area: Rect) {
 
 fn draw_help(frame: &mut Frame, app: &App, area: Rect) {
     let chunks =
-        Layout::horizontal([Constraint::Percentage(50), Constraint::Percentage(50)]).split(area);
+        Layout::horizontal([Constraint::Percentage(65), Constraint::Percentage(35)]).split(area);
 
     let keys = match app.mode {
         AppMode::SelectOwner | AppMode::SelectConsumers => "",
@@ -400,23 +439,13 @@ fn draw_help(frame: &mut Frame, app: &App, area: Rect) {
     frame.render_widget(help, chunks[0]);
 
     if app.mode == AppMode::Browse || app.mode == AppMode::Confirm {
-        let sel = app.selected_count();
-        let total = app.rows.len();
-        let sel_gb = app.selected_size_gb();
-        let total_gb = app.total_size_gb();
-        let monthly = sel_gb as f64 * 0.05;
+        let monthly = app.selected_size_gb() as f64 * 0.05;
         let yearly = monthly * 12.0;
 
-        let summary = Line::from(vec![
-            Span::styled(
-                format!("Selected: {sel}/{total} AMIs  {sel_gb}G/{total_gb}G"),
-                Style::default().fg(Color::White),
-            ),
-            Span::styled(
-                format!("  ~${monthly:.2}/mo  ${yearly:.0}/yr "),
-                Style::default().fg(Color::Green),
-            ),
-        ]);
+        let summary = Line::from(vec![Span::styled(
+            format!("~${monthly:.2}/mo ${yearly:.0}/yr "),
+            Style::default().fg(Color::Green),
+        )]);
         let paragraph = Paragraph::new(summary).alignment(ratatui::layout::Alignment::Right);
         frame.render_widget(paragraph, chunks[1]);
     }
@@ -462,6 +491,20 @@ fn centered_rect(width: u16, height: u16, area: Rect) -> Rect {
     let x = area.x + area.width.saturating_sub(width) / 2;
     let y = area.y + area.height.saturating_sub(height) / 2;
     Rect::new(x, y, width.min(area.width), height.min(area.height))
+}
+
+fn build_title() -> String {
+    format!(" {} v{} ({}) ", cli::APP_NAME, cli::VERSION, cli::COMMIT)
+}
+
+fn format_elapsed(dt: chrono::DateTime<chrono::Utc>) -> String {
+    let dur = chrono::Utc::now() - dt;
+    let days = dur.num_days();
+    if days >= 1 {
+        format!("{days}d")
+    } else {
+        format!("{}h", dur.num_hours())
+    }
 }
 
 fn truncate(s: &str, max: usize) -> String {

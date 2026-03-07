@@ -1,3 +1,5 @@
+use std::time::Instant;
+
 use crate::ami::{OwnedAmi, ScanResult};
 use chrono::Utc;
 use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
@@ -72,6 +74,8 @@ pub struct App {
     pub profile_selector: ProfileSelector,
     pub sort_field: SortField,
     pub sort_order: SortOrder,
+    pub scan_started_at: Option<Instant>,
+    pub scan_elapsed_secs: Option<u64>,
 }
 
 #[derive(Debug, Clone)]
@@ -126,6 +130,8 @@ impl App {
             profile_selector: ProfileSelector::new(profiles),
             sort_field: SortField::Default,
             sort_order: SortOrder::Desc,
+            scan_started_at: None,
+            scan_elapsed_secs: None,
         }
     }
 
@@ -142,6 +148,8 @@ impl App {
             profile_selector: ProfileSelector::new(Vec::new()),
             sort_field: SortField::Default,
             sort_order: SortOrder::Desc,
+            scan_started_at: Some(Instant::now()),
+            scan_elapsed_secs: None,
         }
     }
 
@@ -199,6 +207,8 @@ impl App {
             total_snapshots: self.rows.iter().map(|r| r.ami.snapshot_ids.len()).sum(),
         };
 
+        self.scan_elapsed_secs = self.scan_started_at.map(|t| t.elapsed().as_secs());
+
         self.mode = if self.rows.is_empty() {
             AppMode::Done
         } else {
@@ -242,6 +252,13 @@ impl App {
             .iter()
             .filter(|r| matches!(r.status, AmiStatus::Failed(_)))
             .count()
+    }
+
+    /// Returns elapsed seconds: live during scan, final value after completion.
+    pub fn elapsed_secs(&self) -> u64 {
+        self.scan_elapsed_secs
+            .or_else(|| self.scan_started_at.map(|t| t.elapsed().as_secs()))
+            .unwrap_or(0)
     }
 
     pub fn handle_key(&mut self, key: KeyEvent) -> AppAction {
@@ -326,6 +343,7 @@ impl App {
                     .map(|(name, _)| name.clone())
                     .collect();
                 self.mode = AppMode::Scanning;
+                self.scan_started_at = Some(Instant::now());
                 AppAction::StartScan
             }
             _ => AppAction::None,

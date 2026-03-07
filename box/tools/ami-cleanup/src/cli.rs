@@ -1,8 +1,9 @@
 use clap::Parser;
 
-const VERSION: &str = env!("CARGO_PKG_VERSION");
-const COMMIT: &str = env!("BUILD_COMMIT");
-const BUILD_DATE: &str = env!("BUILD_DATE");
+pub const VERSION: &str = env!("CARGO_PKG_VERSION");
+pub const COMMIT: &str = env!("BUILD_COMMIT");
+pub const BUILD_DATE: &str = env!("BUILD_DATE");
+pub const APP_NAME: &str = env!("CARGO_PKG_NAME");
 
 /// Find and remove unused AMIs and associated EBS snapshots (TUI).
 #[derive(Parser, Debug)]
