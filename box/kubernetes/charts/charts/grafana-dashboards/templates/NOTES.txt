@@ -1,0 +1,13 @@
+Grafana dashboards have been deployed as ConfigMaps.
+
+Ensure your Grafana has sidecar enabled with:
+  sidecar.dashboards.enabled: true
+  sidecar.dashboards.label: {{ .Values.sidecar.label }}
+  sidecar.dashboards.labelValue: {{ .Values.sidecar.labelValue | quote }}
+
+Deployed dashboards:
+{{- range $name, $dashboard := .Values.dashboards }}
+{{- if $dashboard.enabled }}
+  - {{ $name }}
+{{- end }}
+{{- end }}

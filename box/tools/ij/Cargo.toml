@@ -1,0 +1,51 @@
+[package]
+name = "ij"
+version = "0.2.0"
+edition = "2024"
+rust-version = "1.93"
+authors = ["Younsung Lee <cysl@kakao.com>"]
+license = "MIT"
+description = "Interactive EC2 Session Manager connection tool"
+repository = "https://github.com/younsl/o"
+readme = "README.md"
+
+[dependencies]
+# AWS SDK
+aws-config = "1.5"
+aws-sdk-ec2 = "1.87"
+aws-types = "1.3"
+
+# CLI and interaction
+clap = { version = "4.5", features = ["derive", "env"] }
+ratatui = "0.29"
+nucleo = "0.5"
+crossterm = "0.28"
+console = "0.15"
+
+# Terminal UI
+colored = "3.1"
+tabled = "0.20"
+
+# Async runtime
+tokio = { version = "1.41", features = ["full"] }
+
+# Error handling
+anyhow = "1.0"
+
+# Unix process control (for proper Ctrl+C handling in SSM sessions)
+[target.'cfg(unix)'.dependencies]
+nix = { version = "0.29", features = ["process", "poll", "signal", "term"] }
+libc = "0.2"
+
+# Logging
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+
+# Build info
+const_format = "0.2"
+
+[profile.release]
+opt-level = 3
+lto = true
+codegen-units = 1
+strip = true

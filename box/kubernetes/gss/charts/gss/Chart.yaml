@@ -1,0 +1,36 @@
+apiVersion: v2
+name: gss
+description: A Helm chart for deploying the GHES Schedule Scanner
+deprecated: false
+type: application
+version: 0.1.0
+appVersion: 0.6.1
+
+keywords:
+  - github
+  - enterprise
+  - scanner
+  - schedule
+  - scheduled-workflow
+  - cronjob
+home: https://github.com/younsl/o
+sources:
+  - https://github.com/younsl/o/tree/main/box/kubernetes/gss
+
+maintainers:
+  - name: younsl
+    email: cysl@kakao.com
+    url: https://github.com/younsl
+  - name: ddukbg
+    email: wowrebong@gmail.com
+    url: https://github.com/ddukbg
+
+dependencies: []
+
+annotations:
+  artifacthub.io/package-type: helm
+  artifacthub.io/alternate-name: gss
+  artifacthub.io/display-name: GHES Schedule Scanner
+  artifacthub.io/repository: younsl/o
+  artifacthub.io/license: Apache-2.0
+  artifacthub.io/operator: "false"

@@ -1,0 +1,16 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "kuo.fullname" . }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "kuo.labels" . | nindent 4 }}
+spec:
+  type: ClusterIP
+  ports:
+    - port: 8081
+      targetPort: metrics
+      protocol: TCP
+      name: metrics
+  selector:
+    {{- include "kuo.selectorLabels" . | nindent 4 }}

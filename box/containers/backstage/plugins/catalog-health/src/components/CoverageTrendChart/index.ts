@@ -1,0 +1,1 @@
+export { CoverageTrendChart } from './CoverageTrendChart';

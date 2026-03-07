@@ -1,0 +1,18 @@
+{{- if eq .Values.mode "server" -}}
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "trivy-collector.fullname" . }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "trivy-collector.labels" . | nindent 4 }}
+spec:
+  type: {{ .Values.service.type }}
+  ports:
+    - port: {{ .Values.service.port }}
+      targetPort: http
+      protocol: TCP
+      name: http
+  selector:
+    {{- include "trivy-collector.selectorLabels" . | nindent 4 }}
+{{- end }}

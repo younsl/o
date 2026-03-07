@@ -1,0 +1,230 @@
+.container {
+    position: relative;
+    background-color: var(--bg-secondary);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    overflow: hidden;
+}
+
+.toolbar {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 12px 16px;
+    border-bottom: 1px solid var(--border);
+    background-color: var(--bg-tertiary);
+}
+
+.toolbarLeft {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+}
+
+.statItem {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 2px;
+    min-width: 50px;
+}
+
+.statLabel {
+    font-size: 10px;
+    color: var(--text-muted);
+    text-transform: uppercase;
+    letter-spacing: 0.3px;
+}
+
+.statValue {
+    font-size: 14px;
+    font-weight: 600;
+    font-variant-numeric: tabular-nums;
+    color: var(--text-primary);
+}
+
+.filteredCount {
+    color: var(--text-primary);
+    font-weight: 600;
+}
+
+.totalCount {
+    color: var(--text-muted);
+    font-weight: 500;
+    font-size: 11px;
+}
+
+.severityTotals {
+    display: flex;
+    gap: 12px;
+    padding-left: 16px;
+    border-left: 1px solid var(--border);
+}
+
+.severityTotals:global(.hidden) {
+    display: none;
+}
+
+.severityTotal {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 2px;
+    min-width: 50px;
+}
+
+.severityLabel {
+    font-size: 10px;
+    color: var(--text-muted);
+    text-transform: uppercase;
+    letter-spacing: 0.3px;
+}
+
+.severityCount {
+    font-size: 14px;
+    font-weight: 600;
+    font-variant-numeric: tabular-nums;
+}
+
+.critical .severityCount { color: var(--critical); }
+.high .severityCount { color: var(--high); }
+.medium .severityCount { color: var(--medium); }
+.low .severityCount { color: var(--low); }
+.unknown .severityCount { color: var(--unknown); }
+
+.severityCount .filteredCount {
+    font-weight: 600;
+}
+
+.severityCount .totalCount {
+    font-weight: 500;
+    font-size: 11px;
+    color: var(--text-muted);
+}
+
+/* Table */
+.table {
+    width: 100%;
+    border-collapse: collapse;
+}
+
+.table th,
+.table td {
+    padding: 12px 16px;
+    text-align: left;
+    border-bottom: 1px solid var(--border);
+}
+
+.table th {
+    background-color: var(--bg-tertiary);
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    color: var(--text-secondary);
+    font-weight: 600;
+    position: relative;
+    white-space: nowrap;
+}
+
+.table tbody tr {
+    cursor: pointer;
+    transition: background-color 0.1s ease;
+}
+
+.table tbody tr:hover {
+    background-color: var(--bg-hover);
+}
+
+.table tbody tr:last-child td {
+    border-bottom: none;
+}
+
+.table .severityCol {
+    text-align: center;
+    width: 32px;
+    padding: 8px 4px;
+}
+
+.table th .thContent {
+    margin-right: 6px;
+}
+
+.table th .sortIcon {
+    margin-right: 0;
+    font-size: 10px;
+    color: var(--text-muted);
+    vertical-align: middle;
+    transition: color 0.15s ease;
+}
+
+.table th.sortable:hover .sortIcon {
+    color: var(--text-secondary);
+}
+
+.table th.sortable {
+    cursor: pointer;
+    user-select: none;
+    transition: background-color 0.15s ease;
+}
+
+.table th.sortable:hover {
+    background-color: var(--bg-hover);
+}
+
+.table th .sortIndicator {
+    font-size: 10px;
+    margin-left: 2px;
+}
+
+/* Filter Button */
+.filterBtn {
+    background: transparent;
+    border: none;
+    color: var(--text-muted);
+    font-size: 10px;
+    cursor: pointer;
+    padding: 2px 4px;
+    margin-left: 1px;
+    border-radius: 3px;
+    transition: all 0.15s ease;
+    vertical-align: middle;
+    opacity: 0.6;
+}
+
+.filterBtn:hover {
+    background-color: var(--bg-hover);
+    color: var(--text-primary);
+    opacity: 1;
+}
+
+.filterBtnActive {
+    composes: filterBtn;
+    color: var(--accent);
+    background-color: rgba(59, 130, 246, 0.15);
+    opacity: 1;
+}
+
+/* Image Cell */
+.imageCell {
+    position: relative;
+}
+
+/* Notes Indicator */
+.notesIndicator {
+    margin-left: 8px;
+    color: var(--accent);
+    font-size: 11px;
+    opacity: 0.8;
+}
+
+/* Responsive */
+@media (max-width: 768px) {
+    .table {
+        font-size: 12px;
+    }
+
+    .table th,
+    .table td {
+        padding: 10px 12px;
+    }
+}

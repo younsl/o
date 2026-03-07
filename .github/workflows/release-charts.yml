@@ -1,0 +1,174 @@
+name: Release Charts
+run-name: "📦 Release changed charts to ghcr.io"
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - 'box/kubernetes/**/Chart.yaml'
+  workflow_dispatch:
+    inputs:
+      chart:
+        description: 'Specific chart to release (leave empty for all)'
+        required: false
+        type: string
+
+env:
+  REGISTRY: ghcr.io
+  REGISTRY_PATH: ghcr.io/younsl/charts
+
+jobs:
+  detect-changes:
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+      packages: read
+    outputs:
+      matrix: ${{ steps.filter.outputs.matrix }}
+      has_changes: ${{ steps.filter.outputs.has_changes }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      - name: Detect changed charts
+        id: detect
+        env:
+          INPUT_CHART: ${{ inputs.chart }}
+        run: |
+          CANDIDATES="[]"
+
+          add_chart() {
+            local chart_path="$1"
+            local name version app_version
+            name=$(basename "${chart_path}")
+            version=$(grep '^version:' "${chart_path}/Chart.yaml" | awk '{print $2}')
+            app_version=$(grep '^appVersion:' "${chart_path}/Chart.yaml" | awk '{print $2}' | tr -d '"')
+            CANDIDATES=$(echo "${CANDIDATES}" | jq -c \
+              --arg n "${name}" --arg v "${version}" --arg a "${app_version:-N/A}" --arg p "${chart_path}" \
+              '. + [{chart_name: $n, version: $v, app_version: $a, chart_path: $p}]')
+          }
+
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            if [ -n "${INPUT_CHART}" ]; then
+              CHART_PATH=$(find box/kubernetes -name "Chart.yaml" -path "*/${INPUT_CHART}/Chart.yaml" -not -path "*/.git/*" -exec dirname {} \; | head -1)
+              if [ -z "${CHART_PATH}" ]; then
+                echo "Chart ${INPUT_CHART} not found"
+                exit 1
+              fi
+              add_chart "${CHART_PATH}"
+            else
+              while IFS= read -r chart_yaml; do
+                add_chart "$(dirname "${chart_yaml}")"
+              done < <(find box/kubernetes -name "Chart.yaml" -not -path "*/.git/*" | sort)
+            fi
+          else
+            CHANGED=$(git diff --name-only HEAD~1...HEAD | grep '^box/kubernetes/.*/Chart\.yaml$' || true)
+            while IFS= read -r file; do
+              [ -z "${file}" ] && continue
+              add_chart "$(dirname "${file}")"
+            done <<< "${CHANGED}"
+          fi
+
+          echo "candidates=$(echo "${CANDIDATES}" | jq -c)" >> $GITHUB_OUTPUT
+
+      - name: Filter already released versions
+        id: filter
+        run: |
+          CANDIDATES='${{ steps.detect.outputs.candidates }}'
+          INCLUDES="[]"
+          ENCODED_TOKEN=$(echo -n "${{ secrets.GITHUB_TOKEN }}" | base64)
+
+          for row in $(echo "${CANDIDATES}" | jq -r '.[] | @base64'); do
+            NAME=$(echo "${row}" | base64 -d | jq -r '.chart_name')
+            VERSION=$(echo "${row}" | base64 -d | jq -r '.version')
+            PATH_VAL=$(echo "${row}" | base64 -d | jq -r '.chart_path')
+
+            APP_VERSION=$(echo "${row}" | base64 -d | jq -r '.app_version')
+
+            TAGS=$(curl -s -H "Authorization: Bearer ${ENCODED_TOKEN}" \
+              "https://${REGISTRY}/v2/younsl/charts/${NAME}/tags/list")
+            if echo "${TAGS}" | jq -e --arg TAG "${VERSION}" '.tags // [] | index($TAG)' > /dev/null 2>&1; then
+              echo "Skip ${NAME}:${VERSION} (already exists)"
+            else
+              echo "Release ${NAME}:${VERSION}"
+              INCLUDES=$(echo "${INCLUDES}" | jq -c \
+                --arg n "${NAME}" --arg v "${VERSION}" --arg a "${APP_VERSION}" --arg p "${PATH_VAL}" \
+                '. + [{chart_name: $n, version: $v, app_version: $a, chart_path: $p}]')
+            fi
+          done
+
+          COUNT=$(echo "${INCLUDES}" | jq 'length')
+          if [ "${COUNT}" -eq 0 ]; then
+            echo "has_changes=false" >> $GITHUB_OUTPUT
+            echo "matrix={}" >> $GITHUB_OUTPUT
+          else
+            echo "has_changes=true" >> $GITHUB_OUTPUT
+            echo "matrix=$(jq -nc --argjson i "${INCLUDES}" '{include: $i}')" >> $GITHUB_OUTPUT
+            echo "Releasing ${COUNT} chart(s):"
+            echo "${INCLUDES}" | jq -r '.[] | "  - \(.chart_name):\(.version) (\(.chart_path))"'
+          fi
+
+  release:
+    needs: detect-changes
+    if: needs.detect-changes.outputs.has_changes == 'true'
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+      packages: write
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJson(needs.detect-changes.outputs.matrix) }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Set up Helm
+        uses: azure/setup-helm@v4
+        with:
+          version: v3.19.0
+
+      - name: Lint chart
+        env:
+          CHART_PATH: ${{ matrix.chart_path }}
+        run: |
+          helm lint "${CHART_PATH}"
+
+      - name: Login to GitHub Container Registry
+        run: |
+          echo "${{ secrets.GITHUB_TOKEN }}" | helm registry login "${REGISTRY}" --username "${{ github.actor }}" --password-stdin
+
+      - name: Package and push chart
+        env:
+          CHART_NAME: ${{ matrix.chart_name }}
+          CHART_VERSION: ${{ matrix.version }}
+          CHART_PATH: ${{ matrix.chart_path }}
+        run: |
+          helm package "${CHART_PATH}" --version "${CHART_VERSION}"
+          helm push "${CHART_NAME}-${CHART_VERSION}.tgz" "oci://${REGISTRY_PATH}"
+
+      - name: Summary
+        if: always()
+        env:
+          CHART_NAME: ${{ matrix.chart_name }}
+          CHART_VERSION: ${{ matrix.version }}
+          APP_VERSION: ${{ matrix.app_version }}
+          CHART_PATH: ${{ matrix.chart_path }}
+        run: |
+          OCI_REF="oci://${REGISTRY_PATH}/${CHART_NAME}"
+          {
+            echo "## ${CHART_NAME}"
+            echo ""
+            echo "| Key | Value |"
+            echo "|-----|-------|"
+            echo "| Version | \`${CHART_VERSION}\` |"
+            echo "| App Version | \`${APP_VERSION}\` |"
+            echo "| OCI | \`${OCI_REF}\` |"
+            echo "| Path | \`${CHART_PATH}\` |"
+            echo ""
+            echo "\`\`\`bash"
+            echo "helm install ${CHART_NAME} ${OCI_REF} --version ${CHART_VERSION}"
+            echo "\`\`\`"
+          } >> $GITHUB_STEP_SUMMARY
