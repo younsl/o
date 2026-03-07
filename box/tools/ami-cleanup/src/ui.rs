@@ -343,12 +343,12 @@ fn draw_table(frame: &mut Frame, app: &mut App, area: Rect) {
             let age = row
                 .ami
                 .creation_date
-                .map(|d| format_elapsed(d))
+                .map(format_elapsed)
                 .unwrap_or_else(|| "-".to_string());
             let launched = row
                 .ami
                 .last_launched
-                .map(|d| format_elapsed(d))
+                .map(format_elapsed)
                 .unwrap_or_else(|| "never".to_string());
             let snaps = row.ami.snapshot_ids.len().to_string();
             let status = match &row.status {
