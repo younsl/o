@@ -104,9 +104,8 @@ fn spawn_scan(params: ScanParams, tx: mpsc::UnboundedSender<ScanMsg>) {
         } else {
             String::new()
         };
-        let param_msg = format!(
-            "Scanning AMIs{age_filter} owned by {profile} with consumers [{consumers}]"
-        );
+        let param_msg =
+            format!("Scanning AMIs{age_filter} owned by {profile} with consumers [{consumers}]");
         let _ = tx.send(ScanMsg::Log(param_msg.clone()));
         let _ = tx.send(ScanMsg::Done(param_msg));
 
