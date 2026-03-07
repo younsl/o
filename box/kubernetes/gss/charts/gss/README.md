@@ -1,6 +1,6 @@
 # gss
 
-![Version: 0.2.0](https://img.shields.io/badge/Version-0.2.0-informational?style=flat-square) ![Type: application](https://img.shields.io/badge/Type-application-informational?style=flat-square) ![AppVersion: 0.6.1](https://img.shields.io/badge/AppVersion-0.6.1-informational?style=flat-square)
+![Version: 0.1.0](https://img.shields.io/badge/Version-0.1.0-informational?style=flat-square) ![Type: application](https://img.shields.io/badge/Type-application-informational?style=flat-square) ![AppVersion: 0.6.1](https://img.shields.io/badge/AppVersion-0.6.1-informational?style=flat-square)
 
 A Helm chart for deploying the GHES Schedule Scanner
 
@@ -39,7 +39,7 @@ helm install gss oci://ghcr.io/younsl/charts/gss -f values.yaml
 Install a specific version:
 
 ```console
-helm install gss oci://ghcr.io/younsl/charts/gss --version 0.2.0
+helm install gss oci://ghcr.io/younsl/charts/gss --version 0.1.0
 ```
 
 ### Install from local chart
@@ -47,7 +47,7 @@ helm install gss oci://ghcr.io/younsl/charts/gss --version 0.2.0
 Download gss chart and install from local directory:
 
 ```console
-helm pull oci://ghcr.io/younsl/charts/gss --untar --version 0.2.0
+helm pull oci://ghcr.io/younsl/charts/gss --untar --version 0.1.0
 helm install gss ./gss
 ```
 
