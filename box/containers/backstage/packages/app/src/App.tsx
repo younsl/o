@@ -65,6 +65,7 @@ const CustomSignInPage = (props: any) => (
     {...props}
     auto
     providers={[
+      'guest',
       {
         id: 'keycloak',
         title: 'Keycloak',

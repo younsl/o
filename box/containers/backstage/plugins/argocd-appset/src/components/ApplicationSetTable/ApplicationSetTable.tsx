@@ -50,6 +50,7 @@ export const ApplicationSetTable = () => {
   const [namespaceFilter, setNamespaceFilter] = useState<string>('all');
   const [repoFilter, setRepoFilter] = useState<string>('all');
   const [revisionFilter, setRevisionFilter] = useState<string>('all');
+  const [overviewFilter, setOverviewFilter] = useState<'all' | 'notHead' | 'muted'>('all');
 
   const [mutingKey, setMutingKey] = useState<string | null>(null);
   const [localAppSets, setLocalAppSets] = useState<ApplicationSetResponse[] | undefined>(undefined);
@@ -110,10 +111,14 @@ export const ApplicationSetTable = () => {
           repoFilter === 'all' || a.repoName === repoFilter;
         const matchesRevision =
           revisionFilter === 'all' || a.targetRevisions.includes(revisionFilter);
-        return matchesSearch && matchesNamespace && matchesRepo && matchesRevision;
+        const matchesOverview =
+          overviewFilter === 'all' ||
+          (overviewFilter === 'notHead' && !a.isHeadRevision) ||
+          (overviewFilter === 'muted' && a.muted);
+        return matchesSearch && matchesNamespace && matchesRepo && matchesRevision && matchesOverview;
       })
       .sort((a, b) => Number(a.isHeadRevision) - Number(b.isHeadRevision));
-  }, [appSets, searchQuery, namespaceFilter, repoFilter, revisionFilter]);
+  }, [appSets, searchQuery, namespaceFilter, repoFilter, revisionFilter, overviewFilter]);
 
   const formatDate = (dateString: string) => {
     if (!dateString) return '-';
@@ -302,13 +307,25 @@ export const ApplicationSetTable = () => {
             <Text weight="bold" className="appset-summary-value">{totalApps}</Text>
             <Text variant="body-x-small" color="secondary">Total Apps</Text>
           </div>
-          <div className="appset-summary-card">
+          <div
+            className={`appset-summary-card appset-summary-clickable ${overviewFilter === 'notHead' ? 'appset-summary-active' : ''}`}
+            onClick={() => setOverviewFilter(prev => prev === 'notHead' ? 'all' : 'notHead')}
+            role="button"
+            tabIndex={0}
+            onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') setOverviewFilter(prev => prev === 'notHead' ? 'all' : 'notHead'); }}
+          >
             <Text weight="bold" color={nonHeadCount > 0 ? 'warning' : undefined} className="appset-summary-value">
               {nonHeadCount}
             </Text>
             <Text variant="body-x-small" color="secondary">Not HEAD</Text>
           </div>
-          <div className="appset-summary-card">
+          <div
+            className={`appset-summary-card appset-summary-clickable ${overviewFilter === 'muted' ? 'appset-summary-active' : ''}`}
+            onClick={() => setOverviewFilter(prev => prev === 'muted' ? 'all' : 'muted')}
+            role="button"
+            tabIndex={0}
+            onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') setOverviewFilter(prev => prev === 'muted' ? 'all' : 'muted'); }}
+          >
             <Text weight="bold" className="appset-summary-value">{mutedCount}</Text>
             <Text variant="body-x-small" color="secondary">Muted</Text>
             <TooltipTrigger delay={200}>

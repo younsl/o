@@ -251,6 +251,23 @@
   background-color: #9ca3af;
 }
 
+/* Clickable summary cards */
+.appset-summary-clickable {
+  cursor: pointer;
+  transition: border-color 0.15s, background-color 0.15s;
+  user-select: none;
+}
+
+.appset-summary-clickable:hover {
+  border-color: var(--bui-border-2);
+  background-color: var(--bui-bg-neutral-3);
+}
+
+.appset-summary-active {
+  border-color: var(--bui-color-border-primary, #3b82f6);
+  background-color: rgba(59, 130, 246, 0.08);
+}
+
 /* Empty state */
 .appset-empty-state {
   text-align: center;
