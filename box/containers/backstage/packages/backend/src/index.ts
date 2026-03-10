@@ -80,6 +80,9 @@ backend.add(import('@internal/plugin-argocd-appset-backend'));
 // IAM User Audit plugin for monitoring inactive AWS IAM users
 backend.add(import('@internal/plugin-iam-user-audit-backend'));
 
+// Kafka Topic plugin for self-service Kafka topic management
+backend.add(import('@internal/plugin-kafka-topic-backend'));
+
 // S3 Log Extract plugin for extracting Java logs from S3 with approval workflow
 backend.add(import('@internal/plugin-s3-log-extract-backend'));
 

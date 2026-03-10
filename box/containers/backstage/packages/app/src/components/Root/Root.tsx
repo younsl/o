@@ -14,9 +14,10 @@ import FavoriteBorderIcon from '@material-ui/icons/FavoriteBorder';
 import SecurityIcon from '@material-ui/icons/Security';
 import StorageIcon from '@material-ui/icons/Storage';
 import FindInPageIcon from '@material-ui/icons/FindInPage';
-import { siArgo, siKubernetes } from 'simple-icons';
+import { siApachekafka, siArgo, siKubernetes } from 'simple-icons';
 import { createIcon } from '@dweber019/backstage-plugin-simple-icons';
 
+const ApacheKafkaIcon = createIcon(siApachekafka, false);
 const ArgocdIcon = createIcon(siArgo, false);
 const KubernetesIcon = createIcon(siKubernetes, false);
 import {
@@ -311,6 +312,7 @@ export const Root = ({ children }: PropsWithChildren<{}>) => {
   const catalogHealthEnabled = config.getOptionalBoolean('app.plugins.catalogHealth') ?? true;
   const argocdAppSetEnabled = config.getOptionalBoolean('app.plugins.argocdAppSet') ?? true;
   const iamUserAuditEnabled = config.getOptionalBoolean('app.plugins.iamUserAudit') ?? true;
+  const kafkaTopicEnabled = config.getOptionalBoolean('app.plugins.kafkaTopic') ?? true;
   const s3LogExtractEnabled = config.getOptionalBoolean('app.plugins.s3LogExtract') ?? true;
 
   return (
@@ -338,6 +340,9 @@ export const Root = ({ children }: PropsWithChildren<{}>) => {
         )}
         {argocdAppSetEnabled && (
           <SidebarItem icon={ArgocdIcon} to="argocd-appset" text="ArgoCD" />
+        )}
+        {kafkaTopicEnabled && (
+          <SidebarItem icon={ApacheKafkaIcon} to="kafka-topic" text="Kafka Topic" />
         )}
         {iamUserAuditEnabled && <IamAuditSidebarItem />}
         {s3LogExtractEnabled && <S3LogExtractSidebarItem />}

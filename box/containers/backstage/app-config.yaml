@@ -7,6 +7,7 @@ app:
     catalogHealth: true
     argocdAppSet: true
     iamUserAudit: true
+    kafkaTopic: true
     s3LogExtract: true
   platforms:
     - name: Grafana
@@ -194,9 +195,25 @@ catalogHealth:
 
 permission:
   admins:
-    - user:development/guest
+    # - user:development/guest
     - user:default/admin1
     - user:default/admin2
+
+kafka:
+  clusters:
+    dev:
+      brokers: []
+      tls: true
+      requiresApproval: true 
+      topicConfig:
+        nonprd:
+          numPartitions: 2
+          replicationFactor: 2
+          configEntries:
+            - name: min.insync.replicas
+              value: '1'
+            - name: retention.ms
+              value: '86400000'
 
 proxy:
   endpoints: {}

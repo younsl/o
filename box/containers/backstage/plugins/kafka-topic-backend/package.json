@@ -1,0 +1,25 @@
+{
+  "name": "@internal/plugin-kafka-topic-backend",
+  "version": "1.0.0",
+  "main": "src/index.ts",
+  "types": "src/index.ts",
+  "private": true,
+  "backstage": {
+    "role": "backend-plugin"
+  },
+  "scripts": {
+    "start": "backstage-cli package start",
+    "build": "backstage-cli package build",
+    "clean": "backstage-cli package clean"
+  },
+  "dependencies": {
+    "@backstage/backend-plugin-api": "^1.7.0",
+    "@backstage/config": "^1.3.6",
+    "@backstage/errors": "^1.2.7",
+    "express": "^4.21.2",
+    "kafkajs": "^2.2.4"
+  },
+  "devDependencies": {
+    "@backstage/cli": "^0.35.4"
+  }
+}

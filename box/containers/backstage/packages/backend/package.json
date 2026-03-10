@@ -37,6 +37,7 @@
     "@internal/plugin-argocd-appset-backend": "workspace:*",
     "@internal/plugin-catalog-health-backend": "workspace:*",
     "@internal/plugin-iam-user-audit-backend": "workspace:*",
+    "@internal/plugin-kafka-topic-backend": "workspace:*",
     "@internal/plugin-openapi-registry-backend": "workspace:*",
     "@internal/plugin-s3-log-extract-backend": "workspace:*",
     "better-sqlite3": "^12.6.2",
