@@ -1,7 +1,7 @@
 # Backstage with GitLab Discovery
 
 [![GHCR](https://img.shields.io/badge/GHCR-ghcr.io%2Fyounsl%2Fbackstage-black?style=flat-square&logo=github&logoColor=white)](https://ghcr.io/younsl/backstage)
-[![Backstage](https://img.shields.io/badge/Backstage-1.48.3-black?style=flat-square&logo=backstage&logoColor=white)](https://backstage.io)
+[![Backstage](https://img.shields.io/badge/Backstage-1.48.4-black?style=flat-square&logo=backstage&logoColor=white)](https://backstage.io)
 
 Custom Backstage image with GitLab Auto Discovery, Keycloak OIDC, and API Docs plugins.
 
@@ -20,6 +20,7 @@ Custom Backstage image with GitLab Auto Discovery, Keycloak OIDC, and API Docs p
 | OpenAPI Registry | `openapi-registry` | Custom | Register external OpenAPI specs by URL with search and filters |
 | ArgoCD AppSets | `argocd-appset` | Custom | View/manage ArgoCD ApplicationSets with mute/unmute, Slack alerts, and audit log |
 | IAM User Audit | `iam-user-audit` | Custom | AWS IAM inactive user monitoring with password reset, warning DM, and Slack notifications |
+| Kafka Topic | `kafka-topic` | Custom | Self-service Kafka topic creation with in-app approval workflow |
 | Catalog Health | `catalog-health` | Custom | Track `catalog-info.yaml` coverage across GitLab projects with trend charts |
 | TechDocs | [`@backstage/plugin-techdocs`](https://www.npmjs.com/package/@backstage/plugin-techdocs) | Native | Markdown-based technical documentation |
 | Scaffolder | [`@backstage/plugin-scaffolder`](https://www.npmjs.com/package/@backstage/plugin-scaffolder) | Native | Template-based project creation |
@@ -57,8 +58,8 @@ make dev    # Run dev server (localhost:3000)
 ### Release
 
 ```bash
-git tag backstage/1.48.3-1
-git push origin backstage/1.48.3-1
+git tag backstage/1.48.4-2
+git push origin backstage/1.48.4-2
 ```
 
 ## Environment Variables
@@ -87,6 +88,7 @@ git push origin backstage/1.48.3-1
 - [GitLab CI/CD](docs/gitlab-cicd.md) - View pipelines, MRs, releases on Entity page
 - [GitLab API Discovery](docs/gitlab-api-discovery.md) - Auto-register APIs from GitLab
 - [IAM User Audit](docs/iam-user-audit.md) - AWS IAM inactive user monitoring and password reset workflow
+- [Kafka Topic](docs/kafka-topic.md) - Self-service Kafka topic creation with approval workflow
 - [Helm Chart](docs/helm-chart.md) - Kubernetes deployment with Helm
 
 ## Architecture
@@ -103,6 +105,7 @@ git push origin backstage/1.48.3-1
 │  ├─ OpenAPI Registry        │  ├─ OpenAPI Registry API      │
 │  ├─ ArgoCD AppSets          │  ├─ ArgoCD AppSet API         │
 │  ├─ IAM User Audit          │  ├─ IAM User Audit API        │
+│  ├─ Kafka Topic             │  ├─ Kafka Topic API           │
 │  ├─ Catalog Health          │  ├─ Catalog Health API        │
 │  ├─ TechDocs Reader         │  ├─ TechDocs Builder          │
 │  └─ Scaffolder UI           │  └─ Scaffolder Backend        │
@@ -135,6 +138,8 @@ backstage/
 │   ├── catalog-health-backend/  # Catalog Health backend plugin
 │   ├── iam-user-audit/          # IAM User Audit frontend plugin
 │   ├── iam-user-audit-backend/  # IAM User Audit backend plugin
+│   ├── kafka-topic/             # Kafka Topic frontend plugin
+│   ├── kafka-topic-backend/     # Kafka Topic backend plugin
 │   ├── openapi-registry/        # OpenAPI Registry frontend plugin
 │   └── openapi-registry-backend/# OpenAPI Registry backend plugin
 ├── scripts/
@@ -205,6 +210,17 @@ Audit target criteria:
 - **Not audited**: Read-only operations (List, Get, Health check)
 
 Audit logs include `isAuditEvent=true` for easy filtering and capture actor info (IP, User-Agent), request details, and success/failure status.
+
+## Kafka Topic
+
+Custom plugin for self-service Kafka topic creation with in-app approval workflow. See [Kafka Topic documentation](docs/kafka-topic.md) for configuration details.
+
+**Features:**
+- 4-step creation wizard with partition distribution simulator
+- Per-cluster approval workflow with admin review and mandatory reason
+- Deep linking for request detail pages (`/kafka-topic/requests/:id`)
+- Approval pipeline visualization with person icons and status colors
+- Topic list with search highlighting and filters
 
 ## Catalog Health
 
