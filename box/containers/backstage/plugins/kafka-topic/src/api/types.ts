@@ -46,7 +46,7 @@ export interface TopicRequest {
   requester: string;
   reviewer: string | null;
   reason: string | null;
-  status: 'pending' | 'approved' | 'rejected';
+  status: 'pending' | 'approved' | 'rejected' | 'created';
   createdAt: string;
   updatedAt: string;
 }

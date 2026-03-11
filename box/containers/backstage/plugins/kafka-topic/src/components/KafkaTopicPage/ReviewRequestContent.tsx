@@ -25,6 +25,7 @@ interface ReviewRequestContentProps {
 function statusLabel(status: string) {
   if (status === 'pending') return 'Pending';
   if (status === 'approved') return 'Approved';
+  if (status === 'created') return 'Created';
   return 'Rejected';
 }
 

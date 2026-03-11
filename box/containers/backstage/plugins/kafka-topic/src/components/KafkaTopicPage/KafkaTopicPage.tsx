@@ -118,33 +118,37 @@ const RequestListView = () => {
                             <div className="kafka-approval-tooltip-time">{new Date(r.createdAt).toLocaleString()}</div>
                           </Tooltip>
                         </TooltipTrigger>
-                        <RiArrowRightSLine size={14} color="rgba(255,255,255,0.2)" />
-                        <TooltipTrigger delay={200}>
-                          <ButtonIcon
-                            size="small"
-                            variant="tertiary"
-                            icon={
-                              r.status === 'pending'
-                                ? <RiUserLine size={14} color="#ff9800" />
-                                : <RiUserFill size={14} color={r.status === 'approved' ? '#4caf50' : '#f44336'} />
-                            }
-                            aria-label="Reviewer"
-                            className="kafka-approval-btn"
-                          />
-                          <Tooltip className="kafka-approval-tooltip">
-                            {r.status === 'pending' ? (
-                              <div className="kafka-approval-tooltip-label">Pending review</div>
-                            ) : (
-                              <>
-                                <div className="kafka-approval-tooltip-label">
-                                  {r.status === 'approved' ? 'Approved' : 'Rejected'}
-                                </div>
-                                <div className="kafka-approval-tooltip-name">{r.reviewer}</div>
-                                <div className="kafka-approval-tooltip-time">{new Date(r.updatedAt).toLocaleString()}</div>
-                              </>
-                            )}
-                          </Tooltip>
-                        </TooltipTrigger>
+                        {r.status !== 'created' && (
+                          <>
+                            <RiArrowRightSLine size={14} color="rgba(255,255,255,0.2)" />
+                            <TooltipTrigger delay={200}>
+                              <ButtonIcon
+                                size="small"
+                                variant="tertiary"
+                                icon={
+                                  r.status === 'pending'
+                                    ? <RiUserLine size={14} color="#ff9800" />
+                                    : <RiUserFill size={14} color={r.status === 'approved' ? '#4caf50' : '#f44336'} />
+                                }
+                                aria-label="Reviewer"
+                                className="kafka-approval-btn"
+                              />
+                              <Tooltip className="kafka-approval-tooltip">
+                                {r.status === 'pending' ? (
+                                  <div className="kafka-approval-tooltip-label">Pending review</div>
+                                ) : (
+                                  <>
+                                    <div className="kafka-approval-tooltip-label">
+                                      {r.status === 'approved' ? 'Approved' : 'Rejected'}
+                                    </div>
+                                    <div className="kafka-approval-tooltip-name">{r.reviewer}</div>
+                                    <div className="kafka-approval-tooltip-time">{new Date(r.updatedAt).toLocaleString()}</div>
+                                  </>
+                                )}
+                              </Tooltip>
+                            </TooltipTrigger>
+                          </>
+                        )}
                       </div>
                     </td>
                     <td>

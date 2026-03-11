@@ -75,6 +75,11 @@
   color: #f44336;
 }
 
+.kafka-results-badge-created {
+  background: rgba(110, 168, 254, 0.15);
+  color: #6ea8fe;
+}
+
 /* Approval flow pipeline */
 .kafka-approval-flow {
   display: inline-flex;

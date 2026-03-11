@@ -38,7 +38,7 @@ interface TopicRequest {
   requester: string;
   reviewer: string | null;
   reason: string | null;
-  status: 'pending' | 'approved' | 'rejected';
+  status: 'pending' | 'approved' | 'rejected' | 'created';
   createdAt: string;
   updatedAt: string;
 }
@@ -439,9 +439,30 @@ export async function createRouter(options: RouterOptions): Promise<Router> {
       return;
     }
 
-    // Direct creation
+    // Direct creation (no approval required)
     try {
       await executeTopicCreation(cluster, topicName, tc, finalCleanupPolicy);
+
+      const now = new Date().toISOString();
+      const request: TopicRequest = {
+        id: randomUUID(),
+        cluster: clusterName,
+        topicName,
+        numPartitions: tc.numPartitions,
+        replicationFactor: tc.replicationFactor,
+        cleanupPolicy: finalCleanupPolicy,
+        trafficLevel: configKey,
+        configEntries: { ...tc.configEntries, 'cleanup.policy': finalCleanupPolicy },
+        requester,
+        reviewer: null,
+        reason: null,
+        status: 'created',
+        createdAt: now,
+        updatedAt: now,
+      };
+      requests.set(request.id, request);
+
+      logger.info(`Created topic '${topicName}' in ${clusterName} by ${requester} (id: ${request.id})`);
 
       res.status(201).json({
         topicName,
