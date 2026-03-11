@@ -55,21 +55,27 @@ ij -L 3306:rds.example.com:3306 -r ap-northeast-2 -t Role=bastion prod
 
 Press `Ctrl+C` to stop the tunnel.
 
+## Installation
+
+Requires AWS CLI v2 and Session Manager plugin.
+
+```bash
+brew install younsl/tap/ij
+```
+
+Or build from source:
+
+```bash
+make install
+mv ~/.cargo/bin/ij /usr/local/bin/
+```
+
 ## Configuration
 
 Run `ij init` to create `~/.config/ij/config.yaml` interactively. CLI flags always override file config values.
 
 ```bash
 ij init
-```
-
-## Installation
-
-Requires AWS CLI v2 and Session Manager plugin.
-
-```bash
-make install
-mv ~/.cargo/bin/ij /usr/local/bin/
 ```
 
 ## Key Bindings
