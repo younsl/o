@@ -6,7 +6,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 A monorepo serving as a DevOps toolbox containing Kubernetes utilities, infrastructure code, and engineering documentation.
 
-All applications in `kubernetes/`, `tools/`, and `containers/` are built with **[Rust](https://github.com/rust-lang/rust) 1.93+**. Rust provides key operational benefits: minimal container sizes, low memory footprint, single static binaries with no runtime dependencies, memory safety preventing null pointer and buffer overflow crashes, and compile-time guarantees ensuring system stability in production.
+All applications in `kubernetes/`, `tools/`, and `containers/` are built with **[Rust](https://github.com/rust-lang/rust) 1.94+**. Rust provides key operational benefits: minimal container sizes, low memory footprint, single static binaries with no runtime dependencies, memory safety preventing null pointer and buffer overflow crashes, and compile-time guarantees ensuring system stability in production.
 
 ## Design Philosophy
 
