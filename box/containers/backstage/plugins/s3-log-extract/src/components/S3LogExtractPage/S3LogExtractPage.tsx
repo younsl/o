@@ -31,6 +31,9 @@ import {
 } from '@remixicon/react';
 import './S3LogExtractPage.css';
 
+const isInvalidDate = (v: string) => v !== '' && !/^\d{4}-\d{2}-\d{2}$/.test(v);
+const isInvalidTime = (v: string) => v !== '' && !/^(\d{1,4}|\d{2}:\d{2})$/.test(v);
+
 const sourceOptions = [
   { value: 'k8s', label: 'k8s' },
   { value: 'ec2', label: 'ec2' },
@@ -380,6 +383,7 @@ const RequestForm = ({
               value={date}
               onChange={setDate}
               placeholder="YYYY-MM-DD"
+              isInvalid={isInvalidDate(date)}
             />
           </div>
           <div className="sle-required-field" style={{ flex: 1 }}>
@@ -389,6 +393,7 @@ const RequestForm = ({
               onChange={setStartTime}
               onBlur={() => handleTimeBlur(startTime, setStartTime)}
               placeholder="HH:MM (e.g. 1100)"
+              isInvalid={isInvalidTime(startTime) || !!timeRangeError}
             />
           </div>
           <div className="sle-required-field" style={{ flex: 1 }}>
@@ -398,6 +403,7 @@ const RequestForm = ({
               onChange={setEndTime}
               onBlur={() => handleTimeBlur(endTime, setEndTime)}
               placeholder="HH:MM (e.g. 1430)"
+              isInvalid={isInvalidTime(endTime) || !!timeRangeError}
             />
           </div>
         </Flex>

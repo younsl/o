@@ -20,6 +20,9 @@ import { TopicTable } from './TopicTable';
 import { PartitionDistribution } from './PartitionDistribution';
 import './CreateTopicPage.css';
 
+const TOPIC_NAME_PATTERN = /^[a-zA-Z0-9._-]*$/;
+const hasInvalidChars = (value: string) => value !== '' && !TOPIC_NAME_PATTERN.test(value);
+
 const STEPS = [
   { key: 'cluster', label: 'Cluster Info', title: 'Select Cluster', description: 'Choose a Kafka cluster and review its broker architecture.' },
   { key: 'topics', label: 'Topics', title: 'Review Existing Topics', description: 'Check the current topics in this cluster to avoid duplicates.' },
@@ -77,6 +80,9 @@ export const CreateTopicContent = ({ onBack }: { onBack: () => void }) => {
   const [result, setResult] = useState<CreateTopicResponse | null>(null);
   const [error, setError] = useState<string | null>(null);
 
+  // Validation
+  const hasInvalidInput = hasInvalidChars(appName) || hasInvalidChars(eventName) || hasInvalidChars(action);
+
   // Derived
   const selectedConfig = currentCluster?.topicConfig?.[trafficLevel];
   const topicPreview = useMemo(() => {
@@ -106,10 +112,10 @@ export const CreateTopicContent = ({ onBack }: { onBack: () => void }) => {
     switch (step) {
       case 0: return !!currentClusterName;
       case 1: return true;
-      case 2: return appName.trim() !== '' && eventName.trim() !== '' && !isDuplicate;
+      case 2: return appName.trim() !== '' && eventName.trim() !== '' && !isDuplicate && !hasInvalidInput;
       default: return false;
     }
-  }, [step, currentClusterName, appName, eventName, isDuplicate]);
+  }, [step, currentClusterName, appName, eventName, isDuplicate, hasInvalidInput]);
 
   const handleCreate = useCallback(async () => {
     setIsCreating(true);
@@ -252,6 +258,7 @@ export const CreateTopicContent = ({ onBack }: { onBack: () => void }) => {
                     value={appName}
                     onChange={setAppName}
                     isRequired
+                    isInvalid={hasInvalidChars(appName)}
                   />
                 </Box>
                 <Box style={{ flex: 1 }}>
@@ -261,6 +268,7 @@ export const CreateTopicContent = ({ onBack }: { onBack: () => void }) => {
                     value={eventName}
                     onChange={setEventName}
                     isRequired
+                    isInvalid={hasInvalidChars(eventName)}
                   />
                 </Box>
                 <Box style={{ flex: 1 }}>
@@ -269,6 +277,7 @@ export const CreateTopicContent = ({ onBack }: { onBack: () => void }) => {
                     placeholder="e.g. approval"
                     value={action}
                     onChange={setAction}
+                    isInvalid={hasInvalidChars(action)}
                   />
                 </Box>
               </Flex>
@@ -338,9 +347,16 @@ export const CreateTopicContent = ({ onBack }: { onBack: () => void }) => {
               {topicPreview && (
                 <Flex direction="column" gap="1">
                   <Text variant="body-small" color="secondary">Topic name preview</Text>
-                  <Text variant="body-medium" weight="bold" color={isDuplicate ? 'danger' : undefined}>
-                    {topicPreview}
-                  </Text>
+                  <Flex gap="2" align="center">
+                    <Text variant="body-medium" weight="bold" color={isDuplicate || hasInvalidInput ? 'danger' : undefined}>
+                      {topicPreview}
+                    </Text>
+                    {hasInvalidInput && (
+                      <Text variant="body-small" color="danger">
+                        — Topic name only allows letters, digits, periods, hyphens, and underscores
+                      </Text>
+                    )}
+                  </Flex>
                   {isDuplicate && (
                     <Text variant="body-small" color="danger">
                       This topic already exists in {currentClusterName}.
