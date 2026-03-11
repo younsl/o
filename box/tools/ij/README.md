@@ -1,7 +1,7 @@
 # ij
 
 [![GitHub release](https://img.shields.io/github/v/release/younsl/o?filter=ij*&style=flat-square&color=black)](https://github.com/younsl/o/releases?q=ij&expanded=true)
-[![Rust](https://img.shields.io/badge/rust-1.93-black?style=flat-square&logo=rust&logoColor=white)](https://www.rust-lang.org/)
+[![Rust](https://img.shields.io/badge/rust-1.94-black?style=flat-square&logo=rust&logoColor=white)](https://www.rust-lang.org/)
 [![GitHub license](https://img.shields.io/github/license/younsl/o?style=flat-square&color=black)](https://github.com/younsl/o/blob/main/LICENSE)
 
 **I**nstance **J**ump - Interactive EC2 Session Manager connection tool with fuzzy search. Scans AWS regions in parallel and connects via SSM. Inspired by [gossm](https://github.com/gjbae1212/gossm).
@@ -13,6 +13,7 @@
 - Interactive instance selection
 - SSH-style escape sequences
 - SSM port forwarding (`-L` flag, SSH-style syntax)
+- File-based config with `ij init` wizard
 
 ## Usage
 
@@ -53,6 +54,14 @@ ij -L 3306:rds.example.com:3306 -r ap-northeast-2 -t Role=bastion prod
 | `3306:host:3306` | localhost:3306 → host:3306 | `AWS-StartPortForwardingSessionToRemoteHost` |
 
 Press `Ctrl+C` to stop the tunnel.
+
+## Configuration
+
+Run `ij init` to create `~/.config/ij/config.yaml` interactively. CLI flags always override file config values.
+
+```bash
+ij init
+```
 
 ## Installation
 
