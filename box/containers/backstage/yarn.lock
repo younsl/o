@@ -7718,6 +7718,7 @@ __metadata:
     "@backstage/errors": "npm:^1.2.7"
     express: "npm:^4.21.2"
     kafkajs: "npm:^2.2.4"
+    knex: "npm:^3.1.0"
   languageName: unknown
   linkType: soft
 

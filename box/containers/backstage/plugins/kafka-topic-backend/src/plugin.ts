@@ -3,6 +3,7 @@ import {
   createBackendPlugin,
 } from '@backstage/backend-plugin-api';
 import { createRouter } from './service/router';
+import { TopicRequestStore } from './service/TopicRequestStore';
 
 export const kafkaTopicPlugin = createBackendPlugin({
   pluginId: 'kafka-topic',
@@ -13,8 +14,9 @@ export const kafkaTopicPlugin = createBackendPlugin({
         logger: coreServices.logger,
         config: coreServices.rootConfig,
         httpAuth: coreServices.httpAuth,
+        database: coreServices.database,
       },
-      async init({ httpRouter, logger, config, httpAuth }) {
+      async init({ httpRouter, logger, config, httpAuth, database }) {
         const enabled = config.getOptionalBoolean('app.plugins.kafkaTopic') ?? true;
         if (!enabled) {
           logger.info('Kafka Topic backend plugin is disabled via config');
@@ -23,7 +25,10 @@ export const kafkaTopicPlugin = createBackendPlugin({
 
         logger.info('Initializing Kafka Topic backend plugin');
 
-        const router = await createRouter({ logger, config, httpAuth });
+        const knex = await database.getClient();
+        const store = await TopicRequestStore.create({ database: knex });
+
+        const router = await createRouter({ logger, config, httpAuth, store });
 
         httpRouter.use(router as any);
         httpRouter.addAuthPolicy({

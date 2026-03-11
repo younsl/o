@@ -3,12 +3,13 @@ import express from 'express';
 import { HttpAuthService, LoggerService } from '@backstage/backend-plugin-api';
 import { Config } from '@backstage/config';
 import { Kafka, SASLOptions, ConfigResourceTypes, logLevel as KafkaLogLevel } from 'kafkajs';
-import { randomUUID } from 'crypto';
+import { TopicRequestStore } from './TopicRequestStore';
 
 export interface RouterOptions {
   logger: LoggerService;
   config: Config;
   httpAuth: HttpAuthService;
+  store: TopicRequestStore;
 }
 
 interface TopicConfigEntry {
@@ -24,23 +25,6 @@ interface ClusterConfig {
   sasl?: SASLOptions;
   requiresApproval: boolean;
   topicConfig: Record<string, TopicConfigEntry>;
-}
-
-interface TopicRequest {
-  id: string;
-  cluster: string;
-  topicName: string;
-  numPartitions: number;
-  replicationFactor: number;
-  cleanupPolicy: string;
-  trafficLevel: string;
-  configEntries: Record<string, string>;
-  requester: string;
-  reviewer: string | null;
-  reason: string | null;
-  status: 'pending' | 'approved' | 'rejected' | 'created';
-  createdAt: string;
-  updatedAt: string;
 }
 
 function readConfigEntries(tc: Config): Record<string, string> {
@@ -133,7 +117,7 @@ function createKafkaClient(cluster: ClusterConfig, logger: LoggerService): Kafka
 }
 
 export async function createRouter(options: RouterOptions): Promise<Router> {
-  const { logger, config, httpAuth } = options;
+  const { logger, config, httpAuth, store } = options;
 
   const admins = config.getOptionalStringArray('permission.admins') ?? [];
   const isDevMode =
@@ -154,9 +138,6 @@ export async function createRouter(options: RouterOptions): Promise<Router> {
       return undefined;
     }
   }
-
-  // In-memory request store
-  const requests = new Map<string, TopicRequest>();
 
   function getClusters(): ClusterConfig[] {
     return readClusters(config, logger);
@@ -408,9 +389,7 @@ export async function createRouter(options: RouterOptions): Promise<Router> {
 
     // If cluster requires approval, store as pending request
     if (cluster.requiresApproval) {
-      const now = new Date().toISOString();
-      const request: TopicRequest = {
-        id: randomUUID(),
+      const request = await store.addRequest({
         cluster: clusterName,
         topicName,
         numPartitions: tc.numPartitions,
@@ -422,10 +401,7 @@ export async function createRouter(options: RouterOptions): Promise<Router> {
         reviewer: null,
         reason: null,
         status: 'pending',
-        createdAt: now,
-        updatedAt: now,
-      };
-      requests.set(request.id, request);
+      });
 
       logger.info(`Topic request '${topicName}' in ${clusterName} queued for approval by ${requester} (id: ${request.id})`);
 
@@ -443,9 +419,7 @@ export async function createRouter(options: RouterOptions): Promise<Router> {
     try {
       await executeTopicCreation(cluster, topicName, tc, finalCleanupPolicy);
 
-      const now = new Date().toISOString();
-      const request: TopicRequest = {
-        id: randomUUID(),
+      const request = await store.addRequest({
         cluster: clusterName,
         topicName,
         numPartitions: tc.numPartitions,
@@ -457,10 +431,7 @@ export async function createRouter(options: RouterOptions): Promise<Router> {
         reviewer: null,
         reason: null,
         status: 'created',
-        createdAt: now,
-        updatedAt: now,
-      };
-      requests.set(request.id, request);
+      });
 
       logger.info(`Created topic '${topicName}' in ${clusterName} by ${requester} (id: ${request.id})`);
 
@@ -482,15 +453,13 @@ export async function createRouter(options: RouterOptions): Promise<Router> {
 
   // --- Request management endpoints ---
 
-  router.get('/requests', (_, res) => {
-    const all = Array.from(requests.values()).sort(
-      (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime(),
-    );
+  router.get('/requests', async (_, res) => {
+    const all = await store.listRequests();
     res.json(all);
   });
 
-  router.get('/requests/:id', (req, res) => {
-    const request = requests.get(req.params.id);
+  router.get('/requests/:id', async (req, res) => {
+    const request = await store.getRequest(req.params.id);
     if (!request) {
       res.status(404).json({ error: 'Request not found' });
       return;
@@ -511,7 +480,7 @@ export async function createRouter(options: RouterOptions): Promise<Router> {
       return;
     }
 
-    const request = requests.get(req.params.id);
+    const request = await store.getRequest(req.params.id);
     if (!request) {
       res.status(404).json({ error: 'Request not found' });
       return;
@@ -538,13 +507,13 @@ export async function createRouter(options: RouterOptions): Promise<Router> {
 
       await executeTopicCreation(cluster, request.topicName, tc, request.cleanupPolicy);
 
-      request.status = 'approved';
-      request.reviewer = userRef;
-      request.reason = reason.trim();
-      request.updatedAt = new Date().toISOString();
-      logger.info(`Approved and created topic '${request.topicName}' in ${request.cluster} by ${userRef}`);
+      const updated = await store.updateStatus(request.id, 'approved', {
+        reviewer: userRef,
+        reason: reason.trim(),
+      });
 
-      res.json(request);
+      logger.info(`Approved and created topic '${request.topicName}' in ${request.cluster} by ${userRef}`);
+      res.json(updated);
     } catch (error: any) {
       const statusCode = error.statusCode ?? 500;
       logger.error(`Failed to approve request ${request.id}: ${error}`);
@@ -567,7 +536,7 @@ export async function createRouter(options: RouterOptions): Promise<Router> {
       return;
     }
 
-    const request = requests.get(req.params.id);
+    const request = await store.getRequest(req.params.id);
     if (!request) {
       res.status(404).json({ error: 'Request not found' });
       return;
@@ -577,13 +546,13 @@ export async function createRouter(options: RouterOptions): Promise<Router> {
       return;
     }
 
-    request.status = 'rejected';
-    request.reviewer = userRef;
-    request.reason = reason.trim();
-    request.updatedAt = new Date().toISOString();
-    logger.info(`Rejected topic request '${request.topicName}' in ${request.cluster} by ${userRef}`);
+    const updated = await store.updateStatus(request.id, 'rejected', {
+      reviewer: userRef,
+      reason: reason.trim(),
+    });
 
-    res.json(request);
+    logger.info(`Rejected topic request '${request.topicName}' in ${request.cluster} by ${userRef}`);
+    res.json(updated);
   });
 
   return router;
