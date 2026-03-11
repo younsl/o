@@ -20,7 +20,12 @@ clap = { version = "4.5", features = ["derive", "env"] }
 ratatui = "0.29"
 nucleo = "0.5"
 crossterm = "0.28"
-console = "0.15"
+dialoguer = "0.11"
+
+# Configuration
+serde = { version = "1.0", features = ["derive"] }
+serde_yaml = "0.9"
+dirs = "6.0"
 
 # Terminal UI
 colored = "3.1"
@@ -43,6 +48,9 @@ tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 
 # Build info
 const_format = "0.2"
+
+[dev-dependencies]
+tempfile = "3.25"
 
 [profile.release]
 opt-level = 3

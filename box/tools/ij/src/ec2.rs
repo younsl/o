@@ -132,6 +132,15 @@ impl Scanner {
         if let Some(ref p) = self.config.profile {
             config_loader = config_loader.profile_name(p);
         }
+        #[allow(deprecated)]
+        if let Some(ref path) = self.config.aws_config_file {
+            use aws_config::profile::profile_file::{ProfileFileKind, ProfileFiles};
+            let profile_files = ProfileFiles::builder()
+                .with_file(ProfileFileKind::Config, path)
+                .include_default_credentials_file(true)
+                .build();
+            config_loader = config_loader.profile_files(profile_files);
+        }
         let base_sdk_config = config_loader.load().await;
 
         let num_regions = regions.len();
@@ -176,9 +185,19 @@ impl Scanner {
     }
 
     fn get_regions(&self) -> Vec<&str> {
-        match &self.config.region {
-            Some(region) => vec![region.as_str()],
-            None => AWS_REGIONS.to_vec(),
+        if let Some(ref region) = self.config.region {
+            // CLI --region flag overrides everything
+            vec![region.as_str()]
+        } else if !self.config.scan_regions.is_empty() {
+            // Use scan_regions from config file
+            self.config
+                .scan_regions
+                .iter()
+                .map(|s| s.as_str())
+                .collect()
+        } else {
+            // Default: scan all regions
+            AWS_REGIONS.to_vec()
         }
     }
 }
@@ -273,4 +292,153 @@ fn extract_name_tag(instance: &aws_sdk_ec2::types::Instance) -> Option<String> {
         .find(|tag| tag.key() == Some("Name"))
         .and_then(|tag| tag.value())
         .map(|s| s.to_string())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn test_config(region: Option<&str>, scan_regions: Vec<&str>) -> Config {
+        Config {
+            profile: None,
+            aws_config_file: None,
+            region: region.map(|s| s.to_string()),
+            scan_regions: scan_regions.iter().map(|s| s.to_string()).collect(),
+            tag_filters: Vec::new(),
+            running_only: true,
+            log_level: "info".into(),
+            forward: None,
+        }
+    }
+
+    // --- get_regions tests ---
+
+    #[test]
+    fn get_regions_cli_overrides_everything() {
+        let config = test_config(Some("us-west-2"), vec!["eu-west-1", "ap-northeast-2"]);
+        let scanner = Scanner::new(config);
+        assert_eq!(scanner.get_regions(), vec!["us-west-2"]);
+    }
+
+    #[test]
+    fn get_regions_uses_scan_regions() {
+        let config = test_config(None, vec!["eu-west-1", "ap-northeast-2"]);
+        let scanner = Scanner::new(config);
+        assert_eq!(scanner.get_regions(), vec!["eu-west-1", "ap-northeast-2"]);
+    }
+
+    #[test]
+    fn get_regions_defaults_to_all() {
+        let config = test_config(None, vec![]);
+        let scanner = Scanner::new(config);
+        let regions = scanner.get_regions();
+        assert_eq!(regions.len(), AWS_REGIONS.len());
+        assert_eq!(regions, AWS_REGIONS.to_vec());
+    }
+
+    // --- build_filters tests ---
+
+    #[test]
+    fn build_filters_running_only() {
+        let filters = build_filters(&[], true);
+        assert_eq!(filters.len(), 1);
+        assert_eq!(filters[0].name(), Some("instance-state-name"));
+        assert_eq!(filters[0].values(), &["running"]);
+    }
+
+    #[test]
+    fn build_filters_not_running_only() {
+        let filters = build_filters(&[], false);
+        assert!(filters.is_empty());
+    }
+
+    #[test]
+    fn build_filters_with_tag() {
+        let tags = vec!["Environment=production".to_string()];
+        let filters = build_filters(&tags, false);
+        assert_eq!(filters.len(), 1);
+        assert_eq!(filters[0].name(), Some("tag:Environment"));
+        assert_eq!(filters[0].values(), &["production"]);
+    }
+
+    #[test]
+    fn build_filters_multiple_tags_and_running() {
+        let tags = vec!["Environment=prod".to_string(), "Team=platform".to_string()];
+        let filters = build_filters(&tags, true);
+        assert_eq!(filters.len(), 3);
+        assert_eq!(filters[0].name(), Some("instance-state-name"));
+        assert_eq!(filters[1].name(), Some("tag:Environment"));
+        assert_eq!(filters[2].name(), Some("tag:Team"));
+    }
+
+    #[test]
+    fn build_filters_ignores_invalid_tag() {
+        let tags = vec!["invalid-no-equals".to_string()];
+        let filters = build_filters(&tags, false);
+        assert!(filters.is_empty());
+    }
+
+    // --- ColumnWidths tests ---
+
+    #[test]
+    fn column_widths_empty_instances() {
+        let widths = ColumnWidths::from_instances(&[]);
+        assert_eq!(widths.region, 6);
+        assert_eq!(widths.name, 4);
+        assert_eq!(widths.instance_id, 11);
+        assert_eq!(widths.instance_type, 4);
+        assert_eq!(widths.private_ip, 10);
+        assert_eq!(widths.platform, 8);
+    }
+
+    #[test]
+    fn column_widths_expands_for_long_values() {
+        let instances = vec![Instance {
+            region: "ap-southeast-3".into(),           // 14 chars > 6
+            name: "very-long-instance-name".into(),    // 23 chars > 4
+            instance_id: "i-01234567890abcdef".into(), // 19 chars > 11
+            instance_type: "m5.24xlarge".into(),       // 11 chars > 4
+            private_ip: "192.168.100.200".into(),      // 15 chars > 10
+            platform: "Windows".into(),                // 7 chars < 8
+        }];
+        let widths = ColumnWidths::from_instances(&instances);
+        assert_eq!(widths.region, 14);
+        assert_eq!(widths.name, 23);
+        assert_eq!(widths.instance_id, 19);
+        assert_eq!(widths.instance_type, 11);
+        assert_eq!(widths.private_ip, 15);
+        assert_eq!(widths.platform, 8); // minimum kept
+    }
+
+    #[test]
+    fn column_widths_header_matches_format() {
+        let widths = ColumnWidths::from_instances(&[]);
+        let header = widths.header();
+        assert!(header.contains("REGION"));
+        assert!(header.contains("NAME"));
+        assert!(header.contains("INSTANCE ID"));
+        assert!(header.contains("TYPE"));
+        assert!(header.contains("PRIVATE IP"));
+        assert!(header.contains("PLATFORM"));
+    }
+
+    #[test]
+    fn instance_to_row_format() {
+        let instance = Instance {
+            region: "us-east-1".into(),
+            name: "web-1".into(),
+            instance_id: "i-abc123".into(),
+            instance_type: "t3.micro".into(),
+            private_ip: "10.0.0.1".into(),
+            platform: "Linux".into(),
+        };
+        let widths = ColumnWidths::from_instances(&[instance.clone()]);
+        let row = instance.to_row(&widths);
+        assert!(row.contains("us-east-1"));
+        assert!(row.contains("web-1"));
+        assert!(row.contains("i-abc123"));
+        assert!(row.contains("t3.micro"));
+        assert!(row.contains("10.0.0.1"));
+        assert!(row.contains("Linux"));
+    }
 }

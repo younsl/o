@@ -12,6 +12,8 @@ pub enum Error {
     Pty(String),
     /// Session connection failed.
     Session(String),
+    /// Configuration error.
+    Config(String),
     /// User cancelled operation.
     Cancelled,
     /// No instances found.
@@ -28,6 +30,7 @@ impl fmt::Display for Error {
             Error::Aws(msg) => write!(f, "AWS error: {}", msg),
             Error::Pty(msg) => write!(f, "PTY error: {}", msg),
             Error::Session(msg) => write!(f, "Session error: {}", msg),
+            Error::Config(msg) => write!(f, "Config error: {}", msg),
             Error::Cancelled => write!(f, "Operation cancelled"),
             Error::NoInstances => write!(f, "No instances found"),
             Error::Io(e) => write!(f, "IO error: {}", e),
@@ -55,6 +58,12 @@ impl From<std::io::Error> for Error {
 impl From<anyhow::Error> for Error {
     fn from(e: anyhow::Error) -> Self {
         Error::Other(e)
+    }
+}
+
+impl From<serde_yaml::Error> for Error {
+    fn from(e: serde_yaml::Error) -> Self {
+        Error::Config(e.to_string())
     }
 }
 

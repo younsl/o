@@ -1,17 +1,20 @@
 mod config;
 mod ec2;
 mod error;
+mod file_config;
 mod forward;
 mod session;
 mod ui;
+mod wizard;
 
 use clap::Parser;
 use colored::Colorize;
 use tracing::debug;
 
-use config::{Args, Config};
+use config::{Args, Command, Config};
 use ec2::Scanner;
 use error::Error;
+use file_config::FileConfig;
 use forward::PortForward;
 use session::SessionManager;
 use ui::Selector;
@@ -114,7 +117,27 @@ impl App {
 #[tokio::main]
 async fn main() {
     let args = Args::parse();
-    let config = Config::from_args(args);
+
+    // Handle subcommands
+    if args.command == Some(Command::Init) {
+        if let Err(e) = wizard::run_wizard() {
+            match e {
+                Error::Cancelled => {
+                    println!("\n{}", "Configuration cancelled.".yellow());
+                }
+                _ => {
+                    eprintln!("{} {}", "Error:".red().bold(), e);
+                    std::process::exit(1);
+                }
+            }
+        }
+        return;
+    }
+
+    // Load file config (ignore errors — just use defaults)
+    let file_config = FileConfig::load_default().ok().flatten();
+
+    let config = Config::from_args_and_file(args, file_config);
     let app = App::new(config);
 
     if let Err(e) = app.run().await {
