@@ -52,12 +52,11 @@
 }
 
 .colId a {
-    color: var(--accent);
-    text-decoration: none;
+    color: var(--text-secondary);
 }
 
 .colId a:hover {
-    text-decoration: underline;
+    color: var(--text-primary);
 }
 
 .textMuted {

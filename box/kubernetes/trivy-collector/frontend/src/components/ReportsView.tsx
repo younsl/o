@@ -1,4 +1,5 @@
 import { useState, useCallback, useRef, useEffect } from 'react'
+import { useNavigate } from 'react-router-dom'
 import FilterPopup from './FilterPopup'
 import ScrollNav from './ScrollNav'
 import { escapeHtml, formatDate, escapeCsvField, formatDateForFilename, randomHash, downloadCsv } from '../utils'
@@ -30,6 +31,7 @@ export default function ReportsView({
   onFilterClear,
   onSelectReport,
 }: ReportsViewProps) {
+  const navigate = useNavigate()
   const [sortColumn, setSortColumn] = useState<SortKey>(null)
   const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('asc')
   const [filterPopup, setFilterPopup] = useState<{ key: 'cluster' | 'namespace' | 'app'; anchorRect: DOMRect } | null>(null)
@@ -180,9 +182,29 @@ export default function ReportsView({
             </div>
           )}
         </div>
-        <button className="btn-export" onClick={exportToCsv} disabled={reports.length === 0} title="Export to CSV">
-          <i className="fa-solid fa-arrow-down" /> Export CSV
-        </button>
+        <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+          {reportType === 'vulnerabilityreport' && (
+            <button
+              className="btn-export"
+              onClick={() => navigate('/vulnerabilities/search')}
+              title="Search CVEs across all vulnerability reports"
+            >
+              <i className="fa-solid fa-magnifying-glass" /> Vulnerability Search
+            </button>
+          )}
+          {reportType === 'sbomreport' && (
+            <button
+              className="btn-export"
+              onClick={() => navigate('/sbom/components')}
+              title="Search components across all SBOM reports"
+            >
+              <i className="fa-solid fa-magnifying-glass" /> Component Search
+            </button>
+          )}
+          <button className="btn-export" onClick={exportToCsv} disabled={reports.length === 0} title="Export to CSV">
+            <i className="fa-solid fa-arrow-down" /> Export CSV
+          </button>
+        </div>
       </div>
 
       <table className={styles.table}>

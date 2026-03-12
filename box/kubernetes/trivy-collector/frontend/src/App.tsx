@@ -4,6 +4,8 @@ import Layout from './components/Layout'
 import ReportsPage from './pages/ReportsPage'
 import DetailPage from './pages/DetailPage'
 import AuthPage from './pages/AuthPage'
+import ComponentSearchPage from './pages/ComponentSearchPage'
+import VulnSearchPage from './pages/VulnSearchPage'
 import DashboardView from './components/DashboardView'
 import VersionView from './components/VersionView'
 
@@ -16,8 +18,10 @@ export default function App() {
             <Route element={<Layout />}>
               <Route index element={<Navigate to="/vulnerabilities" replace />} />
               <Route path="vulnerabilities" element={<ReportsPage reportType="vulnerabilityreport" />} />
+              <Route path="vulnerabilities/search" element={<VulnSearchPage />} />
               <Route path="vulnerabilities/:cluster/:namespace/:name" element={<DetailPage reportType="vulnerabilityreport" />} />
               <Route path="sbom" element={<ReportsPage reportType="sbomreport" />} />
+              <Route path="sbom/components" element={<ComponentSearchPage />} />
               <Route path="sbom/:cluster/:namespace/:name" element={<DetailPage reportType="sbomreport" />} />
               <Route path="dashboard" element={<DashboardView />} />
               <Route path="auth" element={<AuthPage />} />

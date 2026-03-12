@@ -1,6 +1,8 @@
 import type {
   ClusterInfo,
+  ComponentSearchResult,
   ConfigResponse,
+  VulnSearchResult,
   CreateTokenResponse,
   Filters,
   FullReport,
@@ -35,6 +37,7 @@ export function getReports(
   if (filters.cluster) params.append('cluster', filters.cluster)
   if (filters.namespace) params.append('namespace', filters.namespace)
   if (filters.app) params.append('app', filters.app)
+  if (filters.component) params.append('component', filters.component)
 
   const endpoint =
     reportType === 'vulnerabilityreport'
@@ -143,6 +146,46 @@ export async function deleteToken(tokenId: number): Promise<boolean> {
     return new Promise(() => {})
   }
   return response.ok
+}
+
+export function searchVulnerabilities(
+  q: string,
+  limit?: number,
+  offset?: number,
+): Promise<ListResponse<VulnSearchResult>> {
+  const params = new URLSearchParams({ q })
+  if (limit !== undefined) params.append('limit', String(limit))
+  if (offset !== undefined) params.append('offset', String(offset))
+  return fetchApi(`/api/v1/vulnerabilityreports/vulnerabilities/search?${params}`)
+}
+
+export function suggestVulnerabilities(
+  q: string,
+  limit?: number,
+): Promise<string[]> {
+  const params = new URLSearchParams({ q })
+  if (limit !== undefined) params.append('limit', String(limit))
+  return fetchApi(`/api/v1/vulnerabilityreports/vulnerabilities/suggest?${params}`)
+}
+
+export function suggestSbomComponents(
+  q: string,
+  limit?: number,
+): Promise<string[]> {
+  const params = new URLSearchParams({ q })
+  if (limit !== undefined) params.append('limit', String(limit))
+  return fetchApi(`/api/v1/sbomreports/components/suggest?${params}`)
+}
+
+export function searchSbomComponents(
+  component: string,
+  limit?: number,
+  offset?: number,
+): Promise<ListResponse<ComponentSearchResult>> {
+  const params = new URLSearchParams({ component })
+  if (limit !== undefined) params.append('limit', String(limit))
+  if (offset !== undefined) params.append('offset', String(offset))
+  return fetchApi(`/api/v1/sbomreports/components/search?${params}`)
 }
 
 export async function updateNotes(

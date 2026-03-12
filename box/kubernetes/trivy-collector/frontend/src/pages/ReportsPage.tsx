@@ -25,6 +25,7 @@ export default function ReportsPage({ reportType }: ReportsPageProps) {
     cluster: searchParams.get('cluster') || '',
     namespace: searchParams.get('namespace') || '',
     app: searchParams.get('app') || '',
+    component: searchParams.get('component') || '',
   }), [searchParams])
 
   // Sync cluster filter to Layout for namespace loading

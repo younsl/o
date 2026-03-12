@@ -1,4 +1,4 @@
-import { useEffect, useRef, useCallback } from 'react'
+import { useState, useEffect, useRef, useCallback } from 'react'
 import cytoscape from 'cytoscape'
 import fcose from 'cytoscape-fcose'
 import { escapeHtml } from '../utils'
@@ -25,6 +25,7 @@ interface DependencyGraphProps {
 }
 
 export default function DependencyGraph({ components, dependencies }: DependencyGraphProps) {
+  const [graphExpanded, setGraphExpanded] = useState(false)
   const cyRef = useRef<cytoscape.Core | null>(null)
   const containerRef = useRef<HTMLDivElement>(null)
 
@@ -61,7 +62,7 @@ export default function DependencyGraph({ components, dependencies }: Dependency
   })
 
   const initCytoscape = useCallback(() => {
-    if (!containerRef.current || !dependencies.length) return
+    if (!graphExpanded || !containerRef.current || !dependencies.length) return
 
     const componentMap: Record<string, SbomComponent> = {}
     components.forEach((comp) => {
@@ -135,7 +136,7 @@ export default function DependencyGraph({ components, dependencies }: Dependency
       if (!node.selected()) node.style('border-color', '#2a2a2a')
       if (containerRef.current) containerRef.current.title = ''
     })
-  }, [components, dependencies])
+  }, [graphExpanded, components, dependencies])
 
   useEffect(() => {
     initCytoscape()
@@ -186,23 +187,28 @@ export default function DependencyGraph({ components, dependencies }: Dependency
       </div>
       {dependencies.length > 0 && (
         <div className="graph-section">
-          <div className="section-bar">
+          <div className="section-bar" style={{ cursor: 'pointer' }} onClick={() => setGraphExpanded((prev) => !prev)}>
             <h3 className="graph-title">
-              Dependency Graph{' '}
-              <a href="https://js.cytoscape.org" target="_blank" rel="noopener noreferrer" className={styles.poweredBy}>
+              <i className={`fa-solid ${graphExpanded ? 'fa-chevron-down' : 'fa-chevron-right'}`} style={{ fontSize: '11px', marginRight: '6px', color: 'var(--text-muted)' }} />
+              Dependency Graph <span className="section-count">({dependencies.length})</span>{' '}
+              <a href="https://js.cytoscape.org" target="_blank" rel="noopener noreferrer" className={styles.poweredBy} onClick={(e) => e.stopPropagation()}>
                 Powered by Cytoscape.js
               </a>
             </h3>
-            <div className={styles.graphControls}>
-              <button className={styles.graphBtn} title="Zoom In" onClick={handleZoomIn}><i className="fa-solid fa-plus" /></button>
-              <button className={styles.graphBtn} title="Zoom Out" onClick={handleZoomOut}><i className="fa-solid fa-minus" /></button>
-              <button className={styles.graphBtn} title="Fit to View" onClick={handleFit}><i className="fa-solid fa-expand" /></button>
-              <button className={styles.graphBtn} title="Save as PNG" onClick={handleSave}><i className="fa-solid fa-camera" /></button>
+            {graphExpanded && (
+              <div className={styles.graphControls} onClick={(e) => e.stopPropagation()}>
+                <button className={styles.graphBtn} title="Zoom In" onClick={handleZoomIn}><i className="fa-solid fa-plus" /></button>
+                <button className={styles.graphBtn} title="Zoom Out" onClick={handleZoomOut}><i className="fa-solid fa-minus" /></button>
+                <button className={styles.graphBtn} title="Fit to View" onClick={handleFit}><i className="fa-solid fa-expand" /></button>
+                <button className={styles.graphBtn} title="Save as PNG" onClick={handleSave}><i className="fa-solid fa-camera" /></button>
+              </div>
+            )}
+          </div>
+          {graphExpanded && (
+            <div className="section-content" style={{ padding: 0 }}>
+              <div ref={containerRef} className={styles.cytoscapeContainer} />
             </div>
-          </div>
-          <div className="section-content" style={{ padding: 0 }}>
-            <div ref={containerRef} className={styles.cytoscapeContainer} />
-          </div>
+          )}
         </div>
       )}
     </div>

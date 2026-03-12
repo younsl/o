@@ -102,6 +102,50 @@
     color: var(--text-muted);
 }
 
+/* Component Search */
+.componentSearch {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding-left: 16px;
+    border-left: 1px solid var(--border);
+}
+
+.componentSearchInput {
+    background-color: var(--bg-primary);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    color: var(--text-primary);
+    font-size: 12px;
+    padding: 4px 8px;
+    width: 160px;
+    outline: none;
+    transition: border-color 0.15s ease;
+}
+
+.componentSearchInput::placeholder {
+    color: var(--text-muted);
+}
+
+.componentSearchInput:focus {
+    border-color: var(--text-secondary);
+}
+
+.componentSearchClear {
+    background: transparent;
+    border: none;
+    color: var(--text-muted);
+    font-size: 11px;
+    cursor: pointer;
+    padding: 2px 4px;
+    border-radius: 3px;
+    transition: color 0.15s ease;
+}
+
+.componentSearchClear:hover {
+    color: var(--text-primary);
+}
+
 /* Table */
 .table {
     width: 100%;

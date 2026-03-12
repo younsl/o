@@ -11,13 +11,16 @@ use tracing::{debug, error, info};
 
 use crate::collector::types::{ReportEvent, ReportEventType};
 use crate::config::env;
-use crate::storage::{ClusterInfo, FullReport, ReportMeta, Stats, TrendResponse};
+use crate::storage::{
+    ClusterInfo, ComponentSearchResult, FullReport, ReportMeta, Stats, TrendResponse,
+    VulnSearchResult,
+};
 
 use super::state::AppState;
 use super::types::{
-    ConfigItem, ConfigResponse, ErrorResponse, HealthResponse, ListQuery, ListResponse,
-    StatusResponse, TrendQuery, UpdateNotesRequest, VersionResponse, WatcherInfo,
-    WatcherStatusResponse,
+    ComponentSearchQuery, ComponentSuggestQuery, ConfigItem, ConfigResponse, ErrorResponse,
+    HealthResponse, ListQuery, ListResponse, StatusResponse, TrendQuery, UpdateNotesRequest,
+    VersionResponse, VulnSearchQuery, VulnSuggestQuery, WatcherInfo, WatcherStatusResponse,
 };
 
 /// Health check endpoint for collectors
@@ -152,16 +155,13 @@ pub async fn list_vulnerability_reports(
     let params = query.to_query_params();
 
     match state.db.query_reports("vulnerabilityreport", &params) {
-        Ok(reports) => {
-            let total = reports.len();
-            (
-                StatusCode::OK,
-                Json(ListResponse {
-                    items: reports,
-                    total,
-                }),
-            )
-        }
+        Ok((reports, total)) => (
+            StatusCode::OK,
+            Json(ListResponse {
+                items: reports,
+                total: total as usize,
+            }),
+        ),
         Err(e) => {
             error!(error = %e, "Failed to query vulnerability reports");
             (
@@ -223,6 +223,85 @@ pub async fn get_vulnerability_report(
     }
 }
 
+/// Search vulnerabilities across all reports
+#[utoipa::path(
+    get,
+    path = "/api/v1/vulnerabilityreports/vulnerabilities/search",
+    tag = "Vulnerability Reports",
+    params(VulnSearchQuery),
+    responses(
+        (status = 200, description = "Vulnerability search results", body = ListResponse<VulnSearchResult>),
+        (status = 400, description = "Missing query parameter", body = ErrorResponse),
+        (status = 500, description = "Internal server error")
+    )
+)]
+pub async fn search_vulnerabilities(
+    State(state): State<AppState>,
+    Query(query): Query<VulnSearchQuery>,
+) -> impl IntoResponse {
+    let q = query.q.trim();
+    if q.is_empty() {
+        return (
+            StatusCode::BAD_REQUEST,
+            Json(serde_json::json!({"error": "q parameter is required"})),
+        );
+    }
+
+    let limit = query.limit.unwrap_or(500);
+    let offset = query.offset.unwrap_or(0);
+
+    match state.db.search_vulnerabilities(q, limit, offset) {
+        Ok((results, total)) => (
+            StatusCode::OK,
+            Json(serde_json::json!({
+                "items": results,
+                "total": total,
+            })),
+        ),
+        Err(e) => {
+            error!(error = %e, "Failed to search vulnerabilities");
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(serde_json::json!({"error": e.to_string()})),
+            )
+        }
+    }
+}
+
+/// Suggest vulnerability IDs (autocomplete)
+#[utoipa::path(
+    get,
+    path = "/api/v1/vulnerabilityreports/vulnerabilities/suggest",
+    tag = "Vulnerability Reports",
+    params(VulnSuggestQuery),
+    responses(
+        (status = 200, description = "Vulnerability ID suggestions", body = Vec<String>),
+        (status = 500, description = "Internal server error")
+    )
+)]
+pub async fn suggest_vulnerabilities(
+    State(state): State<AppState>,
+    Query(query): Query<VulnSuggestQuery>,
+) -> impl IntoResponse {
+    let q = query.q.trim();
+    if q.is_empty() {
+        return (StatusCode::OK, Json(serde_json::json!([])));
+    }
+
+    let limit = query.limit.unwrap_or(20);
+
+    match state.db.suggest_vulnerability_ids(q, limit) {
+        Ok(names) => (StatusCode::OK, Json(serde_json::json!(names))),
+        Err(e) => {
+            error!(error = %e, "Failed to suggest vulnerability IDs");
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(serde_json::json!([])),
+            )
+        }
+    }
+}
+
 /// List SBOM reports
 #[utoipa::path(
     get,
@@ -241,16 +320,13 @@ pub async fn list_sbom_reports(
     let params = query.to_query_params();
 
     match state.db.query_reports("sbomreport", &params) {
-        Ok(reports) => {
-            let total = reports.len();
-            (
-                StatusCode::OK,
-                Json(ListResponse {
-                    items: reports,
-                    total,
-                }),
-            )
-        }
+        Ok((reports, total)) => (
+            StatusCode::OK,
+            Json(ListResponse {
+                items: reports,
+                total: total as usize,
+            }),
+        ),
         Err(e) => {
             error!(error = %e, "Failed to query SBOM reports");
             (
@@ -259,6 +335,86 @@ pub async fn list_sbom_reports(
                     items: vec![],
                     total: 0,
                 }),
+            )
+        }
+    }
+}
+
+/// Search SBOM components across all reports
+#[utoipa::path(
+    get,
+    path = "/api/v1/sbomreports/components/search",
+    tag = "SBOM Reports",
+    params(ComponentSearchQuery),
+    responses(
+        (status = 200, description = "Component search results", body = ListResponse<ComponentSearchResult>),
+        (status = 400, description = "Missing component parameter", body = ErrorResponse),
+        (status = 500, description = "Internal server error")
+    )
+)]
+pub async fn search_sbom_components(
+    State(state): State<AppState>,
+    Query(query): Query<ComponentSearchQuery>,
+) -> impl IntoResponse {
+    let component = query.component.trim();
+    if component.is_empty() {
+        return (
+            StatusCode::BAD_REQUEST,
+            Json(serde_json::json!({"error": "component parameter is required"})),
+        );
+    }
+
+    let limit = query.limit.unwrap_or(500);
+    let offset = query.offset.unwrap_or(0);
+
+    match state.db.search_sbom_components(component, limit, offset) {
+        Ok((results, total)) => (
+            StatusCode::OK,
+            Json(serde_json::json!({
+                "items": results,
+                "total": total,
+            })),
+        ),
+        Err(e) => {
+            error!(error = %e, "Failed to search SBOM components");
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(serde_json::json!({"error": e.to_string()})),
+            )
+        }
+    }
+}
+
+/// Suggest SBOM component names (autocomplete)
+#[utoipa::path(
+    get,
+    path = "/api/v1/sbomreports/components/suggest",
+    tag = "SBOM Reports",
+    params(ComponentSuggestQuery),
+    responses(
+        (status = 200, description = "Component name suggestions", body = Vec<String>),
+        (status = 400, description = "Missing query parameter"),
+        (status = 500, description = "Internal server error")
+    )
+)]
+pub async fn suggest_sbom_components(
+    State(state): State<AppState>,
+    Query(query): Query<ComponentSuggestQuery>,
+) -> impl IntoResponse {
+    let q = query.q.trim();
+    if q.is_empty() {
+        return (StatusCode::OK, Json(serde_json::json!([])));
+    }
+
+    let limit = query.limit.unwrap_or(20);
+
+    match state.db.suggest_component_names(q, limit) {
+        Ok(names) => (StatusCode::OK, Json(serde_json::json!(names))),
+        Err(e) => {
+            error!(error = %e, "Failed to suggest component names");
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(serde_json::json!([])),
             )
         }
     }

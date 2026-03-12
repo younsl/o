@@ -27,6 +27,9 @@ pub struct ListQuery {
     /// Filter by CVE ID
     #[param(example = "CVE-2024-1234")]
     pub cve: Option<String>,
+    /// Filter by SBOM component name (partial match, searches within report JSON)
+    #[param(example = "log4j")]
+    pub component: Option<String>,
     /// Limit results (default: 1000)
     #[param(example = 100)]
     pub limit: Option<i64>,
@@ -47,10 +50,65 @@ impl ListQuery {
                 .map(|s| s.split(',').map(|x| x.trim().to_string()).collect()),
             image: self.image.clone(),
             cve: self.cve.clone(),
+            component: self.component.clone(),
             limit: self.limit,
             offset: self.offset,
         }
     }
+}
+
+/// Query parameters for vulnerability search endpoint
+#[derive(Debug, Deserialize, IntoParams)]
+#[into_params(parameter_in = Query)]
+pub struct VulnSearchQuery {
+    /// CVE ID or package name to search (partial match)
+    #[param(example = "CVE-2024")]
+    pub q: String,
+    /// Limit results (default: 500)
+    #[param(example = 500)]
+    pub limit: Option<i64>,
+    /// Pagination offset
+    #[param(example = 0)]
+    pub offset: Option<i64>,
+}
+
+/// Query parameters for vulnerability ID suggestion
+#[derive(Debug, Deserialize, IntoParams)]
+#[into_params(parameter_in = Query)]
+pub struct VulnSuggestQuery {
+    /// Partial CVE ID
+    #[param(example = "CVE-2024")]
+    pub q: String,
+    /// Max suggestions (default: 20)
+    #[param(example = 20)]
+    pub limit: Option<i64>,
+}
+
+/// Query parameters for SBOM component search endpoint
+#[derive(Debug, Deserialize, IntoParams)]
+#[into_params(parameter_in = Query)]
+pub struct ComponentSearchQuery {
+    /// Component name to search (partial match)
+    #[param(example = "log4j")]
+    pub component: String,
+    /// Limit results (default: 500)
+    #[param(example = 500)]
+    pub limit: Option<i64>,
+    /// Pagination offset
+    #[param(example = 0)]
+    pub offset: Option<i64>,
+}
+
+/// Query parameters for SBOM component name suggestion
+#[derive(Debug, Deserialize, IntoParams)]
+#[into_params(parameter_in = Query)]
+pub struct ComponentSuggestQuery {
+    /// Partial component name
+    #[param(example = "log4j")]
+    pub q: String,
+    /// Max suggestions (default: 20)
+    #[param(example = 20)]
+    pub limit: Option<i64>,
 }
 
 /// Response wrapper for list endpoints
@@ -266,6 +324,7 @@ mod tests {
             severity: None,
             image: None,
             cve: None,
+            component: None,
             limit: None,
             offset: None,
         };
@@ -290,6 +349,7 @@ mod tests {
             severity: Some("critical,high".to_string()),
             image: Some("nginx:1.25".to_string()),
             cve: Some("CVE-2024-1234".to_string()),
+            component: None,
             limit: Some(100),
             offset: Some(50),
         };
@@ -313,6 +373,7 @@ mod tests {
             severity: Some("critical, high, medium".to_string()),
             image: None,
             cve: None,
+            component: None,
             limit: None,
             offset: None,
         };
@@ -334,6 +395,7 @@ mod tests {
             severity: Some("critical".to_string()),
             image: None,
             cve: None,
+            component: None,
             limit: None,
             offset: None,
         };

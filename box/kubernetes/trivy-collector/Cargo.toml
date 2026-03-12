@@ -2,7 +2,7 @@
 name = "trivy-collector"
 version = "1.5.0"
 edition = "2024"
-rust-version = "1.93.1"
+rust-version = "1.94.0"
 authors = ["younsl <cysl@kakao.com>"]
 description = "Multi-cluster Trivy report collector and viewer"
 license = "MIT"
@@ -25,7 +25,8 @@ tower = "0.5"
 tower-http = { version = "0.6", features = ["cors", "fs"] }
 
 # OpenAPI documentation
-utoipa = { version = "5", features = ["axum_extras", "chrono"] }
+utoipa = { version = "5.4.0", features = ["axum_extras", "chrono"] }
+utoipa-swagger-ui = { version = "9", features = ["axum"] }
 
 # Database (server mode)
 rusqlite = { version = "0.32", features = ["bundled"] }

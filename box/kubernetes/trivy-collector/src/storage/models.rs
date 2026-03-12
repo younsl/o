@@ -11,6 +11,7 @@ pub struct QueryParams {
     pub severity: Option<Vec<String>>,
     pub image: Option<String>,
     pub cve: Option<String>,
+    pub component: Option<String>,
     pub limit: Option<i64>,
     pub offset: Option<i64>,
 }
@@ -155,6 +156,74 @@ pub struct TokenInfo {
     pub expires_at: String,
     /// Last time this token was used
     pub last_used_at: Option<String>,
+}
+
+/// SBOM component search result (one row per matching component)
+#[derive(Debug, Clone, serde::Serialize, ToSchema)]
+pub struct ComponentSearchResult {
+    /// Cluster name
+    #[schema(example = "prod-cluster")]
+    pub cluster: String,
+    /// Kubernetes namespace
+    #[schema(example = "default")]
+    pub namespace: String,
+    /// Report name
+    pub name: String,
+    /// Application name
+    #[schema(example = "nginx")]
+    pub app: String,
+    /// Container image
+    #[schema(example = "nginx:1.25")]
+    pub image: String,
+    /// Matched component name
+    #[schema(example = "log4j-core")]
+    pub component_name: String,
+    /// Matched component version
+    #[schema(example = "2.17.1")]
+    pub component_version: String,
+    /// Component type
+    #[schema(example = "library")]
+    pub component_type: String,
+    /// Last updated timestamp
+    pub updated_at: String,
+}
+
+/// Vulnerability search result (one row per matching vulnerability)
+#[derive(Debug, Clone, serde::Serialize, ToSchema)]
+pub struct VulnSearchResult {
+    /// Cluster name
+    #[schema(example = "prod-cluster")]
+    pub cluster: String,
+    /// Kubernetes namespace
+    #[schema(example = "default")]
+    pub namespace: String,
+    /// Report name
+    pub name: String,
+    /// Application name
+    #[schema(example = "nginx")]
+    pub app: String,
+    /// Container image
+    #[schema(example = "nginx:1.25")]
+    pub image: String,
+    /// CVE ID
+    #[schema(example = "CVE-2024-1234")]
+    pub vulnerability_id: String,
+    /// Severity level
+    #[schema(example = "HIGH")]
+    pub severity: String,
+    /// CVSS score
+    pub score: Option<f64>,
+    /// Affected resource/package
+    #[schema(example = "openssl")]
+    pub resource: String,
+    /// Installed version
+    #[schema(example = "1.1.1")]
+    pub installed_version: String,
+    /// Fixed version (empty if not fixed)
+    #[schema(example = "1.1.2")]
+    pub fixed_version: String,
+    /// Last updated timestamp
+    pub updated_at: String,
 }
 
 #[cfg(test)]

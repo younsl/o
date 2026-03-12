@@ -131,6 +131,33 @@ export interface CreateTokenResponse {
   info: TokenInfo
 }
 
+export interface VulnSearchResult {
+  cluster: string
+  namespace: string
+  name: string
+  app: string
+  image: string
+  vulnerability_id: string
+  severity: string
+  score: number | null
+  resource: string
+  installed_version: string
+  fixed_version: string
+  updated_at: string
+}
+
+export interface ComponentSearchResult {
+  cluster: string
+  namespace: string
+  name: string
+  app: string
+  image: string
+  component_name: string
+  component_version: string
+  component_type: string
+  updated_at: string
+}
+
 export type ReportType = 'vulnerabilityreport' | 'sbomreport'
 
 export interface AuthUser {
@@ -152,6 +179,7 @@ export interface Filters {
   cluster: string
   namespace: string
   app: string
+  component: string
 }
 
 export interface Vulnerability {

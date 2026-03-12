@@ -98,10 +98,9 @@
 }
 
 .body a {
-    color: var(--accent);
-    text-decoration: none;
+    color: var(--text-secondary);
 }
 
 .body a:hover {
-    text-decoration: underline;
+    color: var(--text-primary);
 }

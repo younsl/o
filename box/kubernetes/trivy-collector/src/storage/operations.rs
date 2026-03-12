@@ -10,7 +10,10 @@ use super::database::Database;
 use super::extractors::{
     extract_components_count_from_str, extract_metadata_from_str, extract_vuln_summary_from_str,
 };
-use super::models::{ClusterInfo, FullReport, QueryParams, ReportMeta, Stats, VulnSummary};
+use super::models::{
+    ClusterInfo, ComponentSearchResult, FullReport, QueryParams, ReportMeta, Stats,
+    VulnSearchResult, VulnSummary,
+};
 
 impl Database {
     /// Insert or update a report
@@ -157,39 +160,40 @@ impl Database {
         &self,
         report_type: &str,
         params: &QueryParams,
-    ) -> Result<Vec<ReportMeta>> {
+    ) -> Result<(Vec<ReportMeta>, i64)> {
         let conn = self.conn.lock().unwrap();
 
-        let mut sql = String::from(
-            r#"
-            SELECT id, cluster, namespace, name, app, image, report_type,
-                   critical_count, high_count, medium_count, low_count, unknown_count,
-                   components_count, received_at, updated_at, notes, notes_created_at, notes_updated_at
-            FROM reports
-            WHERE report_type = ?1
-            "#,
-        );
-
+        let mut where_clause = String::from(" WHERE report_type = ?1");
         let mut sql_params: Vec<Box<dyn rusqlite::ToSql>> = vec![Box::new(report_type.to_string())];
 
         if let Some(cluster) = &params.cluster {
-            sql.push_str(" AND cluster = ?");
+            where_clause.push_str(" AND cluster = ?");
             sql_params.push(Box::new(cluster.clone()));
         }
 
         if let Some(namespace) = &params.namespace {
-            sql.push_str(" AND namespace = ?");
+            where_clause.push_str(" AND namespace = ?");
             sql_params.push(Box::new(namespace.clone()));
         }
 
         if let Some(app) = &params.app {
-            sql.push_str(" AND app LIKE ?");
+            where_clause.push_str(" AND app LIKE ?");
             sql_params.push(Box::new(format!("%{}%", app)));
         }
 
         if let Some(image) = &params.image {
-            sql.push_str(" AND image LIKE ?");
+            where_clause.push_str(" AND image LIKE ?");
             sql_params.push(Box::new(format!("%{}%", image)));
+        }
+
+        // Component filter (only for SBOM reports, searches within JSON data)
+        if report_type == "sbomreport"
+            && let Some(component) = &params.component
+        {
+            where_clause.push_str(
+                " AND EXISTS (SELECT 1 FROM json_each(json_extract(data, '$.report.components.components')) WHERE json_extract(value, '$.name') LIKE ?)",
+            );
+            sql_params.push(Box::new(format!("%{}%", component)));
         }
 
         // Severity filter (only for vulnerability reports)
@@ -207,11 +211,29 @@ impl Database {
                 }
             }
             if !severity_conditions.is_empty() {
-                sql.push_str(&format!(" AND ({})", severity_conditions.join(" OR ")));
+                where_clause.push_str(&format!(" AND ({})", severity_conditions.join(" OR ")));
             }
         }
 
-        sql.push_str(" ORDER BY updated_at DESC");
+        let params_refs: Vec<&dyn rusqlite::ToSql> =
+            sql_params.iter().map(|p| p.as_ref()).collect();
+
+        // COUNT query (same WHERE, no LIMIT/OFFSET)
+        let count_sql = format!("SELECT COUNT(*) FROM reports{}", where_clause);
+        let total: i64 =
+            conn.query_row(&count_sql, params_refs.as_slice(), |row| row.get(0))?;
+
+        // Data query with ORDER BY, LIMIT, OFFSET
+        let mut sql = format!(
+            r#"
+            SELECT id, cluster, namespace, name, app, image, report_type,
+                   critical_count, high_count, medium_count, low_count, unknown_count,
+                   components_count, received_at, updated_at, notes, notes_created_at, notes_updated_at
+            FROM reports{}
+            ORDER BY updated_at DESC
+            "#,
+            where_clause,
+        );
 
         if let Some(limit) = params.limit {
             sql.push_str(&format!(" LIMIT {}", limit));
@@ -222,9 +244,6 @@ impl Database {
         if let Some(offset) = params.offset {
             sql.push_str(&format!(" OFFSET {}", offset));
         }
-
-        let params_refs: Vec<&dyn rusqlite::ToSql> =
-            sql_params.iter().map(|p| p.as_ref()).collect();
 
         let mut stmt = conn.prepare(&sql)?;
         let rows = stmt.query_map(params_refs.as_slice(), |row| {
@@ -253,7 +272,7 @@ impl Database {
         })?;
 
         let results: Result<Vec<_>, _> = rows.collect();
-        Ok(results?)
+        Ok((results?, total))
     }
 
     /// Get a specific report with full data
@@ -403,6 +422,182 @@ impl Database {
         }
 
         Ok(results)
+    }
+
+    /// Search SBOM components across all reports
+    ///
+    /// Returns matching component name + version for each report that contains
+    /// the searched component. A single report may produce multiple rows if
+    /// it contains several matching components (e.g. log4j-core and log4j-api).
+    pub fn search_sbom_components(
+        &self,
+        component: &str,
+        limit: i64,
+        offset: i64,
+    ) -> Result<(Vec<ComponentSearchResult>, i64)> {
+        let conn = self.conn.lock().unwrap();
+
+        let pattern = format!("%{}%", component);
+
+        let count_sql = r#"
+            SELECT COUNT(*)
+            FROM reports r,
+                 json_each(json_extract(r.data, '$.report.components.components')) j
+            WHERE r.report_type = 'sbomreport'
+              AND json_extract(j.value, '$.name') LIKE ?1
+        "#;
+        let total: i64 = conn.query_row(count_sql, params![pattern], |row| row.get(0))?;
+
+        let sql = r#"
+            SELECT
+                r.cluster,
+                r.namespace,
+                r.name,
+                r.app,
+                r.image,
+                json_extract(j.value, '$.name') AS component_name,
+                COALESCE(json_extract(j.value, '$.version'), '') AS component_version,
+                COALESCE(json_extract(j.value, '$.type'), '') AS component_type,
+                r.updated_at
+            FROM reports r,
+                 json_each(json_extract(r.data, '$.report.components.components')) j
+            WHERE r.report_type = 'sbomreport'
+              AND json_extract(j.value, '$.name') LIKE ?1
+            ORDER BY r.updated_at DESC
+            LIMIT ?2 OFFSET ?3
+        "#;
+
+        let mut stmt = conn.prepare(sql)?;
+        let rows = stmt.query_map(params![pattern, limit, offset], |row| {
+            Ok(ComponentSearchResult {
+                cluster: row.get(0)?,
+                namespace: row.get(1)?,
+                name: row.get(2)?,
+                app: row.get(3)?,
+                image: row.get(4)?,
+                component_name: row.get(5)?,
+                component_version: row.get(6)?,
+                component_type: row.get(7)?,
+                updated_at: row.get(8)?,
+            })
+        })?;
+
+        let results: Result<Vec<_>, _> = rows.collect();
+        Ok((results?, total))
+    }
+
+    /// Search vulnerabilities across all reports
+    pub fn search_vulnerabilities(
+        &self,
+        query: &str,
+        limit: i64,
+        offset: i64,
+    ) -> Result<(Vec<VulnSearchResult>, i64)> {
+        let conn = self.conn.lock().unwrap();
+
+        let pattern = format!("%{}%", query);
+
+        let count_sql = r#"
+            SELECT COUNT(*)
+            FROM reports r,
+                 json_each(json_extract(r.data, '$.report.vulnerabilities')) j
+            WHERE r.report_type = 'vulnerabilityreport'
+              AND (
+                json_extract(j.value, '$.vulnerabilityID') LIKE ?1
+                OR json_extract(j.value, '$.resource') LIKE ?1
+              )
+        "#;
+        let total: i64 = conn.query_row(count_sql, params![pattern], |row| row.get(0))?;
+
+        let sql = r#"
+            SELECT
+                r.cluster,
+                r.namespace,
+                r.name,
+                r.app,
+                r.image,
+                json_extract(j.value, '$.vulnerabilityID') AS vuln_id,
+                COALESCE(json_extract(j.value, '$.severity'), '') AS severity,
+                json_extract(j.value, '$.score') AS score,
+                COALESCE(json_extract(j.value, '$.resource'), '') AS resource,
+                COALESCE(json_extract(j.value, '$.installedVersion'), '') AS installed_version,
+                COALESCE(json_extract(j.value, '$.fixedVersion'), '') AS fixed_version,
+                r.updated_at
+            FROM reports r,
+                 json_each(json_extract(r.data, '$.report.vulnerabilities')) j
+            WHERE r.report_type = 'vulnerabilityreport'
+              AND (
+                json_extract(j.value, '$.vulnerabilityID') LIKE ?1
+                OR json_extract(j.value, '$.resource') LIKE ?1
+              )
+            ORDER BY r.updated_at DESC
+            LIMIT ?2 OFFSET ?3
+        "#;
+
+        let mut stmt = conn.prepare(sql)?;
+        let rows = stmt.query_map(params![pattern, limit, offset], |row| {
+            Ok(VulnSearchResult {
+                cluster: row.get(0)?,
+                namespace: row.get(1)?,
+                name: row.get(2)?,
+                app: row.get(3)?,
+                image: row.get(4)?,
+                vulnerability_id: row.get(5)?,
+                severity: row.get(6)?,
+                score: row.get(7)?,
+                resource: row.get(8)?,
+                installed_version: row.get(9)?,
+                fixed_version: row.get(10)?,
+                updated_at: row.get(11)?,
+            })
+        })?;
+
+        let results: Result<Vec<_>, _> = rows.collect();
+        Ok((results?, total))
+    }
+
+    /// Suggest distinct vulnerability IDs matching a substring
+    pub fn suggest_vulnerability_ids(&self, query: &str, limit: i64) -> Result<Vec<String>> {
+        let conn = self.conn.lock().unwrap();
+
+        let sql = r#"
+            SELECT DISTINCT json_extract(j.value, '$.vulnerabilityID') AS vuln_id
+            FROM reports r,
+                 json_each(json_extract(r.data, '$.report.vulnerabilities')) j
+            WHERE r.report_type = 'vulnerabilityreport'
+              AND vuln_id LIKE ?1
+            ORDER BY vuln_id
+            LIMIT ?2
+        "#;
+
+        let pattern = format!("%{}%", query);
+        let mut stmt = conn.prepare(sql)?;
+        let rows = stmt.query_map(params![pattern, limit], |row| row.get::<_, String>(0))?;
+
+        let results: Result<Vec<_>, _> = rows.collect();
+        Ok(results?)
+    }
+
+    /// Suggest distinct component names matching a prefix/substring
+    pub fn suggest_component_names(&self, query: &str, limit: i64) -> Result<Vec<String>> {
+        let conn = self.conn.lock().unwrap();
+
+        let sql = r#"
+            SELECT DISTINCT json_extract(j.value, '$.name') AS comp_name
+            FROM reports r,
+                 json_each(json_extract(r.data, '$.report.components.components')) j
+            WHERE r.report_type = 'sbomreport'
+              AND comp_name LIKE ?1
+            ORDER BY comp_name
+            LIMIT ?2
+        "#;
+
+        let pattern = format!("%{}%", query);
+        let mut stmt = conn.prepare(sql)?;
+        let rows = stmt.query_map(params![pattern, limit], |row| row.get::<_, String>(0))?;
+
+        let results: Result<Vec<_>, _> = rows.collect();
+        Ok(results?)
     }
 }
 
@@ -573,7 +768,7 @@ mod tests {
             ..Default::default()
         };
 
-        let results = db
+        let (results, _total) = db
             .query_reports("vulnerabilityreport", &params)
             .expect("Failed to query");
         assert_eq!(results.len(), 2);
@@ -603,7 +798,7 @@ mod tests {
             ..Default::default()
         };
 
-        let results = db
+        let (results, _total) = db
             .query_reports("vulnerabilityreport", &params)
             .expect("Failed to query");
         assert_eq!(results.len(), 1);
@@ -744,7 +939,7 @@ mod tests {
             severity: Some(vec!["critical".to_string()]),
             ..Default::default()
         };
-        let results = db
+        let (results, _total) = db
             .query_reports("vulnerabilityreport", &params)
             .expect("Failed to query");
         assert_eq!(results.len(), 1);
@@ -775,7 +970,7 @@ mod tests {
             app: Some("test".to_string()),
             ..Default::default()
         };
-        let results = db
+        let (results, _total) = db
             .query_reports("vulnerabilityreport", &params)
             .expect("Failed to query");
         assert_eq!(results.len(), 2);
@@ -797,7 +992,7 @@ mod tests {
             image: Some("nginx".to_string()),
             ..Default::default()
         };
-        let results = db
+        let (results, _total) = db
             .query_reports("vulnerabilityreport", &params)
             .expect("Failed to query");
         assert_eq!(results.len(), 1);
@@ -806,7 +1001,7 @@ mod tests {
             image: Some("nonexistent".to_string()),
             ..Default::default()
         };
-        let results = db
+        let (results, _total) = db
             .query_reports("vulnerabilityreport", &params)
             .expect("Failed to query");
         assert_eq!(results.len(), 0);
@@ -830,7 +1025,7 @@ mod tests {
             limit: Some(2),
             ..Default::default()
         };
-        let results = db
+        let (results, _total) = db
             .query_reports("vulnerabilityreport", &params)
             .expect("Failed to query");
         assert_eq!(results.len(), 2);
@@ -840,7 +1035,7 @@ mod tests {
             offset: Some(3),
             ..Default::default()
         };
-        let results = db
+        let (results, _total) = db
             .query_reports("vulnerabilityreport", &params)
             .expect("Failed to query");
         assert_eq!(results.len(), 2);
@@ -996,7 +1191,7 @@ mod tests {
         .unwrap();
 
         let params = QueryParams::default();
-        let results = db
+        let (results, _total) = db
             .query_reports("sbomreport", &params)
             .expect("Failed to query");
         assert_eq!(results.len(), 2);
@@ -1020,7 +1215,7 @@ mod tests {
             severity: Some(vec!["critical".to_string()]),
             ..Default::default()
         };
-        let results = db
+        let (results, _total) = db
             .query_reports("sbomreport", &params)
             .expect("Failed to query");
         assert_eq!(results.len(), 1);

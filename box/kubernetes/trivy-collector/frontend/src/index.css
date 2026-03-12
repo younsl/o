@@ -8,6 +8,15 @@
     box-sizing: border-box;
 }
 
+a {
+    color: var(--text-secondary);
+    text-decoration: underline;
+}
+
+a:hover {
+    color: var(--text-primary);
+}
+
 :root {
     --bg-primary: #0d0d0d;
     --bg-secondary: #161616;
@@ -179,12 +188,13 @@ main {
     display: inline-flex;
     align-items: center;
     gap: 6px;
-    padding: 6px 12px;
+    padding: 8px 16px;
     background-color: var(--bg-hover);
     border: 1px solid var(--border);
     border-radius: 6px;
     color: var(--text-primary);
     font-size: 13px;
+    line-height: 1.4;
     cursor: pointer;
     transition: all 0.15s ease;
 }
@@ -338,12 +348,11 @@ main {
 }
 
 .detail-summary-value a {
-    color: var(--accent);
-    text-decoration: none;
+    color: var(--text-secondary);
 }
 
 .detail-summary-value a:hover {
-    text-decoration: underline;
+    color: var(--text-primary);
 }
 
 .detail-summary-value.sensitive {

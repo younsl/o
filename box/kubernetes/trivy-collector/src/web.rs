@@ -17,22 +17,25 @@ mod watcher;
 pub use handlers::{
     delete_report, get_config, get_dashboard_trends, get_sbom_report, get_stats, get_status,
     get_version, get_vulnerability_report, get_watcher_status, healthz, list_clusters,
-    list_namespaces, list_sbom_reports, list_vulnerability_reports, receive_report, update_notes,
+    list_namespaces, list_sbom_reports, list_vulnerability_reports, receive_report,
+    search_sbom_components, search_vulnerabilities, suggest_sbom_components,
+    suggest_vulnerabilities, update_notes,
 };
 pub use state::{AppState, RuntimeInfo, WatcherStatus};
 pub use types::{
-    ConfigItem, ConfigResponse, ErrorResponse, HealthResponse, ListQuery, ListResponse,
-    StatusResponse, TrendQuery, UpdateNotesRequest, VersionResponse, WatcherInfo,
-    WatcherStatusResponse,
+    ComponentSearchQuery, ComponentSuggestQuery, ConfigItem, ConfigResponse, ErrorResponse,
+    HealthResponse, ListQuery, ListResponse, StatusResponse, TrendQuery, UpdateNotesRequest,
+    VersionResponse, VulnSearchQuery, VulnSuggestQuery, WatcherInfo, WatcherStatusResponse,
 };
 pub use watcher::LocalWatcher;
 
 use utoipa::OpenApi;
+use utoipa_swagger_ui::SwaggerUi;
 
 use crate::collector::types::{ReportEvent, ReportEventType, ReportPayload};
 use crate::storage::{
-    ClusterInfo, FullReport, ReportMeta, Stats, TrendDataPoint, TrendMeta, TrendResponse,
-    VulnSummary,
+    ClusterInfo, ComponentSearchResult, FullReport, ReportMeta, Stats, TrendDataPoint, TrendMeta,
+    TrendResponse, VulnSearchResult, VulnSummary,
 };
 
 /// OpenAPI documentation
@@ -48,8 +51,12 @@ use crate::storage::{
         handlers::healthz,
         handlers::receive_report,
         handlers::list_vulnerability_reports,
+        handlers::search_vulnerabilities,
+        handlers::suggest_vulnerabilities,
         handlers::get_vulnerability_report,
         handlers::list_sbom_reports,
+        handlers::search_sbom_components,
+        handlers::suggest_sbom_components,
         handlers::get_sbom_report,
         handlers::list_clusters,
         handlers::get_stats,
@@ -73,6 +80,8 @@ use crate::storage::{
         ConfigResponse,
         ReportMeta,
         FullReport,
+        ComponentSearchResult,
+        VulnSearchResult,
         ClusterInfo,
         Stats,
         VulnSummary,
@@ -281,7 +290,6 @@ fn build_router(state: AppState, auth_mode: auth::AuthMode) -> Router {
         .route("/healthz", get(healthz))
         .route("/api/v1/reports", post(receive_report))
         .route("/api/v1/auth/me", get(auth::handlers::auth_me))
-        .route("/api-docs/openapi.json", get(serve_openapi))
         .route("/assets/{*path}", get(serve_asset))
         .route("/static/{*path}", get(serve_static));
 
@@ -294,15 +302,42 @@ fn build_router(state: AppState, auth_mode: auth::AuthMode) -> Router {
 
     // Protected routes (require auth when keycloak is enabled)
     let protected_routes = Router::new()
+        .merge(
+            SwaggerUi::new("/swagger-ui")
+                .url("/api-docs/openapi.json", ApiDoc::openapi())
+                .config(
+                    utoipa_swagger_ui::Config::from("/api-docs/openapi.json")
+                        .display_request_duration(true)
+                        .filter(true)
+                        .try_it_out_enabled(true)
+                        .deep_linking(true),
+                ),
+        )
         .route(
             "/api/v1/vulnerabilityreports",
             get(list_vulnerability_reports),
+        )
+        .route(
+            "/api/v1/vulnerabilityreports/vulnerabilities/search",
+            get(search_vulnerabilities),
+        )
+        .route(
+            "/api/v1/vulnerabilityreports/vulnerabilities/suggest",
+            get(suggest_vulnerabilities),
         )
         .route(
             "/api/v1/vulnerabilityreports/{cluster}/{namespace}/{name}",
             get(get_vulnerability_report),
         )
         .route("/api/v1/sbomreports", get(list_sbom_reports))
+        .route(
+            "/api/v1/sbomreports/components/search",
+            get(search_sbom_components),
+        )
+        .route(
+            "/api/v1/sbomreports/components/suggest",
+            get(suggest_sbom_components),
+        )
         .route(
             "/api/v1/sbomreports/{cluster}/{namespace}/{name}",
             get(get_sbom_report),
@@ -391,11 +426,4 @@ async fn serve_static(axum::extract::Path(path): axum::extract::Path<String>) ->
         }
         None => (StatusCode::NOT_FOUND, "Not found").into_response(),
     }
-}
-
-async fn serve_openapi() -> impl IntoResponse {
-    (
-        [(header::CONTENT_TYPE, "application/json")],
-        ApiDoc::openapi().to_json().unwrap_or_default(),
-    )
 }

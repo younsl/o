@@ -20,4 +20,7 @@ mod tokens;
 // Re-export public types
 pub use dashboard::{TrendDataPoint, TrendMeta, TrendResponse};
 pub use database::Database;
-pub use models::{ClusterInfo, FullReport, QueryParams, ReportMeta, Stats, TokenInfo, VulnSummary};
+pub use models::{
+    ClusterInfo, ComponentSearchResult, FullReport, QueryParams, ReportMeta, Stats, TokenInfo,
+    VulnSearchResult, VulnSummary,
+};

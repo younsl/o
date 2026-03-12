@@ -77,7 +77,10 @@ export default function Layout() {
         <Outlet context={{ stats, clusterOptions, namespaceOptions, setFilterCluster }} />
       </main>
       <footer>
-        <p>Trivy Collector &mdash; Multi-cluster security report aggregator</p>
+        <p>Trivy Collector &mdash; Multi-cluster security report aggregator
+          <span style={{ margin: '0 8px' }}>|</span>
+          <a href="/swagger-ui/" target="_blank" rel="noopener noreferrer">API Docs</a>
+        </p>
       </footer>
     </>
   )
