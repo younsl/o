@@ -220,8 +220,7 @@ impl Database {
 
         // COUNT query (same WHERE, no LIMIT/OFFSET)
         let count_sql = format!("SELECT COUNT(*) FROM reports{}", where_clause);
-        let total: i64 =
-            conn.query_row(&count_sql, params_refs.as_slice(), |row| row.get(0))?;
+        let total: i64 = conn.query_row(&count_sql, params_refs.as_slice(), |row| row.get(0))?;
 
         // Data query with ORDER BY, LIMIT, OFFSET
         let mut sql = format!(

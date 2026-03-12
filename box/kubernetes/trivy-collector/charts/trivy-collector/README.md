@@ -1,6 +1,6 @@
 # trivy-collector
 
-![Version: 0.7.0](https://img.shields.io/badge/Version-0.7.0-informational?style=flat-square) ![Type: application](https://img.shields.io/badge/Type-application-informational?style=flat-square) ![AppVersion: 1.5.0](https://img.shields.io/badge/AppVersion-1.5.0-informational?style=flat-square)
+![Version: 0.8.0](https://img.shields.io/badge/Version-0.8.0-informational?style=flat-square) ![Type: application](https://img.shields.io/badge/Type-application-informational?style=flat-square) ![AppVersion: 1.5.0](https://img.shields.io/badge/AppVersion-1.5.0-informational?style=flat-square)
 
 Multi-cluster Trivy report collector and viewer
 
@@ -39,7 +39,7 @@ helm install trivy-collector oci://ghcr.io/younsl/charts/trivy-collector -f valu
 Install a specific version:
 
 ```console
-helm install trivy-collector oci://ghcr.io/younsl/charts/trivy-collector --version 0.7.0
+helm install trivy-collector oci://ghcr.io/younsl/charts/trivy-collector --version 0.8.0
 ```
 
 ### Install from local chart
@@ -47,7 +47,7 @@ helm install trivy-collector oci://ghcr.io/younsl/charts/trivy-collector --versi
 Download trivy-collector chart and install from local directory:
 
 ```console
-helm pull oci://ghcr.io/younsl/charts/trivy-collector --untar --version 0.7.0
+helm pull oci://ghcr.io/younsl/charts/trivy-collector --untar --version 0.8.0
 helm install trivy-collector ./trivy-collector
 ```
 
@@ -172,6 +172,7 @@ The following table lists the configurable parameters and their default values.
 | affinity | object | `{}` | Affinity rules for pod scheduling |
 | dnsPolicy | string | "" | DNS policy for the pod (ClusterFirst, ClusterFirstWithHostNet, Default, None) |
 | dnsConfig | object | {} | DNS configuration for the pod |
+| extraObjects | list | [] | Extra Kubernetes objects to deploy alongside the chart |
 
 ## Source Code
 

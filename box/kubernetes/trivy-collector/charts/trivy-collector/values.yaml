@@ -286,3 +286,13 @@ dnsConfig: {}
   # options:
   #   - name: ndots
   #     value: "2"
+
+# -- (list) Extra Kubernetes objects to deploy alongside the chart
+# @default -- []
+extraObjects: []
+  # - apiVersion: v1
+  #   kind: ConfigMap
+  #   metadata:
+  #     name: extra-config
+  #   data:
+  #     key: value
