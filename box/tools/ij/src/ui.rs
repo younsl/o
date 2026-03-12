@@ -38,14 +38,24 @@ impl PickerState {
     }
 
     fn move_up(&mut self) {
+        if self.filtered_indices.is_empty() {
+            return;
+        }
         if self.selected > 0 {
             self.selected -= 1;
+        } else {
+            self.selected = self.filtered_indices.len() - 1;
         }
     }
 
     fn move_down(&mut self) {
+        if self.filtered_indices.is_empty() {
+            return;
+        }
         if self.selected + 1 < self.filtered_indices.len() {
             self.selected += 1;
+        } else {
+            self.selected = 0;
         }
     }
 
