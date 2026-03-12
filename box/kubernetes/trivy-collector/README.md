@@ -52,7 +52,7 @@ For detailed architecture documentation, see [Architecture](docs/architecture.md
 - **Health endpoints**: Kubernetes-ready health check endpoints
 - **Keycloak OIDC authentication**: Two auth modes (`none`, `keycloak`) — optional SSO with [Keycloak](https://www.keycloak.org/) and self-issued API tokens for programmatic access
 - **Structured logging**: JSON/pretty format with configurable levels
-- **OpenAPI documentation**: Auto-generated API specification at `/api-docs/openapi.json`
+- **OpenAPI documentation**: Auto-generated API specification at `/api-docs/openapi.json` with built-in [Swagger UI](https://swagger.io/tools/swagger-ui/) at `/swagger-ui`
 - **Helm chart**: Easy deployment with customizable values
 
 ## Quick Start
