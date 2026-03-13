@@ -5,7 +5,8 @@
 #
 # Build pattern follows official Backstage Dockerfile:
 #   Stage 1 (build): Build with devDependencies
-#   Stage 2 (runner): Extract skeleton → install prod deps → extract bundle
+#   Stage 2 (deps):  Install production deps with build tools (discarded)
+#   Stage 3 (runner): Lean production image without build tools
 #
 # Requires: Yarn Berry (4.x) with nodeLinker: node-modules
 # ==============================================================================
@@ -60,7 +61,49 @@ RUN node scripts/generate-build-info.js && \
     yarn build:all
 
 # ------------------------------------------------------------------------------
-# Stage 2: Production image (official Backstage pattern)
+# Stage 2: Install production dependencies (discarded after COPY)
+# Build tools (python3, g++, build-essential) are needed here for native modules
+# (better-sqlite3, tree-sitter, etc.) but won't appear in the final image.
+# ------------------------------------------------------------------------------
+FROM node:25-bookworm-slim AS deps
+
+RUN apt-get update && \
+    apt-get install -y --no-install-recommends \
+        python3 \
+        g++ \
+        build-essential \
+    && rm -rf /var/lib/apt/lists/*
+
+RUN npm install -g corepack --force && corepack enable
+
+WORKDIR /app
+
+# Copy root package files
+COPY --from=build /app/package.json /app/yarn.lock ./
+
+# Extract skeleton (backend workspace package.json)
+COPY --from=build /app/packages/backend/dist/skeleton.tar.gz ./
+RUN tar xzf skeleton.tar.gz && rm skeleton.tar.gz
+
+# Copy Yarn Berry configuration
+COPY --from=build /app/.yarn ./.yarn
+COPY --from=build /app/.yarnrc.yml ./
+
+# Copy all workspace package.json files for yarn workspace resolution
+COPY --from=build /app/packages/app/package.json ./packages/app/
+COPY --from=build /app/plugins/ /tmp/plugins/
+RUN find /tmp/plugins \( -name 'package.json' -o -name 'config.d.ts' \) | while read f; do \
+      dir="plugins/$(echo "$f" | sed 's|^/tmp/plugins/||' | xargs dirname)"; \
+      mkdir -p "$dir" && cp "$f" "$dir/"; \
+    done && rm -rf /tmp/plugins
+
+# Install production dependencies and discard Yarn cache + release binary
+# Cache is 1GB+ and unnecessary once node_modules is populated
+RUN yarn workspaces focus --all --production && \
+    rm -rf .yarn/cache .yarn/releases .yarn/install-state.gz
+
+# ------------------------------------------------------------------------------
+# Stage 3: Production image (lean — no build tools)
 # ------------------------------------------------------------------------------
 FROM node:25-bookworm-slim AS runner
 
@@ -69,20 +112,12 @@ LABEL org.opencontainers.image.title="Backstage with GitLab Discovery" \
       org.opencontainers.image.source="https://github.com/younsl/o" \
       org.opencontainers.image.deprecated="false"
 
-# Install runtime dependencies and build tools for native modules
-# Build tools (python3, g++, build-essential) are needed for yarn workspaces focus
-# to compile native dependencies like better-sqlite3, tree-sitter, etc.
+# Runtime dependencies only — no build tools
 RUN apt-get update && \
     apt-get install -y --no-install-recommends \
         ca-certificates \
         curl \
-        python3 \
-        g++ \
-        build-essential \
     && rm -rf /var/lib/apt/lists/*
-
-# Install and enable corepack for Yarn Berry (not included in slim image)
-RUN npm install -g corepack --force && corepack enable
 
 # Set production environment
 ENV NODE_ENV=production
@@ -96,32 +131,8 @@ RUN chown node:node /app
 
 USER node
 
-# Copy root package.json and yarn.lock (required for workspaces)
-COPY --from=build --chown=node:node /app/package.json ./
-COPY --from=build --chown=node:node /app/yarn.lock ./
-
-# Copy skeleton from build stage
-COPY --from=build --chown=node:node /app/packages/backend/dist/skeleton.tar.gz ./
-
-# Extract skeleton (package.json for backend workspace)
-RUN tar xzf skeleton.tar.gz && rm skeleton.tar.gz
-
-# Copy Yarn Berry configuration AFTER skeleton extraction
-COPY --from=build --chown=node:node /app/.yarn ./.yarn
-COPY --from=build --chown=node:node /app/.yarnrc.yml ./
-
-# Copy all workspace package.json files for yarn workspace resolution
-# Includes packages/app and all plugins (auto-discovers new plugins)
-COPY --from=build --chown=node:node /app/packages/app/package.json ./packages/app/
-COPY --from=build --chown=node:node /app/plugins/ /tmp/plugins/
-RUN find /tmp/plugins \( -name 'package.json' -o -name 'config.d.ts' \) | while read f; do \
-      dir="plugins/$(echo "$f" | sed 's|^/tmp/plugins/||' | xargs dirname)"; \
-      mkdir -p "$dir" && cp "$f" "$dir/"; \
-    done && rm -rf /tmp/plugins
-
-# Install production dependencies only (Yarn Berry feature)
-# Uses cached packages from .yarn/cache
-RUN yarn workspaces focus --all --production
+# Copy production deps from deps stage (no build tools, no Yarn cache)
+COPY --from=deps --chown=node:node /app ./
 
 # Copy and extract bundle (compiled backend code)
 COPY --from=build --chown=node:node /app/packages/backend/dist/bundle.tar.gz ./
