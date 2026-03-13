@@ -13,6 +13,7 @@ import ExpandLessIcon from '@material-ui/icons/ExpandLess';
 import FavoriteBorderIcon from '@material-ui/icons/FavoriteBorder';
 import SecurityIcon from '@material-ui/icons/Security';
 import StorageIcon from '@material-ui/icons/Storage';
+import AttachMoneyIcon from '@material-ui/icons/AttachMoney';
 import FindInPageIcon from '@material-ui/icons/FindInPage';
 import { siApachekafka, siArgo, siKubernetes } from 'simple-icons';
 import { createIcon } from '@dweber019/backstage-plugin-simple-icons';
@@ -314,6 +315,7 @@ export const Root = ({ children }: PropsWithChildren<{}>) => {
   const iamUserAuditEnabled = config.getOptionalBoolean('app.plugins.iamUserAudit') ?? true;
   const kafkaTopicEnabled = config.getOptionalBoolean('app.plugins.kafkaTopic') ?? true;
   const s3LogExtractEnabled = config.getOptionalBoolean('app.plugins.s3LogExtract') ?? true;
+  const opencostEnabled = config.getOptionalBoolean('app.plugins.opencost') ?? true;
 
   return (
   <SidebarPage>
@@ -343,6 +345,9 @@ export const Root = ({ children }: PropsWithChildren<{}>) => {
         )}
         {kafkaTopicEnabled && (
           <SidebarItem icon={ApacheKafkaIcon} to="kafka-topic" text="Kafka Topic" />
+        )}
+        {opencostEnabled && (
+          <SidebarItem icon={AttachMoneyIcon} to="opencost" text="OpenCost" />
         )}
         {iamUserAuditEnabled && <IamAuditSidebarItem />}
         {s3LogExtractEnabled && <S3LogExtractSidebarItem />}

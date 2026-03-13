@@ -43,6 +43,7 @@
     "@internal/plugin-iam-user-audit": "workspace:*",
     "@internal/plugin-kafka-topic": "workspace:*",
     "@internal/plugin-openapi-registry": "workspace:*",
+    "@internal/plugin-opencost": "workspace:*",
     "@internal/plugin-s3-log-extract": "workspace:*",
     "@material-ui/core": "^4.12.4",
     "@material-ui/icons": "^4.11.3",

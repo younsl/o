@@ -9,6 +9,7 @@ app:
     iamUserAudit: true
     kafkaTopic: true
     s3LogExtract: true
+    opencost: true
   platforms:
     - name: Grafana
       category: Observability
@@ -215,8 +216,24 @@ kafka:
             - name: retention.ms
               value: '86400000'
 
-proxy:
-  endpoints: {}
+opencost:
+  timezone: Asia/Seoul
+  clusters:
+    - name: shared
+      title: Shared
+      url: ${OPENCOST_SHARED_URL}
+    - name: dev
+      title: Dev
+      url: ${OPENCOST_DEV_URL}
+    - name: stg
+      title: Stage
+      url: ${OPENCOST_STG_URL}
+    - name: sb
+      title: Sandbox
+      url: ${OPENCOST_SB_URL}
+    - name: prd
+      title: Production
+      url: ${OPENCOST_PRD_URL}
 
 search:
   collators:

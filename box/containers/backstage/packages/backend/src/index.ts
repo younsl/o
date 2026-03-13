@@ -91,6 +91,9 @@ if (!disableGitlab) {
   backend.add(import('@internal/plugin-catalog-health-backend'));
 }
 
+// OpenCost plugin for Kubernetes cost monitoring
+backend.add(import('@internal/plugin-opencost-backend'));
+
 // SonarQube plugin for code quality metrics
 backend.add(import('@backstage-community/plugin-sonarqube-backend'));
 

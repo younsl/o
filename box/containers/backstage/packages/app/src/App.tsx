@@ -58,6 +58,7 @@ import { IamUserAuditPage } from '@internal/plugin-iam-user-audit';
 import { S3LogExtractPage } from '@internal/plugin-s3-log-extract';
 import { CatalogHealthPage, GenerateCatalogInfoPage } from '@internal/plugin-catalog-health';
 import { KafkaTopicPage } from '@internal/plugin-kafka-topic';
+import { OpenCostPage } from '@internal/plugin-opencost';
 import { BuiThemerPage } from '@backstage/plugin-mui-to-bui';
 import { BuildInfoSettings } from './components/settings/AboutSettings';
 
@@ -140,6 +141,7 @@ const routes = (
     <Route path="/kafka-topic/*" element={<KafkaTopicPage />} />
     <Route path="/catalog-health" element={<CatalogHealthPage />} />
     <Route path="/catalog-health/generate" element={<GenerateCatalogInfoPage />} />
+    <Route path="/opencost" element={<OpenCostPage />} />
     <Route path="/mui-to-bui" element={<BuiThemerPage />} />
     <Route path="/settings" element={<UserSettingsPage />}>
       <SettingsLayout.Route path="/build-info" title="Build Info">
