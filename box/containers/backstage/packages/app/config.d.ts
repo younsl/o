@@ -20,6 +20,21 @@ export interface Config {
        * @visibility frontend
        */
       iamUserAudit?: boolean;
+      /**
+       * Enable or disable S3 Log Extract plugin
+       * @visibility frontend
+       */
+      s3LogExtract?: boolean;
+      /**
+       * Enable or disable Kafka Topic plugin
+       * @visibility frontend
+       */
+      kafkaTopic?: boolean;
+      /**
+       * Enable or disable OpenCost plugin
+       * @visibility frontend
+       */
+      opencost?: boolean;
     };
     /**
      * Internal platform services for developers

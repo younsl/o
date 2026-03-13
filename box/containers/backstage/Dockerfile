@@ -114,7 +114,7 @@ COPY --from=build --chown=node:node /app/.yarnrc.yml ./
 # Includes packages/app and all plugins (auto-discovers new plugins)
 COPY --from=build --chown=node:node /app/packages/app/package.json ./packages/app/
 COPY --from=build --chown=node:node /app/plugins/ /tmp/plugins/
-RUN find /tmp/plugins -name 'package.json' | while read f; do \
+RUN find /tmp/plugins \( -name 'package.json' -o -name 'config.d.ts' \) | while read f; do \
       dir="plugins/$(echo "$f" | sed 's|^/tmp/plugins/||' | xargs dirname)"; \
       mkdir -p "$dir" && cp "$f" "$dir/"; \
     done && rm -rf /tmp/plugins
