@@ -27,9 +27,6 @@ import {
 import { sonarQubeApiRef } from '@backstage-community/plugin-sonarqube-react';
 import { SonarQubeClient } from '@backstage-community/plugin-sonarqube';
 
-/**
- * Keycloak OIDC Authentication API Reference
- */
 export const keycloakOIDCAuthApiRef: ApiRef<
   OpenIdConnectApi & ProfileInfoApi & BackstageIdentityApi & SessionApi
 > = createApiRef({
@@ -43,7 +40,6 @@ export const apis: AnyApiFactory[] = [
     factory: ({ configApi }) => ScmIntegrationsApi.fromConfig(configApi),
   }),
   ScmAuth.createDefaultApiFactory(),
-  // Keycloak OIDC Authentication
   createApiFactory({
     api: keycloakOIDCAuthApiRef,
     deps: {
@@ -74,7 +70,6 @@ export const apis: AnyApiFactory[] = [
     factory: ({ storageApi, identityApi }) =>
       VisitsStorageApi.create({ storageApi, identityApi }),
   }),
-  // SonarQube API
   createApiFactory({
     api: sonarQubeApiRef,
     deps: {

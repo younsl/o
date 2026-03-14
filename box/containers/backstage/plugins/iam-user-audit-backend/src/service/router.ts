@@ -65,8 +65,6 @@ export async function createRouter(options: RouterOptions): Promise<Router> {
   const router = Router();
   router.use(express.json());
 
-  // --- Existing routes ---
-
   router.get('/health', (_, res) => {
     res.json({ status: 'ok' });
   });
@@ -161,8 +159,6 @@ export async function createRouter(options: RouterOptions): Promise<Router> {
     );
     res.json(filtered);
   });
-
-  // --- Password Reset routes ---
 
   router.post('/password-reset/requests', async (req, res) => {
     try {
@@ -378,8 +374,6 @@ export async function createRouter(options: RouterOptions): Promise<Router> {
     const userRef = await tryGetUserRef(req);
     res.json({ isAdmin: !!userRef && admins.includes(userRef) });
   });
-
-  // --- Admin routes ---
 
   const emailDomain = config.getOptionalString('iamUserAudit.slack.emailDomain') ?? '';
 

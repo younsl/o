@@ -38,10 +38,6 @@ const chipStyle = (bg: string, fg: string): React.CSSProperties => ({
   color: fg,
 });
 
-/**
- * Wrapper component for EntitySonarQubeCard that displays
- * SonarQube connection status in the card header.
- */
 export const EntitySonarQubeCardWithStatus = () => {
   const { entity } = useEntity();
   const sonarQubeApi = useApi(sonarQubeApiRef);
@@ -49,12 +45,10 @@ export const EntitySonarQubeCardWithStatus = () => {
 
   const [connectionStatus, setConnectionStatus] = useState<ConnectionStatus>('loading');
 
-  // Get all sonarqube.org/ annotations
   const sonarQubeAnnotations = Object.entries(entity.metadata.annotations || {})
     .filter(([key]) => key.startsWith(SONARQUBE_ANNOTATION_PREFIX))
     .sort(([a], [b]) => a.localeCompare(b));
 
-  // Check if project-key-source annotation exists and its value
   // Support 'auto-injected' (new) and 'auto' (legacy) for backward compatibility
   const sourceAnnotation = sonarQubeAnnotations.find(
     ([key]) => key === 'sonarqube.org/project-key-source'
@@ -62,7 +56,6 @@ export const EntitySonarQubeCardWithStatus = () => {
   const sourceValue = sourceAnnotation?.[1];
   const isAutoInjected = sourceValue === 'auto-injected' || sourceValue === 'auto';
 
-  // Check actual SonarQube API connection
   useEffect(() => {
     if (!projectKey) {
       setConnectionStatus('disconnected');

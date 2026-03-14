@@ -9,10 +9,6 @@ import { IntegrationStatusBadge } from './IntegrationStatusBadge';
 
 const PLUGIN_URL = 'https://github.com/immobiliare/backstage-plugin-gitlab';
 
-/**
- * Wrapper component for EntityGitlabReadmeCard that displays
- * GitLab connection status in the card header.
- */
 export const EntityGitlabReadmeCardWithStatus = () => {
   const { entity } = useEntity();
   const gitlabConnected = isGitlabAvailable(entity);

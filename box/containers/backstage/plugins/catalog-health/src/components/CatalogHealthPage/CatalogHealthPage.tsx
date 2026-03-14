@@ -404,7 +404,6 @@ const CatalogCoverageTab = ({
         </div>
       </Box>
 
-      {/* Overview Section */}
       <Box p="3" className="coverage-section-box">
         <Flex justify="between" align="center" style={{ marginBottom: 12 }}>
           <Text variant="body-medium" weight="bold">Overview</Text>
@@ -533,7 +532,6 @@ const CatalogCoverageTab = ({
 
       </Box>
 
-      {/* Repositories Section */}
       <Box p="3" className="coverage-section-box">
         <Flex justify="between" align="center" style={{ marginBottom: 12 }}>
           <Flex align="center" gap="2">

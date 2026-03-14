@@ -43,19 +43,16 @@ export const CreateTopicContent = ({ onBack }: { onBack: () => void }) => {
   const { value: userRole } = useAsyncRetry(async () => api.getUserRole(), [api]);
   const reviewerList = userRole?.admins ?? [];
 
-  // Data: clusters
   const {
     value: clusters,
     loading,
     error: clustersError,
   } = useAsyncRetry(async () => api.getClusters(), [api]);
 
-  // Step 1: cluster selection
   const [selectedCluster, setSelectedCluster] = useState<string | null>(null);
   const currentClusterName = selectedCluster ?? clusters?.[0]?.name;
   const currentCluster = clusters?.find(c => c.name === currentClusterName);
 
-  // Data: topics for selected cluster
   const {
     value: topics,
     loading: topicsLoading,
@@ -64,7 +61,6 @@ export const CreateTopicContent = ({ onBack }: { onBack: () => void }) => {
     return api.listTopics(currentClusterName);
   }, [api, currentClusterName]);
 
-  // Step 3: config
   const [appName, setAppName] = useState('');
   const [eventName, setEventName] = useState('');
   const [action, setAction] = useState('');
@@ -75,15 +71,11 @@ export const CreateTopicContent = ({ onBack }: { onBack: () => void }) => {
   const [trafficLevel, setTrafficLevel] = useState('');
   const [cleanupPolicy, setCleanupPolicy] = useState('delete');
 
-  // Step 5: create
   const [isCreating, setIsCreating] = useState(false);
   const [result, setResult] = useState<CreateTopicResponse | null>(null);
   const [error, setError] = useState<string | null>(null);
 
-  // Validation
   const hasInvalidInput = hasInvalidChars(appName) || hasInvalidChars(eventName) || hasInvalidChars(action);
-
-  // Derived
   const selectedConfig = currentCluster?.topicConfig?.[trafficLevel];
   const topicPreview = useMemo(() => {
     const parts = [appName.trim(), eventName.trim()].filter(Boolean);
@@ -93,7 +85,6 @@ export const CreateTopicContent = ({ onBack }: { onBack: () => void }) => {
   const isDuplicate = topicPreview !== '' && (topics?.some(t => t.name === topicPreview) ?? false);
   const isCompleted = result !== null;
 
-  // Reset form when cluster changes
   useEffect(() => {
     const keys = Object.keys(
       clusters?.find(c => c.name === currentClusterName)?.topicConfig ?? {},
@@ -107,7 +98,6 @@ export const CreateTopicContent = ({ onBack }: { onBack: () => void }) => {
     setError(null);
   }, [currentClusterName, clusters]);
 
-  // Step validation
   const canProceed = useMemo(() => {
     switch (step) {
       case 0: return !!currentClusterName;
@@ -167,7 +157,6 @@ export const CreateTopicContent = ({ onBack }: { onBack: () => void }) => {
 
   return (
     <Flex direction="column" gap="5">
-          {/* Stepper */}
           <div className="kafka-stepper">
             {STEPS.map((s, i) => (
               <React.Fragment key={s.key}>
@@ -204,7 +193,6 @@ export const CreateTopicContent = ({ onBack }: { onBack: () => void }) => {
             ))}
           </div>
 
-          {/* Step header */}
           {!isCompleted && (
             <Flex direction="column" gap="1">
               <Text variant="body-medium" weight="bold">{STEPS[step].title}</Text>
@@ -212,7 +200,6 @@ export const CreateTopicContent = ({ onBack }: { onBack: () => void }) => {
             </Flex>
           )}
 
-          {/* Step 1: Cluster */}
           {step === 0 && (
             <Flex direction="column" gap="3">
               <Box style={{ minWidth: 240, width: 'fit-content' }}>
@@ -230,7 +217,6 @@ export const CreateTopicContent = ({ onBack }: { onBack: () => void }) => {
             </Flex>
           )}
 
-          {/* Step 2: Topics */}
           {step === 1 && (
             <details className="kafka-topics-details" open>
               <summary className="kafka-topics-summary">
@@ -247,7 +233,6 @@ export const CreateTopicContent = ({ onBack }: { onBack: () => void }) => {
             </details>
           )}
 
-          {/* Step 3: Config */}
           {step === 2 && (
             <Flex direction="column" gap="3">
               <Flex direction={{ initial: 'column', sm: 'row' }} gap="3">
@@ -367,7 +352,6 @@ export const CreateTopicContent = ({ onBack }: { onBack: () => void }) => {
             </Flex>
           )}
 
-          {/* Step 4: Simulate & Create */}
           {step === 3 && (
             <Flex direction="column" gap="3">
               {!result ? (
@@ -474,7 +458,6 @@ export const CreateTopicContent = ({ onBack }: { onBack: () => void }) => {
             </Flex>
           )}
 
-          {/* Navigation */}
           {!(step === 3 && result) && (
             <Flex gap="2">
               <Button

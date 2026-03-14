@@ -35,14 +35,12 @@ export class SonarQubeAnnotationProcessor implements CatalogProcessor {
     _location: LocationSpec,
     _emit: CatalogProcessorEmit,
   ): Promise<Entity> {
-    // Only process Component entities
     if (entity.kind !== 'Component') {
       return entity;
     }
 
     const existingProjectKey = entity.metadata.annotations?.[SONARQUBE_PROJECT_KEY];
 
-    // If project key already exists (manually specified), mark as manual and add base-url
     if (existingProjectKey) {
       const hasSourceAnnotation = !!entity.metadata.annotations?.[SONARQUBE_PROJECT_KEY_SOURCE];
       const existingBaseUrl = entity.metadata.annotations?.[SONARQUBE_BASE_URL];
@@ -52,7 +50,6 @@ export class SonarQubeAnnotationProcessor implements CatalogProcessor {
       const baseUrlSource = existingBaseUrl ? 'manual' : 'auto-injected';
       const finalBaseUrl = existingBaseUrl || this.baseUrl;
 
-      // Skip if all annotations already exist
       if (hasSourceAnnotation && hasBaseUrlSourceAnnotation) {
         return entity;
       }
@@ -71,7 +68,6 @@ export class SonarQubeAnnotationProcessor implements CatalogProcessor {
       };
     }
 
-    // Try to get project key from GitLab slug or fall back to entity name
     const gitlabSlug = entity.metadata.annotations?.['gitlab.com/project-slug'];
     const projectKey = gitlabSlug
       ? (gitlabSlug.split('/').pop() ?? entity.metadata.name) // Get repo name from "group/subgroup/repo"

@@ -326,7 +326,6 @@ export const Root = ({ children }: PropsWithChildren<{}>) => {
       </SidebarGroup>
       <SidebarDivider />
 
-      {/* Resources Section */}
       <FoldableSection title="Resources" icon={<CategoryIcon />} defaultOpen={false}>
         <PlatformsSidebarItem />
         <SidebarItem icon={CategoryIcon} to="catalog" text="Catalog" />
@@ -335,7 +334,6 @@ export const Root = ({ children }: PropsWithChildren<{}>) => {
         <SidebarItem icon={LibraryBooks} to="docs" text="Docs" />
       </FoldableSection>
 
-      {/* Operations Section */}
       <FoldableSection title="Operations" icon={<BuildIcon />} defaultOpen={false}>
         {catalogHealthEnabled && (
           <SidebarItem icon={FavoriteBorderIcon} to="catalog-health" text="Catalog Health" />

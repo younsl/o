@@ -234,7 +234,6 @@ export const RegisteredApisList = ({ registrations, loading, loadError, onRetry 
       {error && <Alert status="danger" description={error} />}
       {success && <Alert status="success" description={success} />}
 
-      {/* Filters Section */}
       <Box
         p="3"
         style={{
@@ -377,7 +376,6 @@ export const RegisteredApisList = ({ registrations, loading, loadError, onRetry 
         </Flex>
       </Box>
 
-      {/* Registrations Section */}
       <Box
         p="3"
         style={{

@@ -82,7 +82,6 @@ export const IamUserAuditPage = () => {
           Monitor inactive IAM users in your AWS account
         </Text>
 
-        {/* Overview Section */}
         <Box mt="4" p="3" className="iam-section-box">
           <Flex justify="between" align="center" style={{ marginBottom: 12 }}>
             <Text variant="body-medium" weight="bold">

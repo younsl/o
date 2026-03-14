@@ -146,7 +146,6 @@ const PlatformCard = ({
       style={{ textDecoration: 'none', color: 'inherit', display: 'block', height: '100%' }}
     >
       <Card style={{ height: '100%', cursor: 'pointer', overflow: 'hidden', display: 'flex', flexDirection: 'column', padding: 0 }}>
-        {/* Logo area */}
         <div
           style={{
             height: 96,
@@ -166,7 +165,6 @@ const PlatformCard = ({
             }}
           />
         </div>
-        {/* Info area */}
         <div
           style={{
             backgroundColor: 'var(--bui-color-bg-default, #121212)',
@@ -401,7 +399,6 @@ export const PlatformsPage = () => {
             Internal tech stack and platform services for developers
           </Text>
 
-          {/* Filters Section */}
           <Box
             mt="4"
             p="3"
@@ -427,7 +424,6 @@ export const PlatformsPage = () => {
                   onChange={setSearchQuery}
                 />
               </Box>
-              {/* Tags Multi-Select */}
               {allTags.length > 0 && (
                 <Box style={{ minWidth: 160, position: 'relative' }} ref={tagDropdownRef}>
                   <div style={{ fontSize: 'var(--bui-font-size-2, 0.75rem)', fontWeight: 400, marginBottom: 'var(--bui-space-3, 12px)', color: 'var(--bui-fg-primary, #fff)' }}>
@@ -542,7 +538,6 @@ export const PlatformsPage = () => {
             </Flex>
           </Box>
 
-          {/* Platforms Section */}
           <Box
             p="3"
             style={{
@@ -608,7 +603,6 @@ export const PlatformsPage = () => {
               </span>
             </Flex>
 
-            {/* Content */}
             {categories.length === 0 && favoritePlatforms.length === 0 ? (
               <Flex justify="center" p="4">
                 <Text color="secondary">
@@ -620,7 +614,6 @@ export const PlatformsPage = () => {
               </Flex>
             ) : (
               <Flex direction="column" gap="4">
-                {/* Favorites Section */}
                 {favoritePlatforms.length > 0 && (
                   <div
                     style={{
@@ -656,7 +649,6 @@ export const PlatformsPage = () => {
                   </div>
                 )}
 
-                {/* Categories */}
                 {categories.map(category => {
                   const expanded = isSectionExpanded(category.name);
                   return (

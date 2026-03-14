@@ -272,7 +272,6 @@ export const ApplicationSetTable = () => {
 
   return (
     <>
-      {/* Overview Section */}
       <Box mt="4" p="3" className="appset-section-box">
         <Flex justify="between" align="center" style={{ marginBottom: 12 }}>
           <Text variant="body-medium" weight="bold">
@@ -359,7 +358,6 @@ export const ApplicationSetTable = () => {
         </div>
       </Box>
 
-      {/* Filters Section */}
       <Box mt="3" p="3" className="appset-section-box">
         <Text variant="body-medium" weight="bold" style={{ marginBottom: 12, display: 'block' }}>
           Filters
@@ -396,7 +394,6 @@ export const ApplicationSetTable = () => {
         </div>
       </Box>
 
-      {/* ApplicationSets Section */}
       <Box mt="3" p="3" className="appset-section-box">
         <Flex justify="between" align="center" mb="3">
           <Text variant="body-medium" weight="bold">

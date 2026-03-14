@@ -227,10 +227,6 @@ const componentPage = (
   </EntitySwitch>
 );
 
-/**
- * API Entity Page - Shows API definition (OpenAPI, AsyncAPI, GraphQL, gRPC)
- * This is where users can view API specs discovered from GitLab
- */
 const apiPage = (
   <EntityLayout>
     <EntityLayout.Route path="/" title="Overview">

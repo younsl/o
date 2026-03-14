@@ -262,7 +262,6 @@ export const ApisPage = () => {
             </ButtonLink>
           </Flex>
 
-          {/* Filters Section */}
           <Box
             mt="3"
             p="3"
@@ -418,7 +417,6 @@ export const ApisPage = () => {
             </Flex>
           </Box>
 
-          {/* APIs Section */}
           <Box
             p="3"
             style={{

@@ -29,8 +29,6 @@ export const KafkaTopicPage = () => {
   );
 };
 
-/* ---------- List View ---------- */
-
 const RequestListView = () => {
   const api = useApi(kafkaTopicApiRef);
   const navigate = useNavigate();
@@ -179,8 +177,6 @@ const RequestListView = () => {
   );
 };
 
-/* ---------- Create View ---------- */
-
 const CreateView = () => {
   const navigate = useNavigate();
 
@@ -208,8 +204,6 @@ const CreateView = () => {
     </>
   );
 };
-
-/* ---------- Review View ---------- */
 
 const ReviewView = () => {
   const { id } = useParams<{ id: string }>();

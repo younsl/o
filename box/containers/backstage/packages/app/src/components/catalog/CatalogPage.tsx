@@ -294,7 +294,6 @@ export const CatalogPage = () => {
             </Link>
           </Flex>
 
-          {/* Filters Section */}
           <Box
             mt="3"
             p="3"
@@ -458,7 +457,6 @@ export const CatalogPage = () => {
             </Flex>
           </Box>
 
-          {/* Entities Section */}
           <Box
             p="3"
             style={{

@@ -46,13 +46,9 @@ export async function createRouter(options: RouterOptions): Promise<Router> {
   const router = Router();
   router.use(express.json());
 
-  // --- Health ---
-
   router.get('/health', (_, res) => {
     res.json({ status: 'ok' });
   });
-
-  // --- Config info ---
 
   router.get('/config', (_, res) => {
     const bucket = config.getOptionalString('s3LogExtract.bucket') ?? '';
@@ -62,8 +58,6 @@ export async function createRouter(options: RouterOptions): Promise<Router> {
       config.getOptionalNumber('s3LogExtract.maxTimeRangeMinutes') ?? 60;
     res.json({ bucket, region, prefix, maxTimeRangeMinutes });
   });
-
-  // --- S3 Health Check (cached 1 min) ---
 
   let healthCache: { connected: boolean; checkedAt: string; error?: string } | null = null;
   let healthCacheExpiry = 0;
@@ -75,14 +69,11 @@ export async function createRouter(options: RouterOptions): Promise<Router> {
     return result;
   };
 
-  // Initial health check
   runHealthCheck().catch(() => {});
 
-  // Background polling every 60s
   const healthInterval = setInterval(() => {
     runHealthCheck().catch(() => {});
   }, 60_000);
-  // Cleanup on process exit
   process.on('SIGTERM', () => clearInterval(healthInterval));
 
   router.get('/s3-health', async (_req, res) => {
@@ -93,8 +84,6 @@ export async function createRouter(options: RouterOptions): Promise<Router> {
     const result = await runHealthCheck();
     res.json(result);
   });
-
-  // --- List apps ---
 
   const listAppsLimiter = rateLimit({
     windowMs: 15 * 60 * 1000,
@@ -130,8 +119,6 @@ export async function createRouter(options: RouterOptions): Promise<Router> {
     }
   });
 
-  // --- Submit request ---
-
   const submitLimiter = rateLimit({
     windowMs: 15 * 60 * 1000,
     max: 5,
@@ -166,7 +153,6 @@ export async function createRouter(options: RouterOptions): Promise<Router> {
         return;
       }
 
-      // Validate time range against configured maximum
       const maxMinutes =
         config.getOptionalNumber('s3LogExtract.maxTimeRangeMinutes') ?? 60;
       const parseMinutes = (t: string) => {
@@ -201,8 +187,6 @@ export async function createRouter(options: RouterOptions): Promise<Router> {
     }
   });
 
-  // --- List requests ---
-
   router.get('/requests', async (req, res) => {
     try {
       const userRef = await tryGetUserRef(req);
@@ -212,8 +196,6 @@ export async function createRouter(options: RouterOptions): Promise<Router> {
         return;
       }
 
-      // All authenticated users can view all requests,
-      // but only the original requester can download (enforced by download endpoint)
       const requests = await store.listRequests();
       res.json(requests);
     } catch (error) {
@@ -223,8 +205,6 @@ export async function createRouter(options: RouterOptions): Promise<Router> {
       });
     }
   });
-
-  // --- Get single request ---
 
   router.get('/requests/:id', async (req, res) => {
     try {
@@ -242,8 +222,6 @@ export async function createRouter(options: RouterOptions): Promise<Router> {
       });
     }
   });
-
-  // --- Review request ---
 
   const reviewLimiter = rateLimit({
     windowMs: 15 * 60 * 1000,
@@ -304,7 +282,6 @@ export async function createRouter(options: RouterOptions): Promise<Router> {
           return;
         }
 
-        // Approve: start extraction
         await store.updateStatus(id, 'approved', {
           reviewerRef,
           reviewComment: input.comment,
@@ -316,7 +293,6 @@ export async function createRouter(options: RouterOptions): Promise<Router> {
           `Request approved [${id}] by ${reviewerRef}, starting extraction`,
         );
 
-        // Run extraction asynchronously
         s3LogService
           .extractLogs(
             existing.source,
@@ -358,8 +334,6 @@ export async function createRouter(options: RouterOptions): Promise<Router> {
     },
   );
 
-  // --- Download ---
-
   const downloadLimiter = rateLimit({
     windowMs: 10 * 60 * 1000,
     max: 5,
@@ -392,7 +366,6 @@ export async function createRouter(options: RouterOptions): Promise<Router> {
           return;
         }
 
-        // Admins can download any request, others only their own
         if (!userRef || (userRef !== request.requesterRef && !admins.includes(userRef))) {
           res
             .status(403)
@@ -418,8 +391,6 @@ export async function createRouter(options: RouterOptions): Promise<Router> {
       }
     },
   );
-
-  // --- Admin status ---
 
   router.get('/admin-status', async (req, res) => {
     const userRef = await tryGetUserRef(req);

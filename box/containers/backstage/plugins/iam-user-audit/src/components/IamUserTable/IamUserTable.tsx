@@ -149,7 +149,6 @@ export const IamUserTable = ({ threshold = 90, warningDays = 14, isAdmin, slackU
 
   return (
     <>
-      {/* Filters Section */}
       <Box mt="3" p="3" className="iam-section-box">
         <Text variant="body-medium" weight="bold" style={{ marginBottom: 12, display: 'block' }}>
           Filters
@@ -179,7 +178,6 @@ export const IamUserTable = ({ threshold = 90, warningDays = 14, isAdmin, slackU
         </div>
       </Box>
 
-      {/* IAM Users Section */}
       <Box mt="3" p="3" className="iam-section-box">
         <Flex justify="between" align="center" mb="3">
           <Text variant="body-medium" weight="bold">

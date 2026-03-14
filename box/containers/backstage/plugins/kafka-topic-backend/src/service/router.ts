@@ -451,8 +451,6 @@ export async function createRouter(options: RouterOptions): Promise<Router> {
     }
   });
 
-  // --- Request management endpoints ---
-
   router.get('/requests', async (_, res) => {
     const all = await store.listRequests();
     res.json(all);

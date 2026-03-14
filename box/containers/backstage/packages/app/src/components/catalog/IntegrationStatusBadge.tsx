@@ -14,10 +14,6 @@ export interface IntegrationStatusBadgeProps {
   tooltipError?: string;
 }
 
-/**
- * A reusable status badge component that displays integration connection status.
- * Shows a label and LED indicator, clickable to open plugin documentation.
- */
 export const IntegrationStatusBadge = ({
   label,
   status,

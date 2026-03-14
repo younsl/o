@@ -4,8 +4,6 @@ import { ConfigReader } from '@backstage/config';
 import { createRouter } from './router';
 import { LogExtractRequest, RequestStatus } from './types';
 
-// --- Mocks ---
-
 const mockStore = {
   createRequest: jest.fn(),
   getRequest: jest.fn(),
@@ -30,8 +28,6 @@ const mockLogger = {
   debug: jest.fn(),
   child: jest.fn().mockReturnThis(),
 };
-
-// --- Helpers ---
 
 function setAuth(userRef: string) {
   mockHttpAuth.credentials.mockResolvedValue({
@@ -92,8 +88,6 @@ async function createTestApp(configOverrides: Record<string, unknown> = {}) {
   app.use(router);
   return app;
 }
-
-// --- Tests ---
 
 describe('router', () => {
   let app: express.Express;

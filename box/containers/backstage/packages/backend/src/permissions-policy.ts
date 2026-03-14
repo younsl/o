@@ -37,7 +37,6 @@ class AdminOnlyPolicy implements PermissionPolicy {
       return { result: AuthorizeResult.DENY };
     }
 
-    // All other permissions: allow (preserve existing behavior)
     return { result: AuthorizeResult.ALLOW };
   }
 }

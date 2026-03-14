@@ -29,12 +29,10 @@ export const opencostPlugin = createBackendPlugin({
 
         const service = OpenCostService.fromConfig(config, logger);
 
-        // Initialize database store
         const knex = await database.getClient();
         const costStore = await OpenCostCostStore.create({ database: knex });
         logger.info('OpenCost database tables initialized');
 
-        // Initialize collector with scheduled tasks
         const collector = new OpenCostCollector(costStore, config, logger);
         await collector.registerTasks(scheduler);
 

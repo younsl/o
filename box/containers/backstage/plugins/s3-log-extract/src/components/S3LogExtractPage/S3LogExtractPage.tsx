@@ -46,8 +46,6 @@ const envOptions = [
   { value: 'prd', label: 'prd' },
 ];
 
-// --- Review Dialog ---
-
 interface ReviewDialogProps {
   request: LogExtractRequest;
   action: 'approve' | 'reject';
@@ -186,8 +184,6 @@ const ReviewDialog = ({
   );
 };
 
-// --- Request Form ---
-
 const RequestForm = ({
   onSubmitted,
   maxTimeRangeMinutes,
@@ -245,12 +241,10 @@ const RequestForm = ({
     };
   }, [env, date, source, fetchApps]);
 
-  // Reset selected apps when source/env/date changes
   useEffect(() => {
     setSelectedApps([]);
   }, [source, env, date]);
 
-  // Auto-format time input: "1100" → "11:00", "930" → "09:30", "9" → "09:00"
   const formatTime = (raw: string): string => {
     const digits = raw.replace(/\D/g, '');
     if (!digits) return raw;
@@ -263,7 +257,6 @@ const RequestForm = ({
       const m = digits.slice(1);
       return `${h}:${m}`;
     }
-    // 4+ digits: first 2 = hours, next 2 = minutes
     const h = digits.slice(0, 2);
     const m = digits.slice(2, 4);
     return `${h}:${m}`;
@@ -516,8 +509,6 @@ const RequestForm = ({
   );
 };
 
-// --- Request List ---
-
 const RequestList = ({
   refreshKey,
 }: {
@@ -678,7 +669,6 @@ const RequestList = ({
 
   return (
     <>
-      {/* Filters Section */}
       <Box mt="3" p="3" className="sle-section-box">
         <Text variant="body-medium" weight="bold" style={{ marginBottom: 12, display: 'block' }}>
           Filters
@@ -711,7 +701,6 @@ const RequestList = ({
         </Flex>
       </Box>
 
-      {/* Requests Section */}
       <Box mt="3" p="3" className="sle-section-box">
         <Flex justify="between" align="center" style={{ marginBottom: 12 }}>
           <Text variant="body-medium" weight="bold">
@@ -935,7 +924,6 @@ const RequestList = ({
                     </span>
                   </div>
 
-                  {/* Admin actions for pending requests */}
                   {isAdmin && request.status === 'pending' && (
                     <Flex gap="2" mt="2" className="sle-card-actions">
                       <Button
@@ -987,8 +975,6 @@ const RequestList = ({
   );
 };
 
-// --- Main Page ---
-
 export const S3LogExtractPage = () => {
   const api = useApi(s3LogExtractApiRef);
   const [refreshKey, setRefreshKey] = useState(0);
@@ -1002,7 +988,6 @@ export const S3LogExtractPage = () => {
     return api.getS3Health();
   }, []);
 
-  // Poll S3 health every 60s
   useEffect(() => {
     const interval = setInterval(async () => {
       try {

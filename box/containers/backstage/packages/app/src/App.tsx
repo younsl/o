@@ -1,14 +1,3 @@
-/**
- * Backstage Frontend Application
- *
- * Features:
- * - Catalog with entity pages
- * - API Docs for viewing OpenAPI/AsyncAPI/GraphQL specs
- * - TechDocs for documentation
- * - Search functionality
- * - Scaffolder for templates
- */
-
 import React from 'react';
 import { Route } from 'react-router-dom';
 import { apiDocsPlugin } from '@backstage/plugin-api-docs';
@@ -42,9 +31,6 @@ import {
   OAuthRequestDialog,
   SignInPage,
 } from '@backstage/core-components';
-// TODO: Migrate to New Frontend System (createApp from @backstage/frontend-defaults)
-// when it reaches stable. Currently alpha — not recommended for production.
-// See: https://github.com/backstage/backstage/issues/31467
 import { createApp } from '@backstage/app-defaults';
 import { FlatRoutes } from '@backstage/core-app-api';
 import { CatalogGraphPage } from '@backstage/plugin-catalog-graph';
@@ -67,6 +53,7 @@ const CustomSignInPage = (props: any) => (
     {...props}
     auto
     providers={[
+      'guest',
       {
         id: 'keycloak',
         title: 'Keycloak',
