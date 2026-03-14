@@ -14,6 +14,22 @@ export async function createRouter(options: RouterOptions): Promise<Router> {
 
   const router = Router();
 
+  // Log response time for all routes except /health
+  router.use((req, res, next) => {
+    if (req.path === '/health') return next();
+    const start = Date.now();
+    res.on('finish', () => {
+      const ms = Date.now() - start;
+      logger.info(`${req.method} ${req.path} ${res.statusCode} ${ms}ms`, {
+        path: req.path,
+        query: req.query,
+        status: res.statusCode,
+        durationMs: ms,
+      });
+    });
+    next();
+  });
+
   router.get('/health', (_, res) => {
     res.json({ status: 'ok' });
   });
@@ -201,6 +217,41 @@ export async function createRouter(options: RouterOptions): Promise<Router> {
       const msg = error instanceof Error ? error.message : String(error);
       logger.error(`Error fetching daily costs for pod=${pod}: ${msg}`);
       res.status(500).json({ message: 'Internal error fetching daily cost data' });
+    }
+  });
+
+  /**
+   * GET /costs/collection-runs?cluster=X&year=Y&month=Z
+   * Returns collection run info (start/finish times) per date for a month.
+   */
+  router.get('/costs/collection-runs', async (req, res) => {
+    const cluster = req.query.cluster as string | undefined;
+    const year = Number(req.query.year);
+    const month = Number(req.query.month);
+
+    if (!cluster || !year || !month || month < 1 || month > 12) {
+      res.status(400).json({ message: 'Required: cluster, year, month (1-12)' });
+      return;
+    }
+
+    try {
+      const clusterId = await costStore.getClusterId(cluster);
+      if (!clusterId) {
+        res.json({ data: [] });
+        return;
+      }
+
+      const startDate = `${year}-${String(month).padStart(2, '0')}-01`;
+      const nextMonth = month === 12 ? 1 : month + 1;
+      const nextYear = month === 12 ? year + 1 : year;
+      const endDate = `${nextYear}-${String(nextMonth).padStart(2, '0')}-01`;
+
+      const runs = await costStore.getCollectionRuns(clusterId, startDate, endDate);
+      res.json({ data: runs });
+    } catch (error) {
+      const msg = error instanceof Error ? error.message : String(error);
+      logger.error(`Error fetching collection runs for cluster=${cluster} ${year}-${month}: ${msg}`);
+      res.status(500).json({ message: 'Internal error fetching collection runs' });
     }
   });
 

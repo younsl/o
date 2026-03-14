@@ -136,7 +136,7 @@ export class OpenCostCollector {
 
     await scheduler.scheduleTask({
       id: 'opencost:gap-validator',
-      frequency: { cron: '0 6 * * *' },
+      frequency: { cron: '0 * * * *' },
       timeout: { minutes: 30 },
       initialDelay: { minutes: 5 },
       fn: async () => this.validateGaps(),

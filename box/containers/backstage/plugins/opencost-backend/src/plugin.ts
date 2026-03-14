@@ -65,6 +65,10 @@ export const opencostPlugin = createBackendPlugin({
           path: '/costs/pods',
           allow: 'unauthenticated',
         });
+        httpRouter.addAuthPolicy({
+          path: '/costs/collection-runs',
+          allow: 'unauthenticated',
+        });
 
         logger.info('OpenCost backend plugin initialized');
       },

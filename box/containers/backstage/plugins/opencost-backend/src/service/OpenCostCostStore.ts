@@ -460,50 +460,73 @@ export class OpenCostCostStore {
   async insertDailyCosts(clusterId: number, date: string, items: DailyCostItem[]): Promise<void> {
     if (items.length === 0) return;
 
-    // Pre-cache existing pods for this cluster
-    const existingPods = await this.db(PODS_TABLE).where({ cluster_id: clusterId });
+    // Step 1: Batch upsert all unique pods (deduplicate by namespace::pod)
+    const uniquePods = new Map<string, DailyCostItem>();
+    for (const item of items) {
+      uniquePods.set(`${item.namespace}::${item.pod}`, item);
+    }
+
+    const newPods = Array.from(uniquePods.values());
+    const podBatchSize = 100;
+    for (let i = 0; i < newPods.length; i += podBatchSize) {
+      const batch = newPods.slice(i, i + podBatchSize);
+      const placeholders = batch.map(() => '(?, ?, ?, ?, ?)').join(', ');
+      const params = batch.flatMap(p => [
+        clusterId, p.namespace, p.controllerKind, p.controller, p.pod,
+      ]);
+
+      await this.db.raw(
+        `INSERT INTO ${PODS_TABLE} (cluster_id, namespace, controller_kind, controller, pod)
+         VALUES ${placeholders}
+         ON CONFLICT (cluster_id, namespace, pod)
+         DO UPDATE SET
+           controller_kind = EXCLUDED.controller_kind,
+           controller = EXCLUDED.controller,
+           updated_at = CURRENT_TIMESTAMP`,
+        params,
+      );
+    }
+
+    // Step 2: Fetch all pod IDs for this cluster (includes newly inserted)
+    const allPods = await this.db(PODS_TABLE).where({ cluster_id: clusterId });
     const podCache = new Map<string, number>();
-    for (const p of existingPods) {
+    for (const p of allPods) {
       podCache.set(`${p.namespace}::${p.pod}`, p.id as number);
     }
 
+    // Step 3: Batch insert daily costs
     const now = new Date().toISOString();
-    const batchSize = 100;
-    for (let i = 0; i < items.length; i += batchSize) {
-      const batch = items.slice(i, i + batchSize);
-      for (const item of batch) {
-        const cacheKey = `${item.namespace}::${item.pod}`;
-        let podId = podCache.get(cacheKey);
-        if (podId === undefined) {
-          podId = await this.ensurePod(
-            clusterId, item.namespace, item.controllerKind, item.controller, item.pod,
-          );
-          podCache.set(cacheKey, podId);
-        }
+    const costBatchSize = 50;
+    for (let i = 0; i < items.length; i += costBatchSize) {
+      const batch = items.slice(i, i + costBatchSize);
+      const placeholders = batch.map(() => '(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)').join(', ');
+      const params = batch.flatMap(item => {
+        const podId = podCache.get(`${item.namespace}::${item.pod}`)!;
+        return [
+          clusterId, date, podId,
+          item.cpuCost, item.ramCost, item.gpuCost, item.pvCost, item.networkCost,
+          item.totalCost, item.carbonCost, now, now,
+        ];
+      });
 
-        await this.db.raw(
-          `INSERT INTO ${DAILY_TABLE}
-            (cluster_id, date, pod_id,
-             cpu_cost, ram_cost, gpu_cost, pv_cost, network_cost, total_cost, carbon_cost,
-             created_at, updated_at)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-           ON CONFLICT (cluster_id, date, pod_id)
-           DO UPDATE SET
-             cpu_cost = EXCLUDED.cpu_cost,
-             ram_cost = EXCLUDED.ram_cost,
-             gpu_cost = EXCLUDED.gpu_cost,
-             pv_cost = EXCLUDED.pv_cost,
-             network_cost = EXCLUDED.network_cost,
-             total_cost = EXCLUDED.total_cost,
-             carbon_cost = EXCLUDED.carbon_cost,
-             updated_at = EXCLUDED.updated_at`,
-          [
-            clusterId, date, podId,
-            item.cpuCost, item.ramCost, item.gpuCost, item.pvCost, item.networkCost,
-            item.totalCost, item.carbonCost, now, now,
-          ],
-        );
-      }
+      await this.db.raw(
+        `INSERT INTO ${DAILY_TABLE}
+          (cluster_id, date, pod_id,
+           cpu_cost, ram_cost, gpu_cost, pv_cost, network_cost, total_cost, carbon_cost,
+           created_at, updated_at)
+         VALUES ${placeholders}
+         ON CONFLICT (cluster_id, date, pod_id)
+         DO UPDATE SET
+           cpu_cost = EXCLUDED.cpu_cost,
+           ram_cost = EXCLUDED.ram_cost,
+           gpu_cost = EXCLUDED.gpu_cost,
+           pv_cost = EXCLUDED.pv_cost,
+           network_cost = EXCLUDED.network_cost,
+           total_cost = EXCLUDED.total_cost,
+           carbon_cost = EXCLUDED.carbon_cost,
+           updated_at = EXCLUDED.updated_at`,
+        params,
+      );
     }
   }
 
@@ -708,56 +731,50 @@ export class OpenCostCostStore {
     const nextYear = month === 12 ? year + 1 : year;
     const endDate = `${nextYear}-${String(nextMonth).padStart(2, '0')}-01`;
 
-    const rows = await this.db(DAILY_TABLE)
-      .where({ cluster_id: clusterId })
-      .where('date', '>=', startDate)
-      .where('date', '<', endDate)
-      .select('pod_id')
-      .sum('cpu_cost as cpu_cost')
-      .sum('ram_cost as ram_cost')
-      .sum('gpu_cost as gpu_cost')
-      .sum('pv_cost as pv_cost')
-      .sum('network_cost as network_cost')
-      .sum('total_cost as total_cost')
-      .sum('carbon_cost as carbon_cost')
-      .groupBy('pod_id');
-
-    const daysCoveredResult = await this.db(DAILY_TABLE)
-      .where({ cluster_id: clusterId })
-      .where('date', '>=', startDate)
-      .where('date', '<', endDate)
-      .countDistinct('date as count');
-    const daysCovered = Number(daysCoveredResult[0]?.count ?? 0);
-
     const now = new Date().toISOString();
-    for (const row of rows) {
-      await this.db.raw(
-        `INSERT INTO ${MONTHLY_TABLE}
-          (cluster_id, year, month, pod_id,
-           cpu_cost, ram_cost, gpu_cost, pv_cost, network_cost, total_cost, carbon_cost,
-           days_covered, created_at, updated_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-         ON CONFLICT (cluster_id, year, month, pod_id)
-         DO UPDATE SET
-           cpu_cost = EXCLUDED.cpu_cost,
-           ram_cost = EXCLUDED.ram_cost,
-           gpu_cost = EXCLUDED.gpu_cost,
-           pv_cost = EXCLUDED.pv_cost,
-           network_cost = EXCLUDED.network_cost,
-           total_cost = EXCLUDED.total_cost,
-           carbon_cost = EXCLUDED.carbon_cost,
-           days_covered = EXCLUDED.days_covered,
-           updated_at = EXCLUDED.updated_at`,
-        [
-          clusterId, year, month, row.pod_id,
-          Number(row.cpu_cost), Number(row.ram_cost), Number(row.gpu_cost),
-          Number(row.pv_cost), Number(row.network_cost), Number(row.total_cost),
-          Number(row.carbon_cost), daysCovered, now, now,
-        ],
-      );
-    }
 
-    return rows.length;
+    // Single INSERT...SELECT replaces N+2 queries (SELECT + countDistinct + N inserts)
+    await this.db.raw(
+      `INSERT INTO ${MONTHLY_TABLE}
+        (cluster_id, year, month, pod_id,
+         cpu_cost, ram_cost, gpu_cost, pv_cost, network_cost, total_cost, carbon_cost,
+         days_covered, created_at, updated_at)
+       SELECT
+         ?, ?, ?, pod_id,
+         SUM(cpu_cost), SUM(ram_cost), SUM(gpu_cost), SUM(pv_cost),
+         SUM(network_cost), SUM(total_cost), SUM(carbon_cost),
+         (SELECT COUNT(DISTINCT date) FROM ${DAILY_TABLE}
+          WHERE cluster_id = ? AND date >= ? AND date < ?),
+         ?, ?
+       FROM ${DAILY_TABLE}
+       WHERE cluster_id = ? AND date >= ? AND date < ?
+       GROUP BY pod_id
+       ON CONFLICT (cluster_id, year, month, pod_id)
+       DO UPDATE SET
+         cpu_cost = EXCLUDED.cpu_cost,
+         ram_cost = EXCLUDED.ram_cost,
+         gpu_cost = EXCLUDED.gpu_cost,
+         pv_cost = EXCLUDED.pv_cost,
+         network_cost = EXCLUDED.network_cost,
+         total_cost = EXCLUDED.total_cost,
+         carbon_cost = EXCLUDED.carbon_cost,
+         days_covered = EXCLUDED.days_covered,
+         updated_at = EXCLUDED.updated_at`,
+      [
+        clusterId, year, month,
+        clusterId, startDate, endDate,
+        now, now,
+        clusterId, startDate, endDate,
+      ],
+    );
+
+    // Return the count of pods aggregated
+    const countResult = await this.db(DAILY_TABLE)
+      .where({ cluster_id: clusterId })
+      .where('date', '>=', startDate)
+      .where('date', '<', endDate)
+      .countDistinct('pod_id as count');
+    return Number(countResult[0]?.count ?? 0);
   }
 
   /**
@@ -886,5 +903,56 @@ export class OpenCostCostStore {
         error_message: update.errorMessage ?? null,
         finished_at: update.finishedAt,
       });
+  }
+
+  /**
+   * Get the latest successful collection run per target_date for a cluster within a date range.
+   */
+  async getCollectionRuns(
+    clusterId: number,
+    startDate: string,
+    endDate: string,
+  ): Promise<Array<{
+    targetDate: string;
+    taskType: string;
+    status: string;
+    podsCollected: number;
+    startedAt: string;
+    finishedAt: string | null;
+  }>> {
+    const rows = await this.db(RUNS_TABLE)
+      .where({ cluster_id: clusterId })
+      .whereIn('task_type', ['daily', 'gap-fill'])
+      .where('target_date', '>=', startDate)
+      .where('target_date', '<', endDate)
+      .orderBy('target_date', 'asc')
+      .orderBy('id', 'desc');
+
+    // Keep only the latest run per target_date
+    const seen = new Set<string>();
+    const result: Array<{
+      targetDate: string;
+      taskType: string;
+      status: string;
+      podsCollected: number;
+      startedAt: string;
+      finishedAt: string | null;
+    }> = [];
+
+    for (const r of rows) {
+      const date = String(r.target_date).substring(0, 10);
+      if (seen.has(date)) continue;
+      seen.add(date);
+      result.push({
+        targetDate: date,
+        taskType: r.task_type as string,
+        status: r.status as string,
+        podsCollected: Number(r.pods_collected),
+        startedAt: r.started_at as string,
+        finishedAt: (r.finished_at as string) ?? null,
+      });
+    }
+
+    return result;
   }
 }

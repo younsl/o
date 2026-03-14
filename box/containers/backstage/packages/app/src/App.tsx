@@ -141,7 +141,7 @@ const routes = (
     <Route path="/kafka-topic/*" element={<KafkaTopicPage />} />
     <Route path="/catalog-health" element={<CatalogHealthPage />} />
     <Route path="/catalog-health/generate" element={<GenerateCatalogInfoPage />} />
-    <Route path="/opencost" element={<OpenCostPage />} />
+    <Route path="/cost-report" element={<OpenCostPage />} />
     <Route path="/mui-to-bui" element={<BuiThemerPage />} />
     <Route path="/settings" element={<UserSettingsPage />}>
       <SettingsLayout.Route path="/build-info" title="Build Info">

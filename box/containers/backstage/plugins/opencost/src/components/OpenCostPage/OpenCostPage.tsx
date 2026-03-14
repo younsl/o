@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useCallback, useRef } from 'react';
+import React, { useState, useMemo, useCallback, useRef, useEffect } from 'react';
 import {
   PluginHeader,
   Container,
@@ -9,6 +9,7 @@ import {
   SearchField,
   Skeleton,
   Alert,
+  Link,
 } from '@backstage/ui';
 import {
   useApi,
@@ -57,10 +58,19 @@ interface DailySummaryItem {
 
 type SnapshotStatus = 'collected' | 'collecting' | 'missing' | 'pending';
 
+interface CollectionRunInfo {
+  taskType: string;
+  status: string;
+  podsCollected: number;
+  startedAt: string;
+  finishedAt: string | null;
+}
+
 interface DailyRow extends DailySummaryItem {
   status: SnapshotStatus;
   dayOfWeek: string;
   estimatedCompletion?: string;
+  collectionRun?: CollectionRunInfo;
 }
 
 interface PodCostItem {
@@ -103,6 +113,8 @@ interface MonthlySummaryItem {
   networkCost: number;
   totalCost: number;
   carbonCost: number;
+  daysCovered: number;
+  totalDays: number;
 }
 
 type DrillDown = 'year' | 'month' | 'day' | 'pod';
@@ -352,68 +364,88 @@ export const OpenCostPage = () => {
     const ck = `year:${selectedCluster}:${selectedYear}`;
     if (cache.current.has(ck)) return cache.current.get(ck);
 
-    const params = new URLSearchParams({
-      cluster: selectedCluster,
-      window: `${yearStart},${yearEnd}`,
-      aggregate: 'cluster',
-      step: '1d',
-    });
-    const res = await fetchApi.fetch(`${baseUrl}/allocation?${params}`);
-    if (!res.ok) {
-      const body = await res.text();
-      throw new Error(`OpenCost API error (${res.status}): ${body.slice(0, 300)}`);
-    }
-    const json = await res.json();
-    const steps = (json.data ?? []) as Record<string, AllocationItem>[];
-
+    const currentYear = now.getFullYear();
+    const currentMonth = now.getMonth() + 1;
+    const isPastYear = selectedYear < currentYear;
     const monthMap = new Map<number, MonthlySummaryItem>();
-    for (const stepMap of steps) {
-      const entries = Object.values(stepMap).filter(e => e.name !== '__idle__');
-      if (entries.length === 0) continue;
-      const entry = entries[0];
-      const dateStr = entry.window?.start
-        ? new Date(entry.window.start).toISOString().substring(0, 10)
-        : '';
-      if (!dateStr) continue;
 
-      const m = parseInt(dateStr.substring(5, 7), 10);
-      const cpu = entries.reduce((s, e) => s + (e.cpuCost ?? 0), 0);
-      const ram = entries.reduce((s, e) => s + (e.ramCost ?? 0), 0);
-      const gpu = entries.reduce((s, e) => s + (e.gpuCost ?? 0), 0);
-      const pv = entries.reduce((s, e) => s + (e.pvCost ?? 0), 0);
-      const network = entries.reduce((s, e) => s + (e.networkCost ?? 0), 0);
-      const total = entries.reduce((s, e) => s + (e.totalCost ?? 0), 0);
-      const carbon = entries.reduce((s, e) => s + (e.carbonCost ?? 0), 0);
+    // Past months: fetch from DB (fast, ~10ms each)
+    const lastDbMonth = isPastYear ? 12 : currentMonth - 1;
+    const dbFetches = [];
+    for (let m = 1; m <= lastDbMonth; m++) {
+      dbFetches.push(
+        fetchApi.fetch(
+          `${baseUrl}/costs?cluster=${encodeURIComponent(selectedCluster)}&year=${selectedYear}&month=${m}`,
+        ).then(async r => {
+          if (!r.ok) return;
+          const json = await r.json();
+          const rows = json.data as Array<{
+            cpuCost: number; ramCost: number; gpuCost: number;
+            pvCost: number; networkCost: number; totalCost: number; carbonCost: number;
+          }> | undefined;
+          if (!rows || rows.length === 0) return;
+          const cpu = rows.reduce((s, e) => s + (e.cpuCost ?? 0), 0);
+          const ram = rows.reduce((s, e) => s + (e.ramCost ?? 0), 0);
+          const gpu = rows.reduce((s, e) => s + (e.gpuCost ?? 0), 0);
+          const pv = rows.reduce((s, e) => s + (e.pvCost ?? 0), 0);
+          const network = rows.reduce((s, e) => s + (e.networkCost ?? 0), 0);
+          const total = rows.reduce((s, e) => s + (e.totalCost ?? 0), 0);
+          const carbon = rows.reduce((s, e) => s + (e.carbonCost ?? 0), 0);
+          const td = daysInMonth(selectedYear, m);
+          monthMap.set(m, {
+            month: `${selectedYear}-${String(m).padStart(2, '0')}`,
+            monthNum: m, cpuCost: cpu, ramCost: ram, gpuCost: gpu,
+            pvCost: pv, networkCost: network, totalCost: total, carbonCost: carbon,
+            daysCovered: json.daysCovered ?? td, totalDays: td,
+          });
+        }).catch(() => {}),
+      );
+    }
+    await Promise.all(dbFetches);
 
-      const existing = monthMap.get(m);
-      if (existing) {
-        existing.cpuCost += cpu;
-        existing.ramCost += ram;
-        existing.gpuCost += gpu;
-        existing.pvCost += pv;
-        existing.networkCost += network;
-        existing.totalCost += total;
-        existing.carbonCost += carbon;
-      } else {
-        monthMap.set(m, {
-          month: `${selectedYear}-${String(m).padStart(2, '0')}`,
-          monthNum: m,
-          cpuCost: cpu,
-          ramCost: ram,
-          gpuCost: gpu,
-          pvCost: pv,
-          networkCost: network,
-          totalCost: total,
-          carbonCost: carbon,
-        });
-      }
+    // Current month (if selected year is current year): fetch from OpenCost API
+    if (!isPastYear) {
+      const { start: mStart, end: mEnd } = getMonthWindow(selectedYear, currentMonth, billingTz);
+      const params = new URLSearchParams({
+        cluster: selectedCluster,
+        window: `${mStart},${mEnd}`,
+        aggregate: 'cluster',
+        step: '1d',
+      });
+      try {
+        const res = await fetchApi.fetch(`${baseUrl}/allocation?${params}`);
+        if (res.ok) {
+          const json = await res.json();
+          const steps = (json.data ?? []) as Record<string, AllocationItem>[];
+          let cpu = 0, ram = 0, gpu = 0, pv = 0, network = 0, total = 0, carbon = 0;
+          for (const stepMap of steps) {
+            const entries = Object.values(stepMap).filter(e => e.name !== '__idle__');
+            cpu += entries.reduce((s, e) => s + (e.cpuCost ?? 0), 0);
+            ram += entries.reduce((s, e) => s + (e.ramCost ?? 0), 0);
+            gpu += entries.reduce((s, e) => s + (e.gpuCost ?? 0), 0);
+            pv += entries.reduce((s, e) => s + (e.pvCost ?? 0), 0);
+            network += entries.reduce((s, e) => s + (e.networkCost ?? 0), 0);
+            total += entries.reduce((s, e) => s + (e.totalCost ?? 0), 0);
+            carbon += entries.reduce((s, e) => s + (e.carbonCost ?? 0), 0);
+          }
+          if (total > 0) {
+            const td = daysInMonth(selectedYear, currentMonth);
+            monthMap.set(currentMonth, {
+              month: `${selectedYear}-${String(currentMonth).padStart(2, '0')}`,
+              monthNum: currentMonth, cpuCost: cpu, ramCost: ram, gpuCost: gpu,
+              pvCost: pv, networkCost: network, totalCost: total, carbonCost: carbon,
+              daysCovered: steps.filter(s => Object.values(s).some(e => e.name !== '__idle__')).length,
+              totalDays: td,
+            });
+          }
+        }
+      } catch { /* current month is optional */ }
     }
 
     const items = Array.from(monthMap.values()).sort((a, b) => a.monthNum - b.monthNum);
-    const isPastYear = selectedYear < now.getFullYear();
     if (isPastYear) cache.current.set(ck, items);
     return items;
-  }, [drillDown, baseUrl, selectedCluster, selectedYear, yearStart, yearEnd]);
+  }, [drillDown, baseUrl, selectedCluster, selectedYear, yearStart, yearEnd, billingTz]);
 
   const yearlyTotals = useMemo(() => {
     if (!yearlyData) return null;
@@ -504,6 +536,26 @@ export const OpenCostPage = () => {
     return items;
   }, [drillDown, baseUrl, selectedCluster, selectedYear, selectedMonth, start, end, isPastMonth]);
 
+  // Fetch collection run info for the selected month
+  const { value: collectionRuns } = useAsync(async () => {
+    if (drillDown !== 'month' || !baseUrl) return null;
+    try {
+      const params = new URLSearchParams({
+        cluster: selectedCluster,
+        year: String(selectedYear),
+        month: String(selectedMonth),
+      });
+      const res = await fetchApi.fetch(`${baseUrl}/costs/collection-runs?${params}`);
+      if (res.ok) {
+        const json = await res.json();
+        return new Map<string, CollectionRunInfo>(
+          (json.data ?? []).map((r: any) => [r.targetDate, r as CollectionRunInfo]),
+        );
+      }
+    } catch { /* optional data */ }
+    return null;
+  }, [drillDown, baseUrl, selectedCluster, selectedYear, selectedMonth]);
+
   // Build full month calendar with snapshot status
   const fullMonthData = useMemo((): DailyRow[] | null => {
     if (!monthlyData) return null;
@@ -560,10 +612,11 @@ export const OpenCostPage = () => {
         status,
         dayOfWeek,
         estimatedCompletion,
+        collectionRun: collectionRuns?.get(dateStr),
       });
     }
     return rows;
-  }, [monthlyData, selectedYear, selectedMonth, billingTz]);
+  }, [monthlyData, selectedYear, selectedMonth, billingTz, collectionRuns]);
 
   const monthlyTotals = useMemo(() => {
     if (!monthlyData) return null;
@@ -867,6 +920,25 @@ export const OpenCostPage = () => {
     || (drillDown === 'pod' && podLoading);
   const error = (drillDown === 'year' ? yearlyError : drillDown === 'month' ? monthlyError : drillDown === 'day' ? dayError : podError);
 
+  const loadingLabel = drillDown === 'year'
+    ? 'yearly summary'
+    : drillDown === 'month'
+      ? 'monthly summary'
+      : drillDown === 'day'
+        ? 'pod costs'
+        : 'pod daily history';
+
+  const [elapsedSeconds, setElapsedSeconds] = useState(0);
+  useEffect(() => {
+    if (!loading) {
+      setElapsedSeconds(0);
+      return;
+    }
+    setElapsedSeconds(0);
+    const interval = setInterval(() => setElapsedSeconds(s => s + 1), 1000);
+    return () => clearInterval(interval);
+  }, [loading]);
+
   const monthLabel = `${selectedYear}-${String(selectedMonth).padStart(2, '0')}`;
 
   return (
@@ -874,7 +946,7 @@ export const OpenCostPage = () => {
       <PluginHeader title="OpenCost" />
       <Container my="4">
         <Text variant="body-medium" color="secondary">
-          Kubernetes cost explorer powered by OpenCost
+          Kubernetes cost explorer powered by <Link href="https://www.opencost.io" target="_blank" rel="noopener noreferrer">OpenCost</Link>
         </Text>
 
         {/* ── Filters ── */}
@@ -934,7 +1006,15 @@ export const OpenCostPage = () => {
         {/* ── Loading / Error ── */}
         {loading && (
           <Flex direction="column" gap="3" mt="3">
-            <Skeleton width="100%" height={60} />
+            <div style={{ position: 'relative' }}>
+              <Skeleton width="100%" height={60} />
+              <Text variant="body-medium" color="secondary" style={{
+                position: 'absolute', top: '50%', left: '50%',
+                transform: 'translate(-50%, -50%)',
+              }}>
+                Loading {loadingLabel}... {elapsedSeconds > 0 && `(${elapsedSeconds}s)`}
+              </Text>
+            </div>
             <Skeleton width="100%" height={400} />
           </Flex>
         )}
@@ -1043,6 +1123,7 @@ export const OpenCostPage = () => {
                     <thead>
                       <tr>
                         <th>Month</th>
+                        <th>Coverage</th>
                         <th>CPU</th>
                         <th>RAM</th>
                         <th>GPU</th>
@@ -1053,9 +1134,12 @@ export const OpenCostPage = () => {
                       </tr>
                     </thead>
                     <tbody>
-                      {yearlyData.map(row => (
+                      {yearlyData.map(row => {
+                        const pct = row.totalDays > 0 ? Math.round((row.daysCovered / row.totalDays) * 100) : 0;
+                        return (
                         <tr key={row.month} className="oc-clickable-row" onClick={() => goToMonth(row.monthNum)}>
                           <td>{row.month}</td>
+                          <td>{row.daysCovered}/{row.totalDays} <span style={{ opacity: 0.6 }}>({pct}%)</span></td>
                           <td className="oc-cost">{formatCost(row.cpuCost)}</td>
                           <td className="oc-cost">{formatCost(row.ramCost)}</td>
                           <td className="oc-cost">{formatCost(row.gpuCost)}</td>
@@ -1064,12 +1148,13 @@ export const OpenCostPage = () => {
                           <td className="oc-cost oc-cost-total">{formatCost(row.totalCost)}</td>
                           <td className="oc-cost oc-carbon">{formatCarbon(row.carbonCost)}</td>
                         </tr>
-                      ))}
+                        );
+                      })}
                     </tbody>
                     {yearlyTotals && (
                       <tfoot>
                         <tr>
-                          <td><strong>Total</strong></td>
+                          <td colSpan={2}><strong>Total</strong></td>
                           <td className="oc-cost"><strong>{formatCost(yearlyTotals.cpu)}</strong></td>
                           <td className="oc-cost"><strong>{formatCost(yearlyTotals.ram)}</strong></td>
                           <td className="oc-cost"><strong>-</strong></td>
@@ -1117,7 +1202,7 @@ export const OpenCostPage = () => {
                   </div>
                   <div className="oc-summary-card">
                     <Text weight="bold" className="oc-summary-value">
-                      {monthlyTotals.collected} / {monthlyTotals.totalDays}
+                      {monthlyTotals.collected}/{monthlyTotals.totalDays} <span style={{ fontWeight: 'normal', opacity: 0.6 }}>({Math.round((monthlyTotals.collected / monthlyTotals.totalDays) * 100)}%)</span>
                     </Text>
                     <Text variant="body-x-small" color="secondary">Collected</Text>
                   </div>
@@ -1215,9 +1300,23 @@ export const OpenCostPage = () => {
                     {fullMonthData.map(row => {
                       const hasData = row.status === 'collected' || row.status === 'collecting';
                       const statusLabel = ({ collected: 'Collected', collecting: 'In Progress', missing: 'Missing', pending: 'Pending' })[row.status];
-                      const statusTooltip = row.status === 'collecting' && row.estimatedCompletion
-                        ? `Finalizes at ${row.estimatedCompletion} (${billingTz})`
-                        : undefined;
+                      const run = row.collectionRun;
+                      const fmtTime = (iso: string) => toTzString(iso, billingTz);
+                      let statusTooltip: string;
+                      if (run) {
+                        const lines = [
+                          `Type: ${run.taskType}`,
+                          `Started: ${fmtTime(run.startedAt)}`,
+                          run.finishedAt ? `Finished: ${fmtTime(run.finishedAt)}` : 'Finished: -',
+                          `Pods: ${run.podsCollected}`,
+                        ];
+                        statusTooltip = lines.join('\n');
+                      } else if (row.status === 'collecting' && row.estimatedCompletion) {
+                        statusTooltip = `Finalizes at ${row.estimatedCompletion} (${billingTz})`;
+                      } else {
+                        statusTooltip = statusLabel;
+                      }
+                      const ledColor = ({ collected: '#34d399', collecting: '#60a5fa', missing: '#f87171', pending: '#6b7280' })[row.status];
                       return (
                         <tr
                           key={row.date}
@@ -1225,10 +1324,12 @@ export const OpenCostPage = () => {
                           onClick={hasData ? () => goToDay(row.date) : undefined}
                         >
                           <td>{row.date} <span className="oc-day-of-week">({row.dayOfWeek})</span></td>
-                          <td>
-                            <span className={`oc-status oc-status-${row.status}`} title={statusTooltip}>
-                              {statusLabel}
-                            </span>
+                          <td title={statusTooltip}>
+                            <span style={{
+                              display: 'inline-block', width: 8, height: 8, borderRadius: '50%',
+                              backgroundColor: ledColor, marginRight: 6, verticalAlign: 'middle',
+                            }} />
+                            {statusLabel}
                           </td>
                           <td>{hasData ? (row.podCount || '-') : '-'}</td>
                           <td className="oc-cost">{hasData ? formatCost(row.cpuCost) : '-'}</td>

@@ -347,7 +347,7 @@ export const Root = ({ children }: PropsWithChildren<{}>) => {
           <SidebarItem icon={ApacheKafkaIcon} to="kafka-topic" text="Kafka Topic" />
         )}
         {opencostEnabled && (
-          <SidebarItem icon={AttachMoneyIcon} to="opencost" text="OpenCost" />
+          <SidebarItem icon={AttachMoneyIcon} to="cost-report" text="Cost Report" />
         )}
         {iamUserAuditEnabled && <IamAuditSidebarItem />}
         {s3LogExtractEnabled && <S3LogExtractSidebarItem />}
