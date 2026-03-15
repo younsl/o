@@ -982,7 +982,10 @@ export class OpenCostCostStore {
     }> = [];
 
     for (const r of rows) {
-      const date = String(r.target_date).substring(0, 10);
+      const raw = r.target_date;
+      const date = raw instanceof Date
+        ? raw.toISOString().substring(0, 10)
+        : String(raw).substring(0, 10);
       if (seen.has(date)) continue;
       seen.add(date);
       result.push({
