@@ -1,3 +1,8 @@
+/* Override @backstage/ui FieldLabelWrapper margin to match oc-native-select-label */
+.oc-section-box [class*='bui-FieldLabelWrapper'] {
+  margin-bottom: var(--bui-space-1, 4px);
+}
+
 .oc-section-box {
   background: var(--bui-color-surface-2, rgba(255, 255, 255, 0.05));
   border-radius: 8px;
@@ -56,12 +61,14 @@
 .oc-native-select {
   display: flex;
   flex-direction: column;
-  gap: 4px;
 }
 
 .oc-native-select-label {
-  font-size: 0.75rem;
-  color: var(--bui-color-text-secondary, rgba(255, 255, 255, 0.6));
+  font-size: var(--bui-font-size-2, 0.75rem);
+  font-weight: var(--bui-font-weight-regular, 400);
+  color: var(--bui-fg-primary, inherit);
+  cursor: pointer;
+  margin-bottom: var(--bui-space-1, 4px);
 }
 
 .oc-native-select select {
@@ -437,6 +444,10 @@
   animation: stamp-pulse 1.5s ease-in-out infinite;
 }
 
+.oc-led-pulse {
+  animation: stamp-pulse 1.5s ease-in-out infinite;
+}
+
 @keyframes stamp-pulse {
   0%, 100% { opacity: 1; }
   50% { opacity: 0.4; }
@@ -490,5 +501,144 @@
   display: flex;
   align-items: center;
   gap: 3px;
+}
+
+/* Controller multi-select */
+.oc-controller-toggle {
+  height: 2rem;
+  padding: 0 var(--bui-space-3, 12px);
+  border-radius: var(--bui-radius-3, 0.5rem);
+  border: 1px solid var(--bui-border-2, rgba(255, 255, 255, 0.2));
+  background: var(--bui-bg-neutral-1, rgba(255, 255, 255, 0.05));
+  color: var(--bui-fg-primary, inherit);
+  font-size: var(--bui-font-size-3, 0.875rem);
+  font-weight: var(--bui-font-weight-regular, 400);
+  font-family: var(--bui-font-regular, inherit);
+  cursor: pointer;
+  text-align: left;
+  min-width: 200px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--bui-space-2, 8px);
+}
+
+.oc-controller-dropdown {
+  position: absolute;
+  top: calc(100% + 4px);
+  left: 0;
+  min-width: 280px;
+  max-height: 300px;
+  border-radius: 6px;
+  border: 1px solid var(--bui-color-border, rgba(255, 255, 255, 0.15));
+  background: var(--bui-color-surface-2, #1e1e1e);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4);
+  z-index: 20;
+  display: flex;
+  flex-direction: column;
+}
+
+.oc-controller-search {
+  padding: 6px 10px;
+  border-bottom: 1px solid var(--bui-color-border, rgba(255, 255, 255, 0.1));
+}
+
+.oc-controller-search input {
+  width: 100%;
+  height: 1.75rem;
+  padding: 0 8px;
+  border-radius: 4px;
+  border: 1px solid var(--bui-color-border, rgba(255, 255, 255, 0.15));
+  background: var(--bui-color-surface-3, rgba(255, 255, 255, 0.05));
+  color: var(--bui-color-text-primary, inherit);
+  font-size: 0.8125rem;
+  outline: none;
+}
+
+.oc-controller-search input:focus {
+  border-color: var(--bui-color-primary, #60a5fa);
+}
+
+.oc-controller-actions {
+  display: flex;
+  gap: 8px;
+  padding: 6px 10px;
+  border-bottom: 1px solid var(--bui-color-border, rgba(255, 255, 255, 0.1));
+}
+
+.oc-controller-no-match {
+  padding: 12px 10px;
+  text-align: center;
+  font-size: 0.8125rem;
+  color: var(--bui-color-text-secondary, rgba(255, 255, 255, 0.4));
+}
+
+.oc-controller-actions button {
+  padding: 2px 8px;
+  border-radius: 4px;
+  border: 1px solid var(--bui-color-border, rgba(255, 255, 255, 0.15));
+  background: transparent;
+  color: var(--bui-color-text-secondary, rgba(255, 255, 255, 0.6));
+  font-size: 0.75rem;
+  cursor: pointer;
+}
+
+.oc-controller-actions button:hover {
+  background: var(--bui-color-surface-3, rgba(255, 255, 255, 0.08));
+  color: var(--bui-color-text-primary, #fff);
+}
+
+.oc-controller-list {
+  overflow-y: auto;
+  max-height: 240px;
+  padding: 4px 0;
+}
+
+.oc-controller-option {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 10px;
+  font-size: 0.8125rem;
+  cursor: pointer;
+  color: var(--bui-color-text-primary, rgba(255, 255, 255, 0.87));
+}
+
+.oc-controller-option:hover {
+  background: var(--bui-color-surface-3, rgba(255, 255, 255, 0.06));
+}
+
+.oc-controller-option input[type="checkbox"] {
+  accent-color: var(--bui-color-primary, #60a5fa);
+}
+
+.oc-controller-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 8px;
+}
+
+.oc-controller-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 8px;
+  border-radius: 12px;
+  font-size: 0.75rem;
+  font-weight: 500;
+  background: rgba(96, 165, 250, 0.15);
+  color: #60a5fa;
+}
+
+.oc-controller-chip-remove {
+  cursor: pointer;
+  font-size: 0.875rem;
+  line-height: 1;
+  opacity: 0.7;
+}
+
+.oc-controller-chip-remove:hover {
+  opacity: 1;
 }
 

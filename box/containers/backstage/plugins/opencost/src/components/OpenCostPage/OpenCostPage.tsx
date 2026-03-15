@@ -364,6 +364,102 @@ export const OpenCostPage = () => {
     }
   }, [baseUrl, selectedCluster, fetchApi]);
 
+  // Controller multi-select filter (for Year/Month views)
+  const [selectedControllers, setSelectedControllers] = useState<string[]>([]);
+  const [controllerListByMonth, setControllerListByMonth] = useState<Map<string, string[]>>(new Map());
+  const [controllerDropdownOpen, setControllerDropdownOpen] = useState(false);
+  const [controllerSearch, setControllerSearch] = useState('');
+  const controllerDropdownRef = useRef<HTMLDivElement>(null);
+
+  // Close dropdown when clicking outside
+  useEffect(() => {
+    const handler = (e: MouseEvent) => {
+      if (controllerDropdownRef.current && !controllerDropdownRef.current.contains(e.target as Node)) {
+        setControllerDropdownOpen(false);
+        setControllerSearch('');
+      }
+    };
+    document.addEventListener('mousedown', handler);
+    return () => document.removeEventListener('mousedown', handler);
+  }, []);
+
+  // Fetch controller lists for relevant months
+  useAsync(async () => {
+    if (!baseUrl || (drillDown !== 'year' && drillDown !== 'month')) return;
+
+    if (drillDown === 'month') {
+      const key = `${selectedCluster}:${selectedYear}:${selectedMonth}`;
+      if (controllerListByMonth.has(key)) return;
+      try {
+        const params = new URLSearchParams({
+          cluster: selectedCluster,
+          year: String(selectedYear),
+          month: String(selectedMonth),
+        });
+        const res = await fetchApi.fetch(`${baseUrl}/costs/controllers?${params}`);
+        if (res.ok) {
+          const json = await res.json();
+          setControllerListByMonth(prev => new Map(prev).set(key, json.data ?? []));
+        }
+      } catch { /* optional */ }
+    } else {
+      // Year view: fetch controllers for all months in parallel
+      const currentYear = now.getFullYear();
+      const currentMonth = now.getMonth() + 1;
+      const lastMonth = selectedYear < currentYear ? 12 : currentMonth;
+      const fetches = [];
+      for (let m = 1; m <= lastMonth; m++) {
+        const key = `${selectedCluster}:${selectedYear}:${m}`;
+        if (controllerListByMonth.has(key)) continue;
+        fetches.push(
+          fetchApi.fetch(
+            `${baseUrl}/costs/controllers?cluster=${encodeURIComponent(selectedCluster)}&year=${selectedYear}&month=${m}`,
+          ).then(async r => {
+            if (r.ok) {
+              const json = await r.json();
+              return { key, data: json.data as string[] };
+            }
+            return null;
+          }).catch(() => null),
+        );
+      }
+      if (fetches.length > 0) {
+        const results = await Promise.all(fetches);
+        setControllerListByMonth(prev => {
+          const next = new Map(prev);
+          for (const r of results) {
+            if (r) next.set(r.key, r.data);
+          }
+          return next;
+        });
+      }
+    }
+  }, [drillDown, baseUrl, selectedCluster, selectedYear, selectedMonth, fetchApi]);
+
+  // Derived: merged controller list for current view
+  const availableControllers = useMemo(() => {
+    const set = new Set<string>();
+    if (drillDown === 'month') {
+      const key = `${selectedCluster}:${selectedYear}:${selectedMonth}`;
+      for (const c of controllerListByMonth.get(key) ?? []) set.add(c);
+    } else {
+      // Year view: merge all months
+      const currentYear = now.getFullYear();
+      const currentMonth = now.getMonth() + 1;
+      const lastMonth = selectedYear < currentYear ? 12 : currentMonth;
+      for (let m = 1; m <= lastMonth; m++) {
+        const key = `${selectedCluster}:${selectedYear}:${m}`;
+        for (const c of controllerListByMonth.get(key) ?? []) set.add(c);
+      }
+    }
+    return Array.from(set).sort();
+  }, [drillDown, selectedCluster, selectedYear, selectedMonth, controllerListByMonth, now]);
+
+  const controllersParam = useMemo(
+    () => selectedControllers.length > 0 ? selectedControllers.join(',') : undefined,
+    [selectedControllers],
+  );
+
   // Cache for past-month data
   const cache = useRef(new Map<string, any>());
 
@@ -404,11 +500,13 @@ export const OpenCostPage = () => {
   // Reset drill-down when cluster/year/month changes
   const handleClusterChange = useCallback((key: string) => {
     setSelectedCluster(key);
+    setSelectedControllers([]);
     goToYear();
   }, [goToYear]);
 
   const handleYearChange = useCallback((key: string) => {
     setSelectedYear(Number(key));
+    setSelectedControllers([]);
     goToYear();
   }, [goToYear]);
 
@@ -428,7 +526,7 @@ export const OpenCostPage = () => {
   } = useAsync(async (): Promise<MonthlySummaryItem[] | null> => {
     if (drillDown !== 'year' || !baseUrl) return null;
 
-    const ck = `year:${selectedCluster}:${selectedYear}`;
+    const ck = `year:${selectedCluster}:${selectedYear}:${controllersParam ?? ''}`;
     if (cache.current.has(ck)) return cache.current.get(ck);
 
     const currentYear = now.getFullYear();
@@ -440,10 +538,9 @@ export const OpenCostPage = () => {
     const lastDbMonth = isPastYear ? 12 : currentMonth - 1;
     const dbFetches = [];
     for (let m = 1; m <= lastDbMonth; m++) {
+      const costUrl = `${baseUrl}/costs?cluster=${encodeURIComponent(selectedCluster)}&year=${selectedYear}&month=${m}${controllersParam ? `&controllers=${encodeURIComponent(controllersParam)}` : ''}`;
       dbFetches.push(
-        fetchApi.fetch(
-          `${baseUrl}/costs?cluster=${encodeURIComponent(selectedCluster)}&year=${selectedYear}&month=${m}`,
-        ).then(async r => {
+        fetchApi.fetch(costUrl).then(async r => {
           if (!r.ok) return;
           const json = await r.json();
           const rows = json.data as Array<{
@@ -472,11 +569,12 @@ export const OpenCostPage = () => {
 
     // Current month (if selected year is current year): fetch from OpenCost API
     if (!isPastYear) {
+      const hasControllerFilter = selectedControllers.length > 0;
       const { start: mStart, end: mEnd } = getMonthWindow(selectedYear, currentMonth, billingTz);
       const params = new URLSearchParams({
         cluster: selectedCluster,
         window: `${mStart},${mEnd}`,
-        aggregate: 'cluster',
+        aggregate: hasControllerFilter ? 'pod' : 'cluster',
         step: '1d',
       });
       try {
@@ -490,7 +588,10 @@ export const OpenCostPage = () => {
           let todayInSteps = false;
 
           for (const stepMap of steps) {
-            const entries = Object.values(stepMap).filter(e => e.name !== '__idle__');
+            let entries = Object.values(stepMap).filter(e => e.name !== '__idle__');
+            if (hasControllerFilter) {
+              entries = entries.filter(e => selectedControllers.includes(e.properties?.controller ?? ''));
+            }
             if (entries.length === 0) continue;
             daysCovered++;
             cpu += entries.reduce((s, e) => s + (e.cpuCost ?? 0), 0);
@@ -514,14 +615,17 @@ export const OpenCostPage = () => {
             const liveParams = new URLSearchParams({
               cluster: selectedCluster,
               window: `${dStart},${dEnd}`,
-              aggregate: 'cluster',
+              aggregate: hasControllerFilter ? 'pod' : 'cluster',
               accumulate: 'true',
             });
             try {
               const liveRes = await fetchApi.fetch(`${baseUrl}/allocation?${liveParams}`);
               if (liveRes.ok) {
                 const liveJson = await liveRes.json();
-                const le = Object.values(liveJson.data?.[0] ?? {}).filter((e: any) => e.name !== '__idle__') as any[];
+                let le = Object.values(liveJson.data?.[0] ?? {}).filter((e: any) => e.name !== '__idle__') as any[];
+                if (hasControllerFilter) {
+                  le = le.filter((e: any) => selectedControllers.includes(e.properties?.controller ?? ''));
+                }
                 if (le.length > 0) {
                   cpu += le.reduce((s: number, e: any) => s + (e.cpuCost ?? 0), 0);
                   ram += le.reduce((s: number, e: any) => s + (e.ramCost ?? 0), 0);
@@ -553,7 +657,7 @@ export const OpenCostPage = () => {
     const items = Array.from(monthMap.values()).sort((a, b) => a.monthNum - b.monthNum);
     if (isPastYear) cache.current.set(ck, items);
     return items;
-  }, [drillDown, baseUrl, selectedCluster, selectedYear, yearStart, yearEnd, billingTz]);
+  }, [drillDown, baseUrl, selectedCluster, selectedYear, yearStart, yearEnd, billingTz, controllersParam]);
 
   const yearlyTotals = useMemo(() => {
     if (!yearlyData) return null;
@@ -580,7 +684,7 @@ export const OpenCostPage = () => {
   } = useAsync(async (): Promise<DailySummaryItem[] | null> => {
     if (drillDown !== 'month' || !baseUrl) return null;
 
-    const ck = `month:${selectedCluster}:${selectedYear}:${selectedMonth}`;
+    const ck = `month:${selectedCluster}:${selectedYear}:${selectedMonth}:${controllersParam ?? ''}`;
     if (isPastMonth && cache.current.has(ck)) return cache.current.get(ck);
 
     // Past month → DB
@@ -591,6 +695,7 @@ export const OpenCostPage = () => {
           year: String(selectedYear),
           month: String(selectedMonth),
         });
+        if (controllersParam) params.set('controllers', controllersParam);
         const res = await fetchApi.fetch(`${baseUrl}/costs/daily-summary?${params}`);
         if (res.ok) {
           const json = await res.json();
@@ -617,9 +722,13 @@ export const OpenCostPage = () => {
     const json = await res.json();
     const steps = (json.data ?? []) as Record<string, AllocationItem>[];
 
+    const hasControllerFilter = selectedControllers.length > 0;
     const items: DailySummaryItem[] = [];
     for (const stepMap of steps) {
-      const entries = Object.values(stepMap).filter(e => e.name !== '__idle__');
+      let entries = Object.values(stepMap).filter(e => e.name !== '__idle__');
+      if (hasControllerFilter) {
+        entries = entries.filter(e => selectedControllers.includes(e.properties?.controller ?? ''));
+      }
       if (entries.length === 0) continue;
       const entry = entries[0];
       const dateStr = entry.window?.start
@@ -641,7 +750,7 @@ export const OpenCostPage = () => {
 
     if (isPastMonth) cache.current.set(ck, items);
     return items;
-  }, [drillDown, baseUrl, selectedCluster, selectedYear, selectedMonth, start, end, isPastMonth]);
+  }, [drillDown, baseUrl, selectedCluster, selectedYear, selectedMonth, start, end, isPastMonth, controllersParam]);
 
   // Fetch collection run info for the selected month
   const { value: collectionRuns } = useAsync(async () => {
@@ -681,7 +790,10 @@ export const OpenCostPage = () => {
       const res = await fetchApi.fetch(`${baseUrl}/allocation?${params}`);
       if (!res.ok) return null;
       const json = await res.json();
-      const entries = Object.values(json.data?.[0] ?? {}).filter((e: any) => e.name !== '__idle__') as any[];
+      let entries = Object.values(json.data?.[0] ?? {}).filter((e: any) => e.name !== '__idle__') as any[];
+      if (selectedControllers.length > 0) {
+        entries = entries.filter((e: any) => selectedControllers.includes(e.properties?.controller ?? ''));
+      }
       if (entries.length === 0) return null;
       return {
         date: todayStr,
@@ -695,7 +807,7 @@ export const OpenCostPage = () => {
         carbonCost: entries.reduce((s: number, e: any) => s + (e.carbonCost ?? 0), 0),
       };
     } catch { return null; }
-  }, [drillDown, baseUrl, selectedCluster, selectedYear, selectedMonth, billingTz]);
+  }, [drillDown, baseUrl, selectedCluster, selectedYear, selectedMonth, billingTz, controllersParam]);
 
   // Build full month calendar with snapshot status
   const fullMonthData = useMemo((): DailyRow[] | null => {
@@ -1178,12 +1290,96 @@ export const OpenCostPage = () => {
           <Text variant="body-medium" weight="bold" style={{ marginBottom: 12, display: 'block' }}>
             Filters
           </Text>
-          <Flex gap="3" align="end">
+          <Flex gap="3" align="end" style={{ flexWrap: 'wrap' }}>
             <Select label="Cluster" size="small" options={clusterOptions}
               selectedKey={selectedCluster} onSelectionChange={key => handleClusterChange(key as string)} />
             <Select label="Year" size="small" options={yearOptions}
               selectedKey={String(selectedYear)} onSelectionChange={key => handleYearChange(key as string)} />
+            {(drillDown === 'year' || drillDown === 'month') && availableControllers.length > 0 && (
+              <div className="oc-native-select" ref={controllerDropdownRef} style={{ position: 'relative' }}>
+                <label className="oc-native-select-label">Controller</label>
+                <button
+                  className="oc-controller-toggle"
+                  onClick={() => setControllerDropdownOpen(o => !o)}
+                >
+                  {selectedControllers.length === 0
+                    ? `All (${availableControllers.length})`
+                    : `${selectedControllers.length} selected`}
+                  <span style={{ marginLeft: 4, opacity: 0.5 }}>{controllerDropdownOpen ? '\u25B2' : '\u25BC'}</span>
+                </button>
+                {controllerDropdownOpen && (() => {
+                  const q = controllerSearch.toLowerCase();
+                  const filtered = q
+                    ? availableControllers.filter(c => c.toLowerCase().includes(q))
+                    : availableControllers;
+                  return (
+                  <div className="oc-controller-dropdown">
+                    <div className="oc-controller-search">
+                      <input
+                        type="text"
+                        placeholder="Search controllers..."
+                        value={controllerSearch}
+                        onChange={e => setControllerSearch(e.target.value)}
+                        autoFocus
+                      />
+                    </div>
+                    <div className="oc-controller-actions">
+                      <button onClick={() => setSelectedControllers(prev => {
+                        const set = new Set(prev);
+                        for (const c of filtered) set.add(c);
+                        return Array.from(set);
+                      })}>Select All{q ? ` (${filtered.length})` : ''}</button>
+                      <button onClick={() => {
+                        if (q) {
+                          const remove = new Set(filtered);
+                          setSelectedControllers(prev => prev.filter(c => !remove.has(c)));
+                        } else {
+                          setSelectedControllers([]);
+                        }
+                      }}>Clear{q ? ` (${filtered.length})` : ''}</button>
+                    </div>
+                    <div className="oc-controller-list">
+                      {filtered.map(c => (
+                        <label key={c} className="oc-controller-option">
+                          <input
+                            type="checkbox"
+                            checked={selectedControllers.includes(c)}
+                            onChange={e => {
+                              if (e.target.checked) {
+                                setSelectedControllers(prev => [...prev, c]);
+                              } else {
+                                setSelectedControllers(prev => prev.filter(x => x !== c));
+                              }
+                            }}
+                          />
+                          <span>{c}</span>
+                        </label>
+                      ))}
+                      {filtered.length === 0 && (
+                        <div className="oc-controller-no-match">No match</div>
+                      )}
+                    </div>
+                  </div>
+                  );
+                })()}
+              </div>
+            )}
           </Flex>
+          {selectedControllers.length > 0 && (
+            <div className="oc-controller-chips" style={{ marginTop: 8 }}>
+              {selectedControllers.map(c => (
+                <span key={c} className="oc-controller-chip">
+                  {c}
+                  <span
+                    className="oc-controller-chip-remove"
+                    onClick={() => setSelectedControllers(prev => prev.filter(x => x !== c))}
+                  >
+                    {'\u00D7'}
+                  </span>
+                </span>
+              ))}
+            </div>
+          )}
         </Box>
 
         {/* ── Loading / Error ── */}
@@ -1245,16 +1441,17 @@ export const OpenCostPage = () => {
                 </div>
 
                 {yearlyTotals.total > 0 && (() => {
-                  const segments = [
+                  const allSegments = [
                     { label: 'CPU', value: yearlyTotals.cpu, color: '#60a5fa' },
                     { label: 'RAM', value: yearlyTotals.ram, color: '#a78bfa' },
                     { label: 'PV', value: yearlyTotals.pv, color: '#34d399' },
                     { label: 'Network', value: yearlyTotals.network, color: '#fbbf24' },
-                  ].filter(s => s.value > 0);
+                  ];
+                  const barSegments = allSegments.filter(s => s.value > 0);
                   return (
                     <div className="oc-breakdown">
                       <div className="oc-breakdown-bar">
-                        {segments.map(s => {
+                        {barSegments.map(s => {
                           const pct = (s.value / yearlyTotals.total) * 100;
                           return (
                             <div
@@ -1267,8 +1464,8 @@ export const OpenCostPage = () => {
                         })}
                       </div>
                       <div className="oc-breakdown-legend">
-                        {segments.map(s => {
-                          const pct = (s.value / yearlyTotals.total) * 100;
+                        {allSegments.map(s => {
+                          const pct = yearlyTotals.total > 0 ? (s.value / yearlyTotals.total) * 100 : 0;
                           return (
                             <div key={s.label} className="oc-breakdown-item">
                               <span className="oc-breakdown-dot" style={{ background: s.color }} />
@@ -1422,16 +1619,17 @@ export const OpenCostPage = () => {
 
                 {/* Cost breakdown bar */}
                 {monthlyTotals.total > 0 && (() => {
-                  const segments = [
+                  const allSegments = [
                     { label: 'CPU', value: monthlyTotals.cpu, color: '#60a5fa' },
                     { label: 'RAM', value: monthlyTotals.ram, color: '#a78bfa' },
                     { label: 'PV', value: monthlyTotals.pv, color: '#34d399' },
                     { label: 'Network', value: monthlyTotals.network, color: '#fbbf24' },
-                  ].filter(s => s.value > 0);
+                  ];
+                  const barSegments = allSegments.filter(s => s.value > 0);
                   return (
                     <div className="oc-breakdown">
                       <div className="oc-breakdown-bar">
-                        {segments.map(s => {
+                        {barSegments.map(s => {
                           const pct = (s.value / monthlyTotals.total) * 100;
                           return (
                             <div
@@ -1444,8 +1642,8 @@ export const OpenCostPage = () => {
                         })}
                       </div>
                       <div className="oc-breakdown-legend">
-                        {segments.map(s => {
-                          const pct = (s.value / monthlyTotals.total) * 100;
+                        {allSegments.map(s => {
+                          const pct = monthlyTotals.total > 0 ? (s.value / monthlyTotals.total) * 100 : 0;
                           return (
                             <div key={s.label} className="oc-breakdown-item">
                               <span className="oc-breakdown-dot" style={{ background: s.color }} />
@@ -1598,10 +1796,13 @@ export const OpenCostPage = () => {
                         >
                           <td>{row.date} <span className={`oc-day-of-week${row.dayOfWeek === 'Sun' ? ' oc-dow-sun' : row.dayOfWeek === 'Sat' ? ' oc-dow-sat' : ''}`}>({row.dayOfWeek})</span></td>
                           <td title={statusTooltip}>
-                            <span style={{
-                              display: 'inline-block', width: 8, height: 8, borderRadius: '50%',
-                              backgroundColor: ledColor, marginRight: 6, verticalAlign: 'middle',
-                            }} />
+                            <span
+                              className={row.status === 'collecting' ? 'oc-led-pulse' : undefined}
+                              style={{
+                                display: 'inline-block', width: 8, height: 8, borderRadius: '50%',
+                                backgroundColor: ledColor, marginRight: 6, verticalAlign: 'middle',
+                              }}
+                            />
                             {statusLabel}
                           </td>
                           <td className={`oc-cost${row.isEstimated ? ' oc-cost-estimated' : ''}`}>{hasData ? `${row.isEstimated ? '~' : ''}${formatCost(row.cpuCost)}` : '-'}</td>
@@ -1702,6 +1903,46 @@ export const OpenCostPage = () => {
                   <Text variant="body-x-small" color="secondary">Pods</Text>
                 </div>
               </div>
+
+              {dayTotals.total > 0 && (() => {
+                const allSegments = [
+                  { label: 'CPU', value: dayTotals.cpu, color: '#60a5fa' },
+                  { label: 'RAM', value: dayTotals.ram, color: '#a78bfa' },
+                  { label: 'PV', value: dayTotals.pv, color: '#34d399' },
+                  { label: 'Network', value: dayTotals.network, color: '#fbbf24' },
+                ];
+                const barSegments = allSegments.filter(s => s.value > 0);
+                return (
+                  <div className="oc-breakdown">
+                    <div className="oc-breakdown-bar">
+                      {barSegments.map(s => {
+                        const pct = (s.value / dayTotals.total) * 100;
+                        return (
+                          <div
+                            key={s.label}
+                            className="oc-breakdown-segment"
+                            style={{ width: `${pct}%`, background: s.color }}
+                            title={`${s.label}: ${formatCost(s.value)} (${pct.toFixed(1)}%)`}
+                          />
+                        );
+                      })}
+                    </div>
+                    <div className="oc-breakdown-legend">
+                      {allSegments.map(s => {
+                        const pct = dayTotals.total > 0 ? (s.value / dayTotals.total) * 100 : 0;
+                        return (
+                          <div key={s.label} className="oc-breakdown-item">
+                            <span className="oc-breakdown-dot" style={{ background: s.color }} />
+                            <span className="oc-breakdown-label">{s.label}</span>
+                            <span className="oc-breakdown-value">{formatCost(s.value)}</span>
+                            <span className="oc-breakdown-pct">{pct.toFixed(1)}%</span>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                );
+              })()}
             </Box>
 
             {/* Filters */}

@@ -556,25 +556,33 @@ export class OpenCostCostStore {
    * Get per-day aggregated cost summary for a month.
    * Returns one row per day with totals and pod count.
    */
-  async getDailySummary(clusterId: number, year: number, month: number): Promise<DailySummaryRow[]> {
+  async getDailySummary(clusterId: number, year: number, month: number, controllers?: string[]): Promise<DailySummaryRow[]> {
     const startDate = `${year}-${String(month).padStart(2, '0')}-01`;
     const nextMonth = month === 12 ? 1 : month + 1;
     const nextYear = month === 12 ? year + 1 : year;
     const endDate = `${nextYear}-${String(nextMonth).padStart(2, '0')}-01`;
 
-    const rows = await this.db(DAILY_TABLE)
-      .where({ cluster_id: clusterId })
+    let query = this.db(DAILY_TABLE)
+      .where({ [`${DAILY_TABLE}.cluster_id`]: clusterId })
       .where('date', '>=', startDate)
-      .where('date', '<', endDate)
+      .where('date', '<', endDate);
+
+    if (controllers && controllers.length > 0) {
+      query = query
+        .join(PODS_TABLE, `${DAILY_TABLE}.pod_id`, '=', `${PODS_TABLE}.id`)
+        .whereIn(`${PODS_TABLE}.controller`, controllers);
+    }
+
+    const rows = await query
       .select('date')
       .count('* as pod_count')
-      .sum('cpu_cost as cpu_cost')
-      .sum('ram_cost as ram_cost')
-      .sum('gpu_cost as gpu_cost')
-      .sum('pv_cost as pv_cost')
-      .sum('network_cost as network_cost')
-      .sum('total_cost as total_cost')
-      .sum('carbon_cost as carbon_cost')
+      .sum(`${DAILY_TABLE}.cpu_cost as cpu_cost`)
+      .sum(`${DAILY_TABLE}.ram_cost as ram_cost`)
+      .sum(`${DAILY_TABLE}.gpu_cost as gpu_cost`)
+      .sum(`${DAILY_TABLE}.pv_cost as pv_cost`)
+      .sum(`${DAILY_TABLE}.network_cost as network_cost`)
+      .sum(`${DAILY_TABLE}.total_cost as total_cost`)
+      .sum(`${DAILY_TABLE}.carbon_cost as carbon_cost`)
       .groupBy('date')
       .orderBy('date', 'asc');
 
@@ -689,10 +697,16 @@ export class OpenCostCostStore {
    *  Monthly operations
    * ═══════════════════════════════════════════ */
 
-  async getMonthlySummary(clusterId: number, year: number, month: number): Promise<MonthlySummaryRow[]> {
-    const rows = await this.db(MONTHLY_TABLE)
+  async getMonthlySummary(clusterId: number, year: number, month: number, controllers?: string[]): Promise<MonthlySummaryRow[]> {
+    let query = this.db(MONTHLY_TABLE)
       .join(PODS_TABLE, `${MONTHLY_TABLE}.pod_id`, '=', `${PODS_TABLE}.id`)
-      .where({ [`${MONTHLY_TABLE}.cluster_id`]: clusterId, year, month })
+      .where({ [`${MONTHLY_TABLE}.cluster_id`]: clusterId, year, month });
+
+    if (controllers && controllers.length > 0) {
+      query = query.whereIn(`${PODS_TABLE}.controller`, controllers);
+    }
+
+    const rows = await query
       .select(
         `${PODS_TABLE}.namespace`,
         `${PODS_TABLE}.controller_kind`,
@@ -785,17 +799,24 @@ export class OpenCostCostStore {
     clusterId: number,
     year: number,
     month: number,
+    controllers?: string[],
   ): Promise<{ rows: MonthlySummaryRow[]; daysCovered: number }> {
     const startDate = `${year}-${String(month).padStart(2, '0')}-01`;
     const nextMonth = month === 12 ? 1 : month + 1;
     const nextYear = month === 12 ? year + 1 : year;
     const endDate = `${nextYear}-${String(nextMonth).padStart(2, '0')}-01`;
 
-    const rows = await this.db(DAILY_TABLE)
+    let query = this.db(DAILY_TABLE)
       .join(PODS_TABLE, `${DAILY_TABLE}.pod_id`, '=', `${PODS_TABLE}.id`)
       .where({ [`${DAILY_TABLE}.cluster_id`]: clusterId })
       .where(`${DAILY_TABLE}.date`, '>=', startDate)
-      .where(`${DAILY_TABLE}.date`, '<', endDate)
+      .where(`${DAILY_TABLE}.date`, '<', endDate);
+
+    if (controllers && controllers.length > 0) {
+      query = query.whereIn(`${PODS_TABLE}.controller`, controllers);
+    }
+
+    const rows = await query
       .select(
         `${PODS_TABLE}.namespace`,
         `${PODS_TABLE}.controller_kind`,
@@ -842,6 +863,27 @@ export class OpenCostCostStore {
       })),
       daysCovered,
     };
+  }
+
+  /**
+   * Get distinct controller names that have cost data for a cluster in a given month.
+   */
+  async getControllers(clusterId: number, year: number, month: number): Promise<string[]> {
+    const startDate = `${year}-${String(month).padStart(2, '0')}-01`;
+    const nextMonth = month === 12 ? 1 : month + 1;
+    const nextYear = month === 12 ? year + 1 : year;
+    const endDate = `${nextYear}-${String(nextMonth).padStart(2, '0')}-01`;
+
+    const rows = await this.db(DAILY_TABLE)
+      .join(PODS_TABLE, `${DAILY_TABLE}.pod_id`, '=', `${PODS_TABLE}.id`)
+      .where({ [`${DAILY_TABLE}.cluster_id`]: clusterId })
+      .where(`${DAILY_TABLE}.date`, '>=', startDate)
+      .where(`${DAILY_TABLE}.date`, '<', endDate)
+      .whereNotNull(`${PODS_TABLE}.controller`)
+      .distinct(`${PODS_TABLE}.controller`)
+      .orderBy(`${PODS_TABLE}.controller`, 'asc');
+
+    return rows.map(r => r.controller as string);
   }
 
   /**

@@ -101,10 +101,10 @@ export async function createRouter(options: RouterOptions): Promise<Router> {
   });
 
   /**
-   * GET /costs/daily-summary?cluster=X&year=Y&month=Z
-   * Returns per-day aggregated cost totals for a month from DB.
+   * GET /costs/controllers?cluster=X&year=Y&month=Z
+   * Returns distinct controller names for the given cluster/month.
    */
-  router.get('/costs/daily-summary', async (req, res) => {
+  router.get('/costs/controllers', async (req, res) => {
     const cluster = req.query.cluster as string | undefined;
     const year = Number(req.query.year);
     const month = Number(req.query.month);
@@ -121,7 +121,39 @@ export async function createRouter(options: RouterOptions): Promise<Router> {
         return;
       }
 
-      const data = await costStore.getDailySummary(clusterId, year, month);
+      const data = await costStore.getControllers(clusterId, year, month);
+      res.json({ data });
+    } catch (error) {
+      const msg = error instanceof Error ? error.message : String(error);
+      logger.error(`Error fetching controllers for cluster=${cluster} ${year}-${month}: ${msg}`);
+      res.status(500).json({ message: 'Internal error fetching controllers' });
+    }
+  });
+
+  /**
+   * GET /costs/daily-summary?cluster=X&year=Y&month=Z[&controllers=a,b]
+   * Returns per-day aggregated cost totals for a month from DB.
+   */
+  router.get('/costs/daily-summary', async (req, res) => {
+    const cluster = req.query.cluster as string | undefined;
+    const year = Number(req.query.year);
+    const month = Number(req.query.month);
+    const controllersParam = req.query.controllers as string | undefined;
+    const controllers = controllersParam ? controllersParam.split(',').filter(Boolean) : undefined;
+
+    if (!cluster || !year || !month || month < 1 || month > 12) {
+      res.status(400).json({ message: 'Required: cluster, year, month (1-12)' });
+      return;
+    }
+
+    try {
+      const clusterId = await costStore.getClusterId(cluster);
+      if (!clusterId) {
+        res.json({ data: [] });
+        return;
+      }
+
+      const data = await costStore.getDailySummary(clusterId, year, month, controllers);
       res.json({ data });
     } catch (error) {
       const msg = error instanceof Error ? error.message : String(error);
@@ -160,7 +192,7 @@ export async function createRouter(options: RouterOptions): Promise<Router> {
   });
 
   /**
-   * GET /costs?cluster=X&year=Y&month=Z
+   * GET /costs?cluster=X&year=Y&month=Z[&controllers=a,b]
    * Returns monthly pod cost data from DB.
    * Checks monthly_summaries first, falls back to real-time aggregation from daily_costs.
    */
@@ -168,6 +200,8 @@ export async function createRouter(options: RouterOptions): Promise<Router> {
     const cluster = req.query.cluster as string | undefined;
     const year = Number(req.query.year);
     const month = Number(req.query.month);
+    const controllersParam = req.query.controllers as string | undefined;
+    const controllers = controllersParam ? controllersParam.split(',').filter(Boolean) : undefined;
 
     if (!cluster || !year || !month || month < 1 || month > 12) {
       res.status(400).json({ message: 'Required: cluster, year, month (1-12)' });
@@ -182,14 +216,14 @@ export async function createRouter(options: RouterOptions): Promise<Router> {
       }
 
       // Try monthly summaries first
-      const summaries = await costStore.getMonthlySummary(clusterId, year, month);
+      const summaries = await costStore.getMonthlySummary(clusterId, year, month, controllers);
       if (summaries.length > 0) {
         res.json({ data: summaries, daysCovered: summaries[0].daysCovered, source: 'monthly' });
         return;
       }
 
       // Fall back to real-time aggregation from daily costs
-      const { rows, daysCovered } = await costStore.aggregateMonthOnTheFly(clusterId, year, month);
+      const { rows, daysCovered } = await costStore.aggregateMonthOnTheFly(clusterId, year, month, controllers);
       res.json({ data: rows, daysCovered, source: 'daily' });
     } catch (error) {
       const msg = error instanceof Error ? error.message : String(error);
