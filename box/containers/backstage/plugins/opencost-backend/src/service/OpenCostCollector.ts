@@ -177,7 +177,17 @@ export class OpenCostCollector {
   /** Billing timezone (exposed via /config API) */
   get timezone(): string { return this.tz; }
 
-  constructor(
+  static async create(
+    store: OpenCostCostStore,
+    config: Config,
+    logger: LoggerService,
+  ): Promise<OpenCostCollector> {
+    const collector = new OpenCostCollector(store, config, logger);
+    await collector.seedClusters();
+    return collector;
+  }
+
+  private constructor(
     private readonly store: OpenCostCostStore,
     private readonly config: Config,
     private readonly logger: LoggerService,
@@ -186,6 +196,13 @@ export class OpenCostCollector {
     this.tz = config.getOptionalString('opencost.timezone') ?? 'UTC';
     this.dailyCronLocal = '30 0 * * *';
     this.logger.info(`OpenCost billing timezone: ${this.tz}`);
+  }
+
+  private async seedClusters(): Promise<void> {
+    for (const cluster of this.clusters) {
+      await this.store.ensureCluster(cluster.name, cluster.title);
+    }
+    this.logger.info(`Seeded ${this.clusters.length} cluster(s) into DB`);
   }
 
   private loadClusters(): ClusterConfig[] {

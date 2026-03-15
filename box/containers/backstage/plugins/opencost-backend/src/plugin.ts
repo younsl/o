@@ -33,7 +33,7 @@ export const opencostPlugin = createBackendPlugin({
         const costStore = await OpenCostCostStore.create({ database: knex });
         logger.info('OpenCost database tables initialized');
 
-        const collector = new OpenCostCollector(costStore, config, logger);
+        const collector = await OpenCostCollector.create(costStore, config, logger);
         await collector.registerTasks(scheduler);
 
         const router = await createRouter({ service, costStore, collector, logger });
