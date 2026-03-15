@@ -35,13 +35,13 @@ erDiagram
         integer cluster_id FK
         date date
         integer pod_id FK
-        float cpu_cost
-        float ram_cost
-        float gpu_cost
-        float pv_cost
-        float network_cost
-        float total_cost
-        float carbon_cost
+        decimal(12_4) cpu_cost
+        decimal(12_4) ram_cost
+        decimal(12_4) gpu_cost
+        decimal(12_4) pv_cost
+        decimal(12_4) network_cost
+        decimal(12_4) total_cost
+        decimal(12_4) carbon_cost
         datetime created_at
         datetime updated_at
     }
@@ -49,17 +49,17 @@ erDiagram
     opencost_monthly_summaries {
         integer id PK
         integer cluster_id FK
-        integer year
-        integer month
+        smallint year
+        smallint month
         integer pod_id FK
-        float cpu_cost
-        float ram_cost
-        float gpu_cost
-        float pv_cost
-        float network_cost
-        float total_cost
-        float carbon_cost
-        integer days_covered
+        decimal(12_4) cpu_cost
+        decimal(12_4) ram_cost
+        decimal(12_4) gpu_cost
+        decimal(12_4) pv_cost
+        decimal(12_4) network_cost
+        decimal(12_4) total_cost
+        decimal(12_4) carbon_cost
+        smallint days_covered
         datetime created_at
         datetime updated_at
     }
@@ -69,8 +69,8 @@ erDiagram
         integer cluster_id FK
         varchar(20) task_type "daily | gap-fill | monthly-agg"
         date target_date "nullable"
-        integer target_year "nullable"
-        integer target_month "nullable"
+        smallint target_year "nullable"
+        smallint target_month "nullable"
         varchar(20) status "success | failure | partial"
         integer pods_collected
         text error_message "nullable"
