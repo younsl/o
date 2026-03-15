@@ -27,7 +27,10 @@ interface AllocationItem {
   pvCost: number;
   networkCost: number;
   totalCost: number;
-  carbonCost: number;
+}
+
+interface CarbonAssetEntry {
+  co2e?: number;
 }
 
 /* ─── Timezone helpers ─── */
@@ -95,11 +98,84 @@ function midnightEpochInTz(dateStr: string, tz: string): number {
   return Math.floor((localMidnightMs - offsetMs) / 1000);
 }
 
+/**
+ * Get the UTC offset in minutes for an IANA timezone at the current instant.
+ * Positive = east of UTC (e.g. Asia/Seoul → +540).
+ */
+function getTimezoneOffsetMinutes(tz: string): number {
+  const now = new Date();
+  const parts = new Intl.DateTimeFormat('en-US', {
+    timeZone: tz,
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+    second: '2-digit',
+    hour12: false,
+  }).formatToParts(now);
+  const get = (type: string) => parseInt(parts.find(p => p.type === type)?.value ?? '0', 10);
+
+  const tzHour = get('hour') === 24 ? 0 : get('hour');
+  const tzAsUtcMs = Date.UTC(get('year'), get('month') - 1, get('day'), tzHour, get('minute'), get('second'));
+  const offsetMs = tzAsUtcMs - now.getTime();
+  return Math.round(offsetMs / 60_000);
+}
+
+/**
+ * Convert a 5-field cron expression from local time to UTC.
+ *
+ * - If hour field is '*', the cron is hour-granularity and needs no conversion.
+ * - If day-of-month is '*', day shift from hour wrapping is ignored (daily tasks).
+ * - If day-of-month is numeric, day shift is applied (monthly tasks).
+ */
+function localCronToUtc(localCron: string, tz: string): string {
+  const fields = localCron.trim().split(/\s+/);
+  if (fields.length !== 5) return localCron;
+
+  const [minuteF, hourF, domF, monthF, dowF] = fields;
+
+  // Hour is '*' → no conversion needed (e.g. gap-validator "0 * * * *")
+  if (hourF === '*') return localCron;
+
+  const offsetMin = getTimezoneOffsetMinutes(tz);
+  if (offsetMin === 0) return localCron;
+
+  const localMinute = parseInt(minuteF, 10);
+  const localHour = parseInt(hourF, 10);
+  if (isNaN(localMinute) || isNaN(localHour)) return localCron;
+
+  const totalMinutes = localHour * 60 + localMinute - offsetMin;
+  let utcHour = Math.floor(totalMinutes / 60) % 24;
+  let utcMinute = totalMinutes % 60;
+  if (utcHour < 0) utcHour += 24;
+  if (utcMinute < 0) utcMinute += 60;
+
+  const dayShift = Math.floor(totalMinutes / 60 / 24) - Math.floor(localHour / 24);
+
+  let utcDom = domF;
+  if (domF !== '*' && dayShift !== 0) {
+    const dom = parseInt(domF, 10);
+    if (!isNaN(dom)) {
+      let newDom = dom + dayShift;
+      if (newDom < 1) newDom += 28; // wrap conservatively
+      if (newDom > 28) newDom -= 28;
+      utcDom = String(newDom);
+    }
+  }
+
+  return `${utcMinute} ${utcHour} ${utcDom} ${monthF} ${dowF}`;
+}
+
 /* ─── Collector ─── */
 
 export class OpenCostCollector {
   private readonly clusters: ClusterConfig[];
   private readonly tz: string;
+  /** Local-time cron for the daily collector (exposed via /config API) */
+  readonly dailyCronLocal: string;
+  /** Billing timezone (exposed via /config API) */
+  get timezone(): string { return this.tz; }
 
   constructor(
     private readonly store: OpenCostCostStore,
@@ -108,6 +184,7 @@ export class OpenCostCollector {
   ) {
     this.clusters = this.loadClusters();
     this.tz = config.getOptionalString('opencost.timezone') ?? 'UTC';
+    this.dailyCronLocal = '30 0 * * *';
     this.logger.info(`OpenCost billing timezone: ${this.tz}`);
   }
 
@@ -126,9 +203,26 @@ export class OpenCostCollector {
   }
 
   async registerTasks(scheduler: SchedulerService): Promise<void> {
+    // Local-time cron definitions (billing timezone)
+    const dailyLocal = this.dailyCronLocal;      // 00:30 daily
+    const gapLocal = '0 * * * *';                // every hour (no conversion needed)
+    const monthlyLocal = '0 1 2 * *';            // 2nd of month 01:00
+
+    // Convert to UTC
+    const dailyUtc = localCronToUtc(dailyLocal, this.tz);
+    const gapUtc = localCronToUtc(gapLocal, this.tz);
+    const monthlyUtc = localCronToUtc(monthlyLocal, this.tz);
+
+    this.logger.info(
+      `OpenCost cron schedules (${this.tz}): ` +
+      `daily-collector="${dailyUtc}" (from "${dailyLocal}"), ` +
+      `gap-validator="${gapUtc}" (from "${gapLocal}"), ` +
+      `monthly-aggregator="${monthlyUtc}" (from "${monthlyLocal}")`,
+    );
+
     await scheduler.scheduleTask({
       id: 'opencost:daily-collector',
-      frequency: { cron: '30 0 * * *' },
+      frequency: { cron: dailyUtc },
       timeout: { minutes: 30 },
       initialDelay: { seconds: 60 },
       fn: async () => this.collectDaily(),
@@ -136,7 +230,7 @@ export class OpenCostCollector {
 
     await scheduler.scheduleTask({
       id: 'opencost:gap-validator',
-      frequency: { cron: '0 * * * *' },
+      frequency: { cron: gapUtc },
       timeout: { minutes: 30 },
       initialDelay: { minutes: 5 },
       fn: async () => this.validateGaps(),
@@ -144,7 +238,7 @@ export class OpenCostCollector {
 
     await scheduler.scheduleTask({
       id: 'opencost:monthly-aggregator',
-      frequency: { cron: '0 1 1 * *' },
+      frequency: { cron: monthlyUtc },
       timeout: { minutes: 30 },
       initialDelay: { minutes: 10 },
       fn: async () => this.aggregateMonthly(),
@@ -299,6 +393,42 @@ export class OpenCostCollector {
    *   → KST 2026-03-14 00:00 ~ KST 2026-03-15 00:00
    *   → UTC 2026-03-13 15:00 ~ UTC 2026-03-14 15:00
    */
+  /**
+   * Fetches total carbon emissions (kg CO2e) from the OpenCost /assets/carbon
+   * endpoint for the given time window. The allocation API does not include
+   * carbon data, so this is fetched separately and distributed proportionally
+   * to each pod based on its share of the total cost.
+   *
+   * Returns 0 if the endpoint is unavailable (e.g. carbonCost is disabled).
+   */
+  private async fetchTotalCarbon(
+    cluster: ClusterConfig,
+    startEpoch: number,
+    endEpoch: number,
+  ): Promise<number> {
+    try {
+      const url = `${cluster.url}/model/assets/carbon?window=${startEpoch},${endEpoch}`;
+      const response = await fetch(url);
+      if (!response.ok) {
+        this.logger.warn(
+          `[collector] Carbon API returned ${response.status} for ${cluster.name}, carbon will be 0`,
+        );
+        return 0;
+      }
+      const json = await response.json();
+      const data: Record<string, CarbonAssetEntry> = json.data ?? {};
+      let total = 0;
+      for (const entry of Object.values(data)) {
+        total += entry.co2e ?? 0;
+      }
+      return total;
+    } catch (error) {
+      const msg = error instanceof Error ? error.message : String(error);
+      this.logger.warn(`[collector] Failed to fetch carbon for ${cluster.name}: ${msg}`);
+      return 0;
+    }
+  }
+
   private async collectForDate(
     cluster: ClusterConfig,
     dateStr: string,
@@ -324,23 +454,36 @@ export class OpenCostCollector {
         accumulate: 'true',
       });
 
-      const url = `${cluster.url}/model/allocation?${params}`;
+      const allocationUrl = `${cluster.url}/model/allocation?${params}`;
       this.logger.info(`[collector] Fetching ${cluster.name} for ${dateStr} (${this.tz}): epoch ${startEpoch}~${endEpoch}`);
 
-      const response = await fetch(url);
-      if (!response.ok) {
-        throw new Error(`OpenCost API returned ${response.status}: ${await response.text()}`);
+      const [allocationResponse, totalCarbon] = await Promise.all([
+        fetch(allocationUrl),
+        this.fetchTotalCarbon(cluster, startEpoch, endEpoch),
+      ]);
+
+      if (!allocationResponse.ok) {
+        throw new Error(`OpenCost API returned ${allocationResponse.status}: ${await allocationResponse.text()}`);
       }
 
-      const json = await response.json();
+      const json = await allocationResponse.json();
       const allocationMap = json.data?.[0] ?? {};
 
-      const items: DailyCostItem[] = [];
+      // First pass: collect allocations and sum total cost
+      const allocations: AllocationItem[] = [];
+      let totalCost = 0;
       for (const [, value] of Object.entries(allocationMap)) {
         const item = value as AllocationItem;
         if (item.name === '__idle__') continue;
+        allocations.push(item);
+        totalCost += item.totalCost ?? 0;
+      }
 
-        items.push({
+      // Second pass: distribute carbon proportionally by cost
+      const items: DailyCostItem[] = allocations.map(item => {
+        const podCost = item.totalCost ?? 0;
+        const carbonCost = totalCost > 0 ? (podCost / totalCost) * totalCarbon : 0;
+        return {
           namespace: item.properties?.namespace ?? 'unknown',
           controllerKind: item.properties?.controllerKind ?? null,
           controller: item.properties?.controller ?? null,
@@ -351,12 +494,15 @@ export class OpenCostCollector {
           pvCost: item.pvCost ?? 0,
           networkCost: item.networkCost ?? 0,
           totalCost: item.totalCost ?? 0,
-          carbonCost: item.carbonCost ?? 0,
-        });
-      }
+          carbonCost,
+        };
+      });
 
       await this.store.insertDailyCosts(clusterId, dateStr, items);
-      this.logger.info(`[collector] Stored ${items.length} pods for cluster=${cluster.name} date=${dateStr}`);
+      this.logger.info(
+        `[collector] Stored ${items.length} pods for cluster=${cluster.name} date=${dateStr}` +
+        ` (carbon=${totalCarbon.toFixed(6)} kg CO2e)`,
+      );
 
       await this.store.updateCollectionRun(runId, {
         status: 'success',

@@ -91,6 +91,65 @@ export class OpenCostService {
     }
   }
 
+  async checkClustersStatus(): Promise<{ name: string; title: string; status: 'connected' | 'disconnected' }[]> {
+    const results = await Promise.all(
+      [...this.clusters.values()].map(async cluster => {
+        try {
+          const res = await fetch(`${cluster.url}/healthz`, { timeout: 3000 } as any);
+          return { name: cluster.name, title: cluster.title, status: res.ok ? 'connected' as const : 'disconnected' as const };
+        } catch {
+          return { name: cluster.name, title: cluster.title, status: 'disconnected' as const };
+        }
+      }),
+    );
+    return results;
+  }
+
+  /**
+   * Fetches total carbon (kg CO2e) from the /assets/carbon endpoint for a
+   * given window. Returns 0 when the endpoint is unavailable.
+   */
+  private async fetchTotalCarbon(baseUrl: string, window: string): Promise<number> {
+    try {
+      const res = await fetch(`${baseUrl}/model/assets/carbon?window=${window}`);
+      if (!res.ok) return 0;
+      const json = await res.json();
+      const data: Record<string, { co2e?: number }> = json.data ?? {};
+      let total = 0;
+      for (const entry of Object.values(data)) {
+        total += entry.co2e ?? 0;
+      }
+      return total;
+    } catch {
+      return 0;
+    }
+  }
+
+  /**
+   * Enrich an allocation API response with carbonCost per item, distributed
+   * proportionally by each item's totalCost share of the cluster total.
+   */
+  private enrichWithCarbon(json: any, totalCarbon: number): void {
+    if (totalCarbon <= 0 || !Array.isArray(json.data)) return;
+
+    // Sum totalCost across ALL steps (for proportional distribution)
+    let grandTotal = 0;
+    for (const step of json.data) {
+      for (const alloc of Object.values(step) as any[]) {
+        if (alloc.name === '__idle__') continue;
+        grandTotal += alloc.totalCost ?? 0;
+      }
+    }
+    if (grandTotal <= 0) return;
+
+    for (const step of json.data) {
+      for (const alloc of Object.values(step) as any[]) {
+        if (alloc.name === '__idle__') continue;
+        alloc.carbonCost = ((alloc.totalCost ?? 0) / grandTotal) * totalCarbon;
+      }
+    }
+  }
+
   async fetchAllocation(clusterName: string, params: string): Promise<FetchResult> {
     const cluster = this.clusters.get(clusterName);
     if (!cluster) {
@@ -113,24 +172,38 @@ export class OpenCostService {
       return cached.result;
     }
 
-    const url = `${cluster.url}/model/allocation?${params}`;
-    this.logger.info(`Cache miss, fetching allocation from ${clusterName}: ${url}`);
+    const allocationUrl = `${cluster.url}/model/allocation?${params}`;
+    this.logger.info(`Cache miss, fetching allocation from ${clusterName}: ${allocationUrl}`);
 
     try {
-      const response = await fetch(url);
-      const body = await response.text();
-      const contentType = response.headers.get('content-type') ?? 'application/json';
+      // Extract window param for carbon query
+      const sp = new URLSearchParams(params);
+      const window = sp.get('window') ?? '';
 
-      const result: FetchResult = { status: response.status, body, contentType };
+      // Fetch allocation and carbon in parallel
+      const [response, totalCarbon] = await Promise.all([
+        fetch(allocationUrl),
+        window ? this.fetchTotalCarbon(cluster.url, window) : Promise.resolve(0),
+      ]);
 
-      // Only cache successful responses
-      if (response.ok) {
-        this.evictExpired();
-        const ttl = this.getTtl(params);
-        this.cache.set(cacheKey, { result, expiresAt: Date.now() + ttl });
-        this.evictLru();
-        this.logger.info(`Cached response for ${clusterName} (TTL: ${ttl / 1000}s)`);
+      if (!response.ok) {
+        const body = await response.text();
+        return { status: response.status, body, contentType: 'application/json' };
       }
+
+      const json = await response.json();
+
+      // Inject carbonCost into each allocation item
+      this.enrichWithCarbon(json, totalCarbon);
+
+      const body = JSON.stringify(json);
+      const result: FetchResult = { status: response.status, body, contentType: 'application/json' };
+
+      this.evictExpired();
+      const ttl = this.getTtl(params);
+      this.cache.set(cacheKey, { result, expiresAt: Date.now() + ttl });
+      this.evictLru();
+      this.logger.info(`Cached response for ${clusterName} (TTL: ${ttl / 1000}s, carbon: ${totalCarbon.toFixed(6)} kg)`);
 
       return result;
     } catch (error) {

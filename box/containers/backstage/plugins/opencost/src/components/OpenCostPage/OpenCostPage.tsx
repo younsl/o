@@ -1,4 +1,5 @@
 import React, { useState, useMemo, useCallback, useRef, useEffect } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import {
   PluginHeader,
   Container,
@@ -71,6 +72,7 @@ interface DailyRow extends DailySummaryItem {
   dayOfWeek: string;
   estimatedCompletion?: string;
   collectionRun?: CollectionRunInfo;
+  isEstimated?: boolean;
 }
 
 interface PodCostItem {
@@ -118,6 +120,10 @@ interface MonthlySummaryItem {
 }
 
 type DrillDown = 'year' | 'month' | 'day' | 'pod';
+
+type DailySortField =
+  | 'date' | 'status' | 'podCount'
+  | 'cpuCost' | 'ramCost' | 'gpuCost' | 'pvCost' | 'networkCost' | 'totalCost' | 'carbonCost';
 
 type PodSortField =
   | 'namespace' | 'controllerKind' | 'controller' | 'pod'
@@ -216,7 +222,11 @@ function downloadCsv(headers: string[], rows: (string | number)[][], filename: s
 
 function toTzString(utcIso: string, tz: string): string {
   const d = new Date(utcIso);
-  return d.toLocaleString('en-US', { timeZone: tz });
+  const datePart = new Intl.DateTimeFormat('en-CA', { timeZone: tz }).format(d);
+  const timePart = new Intl.DateTimeFormat('en-GB', {
+    timeZone: tz, hour: '2-digit', minute: '2-digit', hour12: false,
+  }).format(d);
+  return `${datePart} ${timePart} (${tz})`;
 }
 
 function daysInMonth(year: number, month: number): number {
@@ -244,16 +254,48 @@ export const OpenCostPage = () => {
     }));
   }, [configApi]);
 
-  /* ── Global state ── */
-  const [selectedCluster, setSelectedCluster] = useState(clusters[0].name);
+  /* ── Deep-link: read initial state from URL search params ── */
+  const [searchParams, setSearchParams] = useSearchParams();
   const now = useMemo(() => new Date(), []);
-  const [selectedYear, setSelectedYear] = useState(now.getFullYear());
-  const [selectedMonth, setSelectedMonth] = useState(now.getMonth() + 1);
+
+  const initialState = useMemo(() => {
+    const cluster = searchParams.get('cluster') ?? clusters[0].name;
+    const year = Number(searchParams.get('year')) || now.getFullYear();
+    const month = Number(searchParams.get('month')) || now.getMonth() + 1;
+    const date = searchParams.get('date');
+    const pod = searchParams.get('pod');
+
+    let drill: DrillDown = 'year';
+    if (pod && date) drill = 'pod';
+    else if (date) drill = 'day';
+    else if (searchParams.has('month')) drill = 'month';
+
+    return { cluster, year, month, date, pod, drill };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []); // intentionally run once
+
+  /* ── Global state ── */
+  const [selectedCluster, setSelectedCluster] = useState(initialState.cluster);
+  const [selectedYear, setSelectedYear] = useState(initialState.year);
+  const [selectedMonth, setSelectedMonth] = useState(initialState.month);
 
   /* ── Drill-down state ── */
-  const [drillDown, setDrillDown] = useState<DrillDown>('year');
-  const [selectedDate, setSelectedDate] = useState<string | null>(null);
-  const [selectedPod, setSelectedPod] = useState<string | null>(null);
+  const [drillDown, setDrillDown] = useState<DrillDown>(initialState.drill);
+  const [selectedDate, setSelectedDate] = useState<string | null>(initialState.date);
+  const [selectedPod, setSelectedPod] = useState<string | null>(initialState.pod);
+
+  /* ── Sync state → URL search params ── */
+  useEffect(() => {
+    const params: Record<string, string> = { cluster: selectedCluster, year: String(selectedYear) };
+    if (drillDown !== 'year') params.month = String(selectedMonth);
+    if (selectedDate) params.date = selectedDate;
+    if (selectedPod) params.pod = selectedPod;
+    setSearchParams(params, { replace: true });
+  }, [selectedCluster, selectedYear, selectedMonth, drillDown, selectedDate, selectedPod, setSearchParams]);
+
+  /* ── Monthly (daily table) sort state ── */
+  const [dailySortField, setDailySortField] = useState<DailySortField>('date');
+  const [dailySortDir, setDailySortDir] = useState<SortDirection>('asc');
 
   /* ── Pod-level filter/sort state ── */
   const [searchQuery, setSearchQuery] = useState('');
@@ -279,6 +321,31 @@ export const OpenCostPage = () => {
     const url = await discoveryApi.getBaseUrl('opencost');
     setBaseUrl(url);
   }, [discoveryApi]);
+
+  // Fetch collection schedule config from backend
+  const { value: backendConfig } = useAsync(async () => {
+    if (!baseUrl) return null;
+    try {
+      const resp = await fetchApi.fetch(`${baseUrl}/config`);
+      if (resp.ok) return resp.json() as Promise<{ timezone: string; dailyCollectorCron: string }>;
+    } catch { /* ignore */ }
+    return null;
+  }, [baseUrl, fetchApi]);
+
+  // Fetch cluster connectivity status
+  const { value: clusterStatuses } = useAsync(async () => {
+    if (!baseUrl) return null;
+    try {
+      const resp = await fetchApi.fetch(`${baseUrl}/clusters/status`);
+      if (resp.ok) {
+        const json = await resp.json();
+        return new Map<string, string>(
+          (json.data ?? []).map((c: any) => [c.name, c.status]),
+        );
+      }
+    } catch { /* ignore */ }
+    return null;
+  }, [baseUrl, fetchApi]);
 
   // Fetch available years for the selected cluster
   const [availableYears, setAvailableYears] = useState<number[]>([]);
@@ -418,8 +485,14 @@ export const OpenCostPage = () => {
           const json = await res.json();
           const steps = (json.data ?? []) as Record<string, AllocationItem>[];
           let cpu = 0, ram = 0, gpu = 0, pv = 0, network = 0, total = 0, carbon = 0;
+          let daysCovered = 0;
+          const todayStr = new Intl.DateTimeFormat('en-CA', { timeZone: billingTz }).format(new Date());
+          let todayInSteps = false;
+
           for (const stepMap of steps) {
             const entries = Object.values(stepMap).filter(e => e.name !== '__idle__');
+            if (entries.length === 0) continue;
+            daysCovered++;
             cpu += entries.reduce((s, e) => s + (e.cpuCost ?? 0), 0);
             ram += entries.reduce((s, e) => s + (e.ramCost ?? 0), 0);
             gpu += entries.reduce((s, e) => s + (e.gpuCost ?? 0), 0);
@@ -427,14 +500,49 @@ export const OpenCostPage = () => {
             network += entries.reduce((s, e) => s + (e.networkCost ?? 0), 0);
             total += entries.reduce((s, e) => s + (e.totalCost ?? 0), 0);
             carbon += entries.reduce((s, e) => s + (e.carbonCost ?? 0), 0);
+            // Check if today's step is present
+            const w = (entries[0] as any).window?.start;
+            if (w && new Date(w).toISOString().substring(0, 10) === todayStr) {
+              todayInSteps = true;
+            }
           }
+
+          // Add today's live cost if step=1d didn't include it
+          const monthPrefix = `${selectedYear}-${String(currentMonth).padStart(2, '0')}`;
+          if (!todayInSteps && todayStr.startsWith(monthPrefix)) {
+            const { start: dStart, end: dEnd } = getDayWindow(todayStr, billingTz);
+            const liveParams = new URLSearchParams({
+              cluster: selectedCluster,
+              window: `${dStart},${dEnd}`,
+              aggregate: 'cluster',
+              accumulate: 'true',
+            });
+            try {
+              const liveRes = await fetchApi.fetch(`${baseUrl}/allocation?${liveParams}`);
+              if (liveRes.ok) {
+                const liveJson = await liveRes.json();
+                const le = Object.values(liveJson.data?.[0] ?? {}).filter((e: any) => e.name !== '__idle__') as any[];
+                if (le.length > 0) {
+                  cpu += le.reduce((s: number, e: any) => s + (e.cpuCost ?? 0), 0);
+                  ram += le.reduce((s: number, e: any) => s + (e.ramCost ?? 0), 0);
+                  gpu += le.reduce((s: number, e: any) => s + (e.gpuCost ?? 0), 0);
+                  pv += le.reduce((s: number, e: any) => s + (e.pvCost ?? 0), 0);
+                  network += le.reduce((s: number, e: any) => s + (e.networkCost ?? 0), 0);
+                  total += le.reduce((s: number, e: any) => s + (e.totalCost ?? 0), 0);
+                  carbon += le.reduce((s: number, e: any) => s + (e.carbonCost ?? 0), 0);
+                  daysCovered++;
+                }
+              }
+            } catch { /* live cost is supplementary */ }
+          }
+
           if (total > 0) {
             const td = daysInMonth(selectedYear, currentMonth);
             monthMap.set(currentMonth, {
               month: `${selectedYear}-${String(currentMonth).padStart(2, '0')}`,
               monthNum: currentMonth, cpuCost: cpu, ramCost: ram, gpuCost: gpu,
               pvCost: pv, networkCost: network, totalCost: total, carbonCost: carbon,
-              daysCovered: steps.filter(s => Object.values(s).some(e => e.name !== '__idle__')).length,
+              daysCovered,
               totalDays: td,
             });
           }
@@ -494,11 +602,11 @@ export const OpenCostPage = () => {
       } catch { /* fall through */ }
     }
 
-    // Current month (or DB empty) → OpenCost API step=1d
+    // Current month (or DB empty) → OpenCost API step=1d, aggregate by pod
     const probeParams = new URLSearchParams({
       cluster: selectedCluster,
       window: `${start},${end}`,
-      aggregate: 'cluster',
+      aggregate: 'pod',
       step: '1d',
     });
     const res = await fetchApi.fetch(`${baseUrl}/allocation?${probeParams}`);
@@ -518,10 +626,9 @@ export const OpenCostPage = () => {
         ? new Date(entry.window.start).toISOString().substring(0, 10)
         : '';
       if (!dateStr) continue;
-      // For cluster aggregate, costs are already summed across pods
       items.push({
         date: dateStr,
-        podCount: 0, // not available from cluster aggregate
+        podCount: entries.length,
         cpuCost: entries.reduce((s, e) => s + (e.cpuCost ?? 0), 0),
         ramCost: entries.reduce((s, e) => s + (e.ramCost ?? 0), 0),
         gpuCost: entries.reduce((s, e) => s + (e.gpuCost ?? 0), 0),
@@ -556,6 +663,40 @@ export const OpenCostPage = () => {
     return null;
   }, [drillDown, baseUrl, selectedCluster, selectedYear, selectedMonth]);
 
+  // Fetch today's live cost from OpenCost API (for "In Progress" row)
+  const { value: todayLiveCost } = useAsync(async (): Promise<DailySummaryItem | null> => {
+    if (drillDown !== 'month' || !baseUrl) return null;
+    const todayStr = new Intl.DateTimeFormat('en-CA', { timeZone: billingTz }).format(new Date());
+    const monthPrefix = `${selectedYear}-${String(selectedMonth).padStart(2, '0')}`;
+    if (!todayStr.startsWith(monthPrefix)) return null;
+
+    const { start: dStart, end: dEnd } = getDayWindow(todayStr, billingTz);
+    const params = new URLSearchParams({
+      cluster: selectedCluster,
+      window: `${dStart},${dEnd}`,
+      aggregate: 'pod',
+      accumulate: 'true',
+    });
+    try {
+      const res = await fetchApi.fetch(`${baseUrl}/allocation?${params}`);
+      if (!res.ok) return null;
+      const json = await res.json();
+      const entries = Object.values(json.data?.[0] ?? {}).filter((e: any) => e.name !== '__idle__') as any[];
+      if (entries.length === 0) return null;
+      return {
+        date: todayStr,
+        podCount: entries.length,
+        cpuCost: entries.reduce((s: number, e: any) => s + (e.cpuCost ?? 0), 0),
+        ramCost: entries.reduce((s: number, e: any) => s + (e.ramCost ?? 0), 0),
+        gpuCost: entries.reduce((s: number, e: any) => s + (e.gpuCost ?? 0), 0),
+        pvCost: entries.reduce((s: number, e: any) => s + (e.pvCost ?? 0), 0),
+        networkCost: entries.reduce((s: number, e: any) => s + (e.networkCost ?? 0), 0),
+        totalCost: entries.reduce((s: number, e: any) => s + (e.totalCost ?? 0), 0),
+        carbonCost: entries.reduce((s: number, e: any) => s + (e.carbonCost ?? 0), 0),
+      };
+    } catch { return null; }
+  }, [drillDown, baseUrl, selectedCluster, selectedYear, selectedMonth, billingTz]);
+
   // Build full month calendar with snapshot status
   const fullMonthData = useMemo((): DailyRow[] | null => {
     if (!monthlyData) return null;
@@ -571,6 +712,10 @@ export const OpenCostPage = () => {
     for (let day = 1; day <= totalDays; day++) {
       const dateStr = `${selectedYear}-${String(selectedMonth).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
       const existing = dataMap.get(dateStr);
+      // For today, prefer live cost data over step=1d data (which may be $0)
+      const effectiveData = (dateStr === todayStr && todayLiveCost)
+        ? todayLiveCost
+        : existing;
 
       let status: SnapshotStatus;
       let estimatedCompletion: string | undefined;
@@ -583,12 +728,7 @@ export const OpenCostPage = () => {
         const nextDay = new Date(Date.UTC(y, m - 1, d + 1));
         const nextDayStr = nextDay.toISOString().substring(0, 10);
         const nextMidnightEpoch = midnightEpochInTz(nextDayStr, billingTz);
-        estimatedCompletion = new Intl.DateTimeFormat('en-US', {
-          timeZone: billingTz,
-          year: 'numeric', month: '2-digit', day: '2-digit',
-          hour: '2-digit', minute: '2-digit',
-          hour12: false,
-        }).format(new Date(nextMidnightEpoch * 1000));
+        estimatedCompletion = toTzString(new Date(nextMidnightEpoch * 1000).toISOString(), billingTz);
       } else if (existing) {
         status = 'collected';
       } else if (dateStr > todayStr) {
@@ -601,22 +741,23 @@ export const OpenCostPage = () => {
 
       rows.push({
         date: dateStr,
-        podCount: existing?.podCount ?? 0,
-        cpuCost: existing?.cpuCost ?? 0,
-        ramCost: existing?.ramCost ?? 0,
-        gpuCost: existing?.gpuCost ?? 0,
-        pvCost: existing?.pvCost ?? 0,
-        networkCost: existing?.networkCost ?? 0,
-        totalCost: existing?.totalCost ?? 0,
-        carbonCost: existing?.carbonCost ?? 0,
+        podCount: effectiveData?.podCount ?? 0,
+        cpuCost: effectiveData?.cpuCost ?? 0,
+        ramCost: effectiveData?.ramCost ?? 0,
+        gpuCost: effectiveData?.gpuCost ?? 0,
+        pvCost: effectiveData?.pvCost ?? 0,
+        networkCost: effectiveData?.networkCost ?? 0,
+        totalCost: effectiveData?.totalCost ?? 0,
+        carbonCost: effectiveData?.carbonCost ?? 0,
         status,
         dayOfWeek,
         estimatedCompletion,
         collectionRun: collectionRuns?.get(dateStr),
+        isEstimated: dateStr === todayStr && !!todayLiveCost,
       });
     }
     return rows;
-  }, [monthlyData, selectedYear, selectedMonth, billingTz, collectionRuns]);
+  }, [monthlyData, selectedYear, selectedMonth, billingTz, collectionRuns, todayLiveCost]);
 
   const monthlyTotals = useMemo(() => {
     if (!monthlyData) return null;
@@ -625,19 +766,24 @@ export const OpenCostPage = () => {
     const collected = fullMonthData?.filter(r => r.status === 'collected').length ?? 0;
     const collecting = fullMonthData?.filter(r => r.status === 'collecting').length ?? 0;
     const missing = fullMonthData?.filter(r => r.status === 'missing').length ?? 0;
+
+    // Add today's live cost if not already in monthlyData
+    const todayInData = todayLiveCost && monthlyData.some(d => d.date === todayLiveCost.date);
+    const liveDelta = (todayLiveCost && !todayInData) ? todayLiveCost : null;
+
     return {
-      cpu: sum(r => r.cpuCost),
-      ram: sum(r => r.ramCost),
-      pv: sum(r => r.pvCost),
-      network: sum(r => r.networkCost),
-      total: sum(r => r.totalCost),
-      carbon: sum(r => r.carbonCost),
+      cpu: sum(r => r.cpuCost) + (liveDelta?.cpuCost ?? 0),
+      ram: sum(r => r.ramCost) + (liveDelta?.ramCost ?? 0),
+      pv: sum(r => r.pvCost) + (liveDelta?.pvCost ?? 0),
+      network: sum(r => r.networkCost) + (liveDelta?.networkCost ?? 0),
+      total: sum(r => r.totalCost) + (liveDelta?.totalCost ?? 0),
+      carbon: sum(r => r.carbonCost) + (liveDelta?.carbonCost ?? 0),
       totalDays,
       collected,
       collecting,
       missing,
     };
-  }, [monthlyData, selectedYear, selectedMonth, fullMonthData]);
+  }, [monthlyData, selectedYear, selectedMonth, fullMonthData, todayLiveCost]);
 
   /* ═══════════════════════════════════════════
      Level 2: Day View — pods for a date
@@ -787,6 +933,34 @@ export const OpenCostPage = () => {
     };
   }, [filteredDayData]);
 
+  const sortedMonthData = useMemo(() => {
+    if (!fullMonthData) return null;
+    return [...fullMonthData].sort((a, b) => {
+      let aVal: string | number;
+      let bVal: string | number;
+      switch (dailySortField) {
+        case 'date': aVal = a.date; bVal = b.date; break;
+        case 'status': aVal = a.status; bVal = b.status; break;
+        case 'podCount': aVal = a.podCount; bVal = b.podCount; break;
+        default: aVal = (a as any)[dailySortField] ?? 0; bVal = (b as any)[dailySortField] ?? 0;
+      }
+      if (typeof aVal === 'string') {
+        const cmp = aVal.localeCompare(bVal as string);
+        return dailySortDir === 'asc' ? cmp : -cmp;
+      }
+      return dailySortDir === 'asc' ? (aVal as number) - (bVal as number) : (bVal as number) - (aVal as number);
+    });
+  }, [fullMonthData, dailySortField, dailySortDir]);
+
+  const handleDailySort = useCallback((field: DailySortField) => {
+    if (dailySortField === field) {
+      setDailySortDir(d => (d === 'asc' ? 'desc' : 'asc'));
+    } else {
+      setDailySortField(field);
+      setDailySortDir(field === 'date' || field === 'status' ? 'asc' : 'desc');
+    }
+  }, [dailySortField]);
+
   const handlePodSort = useCallback((field: PodSortField) => {
     if (podSortField === field) {
       setPodSortDir(d => (d === 'asc' ? 'desc' : 'asc'));
@@ -905,6 +1079,15 @@ export const OpenCostPage = () => {
     [clusters],
   );
 
+  const DailySortIcon = ({ field }: { field: DailySortField }) => {
+    if (dailySortField !== field) return <span className="oc-sort-icon">{'\u2195'}</span>;
+    return (
+      <span className="oc-sort-icon oc-sort-active">
+        {dailySortDir === 'asc' ? '\u2191' : '\u2193'}
+      </span>
+    );
+  };
+
   const PodSortIcon = ({ field }: { field: PodSortField }) => {
     if (podSortField !== field) return <span className="oc-sort-icon">{'\u2195'}</span>;
     return (
@@ -943,27 +1126,14 @@ export const OpenCostPage = () => {
 
   return (
     <>
-      <PluginHeader title="OpenCost" />
+      <PluginHeader title="Cost Report" />
       <Container my="4">
         <Text variant="body-medium" color="secondary">
-          Kubernetes cost explorer powered by <Link href="https://www.opencost.io" target="_blank" rel="noopener noreferrer">OpenCost</Link>
+          Cloud cost tracking and analysis for EC2 and EKS, powered by <Link href="https://www.opencost.io" target="_blank" rel="noopener noreferrer">OpenCost</Link>
         </Text>
 
-        {/* ── Filters ── */}
-        <Box mt="4" p="3" className="oc-section-box">
-          <Text variant="body-medium" weight="bold" style={{ marginBottom: 12, display: 'block' }}>
-            Filters
-          </Text>
-          <Flex gap="3" align="end">
-            <Select label="Cluster" size="small" options={clusterOptions}
-              selectedKey={selectedCluster} onSelectionChange={key => handleClusterChange(key as string)} />
-            <Select label="Year" size="small" options={yearOptions}
-              selectedKey={String(selectedYear)} onSelectionChange={key => handleYearChange(key as string)} />
-          </Flex>
-        </Box>
-
         {/* ── Breadcrumb ── */}
-        <Box mt="3" className="oc-breadcrumb">
+        <Box mt="4" className="oc-breadcrumb">
           <span
             className={drillDown === 'year' ? 'oc-crumb-active' : 'oc-crumb-link'}
             onClick={drillDown !== 'year' ? goToYear : undefined}
@@ -1001,6 +1171,19 @@ export const OpenCostPage = () => {
               <span className="oc-crumb-active">{selectedPod}</span>
             </>
           )}
+        </Box>
+
+        {/* ── Filters ── */}
+        <Box mt="3" p="3" className="oc-section-box">
+          <Text variant="body-medium" weight="bold" style={{ marginBottom: 12, display: 'block' }}>
+            Filters
+          </Text>
+          <Flex gap="3" align="end">
+            <Select label="Cluster" size="small" options={clusterOptions}
+              selectedKey={selectedCluster} onSelectionChange={key => handleClusterChange(key as string)} />
+            <Select label="Year" size="small" options={yearOptions}
+              selectedKey={String(selectedYear)} onSelectionChange={key => handleYearChange(key as string)} />
+          </Flex>
         </Box>
 
         {/* ── Loading / Error ── */}
@@ -1050,6 +1233,10 @@ export const OpenCostPage = () => {
                   <div className="oc-summary-card">
                     <Text weight="bold" className="oc-summary-value">{formatCost(yearlyTotals.pv)}</Text>
                     <Text variant="body-x-small" color="secondary">PV Cost</Text>
+                  </div>
+                  <div className="oc-summary-card">
+                    <Text weight="bold" className="oc-summary-value">{formatCost(yearlyTotals.network)}</Text>
+                    <Text variant="body-x-small" color="secondary">Network Cost</Text>
                   </div>
                   <div className="oc-summary-card">
                     <Text weight="bold" className="oc-summary-value">{yearlyTotals.months}</Text>
@@ -1102,13 +1289,14 @@ export const OpenCostPage = () => {
               <Flex justify="between" align="center" mb="3">
                 <Text variant="body-medium" weight="bold">Monthly Cost Breakdown</Text>
                 <Flex align="center" gap="2">
-                  <span className="oc-count-badge">{yearlyData.length} months</span>
+                  <span className="oc-count-badge">{yearlyData.length}</span>
+                  <Text variant="body-small" color="secondary">months</Text>
                   {yearlyData.length > 0 && (
                     <button className="oc-export-btn" onClick={() => downloadCsv(
                       ['Month', 'CPU', 'RAM', 'GPU', 'PV', 'Network', 'Total', 'Carbon'],
                       yearlyData.map(r => [r.month, r.cpuCost, r.ramCost, r.gpuCost, r.pvCost, r.networkCost, r.totalCost, r.carbonCost]),
                       `backstage-${selectedCluster}-${selectedYear}-monthly-${randomHash()}.csv`,
-                    )}>Export CSV</button>
+                    )}>{'\u2913'} Export CSV</button>
                   )}
                 </Flex>
               </Flex>
@@ -1138,7 +1326,7 @@ export const OpenCostPage = () => {
                         const pct = row.totalDays > 0 ? Math.round((row.daysCovered / row.totalDays) * 100) : 0;
                         return (
                         <tr key={row.month} className="oc-clickable-row" onClick={() => goToMonth(row.monthNum)}>
-                          <td>{row.month}</td>
+                          <td>{row.month}{row.daysCovered < row.totalDays ? ' *' : ''}</td>
                           <td>{row.daysCovered}/{row.totalDays} <span style={{ opacity: 0.6 }}>({pct}%)</span></td>
                           <td className="oc-cost">{formatCost(row.cpuCost)}</td>
                           <td className="oc-cost">{formatCost(row.ramCost)}</td>
@@ -1151,10 +1339,26 @@ export const OpenCostPage = () => {
                         );
                       })}
                     </tbody>
-                    {yearlyTotals && (
+                    {yearlyTotals && (() => {
+                      const collectedDays = yearlyData.reduce((s, r) => s + r.daysCovered, 0);
+                      const totalDaysYear = yearlyData.reduce((s, r) => s + r.totalDays, 0);
+                      const m = yearlyTotals.months || 1;
+                      return (
                       <tfoot>
+                        <tr className="oc-daily-avg-row">
+                          <td>Monthly Avg</td>
+                          <td>{yearlyTotals.months} months</td>
+                          <td className="oc-cost">{formatCost(yearlyTotals.cpu / m)}</td>
+                          <td className="oc-cost">{formatCost(yearlyTotals.ram / m)}</td>
+                          <td className="oc-cost">-</td>
+                          <td className="oc-cost">{formatCost(yearlyTotals.pv / m)}</td>
+                          <td className="oc-cost">{formatCost(yearlyTotals.network / m)}</td>
+                          <td className="oc-cost oc-cost-total">{formatCost(yearlyTotals.total / m)}</td>
+                          <td className="oc-cost oc-carbon">{formatCarbon(yearlyTotals.carbon / m)}</td>
+                        </tr>
                         <tr>
-                          <td colSpan={2}><strong>Total</strong></td>
+                          <td><strong>Total</strong></td>
+                          <td><strong>{collectedDays}/{totalDaysYear} days</strong></td>
                           <td className="oc-cost"><strong>{formatCost(yearlyTotals.cpu)}</strong></td>
                           <td className="oc-cost"><strong>{formatCost(yearlyTotals.ram)}</strong></td>
                           <td className="oc-cost"><strong>-</strong></td>
@@ -1163,8 +1367,16 @@ export const OpenCostPage = () => {
                           <td className="oc-cost oc-cost-total"><strong>{formatCost(yearlyTotals.total)}</strong></td>
                           <td className="oc-cost oc-carbon"><strong>{formatCarbon(yearlyTotals.carbon)}</strong></td>
                         </tr>
+                        {yearlyData.some(r => r.daysCovered < r.totalDays) && (
+                          <tr>
+                            <td colSpan={9} className="oc-cost-estimated" style={{ fontStyle: 'italic', fontSize: '0.75rem' }}>
+                              * Total includes in-progress costs for the current month. Values may change until the month ends.
+                            </td>
+                          </tr>
+                        )}
                       </tfoot>
-                    )}
+                      );
+                    })()}
                   </table>
                 </div>
               )}
@@ -1183,6 +1395,8 @@ export const OpenCostPage = () => {
                 <Text variant="body-medium" weight="bold" style={{ marginBottom: 12, display: 'block' }}>
                   Summary
                 </Text>
+                <div className="oc-summary-split">
+                <div className="oc-summary-left">
                 <div className="oc-summary-bar">
                   <div className="oc-summary-card">
                     <Text weight="bold" className="oc-summary-value">{formatCost(monthlyTotals.total)}</Text>
@@ -1201,27 +1415,9 @@ export const OpenCostPage = () => {
                     <Text variant="body-x-small" color="secondary">PV Cost</Text>
                   </div>
                   <div className="oc-summary-card">
-                    <Text weight="bold" className="oc-summary-value">
-                      {monthlyTotals.collected}/{monthlyTotals.totalDays} <span style={{ fontWeight: 'normal', opacity: 0.6 }}>({Math.round((monthlyTotals.collected / monthlyTotals.totalDays) * 100)}%)</span>
-                    </Text>
-                    <Text variant="body-x-small" color="secondary">Collected</Text>
+                    <Text weight="bold" className="oc-summary-value">{formatCost(monthlyTotals.network)}</Text>
+                    <Text variant="body-x-small" color="secondary">Network Cost</Text>
                   </div>
-                  {monthlyTotals.collecting > 0 && (
-                    <div className="oc-summary-card oc-summary-card-collecting">
-                      <Text weight="bold" className="oc-summary-value oc-status-collecting">
-                        {monthlyTotals.collecting}
-                      </Text>
-                      <Text variant="body-x-small" color="secondary">In Progress</Text>
-                    </div>
-                  )}
-                  {monthlyTotals.missing > 0 && (
-                    <div className="oc-summary-card oc-summary-card-missing">
-                      <Text weight="bold" className="oc-summary-value oc-status-missing">
-                        {monthlyTotals.missing}
-                      </Text>
-                      <Text variant="body-x-small" color="secondary">Missing</Text>
-                    </div>
-                  )}
                 </div>
 
                 {/* Cost breakdown bar */}
@@ -1263,6 +1459,71 @@ export const OpenCostPage = () => {
                     </div>
                   );
                 })()}
+                </div>{/* end oc-summary-left */}
+
+                {/* Right: Collection calendar (compact) */}
+                {fullMonthData && (() => {
+                  const firstDow = new Date(Date.UTC(selectedYear, selectedMonth - 1, 1, 12)).getDay();
+                  const statusColor: Record<SnapshotStatus, string> = {
+                    collected: '#34d399', collecting: '#60a5fa', missing: '#f87171', pending: '#2a2a2a',
+                  };
+                  const statusLbl: Record<SnapshotStatus, string> = {
+                    collected: 'Collected', collecting: 'In Progress', missing: 'Missing', pending: 'Pending',
+                  };
+                  return (
+                    <div className="oc-summary-right">
+                      <div className="oc-calendar-header">
+                        <Text variant="body-small" weight="bold">
+                          Collection {monthlyTotals.collected}/{monthlyTotals.totalDays}
+                          <span style={{ fontWeight: 'normal', opacity: 0.6 }}> ({Math.round((monthlyTotals.collected / monthlyTotals.totalDays) * 100)}%)</span>
+                        </Text>
+                      </div>
+                      <div className="oc-calendar-grid">
+                        <div className="oc-calendar-week-label" />
+                        {['Su', 'Mo', 'Tu', 'We', 'Th', 'Fr', 'Sa'].map(d => (
+                          <div key={d} className="oc-calendar-dow">{d}</div>
+                        ))}
+                        {(() => {
+                          const cells: React.ReactNode[] = [];
+                          let weekNum = 1;
+                          // Week label for first row
+                          cells.push(<div key="w1" className="oc-calendar-week-label">W{weekNum}</div>);
+                          // Leading padding
+                          for (let i = 0; i < firstDow; i++) {
+                            cells.push(<div key={`pad-${i}`} className="oc-calendar-cell" />);
+                          }
+                          let colIdx = firstDow;
+                          for (const row of fullMonthData) {
+                            if (colIdx === 7) {
+                              colIdx = 0;
+                              weekNum++;
+                              cells.push(<div key={`w${weekNum}`} className="oc-calendar-week-label">W{weekNum}</div>);
+                            }
+                            const hasData = row.status === 'collected' || row.status === 'collecting';
+                            cells.push(
+                              <div
+                                key={row.date}
+                                className={`oc-calendar-cell oc-has-tooltip${row.status === 'collecting' ? ' oc-stamp-collecting' : ''}${hasData ? ' oc-calendar-clickable' : ''}`}
+                                onClick={hasData ? () => goToDay(row.date) : undefined}
+                              >
+                                <span
+                                  className={`oc-calendar-stamp${row.status === 'missing' ? ' oc-stamp-missing' : row.status === 'pending' ? ' oc-stamp-pending' : ''}`}
+                                  style={row.status !== 'missing' ? { background: statusColor[row.status] } : undefined}
+                                >
+                                  {parseInt(row.date.substring(8, 10), 10)}
+                                </span>
+                                <span className="oc-tooltip">{`${row.date} (${row.dayOfWeek}): ${statusLbl[row.status]}`}</span>
+                              </div>,
+                            );
+                            colIdx++;
+                          }
+                          return cells;
+                        })()}
+                      </div>
+                    </div>
+                  );
+                })()}
+                </div>{/* end oc-summary-split */}
               </Box>
             )}
 
@@ -1271,12 +1532,13 @@ export const OpenCostPage = () => {
               <Flex justify="between" align="center" mb="3">
                 <Text variant="body-medium" weight="bold">Daily Cost Breakdown</Text>
                 <Flex align="center" gap="2">
-                  <span className="oc-count-badge">{fullMonthData.length} days</span>
+                  <span className="oc-count-badge">{fullMonthData.length}</span>
+                  <Text variant="body-small" color="secondary">days</Text>
                   <button className="oc-export-btn" onClick={() => downloadCsv(
-                    ['Date', 'Day', 'Status', 'Pods', 'CPU', 'RAM', 'GPU', 'PV', 'Network', 'Total', 'Carbon'],
-                    fullMonthData.map(r => [r.date, r.dayOfWeek, r.status, r.podCount, r.cpuCost, r.ramCost, r.gpuCost, r.pvCost, r.networkCost, r.totalCost, r.carbonCost]),
+                    ['Date', 'Day', 'Status', 'CPU', 'RAM', 'GPU', 'PV', 'Network', 'Total', 'Carbon'],
+                    sortedMonthData!.map(r => [r.date, r.dayOfWeek, r.status, r.cpuCost, r.ramCost, r.gpuCost, r.pvCost, r.networkCost, r.totalCost, r.carbonCost]),
                     `backstage-${selectedCluster}-${monthLabel}-daily-${randomHash()}.csv`,
-                  )}>Export CSV</button>
+                  )}>{'\u2913'} Export CSV</button>
                 </Flex>
               </Flex>
 
@@ -1284,20 +1546,19 @@ export const OpenCostPage = () => {
                 <table className="oc-table">
                   <thead>
                     <tr>
-                      <th>Date</th>
-                      <th>Status</th>
-                      <th>Pods</th>
-                      <th>CPU</th>
-                      <th>RAM</th>
-                      <th>GPU</th>
-                      <th>PV</th>
-                      <th>Network</th>
-                      <th>Total</th>
-                      <th>Carbon</th>
+                      <th onClick={() => handleDailySort('date')}>Date <DailySortIcon field="date" /></th>
+                      <th onClick={() => handleDailySort('status')}>Status <DailySortIcon field="status" /></th>
+                      <th onClick={() => handleDailySort('cpuCost')}>CPU <DailySortIcon field="cpuCost" /></th>
+                      <th onClick={() => handleDailySort('ramCost')}>RAM <DailySortIcon field="ramCost" /></th>
+                      <th onClick={() => handleDailySort('gpuCost')}>GPU <DailySortIcon field="gpuCost" /></th>
+                      <th onClick={() => handleDailySort('pvCost')}>PV <DailySortIcon field="pvCost" /></th>
+                      <th onClick={() => handleDailySort('networkCost')}>Network <DailySortIcon field="networkCost" /></th>
+                      <th onClick={() => handleDailySort('totalCost')}>Total <DailySortIcon field="totalCost" /></th>
+                      <th onClick={() => handleDailySort('carbonCost')}>Carbon <DailySortIcon field="carbonCost" /></th>
                     </tr>
                   </thead>
                   <tbody>
-                    {fullMonthData.map(row => {
+                    {sortedMonthData!.map(row => {
                       const hasData = row.status === 'collected' || row.status === 'collecting';
                       const statusLabel = ({ collected: 'Collected', collecting: 'In Progress', missing: 'Missing', pending: 'Pending' })[row.status];
                       const run = row.collectionRun;
@@ -1312,7 +1573,19 @@ export const OpenCostPage = () => {
                         ];
                         statusTooltip = lines.join('\n');
                       } else if (row.status === 'collecting' && row.estimatedCompletion) {
-                        statusTooltip = `Finalizes at ${row.estimatedCompletion} (${billingTz})`;
+                        const lines = [`Finalizes: ${row.estimatedCompletion}`];
+                        if (backendConfig?.dailyCollectorCron) {
+                          const cronParts = backendConfig.dailyCollectorCron.split(/\s+/);
+                          if (cronParts.length >= 2) {
+                            const cronTz = backendConfig.timezone ?? billingTz;
+                            const hh = cronParts[1].padStart(2, '0');
+                            const mm = cronParts[0].padStart(2, '0');
+                            const nextDay = new Date(new Date(`${row.date}T12:00:00Z`).getTime() + 86400000);
+                            const collectDate = nextDay.toISOString().substring(0, 10);
+                            lines.push(`Collects: ${collectDate} ${hh}:${mm} (${cronTz})`);
+                          }
+                        }
+                        statusTooltip = lines.join('\n');
                       } else {
                         statusTooltip = statusLabel;
                       }
@@ -1323,7 +1596,7 @@ export const OpenCostPage = () => {
                           className={hasData ? 'oc-clickable-row' : 'oc-row-disabled'}
                           onClick={hasData ? () => goToDay(row.date) : undefined}
                         >
-                          <td>{row.date} <span className="oc-day-of-week">({row.dayOfWeek})</span></td>
+                          <td>{row.date} <span className={`oc-day-of-week${row.dayOfWeek === 'Sun' ? ' oc-dow-sun' : row.dayOfWeek === 'Sat' ? ' oc-dow-sat' : ''}`}>({row.dayOfWeek})</span></td>
                           <td title={statusTooltip}>
                             <span style={{
                               display: 'inline-block', width: 8, height: 8, borderRadius: '50%',
@@ -1331,22 +1604,35 @@ export const OpenCostPage = () => {
                             }} />
                             {statusLabel}
                           </td>
-                          <td>{hasData ? (row.podCount || '-') : '-'}</td>
-                          <td className="oc-cost">{hasData ? formatCost(row.cpuCost) : '-'}</td>
-                          <td className="oc-cost">{hasData ? formatCost(row.ramCost) : '-'}</td>
-                          <td className="oc-cost">{hasData ? formatCost(row.gpuCost) : '-'}</td>
-                          <td className="oc-cost">{hasData ? formatCost(row.pvCost) : '-'}</td>
-                          <td className="oc-cost">{hasData ? formatCost(row.networkCost) : '-'}</td>
-                          <td className="oc-cost oc-cost-total">{hasData ? formatCost(row.totalCost) : '-'}</td>
-                          <td className="oc-cost oc-carbon">{hasData ? formatCarbon(row.carbonCost) : '-'}</td>
+                          <td className={`oc-cost${row.isEstimated ? ' oc-cost-estimated' : ''}`}>{hasData ? `${row.isEstimated ? '~' : ''}${formatCost(row.cpuCost)}` : '-'}</td>
+                          <td className={`oc-cost${row.isEstimated ? ' oc-cost-estimated' : ''}`}>{hasData ? `${row.isEstimated ? '~' : ''}${formatCost(row.ramCost)}` : '-'}</td>
+                          <td className={`oc-cost${row.isEstimated ? ' oc-cost-estimated' : ''}`}>{hasData ? `${row.isEstimated ? '~' : ''}${formatCost(row.gpuCost)}` : '-'}</td>
+                          <td className={`oc-cost${row.isEstimated ? ' oc-cost-estimated' : ''}`}>{hasData ? `${row.isEstimated ? '~' : ''}${formatCost(row.pvCost)}` : '-'}</td>
+                          <td className={`oc-cost${row.isEstimated ? ' oc-cost-estimated' : ''}`}>{hasData ? `${row.isEstimated ? '~' : ''}${formatCost(row.networkCost)}` : '-'}</td>
+                          <td className={`oc-cost oc-cost-total${row.isEstimated ? ' oc-cost-estimated' : ''}`}>{hasData ? `${row.isEstimated ? '~' : ''}${formatCost(row.totalCost)}` : '-'}</td>
+                          <td className={`oc-cost oc-carbon${row.isEstimated ? ' oc-cost-estimated' : ''}`}>{hasData ? `${row.isEstimated ? '~' : ''}${formatCarbon(row.carbonCost)}` : '-'}</td>
                         </tr>
                       );
                     })}
                   </tbody>
-                  {monthlyTotals && (
+                  {monthlyTotals && (() => {
+                    const d = monthlyTotals.collected || 1;
+                    return (
                     <tfoot>
+                      <tr className="oc-daily-avg-row">
+                        <td>Daily Avg</td>
+                        <td>{monthlyTotals.collected} days</td>
+                        <td className="oc-cost">{formatCost(monthlyTotals.cpu / d)}</td>
+                        <td className="oc-cost">{formatCost(monthlyTotals.ram / d)}</td>
+                        <td className="oc-cost">-</td>
+                        <td className="oc-cost">{formatCost(monthlyTotals.pv / d)}</td>
+                        <td className="oc-cost">{formatCost(monthlyTotals.network / d)}</td>
+                        <td className="oc-cost oc-cost-total">{formatCost(monthlyTotals.total / d)}</td>
+                        <td className="oc-cost oc-carbon">{formatCarbon(monthlyTotals.carbon / d)}</td>
+                      </tr>
                       <tr>
-                        <td colSpan={3}><strong>Total</strong></td>
+                        <td><strong>Total</strong></td>
+                        <td><strong>{monthlyTotals.collected}/{monthlyTotals.totalDays} days</strong></td>
                         <td className="oc-cost"><strong>{formatCost(monthlyTotals.cpu)}</strong></td>
                         <td className="oc-cost"><strong>{formatCost(monthlyTotals.ram)}</strong></td>
                         <td className="oc-cost"><strong>-</strong></td>
@@ -1355,8 +1641,16 @@ export const OpenCostPage = () => {
                         <td className="oc-cost oc-cost-total"><strong>{formatCost(monthlyTotals.total)}</strong></td>
                         <td className="oc-cost oc-carbon"><strong>{formatCarbon(monthlyTotals.carbon)}</strong></td>
                       </tr>
+                      {fullMonthData?.some(r => r.isEstimated) && (
+                        <tr>
+                          <td colSpan={9} className="oc-cost-estimated" style={{ fontStyle: 'italic', fontSize: '0.75rem' }}>
+                            ~ Values are estimated from real-time data and may change until the day ends.
+                          </td>
+                        </tr>
+                      )}
                     </tfoot>
-                  )}
+                    );
+                  })()}
                   </table>
                 </div>
             </Box>
@@ -1375,7 +1669,7 @@ export const OpenCostPage = () => {
               </Text>
               {dayMetricWindow && (
                 <Text variant="body-x-small" color="secondary" style={{ display: 'block', marginBottom: 12 }}>
-                  {`Metric period: ${toTzString(dayMetricWindow.start, billingTz)} ~ ${toTzString(dayMetricWindow.end, billingTz)} (${billingTz})`}
+                  {`Metric period: ${toTzString(dayMetricWindow.start, billingTz)} ~ ${toTzString(dayMetricWindow.end, billingTz)}`}
                 </Text>
               )}
               <div className="oc-summary-bar">
@@ -1390,6 +1684,14 @@ export const OpenCostPage = () => {
                 <div className="oc-summary-card">
                   <Text weight="bold" className="oc-summary-value">{formatCost(dayTotals.ram)}</Text>
                   <Text variant="body-x-small" color="secondary">RAM Cost</Text>
+                </div>
+                <div className="oc-summary-card">
+                  <Text weight="bold" className="oc-summary-value">{formatCost(dayTotals.pv)}</Text>
+                  <Text variant="body-x-small" color="secondary">PV Cost</Text>
+                </div>
+                <div className="oc-summary-card">
+                  <Text weight="bold" className="oc-summary-value">{formatCost(dayTotals.network)}</Text>
+                  <Text variant="body-x-small" color="secondary">Network Cost</Text>
                 </div>
                 <div className="oc-summary-card">
                   <Text weight="bold" className="oc-summary-value oc-carbon">{formatCarbon(dayTotals.carbon)}</Text>
@@ -1444,7 +1746,7 @@ export const OpenCostPage = () => {
                       ['Namespace', 'Kind', 'Workload', 'Pod', 'CPU', 'RAM', 'PV', 'Network', 'Total', 'Carbon'],
                       sortedDayData.map(r => [r.namespace, r.controllerKind ?? '', r.controller ?? '', r.pod, r.cpuCost, r.ramCost, r.pvCost, r.networkCost, r.totalCost, r.carbonCost]),
                       `backstage-${selectedCluster}-${selectedDate}-pods-${randomHash()}.csv`,
-                    )}>Export CSV</button>
+                    )}>{'\u2913'} Export CSV</button>
                   )}
                 </Flex>
               </Flex>
@@ -1529,6 +1831,14 @@ export const OpenCostPage = () => {
                     <Text variant="body-x-small" color="secondary">RAM Cost</Text>
                   </div>
                   <div className="oc-summary-card">
+                    <Text weight="bold" className="oc-summary-value">{formatCost(podTotals.pv)}</Text>
+                    <Text variant="body-x-small" color="secondary">PV Cost</Text>
+                  </div>
+                  <div className="oc-summary-card">
+                    <Text weight="bold" className="oc-summary-value">{formatCost(podTotals.network)}</Text>
+                    <Text variant="body-x-small" color="secondary">Network Cost</Text>
+                  </div>
+                  <div className="oc-summary-card">
                     <Text weight="bold" className="oc-summary-value oc-carbon">{formatCarbon(podTotals.carbon)}</Text>
                     <Text variant="body-x-small" color="secondary">Carbon Cost</Text>
                   </div>
@@ -1553,13 +1863,14 @@ export const OpenCostPage = () => {
               <Flex justify="between" align="center" mb="3">
                 <Text variant="body-medium" weight="bold">Daily Cost History</Text>
                 <Flex align="center" gap="2">
-                  <span className="oc-count-badge">{podDailyData.length} days</span>
+                  <span className="oc-count-badge">{podDailyData.length}</span>
+                  <Text variant="body-small" color="secondary">days</Text>
                   {podDailyData.length > 0 && (
                     <button className="oc-export-btn" onClick={() => downloadCsv(
                       ['Date', 'CPU', 'RAM', 'GPU', 'PV', 'Network', 'Total', 'Carbon'],
                       podDailyData.map(r => [r.date, r.cpuCost, r.ramCost, r.gpuCost, r.pvCost, r.networkCost, r.totalCost, r.carbonCost]),
                       `backstage-${selectedCluster}-${selectedPod}-daily-${randomHash()}.csv`,
-                    )}>Export CSV</button>
+                    )}>{'\u2913'} Export CSV</button>
                   )}
                 </Flex>
               </Flex>
@@ -1597,8 +1908,20 @@ export const OpenCostPage = () => {
                         </tr>
                       ))}
                     </tbody>
-                    {podTotals && (
+                    {podTotals && (() => {
+                      const d = podTotals.days || 1;
+                      return (
                       <tfoot>
+                        <tr className="oc-daily-avg-row">
+                          <td>Daily Avg</td>
+                          <td className="oc-cost">{formatCost(podTotals.cpu / d)}</td>
+                          <td className="oc-cost">{formatCost(podTotals.ram / d)}</td>
+                          <td className="oc-cost">-</td>
+                          <td className="oc-cost">{formatCost(podTotals.pv / d)}</td>
+                          <td className="oc-cost">{formatCost(podTotals.network / d)}</td>
+                          <td className="oc-cost oc-cost-total">{formatCost(podTotals.total / d)}</td>
+                          <td className="oc-cost oc-carbon">{formatCarbon(podTotals.carbon / d)}</td>
+                        </tr>
                         <tr>
                           <td><strong>Total</strong></td>
                           <td className="oc-cost"><strong>{formatCost(podTotals.cpu)}</strong></td>
@@ -1610,7 +1933,8 @@ export const OpenCostPage = () => {
                           <td className="oc-cost oc-carbon"><strong>{formatCarbon(podTotals.carbon)}</strong></td>
                         </tr>
                       </tfoot>
-                    )}
+                      );
+                    })()}
                   </table>
                 </div>
               )}

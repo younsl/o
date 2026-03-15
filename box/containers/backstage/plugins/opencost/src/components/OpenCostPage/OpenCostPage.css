@@ -186,6 +186,17 @@
   color: var(--bui-color-text-primary, #fff);
 }
 
+.oc-table tfoot tr:not(.oc-daily-avg-row) td {
+  background: var(--bui-color-surface-3, rgba(255, 255, 255, 0.06));
+}
+
+.oc-daily-avg-row td {
+  font-style: italic;
+  opacity: 0.75;
+  border-top: 1px dashed var(--bui-color-border, rgba(255, 255, 255, 0.10));
+  border-bottom: none;
+}
+
 .oc-kind {
   text-transform: lowercase;
   font-size: 0.75rem;
@@ -211,7 +222,7 @@
 }
 
 .oc-sort-icon {
-  margin-left: 4px;
+  margin-left: 1px;
   opacity: 0.3;
   font-size: 0.75rem;
 }
@@ -267,10 +278,23 @@
   color: #94a3b8;
 }
 
+/* Estimated cost (in-progress day) */
+.oc-cost-estimated {
+  opacity: 0.7;
+}
+
 /* Day of week */
 .oc-day-of-week {
   font-size: 0.75rem;
   color: var(--bui-color-text-secondary, rgba(255, 255, 255, 0.6));
+}
+
+.oc-dow-sat {
+  color: #60a5fa;
+}
+
+.oc-dow-sun {
+  color: #f87171;
 }
 
 /* Cost breakdown bar */
@@ -330,3 +354,141 @@
 .oc-carbon {
   color: var(--bui-color-text-secondary, rgba(255, 255, 255, 0.6));
 }
+
+/* Summary split layout */
+.oc-summary-split {
+  display: flex;
+  gap: 24px;
+}
+
+.oc-summary-left {
+  flex: 1;
+  min-width: 0;
+  order: 2;
+}
+
+.oc-summary-right {
+  flex: 0 0 auto;
+  min-width: 200px;
+  order: 1;
+}
+
+/* Collection calendar */
+.oc-calendar-header {
+  margin-bottom: 6px;
+}
+
+.oc-calendar-grid {
+  display: grid;
+  grid-template-columns: 20px repeat(7, 24px);
+  gap: 2px;
+  user-select: none;
+}
+
+.oc-calendar-week-label {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.55rem;
+  color: var(--bui-color-text-secondary, rgba(255, 255, 255, 0.4));
+  font-weight: 500;
+}
+
+.oc-calendar-dow {
+  text-align: center;
+  font-size: 0.6rem;
+  color: var(--bui-color-text-secondary, rgba(255, 255, 255, 0.5));
+  padding-bottom: 2px;
+}
+
+.oc-calendar-cell {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.oc-calendar-stamp {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  border-radius: 3px;
+  font-size: 0.65rem;
+  font-weight: 600;
+  color: #fff;
+}
+
+.oc-calendar-stamp.oc-stamp-pending {
+  opacity: 0.3;
+}
+
+.oc-calendar-stamp.oc-stamp-missing {
+  background: repeating-linear-gradient(
+    -45deg,
+    #f87171,
+    #f87171 2px,
+    rgba(248, 113, 113, 0.3) 2px,
+    rgba(248, 113, 113, 0.3) 4px
+  );
+}
+
+.oc-stamp-collecting {
+  animation: stamp-pulse 1.5s ease-in-out infinite;
+}
+
+@keyframes stamp-pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.4; }
+}
+
+.oc-calendar-clickable {
+  cursor: pointer;
+}
+
+.oc-calendar-clickable:hover > .oc-calendar-stamp {
+  filter: brightness(1.3);
+}
+
+/* Calendar cell tooltip */
+.oc-has-tooltip {
+  position: relative;
+}
+
+.oc-tooltip {
+  display: none;
+  position: absolute;
+  bottom: calc(100% + 6px);
+  left: 50%;
+  transform: translateX(-50%);
+  white-space: nowrap;
+  padding: 4px 8px;
+  border-radius: 4px;
+  font-size: 0.65rem;
+  font-weight: 500;
+  color: var(--bui-fg-primary, #fff);
+  background: var(--bui-bg-popover, rgba(30, 30, 30, 0.95));
+  border: 1px solid var(--bui-border-1, rgba(255, 255, 255, 0.1));
+  box-shadow: var(--bui-shadow, 0 2px 8px rgba(0, 0, 0, 0.3));
+  pointer-events: none;
+  z-index: 10;
+}
+
+.oc-has-tooltip:hover > .oc-tooltip {
+  display: block;
+}
+
+.oc-calendar-legend {
+  display: flex;
+  gap: 10px;
+  margin-top: 6px;
+  font-size: 0.65rem;
+  color: var(--bui-color-text-secondary, rgba(255, 255, 255, 0.6));
+}
+
+.oc-calendar-legend-item {
+  display: flex;
+  align-items: center;
+  gap: 3px;
+}
+

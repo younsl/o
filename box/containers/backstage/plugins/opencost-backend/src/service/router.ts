@@ -2,15 +2,17 @@ import { Router } from 'express';
 import { LoggerService } from '@backstage/backend-plugin-api';
 import { OpenCostService } from './OpenCostService';
 import { OpenCostCostStore } from './OpenCostCostStore';
+import { OpenCostCollector } from './OpenCostCollector';
 
 export interface RouterOptions {
   service: OpenCostService;
   costStore: OpenCostCostStore;
+  collector: OpenCostCollector;
   logger: LoggerService;
 }
 
 export async function createRouter(options: RouterOptions): Promise<Router> {
-  const { service, costStore, logger } = options;
+  const { service, costStore, collector, logger } = options;
 
   const router = Router();
 
@@ -32,6 +34,18 @@ export async function createRouter(options: RouterOptions): Promise<Router> {
 
   router.get('/health', (_, res) => {
     res.json({ status: 'ok' });
+  });
+
+  router.get('/config', (_, res) => {
+    res.json({
+      timezone: collector.timezone,
+      dailyCollectorCron: collector.dailyCronLocal,
+    });
+  });
+
+  router.get('/clusters/status', async (_req, res) => {
+    const statuses = await service.checkClustersStatus();
+    res.json({ data: statuses });
   });
 
   router.get('/allocation', async (req, res) => {

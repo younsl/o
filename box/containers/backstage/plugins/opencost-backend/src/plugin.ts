@@ -36,11 +36,15 @@ export const opencostPlugin = createBackendPlugin({
         const collector = new OpenCostCollector(costStore, config, logger);
         await collector.registerTasks(scheduler);
 
-        const router = await createRouter({ service, costStore, logger });
+        const router = await createRouter({ service, costStore, collector, logger });
 
         httpRouter.use(router as any);
         httpRouter.addAuthPolicy({
           path: '/health',
+          allow: 'unauthenticated',
+        });
+        httpRouter.addAuthPolicy({
+          path: '/config',
           allow: 'unauthenticated',
         });
         httpRouter.addAuthPolicy({
