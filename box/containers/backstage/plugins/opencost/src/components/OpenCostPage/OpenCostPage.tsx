@@ -159,6 +159,11 @@ function midnightEpochInTz(dateStr: string, tz: string): number {
   return Math.floor((localMidnightMs - offsetMs) / 1000);
 }
 
+/** Convert a UTC timestamp (ISO string or epoch) to a YYYY-MM-DD date in the billing timezone. */
+function toDateInTz(ts: string | number, tz: string): string {
+  return new Intl.DateTimeFormat('en-CA', { timeZone: tz }).format(new Date(ts));
+}
+
 function getMonthWindow(year: number, month: number, tz: string) {
   const startDate = `${year}-${String(month).padStart(2, '0')}-01`;
   const nextMonth = month === 12 ? 1 : month + 1;
@@ -303,11 +308,6 @@ export const OpenCostPage = () => {
   const [kindFilter, setKindFilter] = useState('all');
   const [podSortField, setPodSortField] = useState<PodSortField>('totalCost');
   const [podSortDir, setPodSortDir] = useState<SortDirection>('desc');
-
-  const { start, end } = useMemo(
-    () => getMonthWindow(selectedYear, selectedMonth, billingTz),
-    [selectedYear, selectedMonth, billingTz],
-  );
 
   const isPastMonth = useMemo(() => {
     const currentMonthStart = new Date(now.getFullYear(), now.getMonth(), 1);
@@ -514,11 +514,6 @@ export const OpenCostPage = () => {
      Level 0: Yearly View — monthly summary table
      ═══════════════════════════════════════════ */
 
-  const { start: yearStart, end: yearEnd } = useMemo(
-    () => getYearWindow(selectedYear, billingTz),
-    [selectedYear, billingTz],
-  );
-
   const {
     value: yearlyData,
     loading: yearlyLoading,
@@ -535,7 +530,7 @@ export const OpenCostPage = () => {
     const monthMap = new Map<number, MonthlySummaryItem>();
 
     // Past months: fetch from DB (fast, ~10ms each)
-    const lastDbMonth = isPastYear ? 12 : currentMonth - 1;
+    const lastDbMonth = isPastYear ? 12 : currentMonth;
     const dbFetches = [];
     for (let m = 1; m <= lastDbMonth; m++) {
       const costUrl = `${baseUrl}/costs?cluster=${encodeURIComponent(selectedCluster)}&year=${selectedYear}&month=${m}${controllersParam ? `&controllers=${encodeURIComponent(controllersParam)}` : ''}`;
@@ -567,97 +562,64 @@ export const OpenCostPage = () => {
     }
     await Promise.all(dbFetches);
 
-    // Current month (if selected year is current year): fetch from OpenCost API
+    // Supplement today's live cost for current month (DB doesn't have today yet)
     if (!isPastYear) {
-      const hasControllerFilter = selectedControllers.length > 0;
-      const { start: mStart, end: mEnd } = getMonthWindow(selectedYear, currentMonth, billingTz);
-      const params = new URLSearchParams({
-        cluster: selectedCluster,
-        window: `${mStart},${mEnd}`,
-        aggregate: hasControllerFilter ? 'pod' : 'cluster',
-        step: '1d',
-      });
-      try {
-        const res = await fetchApi.fetch(`${baseUrl}/allocation?${params}`);
-        if (res.ok) {
-          const json = await res.json();
-          const steps = (json.data ?? []) as Record<string, AllocationItem>[];
-          let cpu = 0, ram = 0, gpu = 0, pv = 0, network = 0, total = 0, carbon = 0;
-          let daysCovered = 0;
-          const todayStr = new Intl.DateTimeFormat('en-CA', { timeZone: billingTz }).format(new Date());
-          let todayInSteps = false;
-
-          for (const stepMap of steps) {
-            let entries = Object.values(stepMap).filter(e => e.name !== '__idle__');
+      const todayStr = new Intl.DateTimeFormat('en-CA', { timeZone: billingTz }).format(new Date());
+      const monthPrefix = `${selectedYear}-${String(currentMonth).padStart(2, '0')}`;
+      if (todayStr.startsWith(monthPrefix)) {
+        const hasControllerFilter = selectedControllers.length > 0;
+        const { start: dStart, end: dEnd } = getDayWindow(todayStr, billingTz);
+        const liveParams = new URLSearchParams({
+          cluster: selectedCluster,
+          window: `${dStart},${dEnd}`,
+          aggregate: hasControllerFilter ? 'pod' : 'cluster',
+          accumulate: 'true',
+        });
+        try {
+          const liveRes = await fetchApi.fetch(`${baseUrl}/allocation?${liveParams}`);
+          if (liveRes.ok) {
+            const liveJson = await liveRes.json();
+            let le = Object.values(liveJson.data?.[0] ?? {}).filter((e: any) => e.name !== '__idle__') as any[];
             if (hasControllerFilter) {
-              entries = entries.filter(e => selectedControllers.includes(e.properties?.controller ?? ''));
+              le = le.filter((e: any) => selectedControllers.includes(e.properties?.controller ?? ''));
             }
-            if (entries.length === 0) continue;
-            daysCovered++;
-            cpu += entries.reduce((s, e) => s + (e.cpuCost ?? 0), 0);
-            ram += entries.reduce((s, e) => s + (e.ramCost ?? 0), 0);
-            gpu += entries.reduce((s, e) => s + (e.gpuCost ?? 0), 0);
-            pv += entries.reduce((s, e) => s + (e.pvCost ?? 0), 0);
-            network += entries.reduce((s, e) => s + (e.networkCost ?? 0), 0);
-            total += entries.reduce((s, e) => s + (e.totalCost ?? 0), 0);
-            carbon += entries.reduce((s, e) => s + (e.carbonCost ?? 0), 0);
-            // Check if today's step is present
-            const w = (entries[0] as any).window?.start;
-            if (w && new Date(w).toISOString().substring(0, 10) === todayStr) {
-              todayInSteps = true;
-            }
-          }
-
-          // Add today's live cost if step=1d didn't include it
-          const monthPrefix = `${selectedYear}-${String(currentMonth).padStart(2, '0')}`;
-          if (!todayInSteps && todayStr.startsWith(monthPrefix)) {
-            const { start: dStart, end: dEnd } = getDayWindow(todayStr, billingTz);
-            const liveParams = new URLSearchParams({
-              cluster: selectedCluster,
-              window: `${dStart},${dEnd}`,
-              aggregate: hasControllerFilter ? 'pod' : 'cluster',
-              accumulate: 'true',
-            });
-            try {
-              const liveRes = await fetchApi.fetch(`${baseUrl}/allocation?${liveParams}`);
-              if (liveRes.ok) {
-                const liveJson = await liveRes.json();
-                let le = Object.values(liveJson.data?.[0] ?? {}).filter((e: any) => e.name !== '__idle__') as any[];
-                if (hasControllerFilter) {
-                  le = le.filter((e: any) => selectedControllers.includes(e.properties?.controller ?? ''));
-                }
-                if (le.length > 0) {
-                  cpu += le.reduce((s: number, e: any) => s + (e.cpuCost ?? 0), 0);
-                  ram += le.reduce((s: number, e: any) => s + (e.ramCost ?? 0), 0);
-                  gpu += le.reduce((s: number, e: any) => s + (e.gpuCost ?? 0), 0);
-                  pv += le.reduce((s: number, e: any) => s + (e.pvCost ?? 0), 0);
-                  network += le.reduce((s: number, e: any) => s + (e.networkCost ?? 0), 0);
-                  total += le.reduce((s: number, e: any) => s + (e.totalCost ?? 0), 0);
-                  carbon += le.reduce((s: number, e: any) => s + (e.carbonCost ?? 0), 0);
-                  daysCovered++;
-                }
+            if (le.length > 0) {
+              const cpu = le.reduce((s: number, e: any) => s + (e.cpuCost ?? 0), 0);
+              const ram = le.reduce((s: number, e: any) => s + (e.ramCost ?? 0), 0);
+              const gpu = le.reduce((s: number, e: any) => s + (e.gpuCost ?? 0), 0);
+              const pv = le.reduce((s: number, e: any) => s + (e.pvCost ?? 0), 0);
+              const network = le.reduce((s: number, e: any) => s + (e.networkCost ?? 0), 0);
+              const total = le.reduce((s: number, e: any) => s + (e.totalCost ?? 0), 0);
+              const carbon = le.reduce((s: number, e: any) => s + (e.carbonCost ?? 0), 0);
+              const existing = monthMap.get(currentMonth);
+              if (existing) {
+                existing.cpuCost += cpu;
+                existing.ramCost += ram;
+                existing.gpuCost += gpu;
+                existing.pvCost += pv;
+                existing.networkCost += network;
+                existing.totalCost += total;
+                existing.carbonCost += carbon;
+                existing.daysCovered += 1;
+              } else {
+                const td = daysInMonth(selectedYear, currentMonth);
+                monthMap.set(currentMonth, {
+                  month: monthPrefix,
+                  monthNum: currentMonth, cpuCost: cpu, ramCost: ram, gpuCost: gpu,
+                  pvCost: pv, networkCost: network, totalCost: total, carbonCost: carbon,
+                  daysCovered: 1, totalDays: td,
+                });
               }
-            } catch { /* live cost is supplementary */ }
+            }
           }
-
-          if (total > 0) {
-            const td = daysInMonth(selectedYear, currentMonth);
-            monthMap.set(currentMonth, {
-              month: `${selectedYear}-${String(currentMonth).padStart(2, '0')}`,
-              monthNum: currentMonth, cpuCost: cpu, ramCost: ram, gpuCost: gpu,
-              pvCost: pv, networkCost: network, totalCost: total, carbonCost: carbon,
-              daysCovered,
-              totalDays: td,
-            });
-          }
-        }
-      } catch { /* current month is optional */ }
+        } catch { /* today's live cost is supplementary */ }
+      }
     }
 
     const items = Array.from(monthMap.values()).sort((a, b) => a.monthNum - b.monthNum);
     if (isPastYear) cache.current.set(ck, items);
     return items;
-  }, [drillDown, baseUrl, selectedCluster, selectedYear, yearStart, yearEnd, billingTz, controllersParam]);
+  }, [drillDown, baseUrl, selectedCluster, selectedYear, billingTz, controllersParam]);
 
   const yearlyTotals = useMemo(() => {
     if (!yearlyData) return null;
@@ -687,70 +649,26 @@ export const OpenCostPage = () => {
     const ck = `month:${selectedCluster}:${selectedYear}:${selectedMonth}:${controllersParam ?? ''}`;
     if (isPastMonth && cache.current.has(ck)) return cache.current.get(ck);
 
-    // Past month → DB
-    if (isPastMonth) {
-      try {
-        const params = new URLSearchParams({
-          cluster: selectedCluster,
-          year: String(selectedYear),
-          month: String(selectedMonth),
-        });
-        if (controllersParam) params.set('controllers', controllersParam);
-        const res = await fetchApi.fetch(`${baseUrl}/costs/daily-summary?${params}`);
-        if (res.ok) {
-          const json = await res.json();
-          if (json.data && json.data.length > 0) {
-            cache.current.set(ck, json.data);
-            return json.data as DailySummaryItem[];
-          }
-        }
-      } catch { /* fall through */ }
-    }
-
-    // Current month (or DB empty) → OpenCost API step=1d, aggregate by pod
-    const probeParams = new URLSearchParams({
-      cluster: selectedCluster,
-      window: `${start},${end}`,
-      aggregate: 'pod',
-      step: '1d',
-    });
-    const res = await fetchApi.fetch(`${baseUrl}/allocation?${probeParams}`);
-    if (!res.ok) {
-      const body = await res.text();
-      throw new Error(`OpenCost API error (${res.status}): ${body.slice(0, 300)}`);
-    }
-    const json = await res.json();
-    const steps = (json.data ?? []) as Record<string, AllocationItem>[];
-
-    const hasControllerFilter = selectedControllers.length > 0;
-    const items: DailySummaryItem[] = [];
-    for (const stepMap of steps) {
-      let entries = Object.values(stepMap).filter(e => e.name !== '__idle__');
-      if (hasControllerFilter) {
-        entries = entries.filter(e => selectedControllers.includes(e.properties?.controller ?? ''));
-      }
-      if (entries.length === 0) continue;
-      const entry = entries[0];
-      const dateStr = entry.window?.start
-        ? new Date(entry.window.start).toISOString().substring(0, 10)
-        : '';
-      if (!dateStr) continue;
-      items.push({
-        date: dateStr,
-        podCount: entries.length,
-        cpuCost: entries.reduce((s, e) => s + (e.cpuCost ?? 0), 0),
-        ramCost: entries.reduce((s, e) => s + (e.ramCost ?? 0), 0),
-        gpuCost: entries.reduce((s, e) => s + (e.gpuCost ?? 0), 0),
-        pvCost: entries.reduce((s, e) => s + (e.pvCost ?? 0), 0),
-        networkCost: entries.reduce((s, e) => s + (e.networkCost ?? 0), 0),
-        totalCost: entries.reduce((s, e) => s + (e.totalCost ?? 0), 0),
-        carbonCost: entries.reduce((s, e) => s + (e.carbonCost ?? 0), 0),
+    // DB-first: always fetch from /costs/daily-summary
+    try {
+      const params = new URLSearchParams({
+        cluster: selectedCluster,
+        year: String(selectedYear),
+        month: String(selectedMonth),
       });
-    }
+      if (controllersParam) params.set('controllers', controllersParam);
+      const res = await fetchApi.fetch(`${baseUrl}/costs/daily-summary?${params}`);
+      if (res.ok) {
+        const json = await res.json();
+        if (json.data && json.data.length > 0) {
+          if (isPastMonth) cache.current.set(ck, json.data);
+          return json.data as DailySummaryItem[];
+        }
+      }
+    } catch { /* ignore */ }
 
-    if (isPastMonth) cache.current.set(ck, items);
-    return items;
-  }, [drillDown, baseUrl, selectedCluster, selectedYear, selectedMonth, start, end, isPastMonth, controllersParam]);
+    return null;
+  }, [drillDown, baseUrl, selectedCluster, selectedYear, selectedMonth, isPastMonth, controllersParam]);
 
   // Fetch collection run info for the selected month
   const { value: collectionRuns } = useAsync(async () => {
@@ -911,31 +829,28 @@ export const OpenCostPage = () => {
     const ck = `day:${selectedCluster}:${selectedDate}`;
     if (isPastMonth && cache.current.has(ck)) return cache.current.get(ck);
 
-    // Past month → DB
-    if (isPastMonth) {
-      try {
-        const params = new URLSearchParams({ cluster: selectedCluster, date: selectedDate });
-        const res = await fetchApi.fetch(`${baseUrl}/costs/pods?${params}`);
-        if (res.ok) {
-          const json = await res.json();
-          if (json.data && json.data.length > 0) {
-            // DB stores whole-day data; window is date 00:00 ~ 23:59:59 in billing TZ
-            const dayStartEpoch = midnightEpochInTz(selectedDate, billingTz);
-            const result: DayResult = {
-              pods: json.data as PodCostItem[],
-              metricWindow: {
-                start: new Date(dayStartEpoch * 1000).toISOString(),
-                end: new Date((dayStartEpoch + 86400 - 1) * 1000).toISOString(),
-              },
-            };
-            cache.current.set(ck, result);
-            return result;
-          }
+    // DB-first: always try /costs/pods
+    try {
+      const params = new URLSearchParams({ cluster: selectedCluster, date: selectedDate });
+      const res = await fetchApi.fetch(`${baseUrl}/costs/pods?${params}`);
+      if (res.ok) {
+        const json = await res.json();
+        if (json.data && json.data.length > 0) {
+          const dayStartEpoch = midnightEpochInTz(selectedDate, billingTz);
+          const result: DayResult = {
+            pods: json.data as PodCostItem[],
+            metricWindow: {
+              start: new Date(dayStartEpoch * 1000).toISOString(),
+              end: new Date((dayStartEpoch + 86400 - 1) * 1000).toISOString(),
+            },
+          };
+          if (isPastMonth) cache.current.set(ck, result);
+          return result;
         }
-      } catch { /* fall through */ }
-    }
+      }
+    } catch { /* fall through to API */ }
 
-    // Current month → OpenCost API single-day window
+    // API fallback (today or DB has no data)
     const { start: dayStart, end: dayEnd } = getDayWindow(selectedDate, billingTz);
     const params = new URLSearchParams({
       cluster: selectedCluster,
@@ -1098,69 +1013,26 @@ export const OpenCostPage = () => {
     const ck = `pod:${selectedCluster}:${selectedYear}:${selectedMonth}:${selectedPod}`;
     if (isPastMonth && cache.current.has(ck)) return cache.current.get(ck);
 
-    // Past month → DB
-    if (isPastMonth) {
-      try {
-        const params = new URLSearchParams({
-          cluster: selectedCluster,
-          pod: selectedPod,
-          year: String(selectedYear),
-          month: String(selectedMonth),
-        });
-        const res = await fetchApi.fetch(`${baseUrl}/costs/daily?${params}`);
-        if (res.ok) {
-          const json = await res.json();
-          if (json.data && json.data.length > 0) {
-            cache.current.set(ck, json.data);
-            return json.data as PodDailyItem[];
-          }
-        }
-      } catch { /* fall through */ }
-    }
-
-    // Current month → OpenCost API step=1d, aggregate=pod, filter by pod client-side
-    const params = new URLSearchParams({
-      cluster: selectedCluster,
-      window: `${start},${end}`,
-      aggregate: 'pod',
-      step: '1d',
-    });
-    const res = await fetchApi.fetch(`${baseUrl}/allocation?${params}`);
-    if (!res.ok) {
-      const body = await res.text();
-      throw new Error(`OpenCost API error (${res.status}): ${body.slice(0, 300)}`);
-    }
-    const json = await res.json();
-    const steps = (json.data ?? []) as Record<string, AllocationItem>[];
-
-    const items: PodDailyItem[] = [];
-    for (const stepMap of steps) {
-      // Find this pod in this day's data
-      const match = Object.values(stepMap).find(
-        v => (v.properties?.pod ?? v.name) === selectedPod,
-      );
-      if (match) {
-        const dateStr = match.window?.start
-          ? new Date(match.window.start).toISOString().substring(0, 10)
-          : '';
-        if (dateStr) {
-          items.push({
-            date: dateStr,
-            cpuCost: match.cpuCost ?? 0,
-            ramCost: match.ramCost ?? 0,
-            gpuCost: match.gpuCost ?? 0,
-            pvCost: match.pvCost ?? 0,
-            networkCost: match.networkCost ?? 0,
-            totalCost: match.totalCost ?? 0,
-            carbonCost: match.carbonCost ?? 0,
-          });
+    // DB-first: always fetch from /costs/daily
+    try {
+      const params = new URLSearchParams({
+        cluster: selectedCluster,
+        pod: selectedPod,
+        year: String(selectedYear),
+        month: String(selectedMonth),
+      });
+      const res = await fetchApi.fetch(`${baseUrl}/costs/daily?${params}`);
+      if (res.ok) {
+        const json = await res.json();
+        if (json.data && json.data.length > 0) {
+          if (isPastMonth) cache.current.set(ck, json.data);
+          return json.data as PodDailyItem[];
         }
       }
-    }
+    } catch { /* ignore */ }
 
-    if (isPastMonth) cache.current.set(ck, items);
-    return items;
-  }, [drillDown, baseUrl, selectedCluster, selectedPod, selectedYear, selectedMonth, start, end, isPastMonth]);
+    return null;
+  }, [drillDown, baseUrl, selectedCluster, selectedPod, selectedYear, selectedMonth, isPastMonth]);
 
   const podTotals = useMemo(() => {
     if (!podDailyData) return null;
