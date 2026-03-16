@@ -1774,7 +1774,7 @@ export const OpenCostPage = () => {
                       {fullMonthData?.some(r => r.isEstimated) && (
                         <tr>
                           <td colSpan={9} className="oc-cost-estimated" style={{ fontStyle: 'italic', fontSize: '0.75rem' }}>
-                            ~ Values are estimated from real-time data and may change until the day ends.
+                            Values for in-progress days are from real-time data and may change until the day ends.
                           </td>
                         </tr>
                       )}
