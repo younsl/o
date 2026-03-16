@@ -885,7 +885,7 @@ export class OpenCostCostStore {
   /**
    * Get distinct controller names that have cost data for a cluster in a given month.
    */
-  async getControllers(clusterId: number, year: number, month: number): Promise<string[]> {
+  async getControllers(clusterId: number, year: number, month: number): Promise<{ controller: string; controllerKind: string | null }[]> {
     const startDate = `${year}-${String(month).padStart(2, '0')}-01`;
     const nextMonth = month === 12 ? 1 : month + 1;
     const nextYear = month === 12 ? year + 1 : year;
@@ -897,10 +897,10 @@ export class OpenCostCostStore {
       .where(`${DAILY_TABLE}.date`, '>=', startDate)
       .where(`${DAILY_TABLE}.date`, '<', endDate)
       .whereNotNull(`${PODS_TABLE}.controller`)
-      .distinct(`${PODS_TABLE}.controller`)
+      .distinct(`${PODS_TABLE}.controller`, `${PODS_TABLE}.controller_kind`)
       .orderBy(`${PODS_TABLE}.controller`, 'asc');
 
-    return rows.map(r => r.controller as string);
+    return rows.map(r => ({ controller: r.controller as string, controllerKind: (r.controller_kind as string | null) ?? null }));
   }
 
   /**

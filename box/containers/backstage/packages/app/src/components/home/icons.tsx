@@ -1,5 +1,5 @@
 import React from 'react';
-import { siArgo, siKubernetes } from 'simple-icons';
+import { siApachekafka, siArgo, siKubernetes } from 'simple-icons';
 
 const SvgIconBase = ({ d, title, style }: { d: string | string[]; title?: string; style?: React.CSSProperties }) => (
   <svg
@@ -55,5 +55,13 @@ export const SecurityIcon = ({ style }: { style?: React.CSSProperties }) => (
 );
 
 export const HealthIcon = ({ style }: { style?: React.CSSProperties }) => (
-  <SvgIconBase d="M19 3H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zM9 17H7v-7h2v7zm4 0h-2V7h2v10zm4 0h-2v-4h2v4z" title="Catalog Health" style={style} />
+  <SvgIconBase d="M16.5 3c-1.74 0-3.41.81-4.5 2.09C10.91 3.81 9.24 3 7.5 3 4.42 3 2 5.42 2 8.5c0 3.78 3.4 6.86 8.55 11.54L12 21.35l1.45-1.32C18.6 15.36 22 12.28 22 8.5 22 5.42 19.58 3 16.5 3zm-4.4 15.55l-.1.1-.1-.1C7.14 14.24 4 11.39 4 8.5 4 6.5 5.5 5 7.5 5c1.54 0 3.04.99 3.57 2.36h1.87C13.46 5.99 14.96 5 16.5 5c2 0 3.5 1.5 3.5 3.5 0 2.89-3.14 5.74-7.9 10.05z" title="Catalog Health" style={style} />
+);
+
+export const KafkaIcon = ({ style }: { style?: React.CSSProperties }) => (
+  <SvgIconBase d={siApachekafka.path} title={siApachekafka.title} style={style} />
+);
+
+export const CostIcon = ({ style }: { style?: React.CSSProperties }) => (
+  <SvgIconBase d="M11.8 10.9c-2.27-.59-3-1.2-3-2.15 0-1.09 1.01-1.85 2.7-1.85 1.78 0 2.44.85 2.5 2.1h2.21c-.07-1.72-1.12-3.3-3.21-3.81V3h-3v2.16c-1.94.42-3.5 1.68-3.5 3.61 0 2.31 1.91 3.46 4.7 4.13 2.5.6 3 1.48 3 2.41 0 .69-.49 1.79-2.7 1.79-2.06 0-2.87-.92-2.98-2.1h-2.2c.12 2.19 1.76 3.42 3.68 3.83V21h3v-2.15c1.95-.37 3.5-1.5 3.5-3.55 0-2.84-2.43-3.81-4.7-4.4z" title="Cost" style={style} />
 );

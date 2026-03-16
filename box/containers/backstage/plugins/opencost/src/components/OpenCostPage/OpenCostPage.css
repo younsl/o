@@ -45,6 +45,16 @@
   background: none;
 }
 
+.oc-summary-card-forecast {
+  background: var(--bui-color-surface-3, rgba(255, 255, 255, 0.03));
+  border: 1px dashed var(--bui-color-border, rgba(255, 255, 255, 0.15));
+  opacity: 0.7;
+}
+
+.oc-summary-card-forecast:hover {
+  opacity: 1;
+}
+
 .oc-filter-bar {
   display: flex;
   gap: 12px;
@@ -440,6 +450,16 @@
   );
 }
 
+.oc-led-missing {
+  background: repeating-linear-gradient(
+    -45deg,
+    #f87171,
+    #f87171 1px,
+    rgba(248, 113, 113, 0.3) 1px,
+    rgba(248, 113, 113, 0.3) 2.5px
+  ) !important;
+}
+
 .oc-stamp-collecting {
   animation: stamp-pulse 1.5s ease-in-out infinite;
 }
@@ -487,6 +507,23 @@
 
 .oc-has-tooltip:hover > .oc-tooltip {
   display: block;
+}
+
+.oc-tooltip-multiline {
+  display: none;
+  flex-direction: column;
+  gap: 2px;
+  white-space: nowrap;
+  text-align: left;
+}
+
+.oc-has-tooltip:hover > .oc-tooltip-multiline {
+  display: flex;
+}
+
+.oc-tooltip-multiline > span:first-child {
+  opacity: 0.6;
+  font-size: 0.6rem;
 }
 
 .oc-calendar-legend {
@@ -539,12 +576,16 @@
 }
 
 .oc-controller-search {
+  display: flex;
+  align-items: center;
+  gap: 6px;
   padding: 6px 10px;
   border-bottom: 1px solid var(--bui-color-border, rgba(255, 255, 255, 0.1));
 }
 
 .oc-controller-search input {
-  width: 100%;
+  flex: 1;
+  min-width: 0;
   height: 1.75rem;
   padding: 0 8px;
   border-radius: 4px;
@@ -561,9 +602,8 @@
 
 .oc-controller-actions {
   display: flex;
-  gap: 8px;
-  padding: 6px 10px;
-  border-bottom: 1px solid var(--bui-color-border, rgba(255, 255, 255, 0.1));
+  gap: 4px;
+  flex-shrink: 0;
 }
 
 .oc-controller-no-match {
@@ -574,13 +614,17 @@
 }
 
 .oc-controller-actions button {
-  padding: 2px 8px;
+  height: 1.75rem;
+  min-width: 4.5rem;
+  text-align: center;
+  padding: 0 8px;
   border-radius: 4px;
   border: 1px solid var(--bui-color-border, rgba(255, 255, 255, 0.15));
-  background: transparent;
+  background: var(--bui-color-surface-3, rgba(255, 255, 255, 0.05));
   color: var(--bui-color-text-secondary, rgba(255, 255, 255, 0.6));
   font-size: 0.75rem;
   cursor: pointer;
+  white-space: nowrap;
 }
 
 .oc-controller-actions button:hover {
@@ -602,6 +646,13 @@
   font-size: 0.8125rem;
   cursor: pointer;
   color: var(--bui-color-text-primary, rgba(255, 255, 255, 0.87));
+  white-space: nowrap;
+}
+
+.oc-controller-option > span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  min-width: 0;
 }
 
 .oc-controller-option:hover {
@@ -610,6 +661,12 @@
 
 .oc-controller-option input[type="checkbox"] {
   accent-color: var(--bui-color-primary, #60a5fa);
+}
+
+.oc-highlight {
+  background: rgba(96, 165, 250, 0.25);
+  color: inherit;
+  border-radius: 2px;
 }
 
 .oc-controller-chips {

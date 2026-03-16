@@ -206,6 +206,13 @@ function formatCarbon(kg: number): string {
   return `${truncate1(kg * 1000)} g`;
 }
 
+function highlightMatch(text: string, query: string): React.ReactNode {
+  if (!query) return text;
+  const idx = text.toLowerCase().indexOf(query.toLowerCase());
+  if (idx === -1) return text;
+  return <>{text.slice(0, idx)}<mark className="oc-highlight">{text.slice(idx, idx + query.length)}</mark>{text.slice(idx + query.length)}</>;
+}
+
 function randomHash(len = 6): string {
   const chars = 'abcdef0123456789';
   return Array.from({ length: len }, () => chars[Math.floor(Math.random() * chars.length)]).join('');
@@ -366,7 +373,7 @@ export const OpenCostPage = () => {
 
   // Controller multi-select filter (for Year/Month views)
   const [selectedControllers, setSelectedControllers] = useState<string[]>([]);
-  const [controllerListByMonth, setControllerListByMonth] = useState<Map<string, string[]>>(new Map());
+  const [controllerListByMonth, setControllerListByMonth] = useState<Map<string, { controller: string; controllerKind: string | null }[]>>(new Map());
   const [controllerDropdownOpen, setControllerDropdownOpen] = useState(false);
   const [controllerSearch, setControllerSearch] = useState('');
   const controllerDropdownRef = useRef<HTMLDivElement>(null);
@@ -417,7 +424,7 @@ export const OpenCostPage = () => {
           ).then(async r => {
             if (r.ok) {
               const json = await r.json();
-              return { key, data: json.data as string[] };
+              return { key, data: json.data as { controller: string; controllerKind: string | null }[] };
             }
             return null;
           }).catch(() => null),
@@ -437,11 +444,16 @@ export const OpenCostPage = () => {
   }, [drillDown, baseUrl, selectedCluster, selectedYear, selectedMonth, fetchApi]);
 
   // Derived: merged controller list for current view
-  const availableControllers = useMemo(() => {
-    const set = new Set<string>();
+  const { availableControllers, controllerKindMap } = useMemo(() => {
+    const map = new Map<string, string | null>();
+    const addItems = (items: { controller: string; controllerKind: string | null }[]) => {
+      for (const c of items) {
+        if (!map.has(c.controller)) map.set(c.controller, c.controllerKind);
+      }
+    };
     if (drillDown === 'month') {
       const key = `${selectedCluster}:${selectedYear}:${selectedMonth}`;
-      for (const c of controllerListByMonth.get(key) ?? []) set.add(c);
+      addItems(controllerListByMonth.get(key) ?? []);
     } else {
       // Year view: merge all months
       const currentYear = now.getFullYear();
@@ -449,10 +461,13 @@ export const OpenCostPage = () => {
       const lastMonth = selectedYear < currentYear ? 12 : currentMonth;
       for (let m = 1; m <= lastMonth; m++) {
         const key = `${selectedCluster}:${selectedYear}:${m}`;
-        for (const c of controllerListByMonth.get(key) ?? []) set.add(c);
+        addItems(controllerListByMonth.get(key) ?? []);
       }
     }
-    return Array.from(set).sort();
+    return {
+      availableControllers: Array.from(map.keys()).sort(),
+      controllerKindMap: map,
+    };
   }, [drillDown, selectedCluster, selectedYear, selectedMonth, controllerListByMonth, now]);
 
   const controllersParam = useMemo(
@@ -624,16 +639,25 @@ export const OpenCostPage = () => {
   const yearlyTotals = useMemo(() => {
     if (!yearlyData) return null;
     const sum = (fn: (r: MonthlySummaryItem) => number) => yearlyData.reduce((s, r) => s + fn(r), 0);
+    const total = sum(r => r.totalCost);
+    const coveredDays = sum(r => r.daysCovered);
+    const isLeap = (y: number) => (y % 4 === 0 && y % 100 !== 0) || y % 400 === 0;
+    const totalDaysInYear = isLeap(selectedYear) ? 366 : 365;
+    const isPastYear = selectedYear < now.getFullYear();
+    const forecast = !isPastYear && coveredDays > 0 ? (total / coveredDays) * totalDaysInYear : null;
     return {
       cpu: sum(r => r.cpuCost),
       ram: sum(r => r.ramCost),
       pv: sum(r => r.pvCost),
       network: sum(r => r.networkCost),
-      total: sum(r => r.totalCost),
+      total,
       carbon: sum(r => r.carbonCost),
       months: yearlyData.length,
+      forecast,
+      coveredDays,
+      totalDaysInYear,
     };
-  }, [yearlyData]);
+  }, [yearlyData, selectedYear, now]);
 
   /* ═══════════════════════════════════════════
      Level 1: Monthly View — daily summary table
@@ -801,17 +825,23 @@ export const OpenCostPage = () => {
     const todayInData = todayLiveCost && monthlyData.some(d => d.date === todayLiveCost.date);
     const liveDelta = (todayLiveCost && !todayInData) ? todayLiveCost : null;
 
+    const total = sum(r => r.totalCost) + (liveDelta?.totalCost ?? 0);
+    const coveredDays = collected + collecting + (liveDelta ? 1 : 0);
+    const forecast = coveredDays > 0 ? (total / coveredDays) * totalDays : null;
+
     return {
       cpu: sum(r => r.cpuCost) + (liveDelta?.cpuCost ?? 0),
       ram: sum(r => r.ramCost) + (liveDelta?.ramCost ?? 0),
       pv: sum(r => r.pvCost) + (liveDelta?.pvCost ?? 0),
       network: sum(r => r.networkCost) + (liveDelta?.networkCost ?? 0),
-      total: sum(r => r.totalCost) + (liveDelta?.totalCost ?? 0),
+      total,
       carbon: sum(r => r.carbonCost) + (liveDelta?.carbonCost ?? 0),
       totalDays,
       collected,
       collecting,
       missing,
+      forecast,
+      coveredDays,
     };
   }, [monthlyData, selectedYear, selectedMonth, fullMonthData, todayLiveCost]);
 
@@ -1182,7 +1212,10 @@ export const OpenCostPage = () => {
                 {controllerDropdownOpen && (() => {
                   const q = controllerSearch.toLowerCase();
                   const filtered = q
-                    ? availableControllers.filter(c => c.toLowerCase().includes(q))
+                    ? availableControllers.filter(c => {
+                        const kind = controllerKindMap.get(c) ?? '';
+                        return c.toLowerCase().includes(q) || kind.toLowerCase().includes(q);
+                      })
                     : availableControllers;
                   return (
                   <div className="oc-controller-dropdown">
@@ -1194,21 +1227,21 @@ export const OpenCostPage = () => {
                         onChange={e => setControllerSearch(e.target.value)}
                         autoFocus
                       />
-                    </div>
-                    <div className="oc-controller-actions">
-                      <button onClick={() => setSelectedControllers(prev => {
-                        const set = new Set(prev);
-                        for (const c of filtered) set.add(c);
-                        return Array.from(set);
-                      })}>Select All{q ? ` (${filtered.length})` : ''}</button>
-                      <button onClick={() => {
-                        if (q) {
-                          const remove = new Set(filtered);
-                          setSelectedControllers(prev => prev.filter(c => !remove.has(c)));
-                        } else {
-                          setSelectedControllers([]);
-                        }
-                      }}>Clear{q ? ` (${filtered.length})` : ''}</button>
+                      <div className="oc-controller-actions">
+                        <button onClick={() => setSelectedControllers(prev => {
+                          const set = new Set(prev);
+                          for (const c of filtered) set.add(c);
+                          return Array.from(set);
+                        })}>Select All{q ? ` (${filtered.length})` : ''}</button>
+                        <button onClick={() => {
+                          if (q) {
+                            const remove = new Set(filtered);
+                            setSelectedControllers(prev => prev.filter(c => !remove.has(c)));
+                          } else {
+                            setSelectedControllers([]);
+                          }
+                        }}>Clear{q ? ` (${filtered.length})` : ''}</button>
+                      </div>
                     </div>
                     <div className="oc-controller-list">
                       {filtered.map(c => (
@@ -1224,7 +1257,7 @@ export const OpenCostPage = () => {
                               }
                             }}
                           />
-                          <span>{c}</span>
+                          <span>{controllerKindMap.get(c) ? <><span className="oc-kind">{highlightMatch(controllerKindMap.get(c)!, q)}</span>{' / '}</> : ''}{highlightMatch(c, q)}</span>
                         </label>
                       ))}
                       {filtered.length === 0 && (
@@ -1241,7 +1274,7 @@ export const OpenCostPage = () => {
             <div className="oc-controller-chips" style={{ marginTop: 8 }}>
               {selectedControllers.map(c => (
                 <span key={c} className="oc-controller-chip">
-                  {c}
+                  {controllerKindMap.get(c) ? `${controllerKindMap.get(c)} / ` : ''}{c}
                   <span
                     className="oc-controller-chip-remove"
                     onClick={() => setSelectedControllers(prev => prev.filter(x => x !== c))}
@@ -1306,10 +1339,20 @@ export const OpenCostPage = () => {
                     <Text weight="bold" className="oc-summary-value">{formatCost(yearlyTotals.network)}</Text>
                     <Text variant="body-x-small" color="secondary">Network Cost</Text>
                   </div>
-                  <div className="oc-summary-card">
-                    <Text weight="bold" className="oc-summary-value">{yearlyTotals.months}</Text>
-                    <Text variant="body-x-small" color="secondary">Months</Text>
-                  </div>
+                  {yearlyTotals.forecast !== null && yearlyTotals.coveredDays < yearlyTotals.totalDaysInYear && (
+                    <div className="oc-summary-card oc-summary-card-forecast oc-has-tooltip">
+                      <Text weight="bold" className="oc-summary-value">
+                        {formatCost(yearlyTotals.forecast)}
+                      </Text>
+                      <Text variant="body-x-small" color="secondary">
+                        Forecast
+                      </Text>
+                      <span className="oc-tooltip oc-tooltip-multiline">
+                        <span>totalCost / coveredDays × totalDays</span>
+                        <span>{formatCost(yearlyTotals.total)} / {yearlyTotals.coveredDays}d × {yearlyTotals.totalDaysInYear}d = {formatCost(yearlyTotals.forecast)}</span>
+                      </span>
+                    </div>
+                  )}
                 </div>
 
                 {yearlyTotals.total > 0 && (() => {
@@ -1487,6 +1530,20 @@ export const OpenCostPage = () => {
                     <Text weight="bold" className="oc-summary-value">{formatCost(monthlyTotals.network)}</Text>
                     <Text variant="body-x-small" color="secondary">Network Cost</Text>
                   </div>
+                  {!isPastMonth && monthlyTotals.forecast !== null && monthlyTotals.coveredDays < monthlyTotals.totalDays && (
+                    <div className="oc-summary-card oc-summary-card-forecast oc-has-tooltip">
+                      <Text weight="bold" className="oc-summary-value">
+                        {formatCost(monthlyTotals.forecast)}
+                      </Text>
+                      <Text variant="body-x-small" color="secondary">
+                        Forecast
+                      </Text>
+                      <span className="oc-tooltip oc-tooltip-multiline">
+                        <span>totalCost / coveredDays × totalDays</span>
+                        <span>{formatCost(monthlyTotals.total)} / {monthlyTotals.coveredDays}d × {monthlyTotals.totalDays}d = {formatCost(monthlyTotals.forecast)}</span>
+                      </span>
+                    </div>
+                  )}
                 </div>
 
                 {/* Cost breakdown bar */}
@@ -1669,7 +1726,7 @@ export const OpenCostPage = () => {
                           <td>{row.date} <span className={`oc-day-of-week${row.dayOfWeek === 'Sun' ? ' oc-dow-sun' : row.dayOfWeek === 'Sat' ? ' oc-dow-sat' : ''}`}>({row.dayOfWeek})</span></td>
                           <td title={statusTooltip}>
                             <span
-                              className={row.status === 'collecting' ? 'oc-led-pulse' : undefined}
+                              className={`oc-led${row.status === 'collecting' ? ' oc-led-pulse' : ''}${row.status === 'missing' ? ' oc-led-missing' : ''}`}
                               style={{
                                 display: 'inline-block', width: 8, height: 8, borderRadius: '50%',
                                 backgroundColor: ledColor, marginRight: 6, verticalAlign: 'middle',
@@ -1677,13 +1734,13 @@ export const OpenCostPage = () => {
                             />
                             {statusLabel}
                           </td>
-                          <td className={`oc-cost${row.isEstimated ? ' oc-cost-estimated' : ''}`}>{hasData ? `${row.isEstimated ? '~' : ''}${formatCost(row.cpuCost)}` : '-'}</td>
-                          <td className={`oc-cost${row.isEstimated ? ' oc-cost-estimated' : ''}`}>{hasData ? `${row.isEstimated ? '~' : ''}${formatCost(row.ramCost)}` : '-'}</td>
-                          <td className={`oc-cost${row.isEstimated ? ' oc-cost-estimated' : ''}`}>{hasData ? `${row.isEstimated ? '~' : ''}${formatCost(row.gpuCost)}` : '-'}</td>
-                          <td className={`oc-cost${row.isEstimated ? ' oc-cost-estimated' : ''}`}>{hasData ? `${row.isEstimated ? '~' : ''}${formatCost(row.pvCost)}` : '-'}</td>
-                          <td className={`oc-cost${row.isEstimated ? ' oc-cost-estimated' : ''}`}>{hasData ? `${row.isEstimated ? '~' : ''}${formatCost(row.networkCost)}` : '-'}</td>
-                          <td className={`oc-cost oc-cost-total${row.isEstimated ? ' oc-cost-estimated' : ''}`}>{hasData ? `${row.isEstimated ? '~' : ''}${formatCost(row.totalCost)}` : '-'}</td>
-                          <td className={`oc-cost oc-carbon${row.isEstimated ? ' oc-cost-estimated' : ''}`}>{hasData ? `${row.isEstimated ? '~' : ''}${formatCarbon(row.carbonCost)}` : '-'}</td>
+                          <td className={`oc-cost${row.isEstimated ? ' oc-cost-estimated' : ''}`}>{hasData ? formatCost(row.cpuCost) : '-'}</td>
+                          <td className={`oc-cost${row.isEstimated ? ' oc-cost-estimated' : ''}`}>{hasData ? formatCost(row.ramCost) : '-'}</td>
+                          <td className={`oc-cost${row.isEstimated ? ' oc-cost-estimated' : ''}`}>{hasData ? formatCost(row.gpuCost) : '-'}</td>
+                          <td className={`oc-cost${row.isEstimated ? ' oc-cost-estimated' : ''}`}>{hasData ? formatCost(row.pvCost) : '-'}</td>
+                          <td className={`oc-cost${row.isEstimated ? ' oc-cost-estimated' : ''}`}>{hasData ? formatCost(row.networkCost) : '-'}</td>
+                          <td className={`oc-cost oc-cost-total${row.isEstimated ? ' oc-cost-estimated' : ''}`}>{hasData ? formatCost(row.totalCost) : '-'}</td>
+                          <td className={`oc-cost oc-carbon${row.isEstimated ? ' oc-cost-estimated' : ''}`}>{hasData ? formatCarbon(row.carbonCost) : '-'}</td>
                         </tr>
                       );
                     })}
@@ -1930,6 +1987,11 @@ export const OpenCostPage = () => {
                 <Text variant="body-medium" weight="bold" style={{ marginBottom: 12, display: 'block' }}>
                   Pod Summary — {selectedPod}
                 </Text>
+                {podDailyData && podDailyData.length > 0 && (
+                  <Text variant="body-x-small" color="secondary" style={{ display: 'block', marginBottom: 12 }}>
+                    Metric period: {podDailyData[0].date} ~ {podDailyData[podDailyData.length - 1].date} ({podDailyData.length}d)
+                  </Text>
+                )}
                 <div className="oc-summary-bar">
                   <div className="oc-summary-card">
                     <Text weight="bold" className="oc-summary-value">{formatCost(podTotals.total)}</Text>
@@ -1968,6 +2030,46 @@ export const OpenCostPage = () => {
                     </div>
                   )}
                 </div>
+
+                {/* Cost breakdown bar */}
+                {podTotals.total > 0 && (() => {
+                  const allSegments = [
+                    { label: 'CPU', value: podTotals.cpu, color: '#60a5fa' },
+                    { label: 'RAM', value: podTotals.ram, color: '#a78bfa' },
+                    { label: 'PV', value: podTotals.pv, color: '#34d399' },
+                    { label: 'Network', value: podTotals.network, color: '#fbbf24' },
+                  ];
+                  const barSegments = allSegments.filter(s => s.value > 0);
+                  return (
+                    <div className="oc-breakdown">
+                      <div className="oc-breakdown-bar">
+                        {barSegments.map(s => {
+                          const pct = (s.value / podTotals.total) * 100;
+                          return (
+                            <div
+                              key={s.label}
+                              className="oc-breakdown-segment"
+                              style={{ width: `${pct}%`, background: s.color }}
+                            />
+                          );
+                        })}
+                      </div>
+                      <div className="oc-breakdown-legend">
+                        {allSegments.map(s => {
+                          const pct = podTotals.total > 0 ? (s.value / podTotals.total) * 100 : 0;
+                          return (
+                            <div key={s.label} className="oc-breakdown-item">
+                              <span className="oc-breakdown-dot" style={{ background: s.color }} />
+                              <span className="oc-breakdown-label">{s.label}</span>
+                              <span className="oc-breakdown-value">{formatCost(s.value)}</span>
+                              <span className="oc-breakdown-pct">({pct.toFixed(1)}%)</span>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  );
+                })()}
               </Box>
             )}
 
