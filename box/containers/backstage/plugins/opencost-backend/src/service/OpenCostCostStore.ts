@@ -537,7 +537,12 @@ export class OpenCostCostStore {
       .distinct('date')
       .orderBy('date');
 
-    const existingDates = new Set(rows.map(r => String(r.date).substring(0, 10)));
+    const existingDates = new Set(rows.map(r => {
+      const raw = r.date;
+      return raw instanceof Date
+        ? raw.toISOString().substring(0, 10)
+        : String(raw).substring(0, 10);
+    }));
 
     const missing: string[] = [];
     const current = new Date(startDate);
@@ -586,17 +591,23 @@ export class OpenCostCostStore {
       .groupBy('date')
       .orderBy('date', 'asc');
 
-    return rows.map(r => ({
-      date: String(r.date).substring(0, 10),
-      podCount: Number(r.pod_count),
-      cpuCost: Number(r.cpu_cost),
-      ramCost: Number(r.ram_cost),
-      gpuCost: Number(r.gpu_cost),
-      pvCost: Number(r.pv_cost),
-      networkCost: Number(r.network_cost),
-      totalCost: Number(r.total_cost),
-      carbonCost: Number(r.carbon_cost),
-    }));
+    return rows.map(r => {
+      const raw = r.date;
+      const date = raw instanceof Date
+        ? raw.toISOString().substring(0, 10)
+        : String(raw).substring(0, 10);
+      return {
+        date,
+        podCount: Number(r.pod_count),
+        cpuCost: Number(r.cpu_cost),
+        ramCost: Number(r.ram_cost),
+        gpuCost: Number(r.gpu_cost),
+        pvCost: Number(r.pv_cost),
+        networkCost: Number(r.network_cost),
+        totalCost: Number(r.total_cost),
+        carbonCost: Number(r.carbon_cost),
+      };
+    });
   }
 
   /**
@@ -662,8 +673,13 @@ export class OpenCostCostStore {
       )
       .orderBy(`${DAILY_TABLE}.date`, 'asc');
 
-    return rows.map(r => ({
-      date: String(r.date).substring(0, 10),
+    return rows.map(r => {
+      const raw = r.date;
+      const date = raw instanceof Date
+        ? raw.toISOString().substring(0, 10)
+        : String(raw).substring(0, 10);
+      return {
+      date,
       namespace: r.namespace as string,
       controllerKind: r.controller_kind as string | null,
       controller: r.controller as string | null,
@@ -675,7 +691,8 @@ export class OpenCostCostStore {
       networkCost: Number(r.network_cost),
       totalCost: Number(r.total_cost),
       carbonCost: Number(r.carbon_cost),
-    }));
+      };
+    });
   }
 
   async getDailyCoverage(clusterId: number, year: number, month: number): Promise<number> {
