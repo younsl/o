@@ -1,3 +1,8 @@
+---
+plugins:
+  - "@backstage/plugin-auth-backend-module-oidc-provider"
+---
+
 # Keycloak OIDC Authentication
 
 Backstage supports Keycloak OIDC authentication for SSO.

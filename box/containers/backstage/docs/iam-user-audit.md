@@ -1,3 +1,9 @@
+---
+plugins:
+  - iam-user-audit
+  - iam-user-audit-backend
+---
+
 # IAM User Audit
 
 Custom plugin for monitoring inactive AWS IAM users with a password reset approval workflow.

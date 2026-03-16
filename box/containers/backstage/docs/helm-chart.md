@@ -1,3 +1,7 @@
+---
+plugins: []
+---
+
 # Helm Chart Integration
 
 This custom image is compatible with the official [Backstage Helm Chart](https://github.com/backstage/charts).

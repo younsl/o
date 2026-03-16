@@ -1,3 +1,9 @@
+---
+plugins:
+  - "@immobiliarelabs/backstage-plugin-gitlab"
+  - "@immobiliarelabs/backstage-plugin-gitlab-backend"
+---
+
 # GitLab CI/CD
 
 Community plugin ([`@immobiliarelabs/backstage-plugin-gitlab`](https://github.com/immobiliare/backstage-plugin-gitlab)) that adds a GitLab tab to Entity pages.

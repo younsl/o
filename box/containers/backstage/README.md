@@ -22,6 +22,8 @@ Custom Backstage image with GitLab Auto Discovery, Keycloak OIDC, and API Docs p
 | IAM User Audit | `iam-user-audit` | Custom | AWS IAM inactive user monitoring with password reset, warning DM, and Slack notifications |
 | Kafka Topic | `kafka-topic` | Custom | Self-service Kafka topic creation with in-app approval workflow |
 | Catalog Health | `catalog-health` | Custom | Track `catalog-info.yaml` coverage across GitLab projects with trend charts |
+| OpenCost | `opencost` | Custom | Multi-cluster Kubernetes cost visualization with daily/monthly tracking and carbon enrichment |
+| S3 Log Extract | `s3-log-extract` | Custom | S3-based Java log extraction with request-approval workflow and tar.gz download |
 | TechDocs | [`@backstage/plugin-techdocs`](https://www.npmjs.com/package/@backstage/plugin-techdocs) | Native | Markdown-based technical documentation |
 | Scaffolder | [`@backstage/plugin-scaffolder`](https://www.npmjs.com/package/@backstage/plugin-scaffolder) | Native | Template-based project creation |
 | Search | [`@backstage/plugin-search`](https://www.npmjs.com/package/@backstage/plugin-search) | Native | Full-text search across catalog |
@@ -78,6 +80,13 @@ git push origin backstage/1.48.4-2
 | `SLACK_WEBHOOK_URL` | ArgoCD AppSet | Slack Incoming Webhook URL for alerts |
 | `IAM_AUDIT_SLACK_WEBHOOK_URL` | IAM Audit | Slack Webhook URL for inactive user alerts |
 | `IAM_AUDIT_SLACK_BOT_TOKEN` | IAM Audit | Slack Bot Token for DM notifications (`xoxb-...`) |
+| `S3_LOG_BUCKET` | S3 Log Extract | S3 bucket name for log storage |
+| `S3_LOG_PREFIX` | S3 Log Extract | S3 prefix for logs (default: `app-logs`) |
+| `OPENCOST_SHARED_URL` | OpenCost | OpenCost API endpoint for shared cluster |
+| `OPENCOST_DEV_URL` | OpenCost | OpenCost API endpoint for dev cluster |
+| `OPENCOST_STG_URL` | OpenCost | OpenCost API endpoint for stage cluster |
+| `OPENCOST_SB_URL` | OpenCost | OpenCost API endpoint for sandbox cluster |
+| `OPENCOST_PRD_URL` | OpenCost | OpenCost API endpoint for production cluster |
 
 > Guest login is disabled. Authentication is Keycloak OIDC only.
 
@@ -89,6 +98,8 @@ git push origin backstage/1.48.4-2
 - [GitLab API Discovery](docs/gitlab-api-discovery.md) - Auto-register APIs from GitLab
 - [IAM User Audit](docs/iam-user-audit.md) - AWS IAM inactive user monitoring and password reset workflow
 - [Kafka Topic](docs/kafka-topic.md) - Self-service Kafka topic creation with approval workflow
+- [OpenCost](docs/opencost.md) - Multi-cluster Kubernetes cost visualization setup
+- [OpenCost ERD](docs/opencost-erd.md) - OpenCost database schema and entity relationship diagram
 - [Helm Chart](docs/helm-chart.md) - Kubernetes deployment with Helm
 
 ## Architecture
@@ -107,6 +118,8 @@ git push origin backstage/1.48.4-2
 │  ├─ IAM User Audit          │  ├─ IAM User Audit API        │
 │  ├─ Kafka Topic             │  ├─ Kafka Topic API           │
 │  ├─ Catalog Health          │  ├─ Catalog Health API        │
+│  ├─ OpenCost                │  ├─ OpenCost API              │
+│  ├─ S3 Log Extract          │  ├─ S3 Log Extract API        │
 │  ├─ TechDocs Reader         │  ├─ TechDocs Builder          │
 │  └─ Scaffolder UI           │  └─ Scaffolder Backend        │
 ├─────────────────────────────────────────────────────────────┤
@@ -114,6 +127,8 @@ git push origin backstage/1.48.4-2
 │  ├─ GitLab (source of truth)                                │
 │  ├─ Keycloak (OIDC authentication - optional)               │
 │  ├─ PostgreSQL (catalog database)                           │
+│  ├─ OpenCost API (cost data - optional)                     │
+│  ├─ S3 (log extraction storage - optional)                  │
 │  └─ S3/GCS (TechDocs storage - optional)                    │
 └─────────────────────────────────────────────────────────────┘
 ```
@@ -141,7 +156,11 @@ backstage/
 │   ├── kafka-topic/             # Kafka Topic frontend plugin
 │   ├── kafka-topic-backend/     # Kafka Topic backend plugin
 │   ├── openapi-registry/        # OpenAPI Registry frontend plugin
-│   └── openapi-registry-backend/# OpenAPI Registry backend plugin
+│   ├── openapi-registry-backend/# OpenAPI Registry backend plugin
+│   ├── opencost/                # OpenCost frontend plugin
+│   ├── opencost-backend/        # OpenCost backend plugin
+│   ├── s3-log-extract/          # S3 Log Extract frontend plugin
+│   └── s3-log-extract-backend/  # S3 Log Extract backend plugin
 ├── scripts/
 │   └── generate-build-info.js   # Auto-generate buildInfo.ts at build time
 ├── templates/

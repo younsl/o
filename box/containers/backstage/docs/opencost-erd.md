@@ -1,3 +1,9 @@
+---
+plugins:
+  - opencost
+  - opencost-backend
+---
+
 # OpenCost ERD
 
 Schema version: **2**

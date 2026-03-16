@@ -1,3 +1,9 @@
+---
+plugins:
+  - kafka-topic
+  - kafka-topic-backend
+---
+
 # Kafka Topic
 
 Custom plugin for self-service Kafka topic creation with in-app approval workflow.

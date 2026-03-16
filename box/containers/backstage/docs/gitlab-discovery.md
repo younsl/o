@@ -1,3 +1,9 @@
+---
+plugins:
+  - "@backstage/plugin-catalog-backend-module-gitlab"
+  - "@backstage/plugin-catalog-backend-module-gitlab-org"
+---
+
 # GitLab Discovery
 
 Auto-discover `catalog-info.yaml` files from GitLab repositories.

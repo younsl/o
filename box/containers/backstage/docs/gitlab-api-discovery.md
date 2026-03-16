@@ -1,3 +1,9 @@
+---
+plugins:
+  - "@backstage/plugin-api-docs"
+  - "@backstage/plugin-catalog-backend-module-gitlab"
+---
+
 # GitLab API Auto Discovery
 
 Auto-discover and register APIs from GitLab repositories.
