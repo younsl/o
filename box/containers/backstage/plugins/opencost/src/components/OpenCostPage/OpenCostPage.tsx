@@ -826,7 +826,7 @@ export const OpenCostPage = () => {
     const liveDelta = (todayLiveCost && !todayInData) ? todayLiveCost : null;
 
     const total = sum(r => r.totalCost) + (liveDelta?.totalCost ?? 0);
-    const coveredDays = collected + collecting + (liveDelta ? 1 : 0);
+    const coveredDays = collected + collecting;
     const forecast = coveredDays > 0 ? (total / coveredDays) * totalDays : null;
 
     return {
