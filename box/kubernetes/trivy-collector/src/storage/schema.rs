@@ -91,6 +91,16 @@ pub fn init_schema(conn: &Connection) -> Result<()> {
         CREATE INDEX IF NOT EXISTS idx_api_logs_path ON api_logs(path);
         CREATE INDEX IF NOT EXISTS idx_api_logs_status_code ON api_logs(status_code);
 
+        -- Cleanup history table
+        CREATE TABLE IF NOT EXISTS cleanup_history (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            retention_days INTEGER NOT NULL,
+            deleted_count INTEGER NOT NULL,
+            triggered_by TEXT NOT NULL DEFAULT 'system',
+            cleaned_at TEXT NOT NULL
+        );
+        CREATE INDEX IF NOT EXISTS idx_cleanup_history_cleaned_at ON cleanup_history(cleaned_at);
+
         -- Clusters view for quick cluster listing
         CREATE VIEW IF NOT EXISTS clusters_view AS
         SELECT
@@ -183,6 +193,24 @@ fn run_migrations(conn: &Connection) -> Result<()> {
             [],
         )
         .context("Failed to add description column to api_tokens")?;
+    }
+
+    // Migration: Create cleanup_history table if it doesn't exist
+    if !table_exists_check(conn, "cleanup_history")? {
+        info!("Migrating database: creating cleanup_history table");
+        conn.execute_batch(
+            r#"
+            CREATE TABLE IF NOT EXISTS cleanup_history (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                retention_days INTEGER NOT NULL,
+                deleted_count INTEGER NOT NULL,
+                triggered_by TEXT NOT NULL DEFAULT 'system',
+                cleaned_at TEXT NOT NULL
+            );
+            CREATE INDEX IF NOT EXISTS idx_cleanup_history_cleaned_at ON cleanup_history(cleaned_at);
+            "#,
+        )
+        .context("Failed to create cleanup_history table")?;
     }
 
     // Migration: Create api_logs table if it doesn't exist

@@ -18,6 +18,12 @@
     color: var(--text-primary);
 }
 
+.sectionDesc {
+    font-size: 13px;
+    color: var(--text-muted);
+    margin: -8px 0 16px;
+}
+
 /* User Info */
 .infoGrid {
     display: grid;
@@ -549,6 +555,86 @@
 .deleteBtnConfirm:disabled {
     opacity: 0.4;
     cursor: not-allowed;
+}
+
+/* RBAC Policy */
+.policySubSection {
+    margin-bottom: 16px;
+}
+
+.policySubSection:last-child {
+    margin-bottom: 0;
+}
+
+.policySubTitle {
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--text-secondary);
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    margin-bottom: 8px;
+}
+
+.roleBadges {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+}
+
+.roleBadge {
+    font-family: 'SF Mono', Monaco, Consolas, monospace;
+    font-size: 11px;
+    font-weight: 500;
+    color: var(--accent);
+}
+
+.defaultTag {
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+    color: var(--text-muted);
+    font-weight: 400;
+}
+
+.policyTable {
+    width: 100%;
+    border-collapse: collapse;
+}
+
+.policyTable th {
+    font-size: 11px;
+    font-weight: 600;
+    color: var(--text-secondary);
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    text-align: left;
+    padding: 8px 12px;
+    border-bottom: 1px solid var(--border);
+}
+
+.policyTable td {
+    font-size: 13px;
+    padding: 8px 12px;
+    border-bottom: 1px solid var(--border);
+    color: var(--text-primary);
+}
+
+.ruleDesc {
+    color: var(--text-muted);
+}
+
+.policyTable tr:last-child td {
+    border-bottom: none;
+}
+
+.effectAllow {
+    font-size: 11px;
+    font-weight: 600;
+    color: #3fb950;
+}
+
+.effectDeny {
+    font-size: 11px;
+    font-weight: 600;
+    color: var(--critical);
 }
 
 .noAuth {

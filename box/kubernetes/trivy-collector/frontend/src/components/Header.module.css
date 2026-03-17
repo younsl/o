@@ -7,7 +7,7 @@
     border-bottom: 1px solid var(--border);
     position: sticky;
     top: 0;
-    z-index: 100;
+    z-index: 500;
 }
 
 .headerLeft {
@@ -35,35 +35,18 @@
 }
 
 .subtitle {
-    font-size: 10px;
+    font-size: 11px;
     color: var(--text-muted);
     font-weight: 400;
     letter-spacing: 0.3px;
-}
-
-.versionInfo {
-    font-size: 11px;
-    color: var(--text-muted);
-    font-family: 'SF Mono', Monaco, Consolas, monospace;
-    padding: 3px 8px;
-    background-color: var(--bg-tertiary);
-    border-radius: 4px;
-    white-space: nowrap;
     text-decoration: none;
-}
-
-.versionInfo:empty {
-    display: none;
-}
-
-.clickable {
     cursor: pointer;
-    transition: all 0.15s ease;
+    transition: color 0.15s ease;
 }
 
-.clickable:hover {
-    background-color: var(--bg-hover);
-    color: var(--text-primary);
+.subtitle:hover {
+    color: var(--accent);
+    text-decoration: underline;
 }
 
 .watcherStatus {

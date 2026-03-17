@@ -174,11 +174,31 @@ export interface AuthPermissions {
   can_manage_tokens: boolean
 }
 
+export interface EffectivePolicyRule {
+  subject: string
+  resource: string
+  action: string
+  effect: string
+}
+
+export interface EffectiveGroupBinding {
+  group: string
+  role: string
+}
+
+export interface EffectivePolicy {
+  resolved_roles: string[]
+  default_policy: string
+  rules: EffectivePolicyRule[]
+  bindings: EffectiveGroupBinding[]
+}
+
 export interface AuthStatus {
   authenticated: boolean
   auth_mode: string
   user?: AuthUser
   permissions?: AuthPermissions
+  policies?: EffectivePolicy
 }
 
 export interface ApiLogEntry {
@@ -194,13 +214,22 @@ export interface ApiLogEntry {
   created_at: string
 }
 
+export interface CleanupHistoryEntry {
+  id: number
+  retention_days: number
+  deleted_count: number
+  triggered_by: string
+  cleaned_at: string
+}
+
 export interface ApiLogStats {
   total_requests: number
   requests_today: number
   avg_duration_ms: number
   error_count: number
   unique_users: number
-  top_paths: [string, number][]
+  top_paths: [string, number, number][]
+  last_cleanup: CleanupHistoryEntry | null
 }
 
 

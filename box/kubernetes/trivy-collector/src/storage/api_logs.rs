@@ -3,7 +3,7 @@
 use anyhow::{Context, Result};
 
 use super::Database;
-use super::models::{ApiLogEntry, ApiLogQuery, ApiLogStats};
+use super::models::{ApiLogEntry, ApiLogQuery, ApiLogStats, CleanupHistoryEntry};
 
 impl Database {
     /// Insert an API log entry
@@ -151,15 +151,36 @@ impl Database {
             )
             .unwrap_or(0);
 
-        // Top paths
+        // Top paths with error count
         let mut stmt = conn.prepare(
-            "SELECT path, COUNT(*) as cnt FROM api_logs GROUP BY path ORDER BY cnt DESC LIMIT 10",
+            "SELECT path, COUNT(*) as cnt, SUM(CASE WHEN status_code >= 400 THEN 1 ELSE 0 END) as errors FROM api_logs GROUP BY path ORDER BY cnt DESC LIMIT 10",
         )?;
         let top_paths = stmt
             .query_map([], |row| {
-                Ok((row.get::<_, String>(0)?, row.get::<_, i64>(1)?))
+                Ok((
+                    row.get::<_, String>(0)?,
+                    row.get::<_, i64>(1)?,
+                    row.get::<_, i64>(2)?,
+                ))
             })?
             .collect::<Result<Vec<_>, _>>()?;
+
+        // Last cleanup entry
+        let last_cleanup: Option<CleanupHistoryEntry> = conn
+            .query_row(
+                "SELECT id, retention_days, deleted_count, triggered_by, cleaned_at FROM cleanup_history ORDER BY id DESC LIMIT 1",
+                [],
+                |row| {
+                    Ok(CleanupHistoryEntry {
+                        id: row.get(0)?,
+                        retention_days: row.get::<_, i32>(1)? as u32,
+                        deleted_count: row.get(2)?,
+                        triggered_by: row.get(3)?,
+                        cleaned_at: row.get(4)?,
+                    })
+                },
+            )
+            .ok();
 
         Ok(ApiLogStats {
             total_requests,
@@ -168,17 +189,27 @@ impl Database {
             error_count,
             unique_users,
             top_paths,
+            last_cleanup,
         })
     }
 
-    /// Delete API logs older than retention_days
-    pub fn cleanup_old_api_logs(&self, retention_days: u32) -> Result<u64> {
+    /// Delete API logs older than retention_days and record cleanup history
+    pub fn cleanup_old_api_logs(&self, retention_days: u32, triggered_by: &str) -> Result<u64> {
         let conn = self.conn.lock().unwrap();
         let cutoff = chrono::Utc::now() - chrono::Duration::days(retention_days as i64);
         let cutoff_str = cutoff.format("%Y-%m-%dT%H:%M:%S").to_string();
 
         let deleted = conn.execute("DELETE FROM api_logs WHERE created_at < ?1", [&cutoff_str])?;
+        let deleted_count = deleted as u64;
 
-        Ok(deleted as u64)
+        // Record cleanup history
+        let now = chrono::Utc::now().format("%Y-%m-%dT%H:%M:%SZ").to_string();
+        conn.execute(
+            "INSERT INTO cleanup_history (retention_days, deleted_count, triggered_by, cleaned_at) VALUES (?1, ?2, ?3, ?4)",
+            rusqlite::params![retention_days, deleted_count as i64, triggered_by, now],
+        )
+        .context("Failed to record cleanup history")?;
+
+        Ok(deleted_count)
     }
 }

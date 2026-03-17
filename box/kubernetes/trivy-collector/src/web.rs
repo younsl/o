@@ -38,8 +38,8 @@ use utoipa_swagger_ui::SwaggerUi;
 
 use crate::collector::types::{ReportEvent, ReportEventType, ReportPayload};
 use crate::storage::{
-    ClusterInfo, ComponentSearchResult, FullReport, ReportMeta, Stats, TrendDataPoint, TrendMeta,
-    TrendResponse, VulnSearchResult, VulnSummary,
+    CleanupHistoryEntry, ClusterInfo, ComponentSearchResult, FullReport, ReportMeta, Stats,
+    TrendDataPoint, TrendMeta, TrendResponse, VulnSearchResult, VulnSummary,
 };
 
 /// OpenAPI documentation
@@ -72,6 +72,15 @@ use crate::storage::{
         handlers::get_status,
         handlers::get_config,
         handlers::get_dashboard_trends,
+        admin_handlers::list_api_logs,
+        admin_handlers::get_api_log_stats,
+        admin_handlers::cleanup_api_logs,
+        admin_handlers::admin_info,
+        crate::auth::handlers::auth_me,
+        crate::auth::handlers::list_tokens,
+        crate::auth::handlers::create_token,
+        crate::auth::handlers::delete_token,
+        crate::auth::handlers::logout,
     ),
     components(schemas(
         HealthResponse,
@@ -95,6 +104,7 @@ use crate::storage::{
         TrendResponse,
         TrendMeta,
         TrendDataPoint,
+        CleanupHistoryEntry,
     )),
     tags(
         (name = "Health", description = "Health check endpoints"),
@@ -109,6 +119,8 @@ use crate::storage::{
         (name = "Status", description = "Server runtime status endpoints"),
         (name = "Config", description = "Configuration endpoints"),
         (name = "Dashboard", description = "Dashboard trend analysis endpoints"),
+        (name = "Admin", description = "Admin API log management endpoints"),
+        (name = "Auth", description = "Authentication and token management endpoints"),
     )
 )]
 pub struct ApiDoc;
@@ -308,7 +320,7 @@ pub async fn run(
         loop {
             tokio::select! {
                 _ = interval.tick() => {
-                    match db_cleanup.cleanup_old_api_logs(7) {
+                    match db_cleanup.cleanup_old_api_logs(7, "system") {
                         Ok(deleted) if deleted > 0 => {
                             info!(deleted = deleted, "Background API log cleanup completed");
                         }

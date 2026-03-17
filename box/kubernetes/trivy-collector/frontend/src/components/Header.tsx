@@ -32,17 +32,14 @@ export default function Header({
       <div className={styles.headerLeft}>
         <div className={styles.titleGroup}>
           <h1 className={styles.title}>Trivy Collector</h1>
-          <span className={styles.subtitle}>Powered by Trivy Operator</span>
+          {version ? (
+            <Link to="/version" className={styles.subtitle} title="Click to view detailed version info">
+              v{version.version} ({commitShort})
+            </Link>
+          ) : (
+            <span className={styles.subtitle}>Powered by Trivy Operator</span>
+          )}
         </div>
-        {version && (
-          <Link
-            to="/version"
-            className={`${styles.versionInfo} ${styles.clickable}`}
-            title="Click to view detailed version info"
-          >
-            v{version.version} ({commitShort})
-          </Link>
-        )}
         <div className={styles.watcherStatus}>
           <span className={styles.watcherTitle}>Status</span>
           <StatusLed status={watcherStatus?.vuln_watcher ?? null} label="VULN" />
@@ -72,14 +69,12 @@ export default function Header({
           >
             SBOM
           </Link>
-          {authMode === 'keycloak' && (
-            <Link
-              to="/auth"
-              className={`${styles.navButton}${path === '/auth' ? ` ${styles.active}` : ''}`}
-            >
-              <i className="fa-solid fa-key" /> Auth
-            </Link>
-          )}
+          <Link
+            to="/auth"
+            className={`${styles.navButton}${path === '/auth' ? ` ${styles.active}` : ''}`}
+          >
+            <i className="fa-solid fa-key" /> Auth
+          </Link>
           {permissions?.can_admin && (
             <Link
               to="/admin"

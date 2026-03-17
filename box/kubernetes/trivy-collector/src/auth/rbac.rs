@@ -159,6 +159,43 @@ p, role:admin, *, *, allow"#
         &self.default_policy
     }
 
+    /// Get the effective RBAC policy for a user's groups
+    pub fn get_effective_policy(&self, user_groups: &[String]) -> EffectivePolicy {
+        let resolved_roles = self.resolve_roles(user_groups);
+
+        let rules: Vec<EffectivePolicyRule> = self
+            .rules
+            .iter()
+            .filter(|r| resolved_roles.contains(&r.subject))
+            .map(|r| EffectivePolicyRule {
+                subject: r.subject.clone(),
+                resource: r.resource.clone(),
+                action: r.action.clone(),
+                effect: match r.effect {
+                    Effect::Allow => "allow".to_string(),
+                    Effect::Deny => "deny".to_string(),
+                },
+            })
+            .collect();
+
+        let bindings: Vec<EffectiveGroupBinding> = self
+            .groups
+            .iter()
+            .filter(|b| user_groups.iter().any(|g| g == &b.group))
+            .map(|b| EffectiveGroupBinding {
+                group: b.group.clone(),
+                role: b.role.clone(),
+            })
+            .collect();
+
+        EffectivePolicy {
+            resolved_roles,
+            default_policy: self.default_policy.clone(),
+            rules,
+            bindings,
+        }
+    }
+
     /// Get all permissions for frontend UI rendering
     pub fn get_permissions(&self, user_groups: &[String]) -> UserPermissions {
         UserPermissions {
@@ -175,6 +212,31 @@ pub struct UserPermissions {
     pub can_admin: bool,
     pub can_delete_reports: bool,
     pub can_manage_tokens: bool,
+}
+
+/// A single effective policy rule for frontend display
+#[derive(Debug, Clone, Serialize)]
+pub struct EffectivePolicyRule {
+    pub subject: String,
+    pub resource: String,
+    pub action: String,
+    pub effect: String,
+}
+
+/// A group-to-role binding for frontend display
+#[derive(Debug, Clone, Serialize)]
+pub struct EffectiveGroupBinding {
+    pub group: String,
+    pub role: String,
+}
+
+/// Resolved RBAC policy for a user
+#[derive(Debug, Clone, Serialize)]
+pub struct EffectivePolicy {
+    pub resolved_roles: Vec<String>,
+    pub default_policy: String,
+    pub rules: Vec<EffectivePolicyRule>,
+    pub bindings: Vec<EffectiveGroupBinding>,
 }
 
 /// Wildcard matching: "*" matches anything, otherwise exact match
@@ -393,6 +455,141 @@ p, role:test, reports, get, allow
     }
 
     // resolve_endpoint tests
+    // ───── get_effective_policy tests ─────
+
+    #[test]
+    fn test_effective_policy_admin() {
+        let policy = test_policy();
+        let groups = vec!["platform-team".to_string()];
+        let ep = policy.get_effective_policy(&groups);
+
+        assert_eq!(ep.resolved_roles, vec!["role:admin"]);
+        assert_eq!(ep.bindings.len(), 1);
+        assert_eq!(ep.bindings[0].group, "platform-team");
+        assert_eq!(ep.bindings[0].role, "role:admin");
+        // Only the wildcard admin rule should match
+        assert_eq!(ep.rules.len(), 1);
+        assert_eq!(ep.rules[0].subject, "role:admin");
+        assert_eq!(ep.rules[0].resource, "*");
+        assert_eq!(ep.rules[0].action, "*");
+        assert_eq!(ep.rules[0].effect, "allow");
+    }
+
+    #[test]
+    fn test_effective_policy_readonly() {
+        let policy = test_policy();
+        let groups = vec!["security-team".to_string()];
+        let ep = policy.get_effective_policy(&groups);
+
+        assert_eq!(ep.resolved_roles, vec!["role:readonly"]);
+        assert_eq!(ep.bindings.len(), 1);
+        assert_eq!(ep.bindings[0].group, "security-team");
+        assert_eq!(ep.bindings[0].role, "role:readonly");
+        // 5 readonly rules
+        assert_eq!(ep.rules.len(), 5);
+        assert!(ep.rules.iter().all(|r| r.subject == "role:readonly"));
+        assert!(ep.rules.iter().all(|r| r.effect == "allow"));
+    }
+
+    #[test]
+    fn test_effective_policy_default_fallback() {
+        let policy = test_policy();
+        let groups = vec!["unknown-team".to_string()];
+        let ep = policy.get_effective_policy(&groups);
+
+        // Falls back to default_policy "role:readonly"
+        assert_eq!(ep.resolved_roles, vec!["role:readonly"]);
+        // No matching group bindings
+        assert!(ep.bindings.is_empty());
+        // Still gets readonly rules via default role
+        assert_eq!(ep.rules.len(), 5);
+    }
+
+    #[test]
+    fn test_effective_policy_empty_groups() {
+        let policy = test_policy();
+        let groups: Vec<String> = vec![];
+        let ep = policy.get_effective_policy(&groups);
+
+        assert_eq!(ep.resolved_roles, vec!["role:readonly"]);
+        assert!(ep.bindings.is_empty());
+        assert_eq!(ep.rules.len(), 5);
+    }
+
+    #[test]
+    fn test_effective_policy_no_default_no_match() {
+        let csv = r#"
+p, role:admin, *, *, allow
+g, platform-team, role:admin
+"#;
+        let policy = RbacPolicy::from_csv(csv, "").unwrap();
+        let groups = vec!["unknown-team".to_string()];
+        let ep = policy.get_effective_policy(&groups);
+
+        assert!(ep.resolved_roles.is_empty());
+        assert!(ep.bindings.is_empty());
+        assert!(ep.rules.is_empty());
+    }
+
+    #[test]
+    fn test_effective_policy_deny_effect() {
+        let csv = r#"
+p, role:mixed, reports, delete, deny
+p, role:mixed, reports, get, allow
+g, test-team, role:mixed
+"#;
+        let policy = RbacPolicy::from_csv(csv, "").unwrap();
+        let groups = vec!["test-team".to_string()];
+        let ep = policy.get_effective_policy(&groups);
+
+        assert_eq!(ep.resolved_roles, vec!["role:mixed"]);
+        assert_eq!(ep.rules.len(), 2);
+        let deny_rule = ep.rules.iter().find(|r| r.action == "delete").unwrap();
+        assert_eq!(deny_rule.effect, "deny");
+        let allow_rule = ep.rules.iter().find(|r| r.action == "get").unwrap();
+        assert_eq!(allow_rule.effect, "allow");
+    }
+
+    #[test]
+    fn test_effective_policy_multiple_groups() {
+        let csv = r#"
+p, role:viewer, reports, get, allow
+p, role:editor, reports, update, allow
+g, viewers, role:viewer
+g, editors, role:editor
+"#;
+        let policy = RbacPolicy::from_csv(csv, "").unwrap();
+        let groups = vec!["viewers".to_string(), "editors".to_string()];
+        let ep = policy.get_effective_policy(&groups);
+
+        assert_eq!(ep.resolved_roles.len(), 2);
+        assert!(ep.resolved_roles.contains(&"role:viewer".to_string()));
+        assert!(ep.resolved_roles.contains(&"role:editor".to_string()));
+        assert_eq!(ep.bindings.len(), 2);
+        assert_eq!(ep.rules.len(), 2);
+    }
+
+    #[test]
+    fn test_effective_policy_duplicate_role_binding() {
+        let csv = r#"
+p, role:readonly, reports, get, allow
+g, team-a, role:readonly
+g, team-b, role:readonly
+"#;
+        let policy = RbacPolicy::from_csv(csv, "").unwrap();
+        let groups = vec!["team-a".to_string(), "team-b".to_string()];
+        let ep = policy.get_effective_policy(&groups);
+
+        // resolve_roles deduplicates
+        assert_eq!(ep.resolved_roles, vec!["role:readonly"]);
+        // Both bindings still shown
+        assert_eq!(ep.bindings.len(), 2);
+        // Rules not duplicated
+        assert_eq!(ep.rules.len(), 1);
+    }
+
+    // ───── resolve_endpoint tests ─────
+
     #[test]
     fn test_resolve_get_reports() {
         assert_eq!(

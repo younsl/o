@@ -203,6 +203,14 @@ pub async fn callback(
 }
 
 /// GET /auth/logout — Clear session and redirect to login
+#[utoipa::path(
+    get,
+    path = "/auth/logout",
+    tag = "Auth",
+    responses(
+        (status = 302, description = "Redirect to login page"),
+    )
+)]
 pub async fn logout(cookie_jar: PrivateCookieJar) -> impl IntoResponse {
     let remove_session = Cookie::build((SESSION_COOKIE_NAME, ""))
         .path("/")
@@ -320,7 +328,7 @@ pub async fn auth_error(Query(query): Query<ErrorQuery>) -> impl IntoResponse {
 
 // ───── Token Management Handlers ─────
 
-#[derive(Deserialize)]
+#[derive(Deserialize, utoipa::ToSchema)]
 pub struct CreateTokenRequest {
     pub name: String,
     /// Optional description for the token
@@ -342,6 +350,15 @@ fn extract_user_sub(cookie_jar: &PrivateCookieJar) -> Option<String> {
 }
 
 /// GET /api/v1/auth/tokens — List current user's API tokens
+#[utoipa::path(
+    get,
+    path = "/api/v1/auth/tokens",
+    tag = "Auth",
+    responses(
+        (status = 200, description = "List of user's API tokens"),
+        (status = 401, description = "Authentication required"),
+    )
+)]
 pub async fn list_tokens(
     State(state): State<AppState>,
     cookie_jar: PrivateCookieJar,
@@ -371,6 +388,17 @@ pub async fn list_tokens(
 }
 
 /// POST /api/v1/auth/tokens — Create a new API token
+#[utoipa::path(
+    post,
+    path = "/api/v1/auth/tokens",
+    tag = "Auth",
+    responses(
+        (status = 200, description = "Token created successfully"),
+        (status = 400, description = "Invalid request"),
+        (status = 401, description = "Authentication required"),
+        (status = 409, description = "Token name already exists"),
+    )
+)]
 pub async fn create_token(
     State(state): State<AppState>,
     cookie_jar: PrivateCookieJar,
@@ -460,6 +488,19 @@ pub async fn create_token(
 }
 
 /// DELETE /api/v1/auth/tokens/{id} — Delete one of the current user's tokens
+#[utoipa::path(
+    delete,
+    path = "/api/v1/auth/tokens/{id}",
+    tag = "Auth",
+    params(
+        ("id" = i64, Path, description = "Token ID to delete"),
+    ),
+    responses(
+        (status = 204, description = "Token deleted"),
+        (status = 401, description = "Authentication required"),
+        (status = 404, description = "Token not found"),
+    )
+)]
 pub async fn delete_token(
     State(state): State<AppState>,
     cookie_jar: PrivateCookieJar,
@@ -498,6 +539,14 @@ pub async fn delete_token(
 }
 
 /// GET /api/v1/auth/me — Return current user info
+#[utoipa::path(
+    get,
+    path = "/api/v1/auth/me",
+    tag = "Auth",
+    responses(
+        (status = 200, description = "Current user info and permissions"),
+    )
+)]
 pub async fn auth_me(
     State(state): State<AppState>,
     cookie_jar: PrivateCookieJar,
@@ -506,6 +555,7 @@ pub async fn auth_me(
 
     // If auth is disabled, return anonymous status with full permissions
     if auth_mode == "none" {
+        let policies = state.rbac.get_effective_policy(&[]);
         return axum::Json(serde_json::json!({
             "authenticated": false,
             "auth_mode": "none",
@@ -513,7 +563,8 @@ pub async fn auth_me(
                 "can_admin": true,
                 "can_delete_reports": true,
                 "can_manage_tokens": true,
-            }
+            },
+            "policies": policies,
         }))
         .into_response();
     }
@@ -524,6 +575,7 @@ pub async fn auth_me(
         && !session.is_expired()
     {
         let permissions = state.rbac.get_permissions(&session.groups);
+        let policies = state.rbac.get_effective_policy(&session.groups);
         return axum::Json(serde_json::json!({
             "authenticated": true,
             "auth_mode": "keycloak",
@@ -535,6 +587,7 @@ pub async fn auth_me(
                 "groups": session.groups,
             },
             "permissions": permissions,
+            "policies": policies,
         }))
         .into_response();
     }

@@ -1,6 +1,6 @@
 import { createContext, useContext, useEffect, useState } from 'react'
 import type { ReactNode } from 'react'
-import type { AuthPermissions, AuthStatus, AuthUser } from '../types'
+import type { AuthPermissions, AuthStatus, AuthUser, EffectivePolicy } from '../types'
 import { getAuthStatus, redirectToLogin } from '../auth'
 
 interface AuthContextValue {
@@ -8,6 +8,7 @@ interface AuthContextValue {
   authenticated: boolean
   user: AuthUser | null
   permissions: AuthPermissions | null
+  policies: EffectivePolicy | null
   loading: boolean
   loginAt: string | null
 }
@@ -17,6 +18,7 @@ const AuthContext = createContext<AuthContextValue>({
   authenticated: false,
   user: null,
   permissions: null,
+  policies: null,
   loading: true,
   loginAt: null,
 })
@@ -54,6 +56,7 @@ export function AuthProvider({ children }: AuthProviderProps) {
     authenticated: status?.authenticated ?? false,
     user: status?.user ?? null,
     permissions: status?.permissions ?? null,
+    policies: status?.policies ?? null,
     loading,
     loginAt,
   }

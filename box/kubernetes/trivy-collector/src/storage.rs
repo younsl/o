@@ -22,6 +22,6 @@ mod tokens;
 pub use dashboard::{TrendDataPoint, TrendMeta, TrendResponse};
 pub use database::Database;
 pub use models::{
-    ApiLogEntry, ApiLogQuery, ApiLogStats, ClusterInfo, ComponentSearchResult, FullReport,
-    QueryParams, ReportMeta, Stats, TokenInfo, VulnSearchResult, VulnSummary,
+    ApiLogEntry, ApiLogQuery, ApiLogStats, CleanupHistoryEntry, ClusterInfo, ComponentSearchResult,
+    FullReport, QueryParams, ReportMeta, Stats, TokenInfo, VulnSearchResult, VulnSummary,
 };

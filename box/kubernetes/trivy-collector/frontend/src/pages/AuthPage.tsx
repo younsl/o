@@ -21,7 +21,7 @@ function isExpired(expiresAt: string): boolean {
 }
 
 export default function AuthPage() {
-  const { authMode, authenticated, user, loginAt } = useAuth()
+  const { authMode, authenticated, user, loginAt, policies } = useAuth()
   const [tokens, setTokens] = useState<TokenInfo[]>([])
   const [showCreateModal, setShowCreateModal] = useState(false)
   const [tokenName, setTokenName] = useState('')
@@ -72,22 +72,16 @@ export default function AuthPage() {
     return () => document.removeEventListener('mousedown', handleClickOutside)
   }, [])
 
-  if (authMode !== 'keycloak') {
-    return (
-      <div className={styles.container}>
-        <div className={styles.noAuth}>
-          Authentication is not enabled. Set <code>AUTH_MODE=keycloak</code> to use this page.
-        </div>
-      </div>
-    )
-  }
-
-  if (!authenticated || !user) {
-    return (
-      <div className={styles.container}>
-        <div className={styles.noAuth}>Loading user info...</div>
-      </div>
-    )
+  const ruleDescription = (resource: string, action: string): string => {
+    if (resource === '*' && action === '*') return 'Full access to all resources'
+    const descriptions: Record<string, Record<string, string>> = {
+      reports: { get: 'View vulnerability and SBOM reports', delete: 'Delete reports', update: 'Edit report notes' },
+      clusters: { get: 'View cluster list' },
+      stats: { get: 'View dashboard and statistics' },
+      tokens: { get: 'View API tokens', create: 'Create API tokens', delete: 'Delete API tokens' },
+      admin: { get: 'Access admin console', delete: 'Admin delete operations' },
+    }
+    return descriptions[resource]?.[action] ?? `${action} ${resource}`
   }
 
   const handleCreate = async () => {
@@ -141,111 +135,186 @@ export default function AuthPage() {
   return (
     <div className={styles.container}>
       {/* User Info Section */}
-      <div className={styles.section}>
-        <h3 className={styles.sectionTitle}>User Information</h3>
-        <div className={styles.infoGrid}>
-          <span className={styles.infoLabel}>Subject ID</span>
-          <span className={`${styles.infoValue} ${styles.mono}`}>{user.sub}</span>
+      {authenticated && user && (
+        <div className={styles.section}>
+          <h3 className={styles.sectionTitle}>User Information</h3>
+          <div className={styles.infoGrid}>
+            <span className={styles.infoLabel}>Subject ID</span>
+            <span className={`${styles.infoValue} ${styles.mono}`}>{user.sub}</span>
 
-          {user.name && (
-            <>
-              <span className={styles.infoLabel}>Name</span>
-              <span className={styles.infoValue}>{user.name}</span>
-            </>
-          )}
+            {user.name && (
+              <>
+                <span className={styles.infoLabel}>Name</span>
+                <span className={styles.infoValue}>{user.name}</span>
+              </>
+            )}
 
-          {user.email && (
-            <>
-              <span className={styles.infoLabel}>Email</span>
-              <span className={styles.infoValue}>{user.email}</span>
-            </>
-          )}
+            {user.email && (
+              <>
+                <span className={styles.infoLabel}>Email</span>
+                <span className={styles.infoValue}>{user.email}</span>
+              </>
+            )}
 
-          {user.preferred_username && (
-            <>
-              <span className={styles.infoLabel}>Username</span>
-              <span className={styles.infoValue}>{user.preferred_username}</span>
-            </>
-          )}
+            {user.preferred_username && (
+              <>
+                <span className={styles.infoLabel}>Username</span>
+                <span className={styles.infoValue}>{user.preferred_username}</span>
+              </>
+            )}
 
-          <span className={styles.infoLabel}>Groups</span>
-          <span className={`${styles.infoValue}${user.groups.length === 0 ? ` ${styles.muted}` : ''}`}>
-            {user.groups.length > 0 ? user.groups.join(', ') : 'No groups assigned'}
-          </span>
+            <span className={styles.infoLabel}>Groups</span>
+            <span className={`${styles.infoValue}${user.groups.length === 0 ? ` ${styles.muted}` : ''}`}>
+              {user.groups.length > 0 ? user.groups.join(', ') : 'No groups assigned'}
+            </span>
 
-          {loginAt && (
-            <>
-              <span className={styles.infoLabel}>Session Started</span>
-              <span className={styles.infoValue}>{formatDate(loginAt)}</span>
-            </>
+            {loginAt && (
+              <>
+                <span className={styles.infoLabel}>Session Started</span>
+                <span className={styles.infoValue}>{formatDate(loginAt)}</span>
+              </>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* RBAC Policy Section */}
+      {policies && (
+        <div className={styles.section}>
+          <h3 className={styles.sectionTitle}>RBAC Policy</h3>
+          <p className={styles.sectionDesc}>
+            Roles and permissions resolved from your group memberships based on the server's RBAC policy configuration.
+          </p>
+
+          <div className={styles.policySubSection}>
+            <h4 className={styles.policySubTitle}>Group Bindings</h4>
+            {policies.bindings.length > 0 ? (
+              <table className={styles.policyTable}>
+                <thead>
+                  <tr>
+                    <th>Group</th>
+                    <th>Role</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {policies.bindings.map((b, i) => (
+                    <tr key={i}>
+                      <td>{b.group}</td>
+                      <td className={styles.mono}>{b.role}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            ) : (
+              <span className={styles.muted}>No group bindings configured</span>
+            )}
+          </div>
+
+          <div className={styles.policySubSection}>
+            <h4 className={styles.policySubTitle}>Policy Rules</h4>
+          </div>
+          {policies.rules.length > 0 ? (
+            <table className={styles.policyTable}>
+              <thead>
+                <tr>
+                  <th>Role</th>
+                  <th>Resource</th>
+                  <th>Action</th>
+                  <th>Effect</th>
+                  <th>Description</th>
+                </tr>
+              </thead>
+              <tbody>
+                {policies.rules.map((r, i) => (
+                  <tr key={i}>
+                    <td className={styles.mono}>
+                      {r.subject}
+                      {r.subject === policies.default_policy && <span className={styles.defaultTag}> (default)</span>}
+                    </td>
+                    <td className={styles.mono}>{r.resource}</td>
+                    <td className={styles.mono}>{r.action}</td>
+                    <td>
+                      <span className={r.effect === 'allow' ? styles.effectAllow : styles.effectDeny}>
+                        {r.effect}
+                      </span>
+                    </td>
+                    <td className={styles.ruleDesc}>{ruleDescription(r.resource, r.action)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          ) : (
+            <span className={styles.muted}>No roles assigned</span>
           )}
         </div>
-      </div>
+      )}
 
       {/* API Tokens Section */}
-      <div className={styles.section}>
-        <div className={styles.tokenHeader}>
-          <h3 className={styles.sectionTitle} style={{ marginBottom: 0 }}>API Tokens</h3>
-          <button
-            className={styles.createBtn}
-            onClick={() => setShowCreateModal(true)}
-            disabled={tokens.length >= 5}
-            title={tokens.length >= 5 ? 'Maximum 5 tokens per user' : undefined}
-          >
-            <i className="fa-solid fa-plus" /> Create Token ({tokens.length}/5)
-          </button>
-        </div>
-
-        {tokens.length > 0 ? (
-          <table className={styles.tokenTable}>
-            <thead>
-              <tr>
-                <th>Name</th>
-                <th>Prefix</th>
-                <th>Created</th>
-                <th>Expires</th>
-                <th>Last Used</th>
-                <th></th>
-              </tr>
-            </thead>
-            <tbody>
-              {tokens.map((t) => (
-                <tr key={t.id}>
-                  <td>
-                    <div>{t.name}</div>
-                    {t.description && (
-                      <div className={styles.tokenDesc}>{t.description}</div>
-                    )}
-                  </td>
-                  <td className={styles.tokenPrefix}>{t.token_prefix}...</td>
-                  <td>{formatDate(t.created_at)}</td>
-                  <td className={isExpired(t.expires_at) ? styles.expired : ''}>
-                    {formatDate(t.expires_at)}
-                    {isExpired(t.expires_at) && ' (expired)'}
-                  </td>
-                  <td>{t.last_used_at ? formatDate(t.last_used_at) : 'Never'}</td>
-                  <td>
-                    <button
-                      className={styles.deleteBtn}
-                      onClick={() => setDeleteTarget(t)}
-                      title="Delete token"
-                    >
-                      <i className="fa-solid fa-trash" />
-                    </button>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        ) : (
-          <div className={styles.emptyState}>
-            No API tokens yet. Create one to authenticate API requests.
+      {authenticated && (
+        <div className={styles.section}>
+          <div className={styles.tokenHeader}>
+            <h3 className={styles.sectionTitle} style={{ marginBottom: 0 }}>API Tokens</h3>
+            <button
+              className={styles.createBtn}
+              onClick={() => setShowCreateModal(true)}
+              disabled={tokens.length >= 5}
+              title={tokens.length >= 5 ? 'Maximum 5 tokens per user' : undefined}
+            >
+              <i className="fa-solid fa-plus" /> Create Token ({tokens.length}/5)
+            </button>
           </div>
-        )}
-      </div>
+
+          {tokens.length > 0 ? (
+            <table className={styles.tokenTable}>
+              <thead>
+                <tr>
+                  <th>Name</th>
+                  <th>Prefix</th>
+                  <th>Created</th>
+                  <th>Expires</th>
+                  <th>Last Used</th>
+                  <th></th>
+                </tr>
+              </thead>
+              <tbody>
+                {tokens.map((t) => (
+                  <tr key={t.id}>
+                    <td>
+                      <div>{t.name}</div>
+                      {t.description && (
+                        <div className={styles.tokenDesc}>{t.description}</div>
+                      )}
+                    </td>
+                    <td className={styles.tokenPrefix}>{t.token_prefix}...</td>
+                    <td>{formatDate(t.created_at)}</td>
+                    <td className={isExpired(t.expires_at) ? styles.expired : ''}>
+                      {formatDate(t.expires_at)}
+                      {isExpired(t.expires_at) && ' (expired)'}
+                    </td>
+                    <td>{t.last_used_at ? formatDate(t.last_used_at) : 'Never'}</td>
+                    <td>
+                      <button
+                        className={styles.deleteBtn}
+                        onClick={() => setDeleteTarget(t)}
+                        title="Delete token"
+                      >
+                        <i className="fa-solid fa-trash" />
+                      </button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          ) : (
+            <div className={styles.emptyState}>
+              No API tokens yet. Create one to authenticate API requests.
+            </div>
+          )}
+        </div>
+      )}
 
       {/* Delete Confirmation Modal */}
-      {deleteTarget && (
+      {authenticated && deleteTarget && (
         <div className={styles.overlay} onClick={closeDeleteModal}>
           <div className={styles.modal} onClick={(e) => e.stopPropagation()}>
             <h3 className={styles.modalTitle}>Delete Token</h3>
@@ -288,7 +357,7 @@ export default function AuthPage() {
       )}
 
       {/* Create Token Modal */}
-      {showCreateModal && (
+      {authenticated && showCreateModal && (
         <div className={styles.overlay} onClick={closeModal}>
           <div className={styles.modal} onClick={(e) => e.stopPropagation()}>
             <h3 className={styles.modalTitle}>

@@ -253,6 +253,16 @@ pub struct ApiLogQuery {
     pub offset: i64,
 }
 
+/// Cleanup history entry
+#[derive(Debug, Clone, serde::Serialize, utoipa::ToSchema)]
+pub struct CleanupHistoryEntry {
+    pub id: i64,
+    pub retention_days: u32,
+    pub deleted_count: i64,
+    pub triggered_by: String,
+    pub cleaned_at: String,
+}
+
 /// API log statistics
 #[derive(Debug, Clone, serde::Serialize)]
 pub struct ApiLogStats {
@@ -261,7 +271,8 @@ pub struct ApiLogStats {
     pub avg_duration_ms: f64,
     pub error_count: i64,
     pub unique_users: i64,
-    pub top_paths: Vec<(String, i64)>,
+    pub top_paths: Vec<(String, i64, i64)>,
+    pub last_cleanup: Option<CleanupHistoryEntry>,
 }
 
 #[cfg(test)]

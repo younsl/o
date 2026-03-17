@@ -26,6 +26,10 @@ export default function AdminPage() {
   const [statusMax, setStatusMax] = useState('')
   const [userFilter, setUserFilter] = useState('')
 
+  // New row highlight
+  const [newIds, setNewIds] = useState<Set<number>>(new Set())
+  const knownIdsRef = useRef<Set<number> | null>(null)
+
   // Popup state
   const [activePopup, setActivePopup] = useState<FilterKey | null>(null)
   const popupRef = useRef<HTMLDivElement>(null)
@@ -57,6 +61,15 @@ export default function AdminPage() {
         status_max: statusMax ? Number(statusMax) : undefined,
         user: userFilter || undefined,
       })
+      const incomingIds = new Set(res.items.map((l: ApiLogEntry) => l.id))
+      if (knownIdsRef.current) {
+        const fresh = new Set(res.items.filter((l: ApiLogEntry) => !knownIdsRef.current!.has(l.id)).map((l: ApiLogEntry) => l.id))
+        if (fresh.size > 0) {
+          setNewIds(fresh)
+          setTimeout(() => setNewIds(new Set()), 1500)
+        }
+      }
+      knownIdsRef.current = incomingIds
       setLogs(res.items)
       setTotal(res.total)
     } catch {
@@ -126,12 +139,6 @@ export default function AdminPage() {
     return styles.status5xx
   }
 
-  const statusLabel = () => {
-    if (statusMin && statusMax) return `${statusMin}-${statusMax}`
-    if (statusMin) return `>=${statusMin}`
-    if (statusMax) return `<=${statusMax}`
-    return ''
-  }
 
   // ─── Popup position ───
 
@@ -184,100 +191,36 @@ export default function AdminPage() {
         </div>
       )}
 
+      {/* Cleanup info */}
+      {stats && (
+        <div className={styles.cleanupInfo}>
+          <div className={styles.cleanupRow}>
+            <span className={styles.cleanupLabel}>Last Cleanup</span>
+            <span className={styles.cleanupValue}>
+              {stats.last_cleanup
+                ? `${formatDate(stats.last_cleanup.cleaned_at)} by ${stats.last_cleanup.triggered_by} — ${stats.last_cleanup.deleted_count.toLocaleString()} logs deleted`
+                : 'No cleanup history'}
+            </span>
+          </div>
+          {stats.last_cleanup && stats.last_cleanup.triggered_by === 'system' && (
+            <div className={styles.cleanupRow}>
+              <span className={styles.cleanupLabel}>Next Cleanup</span>
+              <span className={styles.cleanupValue}>
+                {(() => {
+                  const last = new Date(stats.last_cleanup.cleaned_at)
+                  const next = new Date(last.getTime() + 6 * 3600 * 1000)
+                  return `${formatDate(next.toISOString())} (system, every 6h)`
+                })()}
+              </span>
+            </div>
+          )}
+        </div>
+      )}
+
       {/* Log table card */}
       <div className={styles.tableCard}>
         {/* Toolbar */}
         <div className={styles.toolbar}>
-          <div className={styles.toolbarLeft}>
-            {/* Method chip */}
-            {method ? (
-              <button
-                className={styles.filterChipActive}
-                ref={(el) => { chipRefs.current.method = el }}
-                onClick={() => togglePopup('method')}
-              >
-                Method: <span className={styles.filterChipValue}>{method}</span>
-                <span className={styles.filterChipClear} onClick={(e) => { e.stopPropagation(); clearFilter('method') }}>
-                  <i className="fa-solid fa-xmark" />
-                </span>
-              </button>
-            ) : (
-              <button
-                className={styles.filterChip}
-                ref={(el) => { chipRefs.current.method = el }}
-                onClick={() => togglePopup('method')}
-              >
-                <i className="fa-solid fa-filter" /> Method
-              </button>
-            )}
-
-            {/* Path chip */}
-            {pathFilter ? (
-              <button
-                className={styles.filterChipActive}
-                ref={(el) => { chipRefs.current.path = el }}
-                onClick={() => togglePopup('path')}
-              >
-                Path: <span className={styles.filterChipValue}>{pathFilter}</span>
-                <span className={styles.filterChipClear} onClick={(e) => { e.stopPropagation(); clearFilter('path') }}>
-                  <i className="fa-solid fa-xmark" />
-                </span>
-              </button>
-            ) : (
-              <button
-                className={styles.filterChip}
-                ref={(el) => { chipRefs.current.path = el }}
-                onClick={() => togglePopup('path')}
-              >
-                <i className="fa-solid fa-filter" /> Path
-              </button>
-            )}
-
-            {/* Status chip */}
-            {(statusMin || statusMax) ? (
-              <button
-                className={styles.filterChipActive}
-                ref={(el) => { chipRefs.current.status = el }}
-                onClick={() => togglePopup('status')}
-              >
-                Status: <span className={styles.filterChipValue}>{statusLabel()}</span>
-                <span className={styles.filterChipClear} onClick={(e) => { e.stopPropagation(); clearFilter('status') }}>
-                  <i className="fa-solid fa-xmark" />
-                </span>
-              </button>
-            ) : (
-              <button
-                className={styles.filterChip}
-                ref={(el) => { chipRefs.current.status = el }}
-                onClick={() => togglePopup('status')}
-              >
-                <i className="fa-solid fa-filter" /> Status
-              </button>
-            )}
-
-            {/* User chip */}
-            {userFilter ? (
-              <button
-                className={styles.filterChipActive}
-                ref={(el) => { chipRefs.current.user = el }}
-                onClick={() => togglePopup('user')}
-              >
-                User: <span className={styles.filterChipValue}>{userFilter}</span>
-                <span className={styles.filterChipClear} onClick={(e) => { e.stopPropagation(); clearFilter('user') }}>
-                  <i className="fa-solid fa-xmark" />
-                </span>
-              </button>
-            ) : (
-              <button
-                className={styles.filterChip}
-                ref={(el) => { chipRefs.current.user = el }}
-                onClick={() => togglePopup('user')}
-              >
-                <i className="fa-solid fa-filter" /> User
-              </button>
-            )}
-          </div>
-
           <div className={styles.toolbarRight}>
             <label className={styles.autoRefresh}>
               <input
@@ -313,7 +256,7 @@ export default function AdminPage() {
             ref={popupRef}
             style={getPopupStyle('path')}
             title="Path"
-            placeholder="Path prefix (e.g. /api/v1/admin)"
+            placeholder="/api/v1/..."
             value={pathFilter}
             onApply={(v) => { setPathFilter(v); setOffset(0); setActivePopup(null) }}
             onClear={() => { clearFilter('path'); setActivePopup(null) }}
@@ -336,7 +279,7 @@ export default function AdminPage() {
             ref={popupRef}
             style={getPopupStyle('user')}
             title="User"
-            placeholder="Email or sub..."
+            placeholder="Email or username..."
             value={userFilter}
             onApply={(v) => { setUserFilter(v); setOffset(0); setActivePopup(null) }}
             onClear={() => { clearFilter('user'); setActivePopup(null) }}
@@ -353,17 +296,57 @@ export default function AdminPage() {
               <thead>
                 <tr>
                   <th>Timestamp</th>
-                  <th>Method</th>
-                  <th>Path</th>
-                  <th>Status</th>
+                  <th>
+                    Method
+                    <button
+                      className={method ? styles.filterBtnActive : styles.filterBtn}
+                      ref={(el) => { chipRefs.current.method = el }}
+                      onClick={() => togglePopup('method')}
+                      title="Filter by method"
+                    >
+                      <i className="fa-solid fa-filter" />
+                    </button>
+                  </th>
+                  <th>
+                    Path
+                    <button
+                      className={pathFilter ? styles.filterBtnActive : styles.filterBtn}
+                      ref={(el) => { chipRefs.current.path = el }}
+                      onClick={() => togglePopup('path')}
+                      title="Filter by path"
+                    >
+                      <i className="fa-solid fa-filter" />
+                    </button>
+                  </th>
+                  <th>
+                    Status
+                    <button
+                      className={(statusMin || statusMax) ? styles.filterBtnActive : styles.filterBtn}
+                      ref={(el) => { chipRefs.current.status = el }}
+                      onClick={() => togglePopup('status')}
+                      title="Filter by status code"
+                    >
+                      <i className="fa-solid fa-filter" />
+                    </button>
+                  </th>
                   <th>Duration</th>
-                  <th>User</th>
+                  <th>
+                    User
+                    <button
+                      className={userFilter ? styles.filterBtnActive : styles.filterBtn}
+                      ref={(el) => { chipRefs.current.user = el }}
+                      onClick={() => togglePopup('user')}
+                      title="Filter by user"
+                    >
+                      <i className="fa-solid fa-filter" />
+                    </button>
+                  </th>
                   <th>Remote</th>
                 </tr>
               </thead>
               <tbody>
                 {logs.map((log) => (
-                  <tr key={log.id}>
+                  <tr key={log.id} className={newIds.has(log.id) ? styles.rowNew : undefined}>
                     <td className={styles.mono}>{formatDate(log.created_at)}</td>
                     <td>
                       <span className={`${styles.methodBadge} ${methodClass(log.method)}`}>
@@ -420,13 +403,17 @@ export default function AdminPage() {
               <tr>
                 <th>Path</th>
                 <th>Requests</th>
+                <th>Error Rate</th>
               </tr>
             </thead>
             <tbody>
-              {stats.top_paths.map(([path, count]) => (
+              {stats.top_paths.map(([path, count, errors = 0]) => (
                 <tr key={path}>
                   <td className={styles.mono}>{path}</td>
                   <td className={styles.mono}>{count.toLocaleString()}</td>
+                  <td className={`${styles.mono}${errors > 0 ? ` ${styles.errorRate}` : ''}`}>
+                    {errors > 0 && count > 0 ? `${((errors / count) * 100).toFixed(1)}%` : '0%'}
+                  </td>
                 </tr>
               ))}
             </tbody>
