@@ -226,6 +226,44 @@ pub struct VulnSearchResult {
     pub updated_at: String,
 }
 
+/// API log entry
+#[derive(Debug, Clone, serde::Serialize)]
+pub struct ApiLogEntry {
+    pub id: Option<i64>,
+    pub method: String,
+    pub path: String,
+    pub status_code: u16,
+    pub duration_ms: u64,
+    pub user_sub: String,
+    pub user_email: String,
+    pub remote_addr: String,
+    pub user_agent: String,
+    pub created_at: String,
+}
+
+/// Query parameters for API log listing
+#[derive(Debug, Default)]
+pub struct ApiLogQuery {
+    pub method: Option<String>,
+    pub path_prefix: Option<String>,
+    pub status_min: Option<u16>,
+    pub status_max: Option<u16>,
+    pub user: Option<String>,
+    pub limit: i64,
+    pub offset: i64,
+}
+
+/// API log statistics
+#[derive(Debug, Clone, serde::Serialize)]
+pub struct ApiLogStats {
+    pub total_requests: i64,
+    pub requests_today: i64,
+    pub avg_duration_ms: f64,
+    pub error_count: i64,
+    pub unique_users: i64,
+    pub top_paths: Vec<(String, i64)>,
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

@@ -168,6 +168,20 @@ server:
   auth:
     # -- (string) Authentication mode: "none" (anonymous) or "keycloak" (OIDC)
     mode: "none"
+    # -- RBAC configuration (ArgoCD-style CSV policy)
+    rbac:
+      # -- (string) RBAC policy CSV (ArgoCD format)
+      # @default -- See values
+      policy: |
+        p, role:readonly, reports, get, allow
+        p, role:readonly, clusters, get, allow
+        p, role:readonly, stats, get, allow
+        p, role:readonly, tokens, get, allow
+        p, role:readonly, tokens, create, allow
+        p, role:admin, *, *, allow
+        g, admin, role:admin
+      # -- (string) Default RBAC policy for authenticated users without explicit group bindings
+      defaultPolicy: "role:readonly"
     # -- SSO configuration (only used when auth.mode is "keycloak")
     sso:
       # -- (string) OIDC issuer URL (e.g., https://keycloak.example.com/realms/trivy)

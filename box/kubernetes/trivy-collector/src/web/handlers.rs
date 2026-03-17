@@ -910,6 +910,13 @@ mod tests {
             config,
             runtime,
             auth: None,
+            rbac: Arc::new(
+                crate::auth::rbac::RbacPolicy::from_csv(
+                    crate::auth::rbac::RbacPolicy::default_csv(),
+                    "role:readonly",
+                )
+                .unwrap(),
+            ),
         }
     }
 

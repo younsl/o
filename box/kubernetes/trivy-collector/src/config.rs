@@ -152,6 +152,17 @@ pub struct Config {
     /// OIDC scopes (space-separated)
     #[arg(long, env = env::OIDC_SCOPES, default_value = "openid profile email groups")]
     pub oidc_scopes: String,
+
+    // ============================================
+    // RBAC settings (server mode only)
+    // ============================================
+    /// RBAC policy CSV (inline or file path)
+    #[arg(long, env = env::RBAC_POLICY_CSV, default_value = "")]
+    pub rbac_policy_csv: String,
+
+    /// Default RBAC policy (applied when no matching rules found)
+    #[arg(long, env = env::RBAC_DEFAULT_POLICY, default_value = "role:readonly")]
+    pub rbac_default_policy: String,
 }
 
 impl Config {
@@ -225,6 +236,8 @@ mod tests {
             oidc_client_secret: None,
             oidc_redirect_url: None,
             oidc_scopes: "openid profile email groups".to_string(),
+            rbac_policy_csv: String::new(),
+            rbac_default_policy: "role:readonly".to_string(),
         }
     }
 

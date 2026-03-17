@@ -18,7 +18,7 @@ export default function Header({
 }: HeaderProps) {
   const location = useLocation()
   const path = location.pathname
-  const { authMode, authenticated, user } = useAuth()
+  const { authMode, authenticated, user, permissions } = useAuth()
 
   const commitShort = version ? version.commit.substring(0, 7) : ''
 
@@ -78,6 +78,14 @@ export default function Header({
               className={`${styles.navButton}${path === '/auth' ? ` ${styles.active}` : ''}`}
             >
               <i className="fa-solid fa-key" /> Auth
+            </Link>
+          )}
+          {permissions?.can_admin && (
+            <Link
+              to="/admin"
+              className={`${styles.navButton}${path === '/admin' ? ` ${styles.active}` : ''}`}
+            >
+              <i className="fa-solid fa-shield-halved" /> Admin
             </Link>
           )}
         </nav>

@@ -107,6 +107,16 @@ spec:
                   name: {{ .Values.server.auth.sso.clientSecret.name }}
                   key: {{ .Values.server.auth.sso.clientSecret.key }}
               {{- end }}
+            - name: RBAC_POLICY_CSV
+              valueFrom:
+                configMapKeyRef:
+                  name: {{ include "trivy-collector.fullname" . }}-auth
+                  key: RBAC_POLICY_CSV
+            - name: RBAC_DEFAULT_POLICY
+              valueFrom:
+                configMapKeyRef:
+                  name: {{ include "trivy-collector.fullname" . }}-auth
+                  key: RBAC_DEFAULT_POLICY
             {{- end }}
             {{- end }}
           ports:

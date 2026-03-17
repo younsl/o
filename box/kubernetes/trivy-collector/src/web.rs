@@ -7,8 +7,12 @@
 //! - `state`: Application state and watcher status
 //! - `types`: Request and response types
 //! - `watcher`: Local Kubernetes watcher
+//! - `admin_handlers`: Admin API handlers
+//! - `logging_middleware`: API request logging
 
+mod admin_handlers;
 mod handlers;
+mod logging_middleware;
 mod state;
 mod types;
 mod watcher;
@@ -124,6 +128,7 @@ use tower_http::cors::{Any, CorsLayer};
 use tracing::{error, info, warn};
 
 use crate::auth;
+use crate::auth::rbac::RbacPolicy;
 use crate::config::Config;
 use crate::health::HealthServer;
 use crate::storage::Database;
@@ -239,12 +244,43 @@ pub async fn run(
         None
     };
 
+    // Initialize RBAC policy
+    let rbac_csv = if config.rbac_policy_csv.is_empty() {
+        RbacPolicy::default_csv().to_string()
+    } else if std::path::Path::new(&config.rbac_policy_csv).exists() {
+        std::fs::read_to_string(&config.rbac_policy_csv)
+            .unwrap_or_else(|e| {
+                warn!(error = %e, path = %config.rbac_policy_csv, "Failed to read RBAC policy file, using default");
+                RbacPolicy::default_csv().to_string()
+            })
+    } else {
+        config.rbac_policy_csv.clone()
+    };
+
+    let rbac = match RbacPolicy::from_csv(&rbac_csv, &config.rbac_default_policy) {
+        Ok(policy) => {
+            info!(
+                default_policy = %config.rbac_default_policy,
+                "RBAC policy loaded"
+            );
+            Arc::new(policy)
+        }
+        Err(e) => {
+            error!(error = %e, "Failed to parse RBAC policy, using permissive default");
+            Arc::new(
+                RbacPolicy::from_csv(RbacPolicy::default_csv(), &config.rbac_default_policy)
+                    .expect("default policy must parse"),
+            )
+        }
+    };
+
     let state = AppState {
-        db,
+        db: db.clone(),
         watcher_status,
         config: config_info,
         runtime: runtime_info,
         auth: auth_state,
+        rbac,
     };
 
     // Configure CORS
@@ -263,6 +299,31 @@ pub async fn run(
 
     // Mark as ready
     health_server.set_ready(true);
+
+    // Start background log cleanup task (every 6 hours, retain 7 days)
+    let db_cleanup = db.clone();
+    let mut shutdown_cleanup = shutdown.clone();
+    tokio::spawn(async move {
+        let mut interval = tokio::time::interval(std::time::Duration::from_secs(6 * 3600));
+        loop {
+            tokio::select! {
+                _ = interval.tick() => {
+                    match db_cleanup.cleanup_old_api_logs(7) {
+                        Ok(deleted) if deleted > 0 => {
+                            info!(deleted = deleted, "Background API log cleanup completed");
+                        }
+                        Ok(_) => {}
+                        Err(e) => {
+                            warn!(error = %e, "Background API log cleanup failed");
+                        }
+                    }
+                }
+                _ = shutdown_cleanup.changed() => {
+                    break;
+                }
+            }
+        }
+    });
 
     // Run server with graceful shutdown (with ConnectInfo for remote addr logging)
     axum::serve(
@@ -366,23 +427,45 @@ fn build_router(state: AppState, auth_mode: auth::AuthMode) -> Router {
             "/api/v1/auth/tokens/{id}",
             delete(auth::handlers::delete_token),
         )
+        // Admin routes
+        .route(
+            "/api/v1/admin/logs",
+            get(admin_handlers::list_api_logs).delete(admin_handlers::cleanup_api_logs),
+        )
+        .route(
+            "/api/v1/admin/logs/stats",
+            get(admin_handlers::get_api_log_stats),
+        )
+        .route("/api/v1/admin/info", get(admin_handlers::admin_info))
         .route("/", get(serve_index))
         .fallback(get(serve_index));
 
     // Apply auth middleware only when keycloak is enabled
+    // Middleware order: require_auth (outermost) -> require_rbac (inner)
+    // Axum layers execute outer-to-inner, so add RBAC first, then auth
     let protected_routes = if auth_mode == auth::AuthMode::Keycloak {
-        protected_routes.layer(axum_middleware::from_fn_with_state(
-            state.clone(),
-            auth::middleware::require_auth,
-        ))
+        protected_routes
+            .layer(axum_middleware::from_fn_with_state(
+                state.clone(),
+                auth::middleware::require_rbac,
+            ))
+            .layer(axum_middleware::from_fn_with_state(
+                state.clone(),
+                auth::middleware::require_auth,
+            ))
     } else {
         protected_routes
     };
 
+    // Logging middleware applies to all routes (outer layer)
     Router::new()
         .merge(public_routes)
         .merge(auth_routes)
         .merge(protected_routes)
+        .layer(axum_middleware::from_fn_with_state(
+            state.clone(),
+            logging_middleware::api_request_logger,
+        ))
         .with_state(state)
 }
 

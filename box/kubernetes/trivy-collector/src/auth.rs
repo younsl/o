@@ -8,6 +8,7 @@ pub mod config;
 pub mod handlers;
 pub mod middleware;
 pub mod oidc;
+pub mod rbac;
 pub mod session;
 
 use serde::{Deserialize, Serialize};

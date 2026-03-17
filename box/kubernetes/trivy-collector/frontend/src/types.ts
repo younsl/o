@@ -168,10 +168,39 @@ export interface AuthUser {
   groups: string[]
 }
 
+export interface AuthPermissions {
+  can_admin: boolean
+  can_delete_reports: boolean
+  can_manage_tokens: boolean
+}
+
 export interface AuthStatus {
   authenticated: boolean
   auth_mode: string
   user?: AuthUser
+  permissions?: AuthPermissions
+}
+
+export interface ApiLogEntry {
+  id: number
+  method: string
+  path: string
+  status_code: number
+  duration_ms: number
+  user_sub: string
+  user_email: string
+  remote_addr: string
+  user_agent: string
+  created_at: string
+}
+
+export interface ApiLogStats {
+  total_requests: number
+  requests_today: number
+  avg_duration_ms: number
+  error_count: number
+  unique_users: number
+  top_paths: [string, number][]
 }
 
 

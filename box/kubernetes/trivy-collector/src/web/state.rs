@@ -5,6 +5,7 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::Instant;
 
 use crate::auth::AuthState;
+use crate::auth::rbac::RbacPolicy;
 use crate::config::Config;
 use crate::storage::Database;
 
@@ -135,6 +136,8 @@ pub struct AppState {
     pub runtime: Arc<RuntimeInfo>,
     /// Authentication state (None when auth_mode == "none")
     pub auth: Option<Arc<AuthState>>,
+    /// RBAC policy engine
+    pub rbac: Arc<RbacPolicy>,
 }
 
 /// Allow axum-extra PrivateCookieJar to extract the cookie Key from AppState

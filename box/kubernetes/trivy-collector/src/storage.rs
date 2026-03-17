@@ -9,6 +9,7 @@
 //! - `operations`: CRUD and query operations
 //! - `extractors`: JSON metadata extraction helpers
 
+mod api_logs;
 mod dashboard;
 mod database;
 mod extractors;
@@ -21,6 +22,6 @@ mod tokens;
 pub use dashboard::{TrendDataPoint, TrendMeta, TrendResponse};
 pub use database::Database;
 pub use models::{
-    ClusterInfo, ComponentSearchResult, FullReport, QueryParams, ReportMeta, Stats, TokenInfo,
-    VulnSearchResult, VulnSummary,
+    ApiLogEntry, ApiLogQuery, ApiLogStats, ClusterInfo, ComponentSearchResult, FullReport,
+    QueryParams, ReportMeta, Stats, TokenInfo, VulnSearchResult, VulnSummary,
 };

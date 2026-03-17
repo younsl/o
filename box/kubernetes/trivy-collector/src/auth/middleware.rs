@@ -19,10 +19,12 @@ use crate::web::AppState;
 /// 1. Session cookie (`trivy_session`) — for browser sessions
 /// 2. `Authorization: Bearer <token>` header — for API clients
 /// 3. If neither: redirect browsers to login, return 401 for API requests
+///
+/// On success, inserts `AuthSession` into request extensions for downstream use.
 pub async fn require_auth(
     State(state): State<AppState>,
     cookie_jar: PrivateCookieJar,
-    request: Request<Body>,
+    mut request: Request<Body>,
     next: Next,
 ) -> Response {
     let auth_state = match &state.auth {
@@ -37,6 +39,7 @@ pub async fn require_auth(
     {
         if !session.is_expired() {
             debug!(sub = %session.sub, "Authenticated via session cookie");
+            request.extensions_mut().insert(session);
             return next.run(request).await;
         }
         debug!("Session cookie expired");
@@ -52,6 +55,16 @@ pub async fn require_auth(
             match state.db.validate_token(token) {
                 Ok(Some(user_sub)) => {
                     debug!(user_sub = %user_sub, "Authenticated via API token");
+                    // Create a minimal session for RBAC
+                    let session = AuthSession {
+                        sub: user_sub,
+                        email: None,
+                        name: None,
+                        preferred_username: None,
+                        groups: vec![],
+                        expires_at: i64::MAX,
+                    };
+                    request.extensions_mut().insert(session);
                     return next.run(request).await;
                 }
                 Ok(None) => {
@@ -64,8 +77,9 @@ pub async fn require_auth(
         } else {
             // External JWT (Keycloak JWKS validation)
             match validate_bearer_token(token, auth_state).await {
-                Ok(()) => {
+                Ok(session) => {
                     debug!("Authenticated via Bearer token");
+                    request.extensions_mut().insert(session);
                     return next.run(request).await;
                 }
                 Err(e) => {
@@ -95,8 +109,56 @@ pub async fn require_auth(
     }
 }
 
+/// RBAC authorization middleware.
+/// Must run after `require_auth` which inserts `AuthSession` into extensions.
+pub async fn require_rbac(
+    State(state): State<AppState>,
+    request: Request<Body>,
+    next: Next,
+) -> Response {
+    let method = request.method().as_str().to_string();
+    let path = request.uri().path().to_string();
+
+    // Map endpoint to (resource, action)
+    let (resource, action) = match super::rbac::resolve_endpoint(&method, &path) {
+        Some(ra) => ra,
+        None => return next.run(request).await, // Unmapped endpoints pass through
+    };
+
+    // Extract user groups from AuthSession in extensions
+    let user_groups = request
+        .extensions()
+        .get::<AuthSession>()
+        .map(|s| s.groups.clone())
+        .unwrap_or_default();
+
+    // Evaluate RBAC policy
+    if !state.rbac.is_allowed(&user_groups, resource, action) {
+        debug!(
+            resource = resource,
+            action = action,
+            groups = ?user_groups,
+            "RBAC access denied"
+        );
+        return (
+            StatusCode::FORBIDDEN,
+            axum::Json(serde_json::json!({
+                "error": "Access denied",
+                "resource": resource,
+                "action": action,
+            })),
+        )
+            .into_response();
+    }
+
+    next.run(request).await
+}
+
 /// Validate a Bearer JWT token against the OIDC provider's JWKS
-async fn validate_bearer_token(token: &str, auth_state: &super::AuthState) -> Result<(), String> {
+async fn validate_bearer_token(
+    token: &str,
+    auth_state: &super::AuthState,
+) -> Result<AuthSession, String> {
     // Decode the JWT header to get the key ID
     let header =
         jsonwebtoken::decode_header(token).map_err(|e| format!("Invalid JWT header: {}", e))?;
@@ -134,8 +196,27 @@ async fn validate_bearer_token(token: &str, auth_state: &super::AuthState) -> Re
     validation.set_issuer(&[auth_state.oidc_client.issuer_url()]);
     validation.set_audience(&[auth_state.oidc_client.client_id()]);
 
-    jsonwebtoken::decode::<serde_json::Value>(token, &decoding_key, &validation)
+    let token_data = jsonwebtoken::decode::<serde_json::Value>(token, &decoding_key, &validation)
         .map_err(|e| format!("JWT validation failed: {}", e))?;
 
-    Ok(())
+    let claims = &token_data.claims;
+
+    // Build AuthSession from JWT claims
+    let session = AuthSession {
+        sub: claims["sub"].as_str().unwrap_or_default().to_string(),
+        email: claims["email"].as_str().map(String::from),
+        name: claims["name"].as_str().map(String::from),
+        preferred_username: claims["preferred_username"].as_str().map(String::from),
+        groups: claims["groups"]
+            .as_array()
+            .map(|arr| {
+                arr.iter()
+                    .filter_map(|v| v.as_str().map(String::from))
+                    .collect()
+            })
+            .unwrap_or_default(),
+        expires_at: claims["exp"].as_i64().unwrap_or(i64::MAX),
+    };
+
+    Ok(session)
 }

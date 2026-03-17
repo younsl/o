@@ -1,4 +1,6 @@
 import type {
+  ApiLogEntry,
+  ApiLogStats,
   ClusterInfo,
   ComponentSearchResult,
   ConfigResponse,
@@ -186,6 +188,57 @@ export function searchSbomComponents(
   if (limit !== undefined) params.append('limit', String(limit))
   if (offset !== undefined) params.append('offset', String(offset))
   return fetchApi(`/api/v1/sbomreports/components/search?${params}`)
+}
+
+// ───── Admin API ─────
+
+export interface AdminLogsParams {
+  method?: string
+  path?: string
+  status_min?: number
+  status_max?: number
+  user?: string
+  limit?: number
+  offset?: number
+}
+
+export function getApiLogs(
+  params: AdminLogsParams = {},
+): Promise<ListResponse<ApiLogEntry>> {
+  const search = new URLSearchParams()
+  if (params.method) search.append('method', params.method)
+  if (params.path) search.append('path', params.path)
+  if (params.status_min !== undefined)
+    search.append('status_min', String(params.status_min))
+  if (params.status_max !== undefined)
+    search.append('status_max', String(params.status_max))
+  if (params.user) search.append('user', params.user)
+  if (params.limit !== undefined) search.append('limit', String(params.limit))
+  if (params.offset !== undefined)
+    search.append('offset', String(params.offset))
+  return fetchApi(`/api/v1/admin/logs?${search}`)
+}
+
+export function getApiLogStats(): Promise<ApiLogStats> {
+  return fetchApi('/api/v1/admin/logs/stats')
+}
+
+export async function cleanupApiLogs(
+  retentionDays: number,
+): Promise<{ deleted: number; retention_days: number }> {
+  const response = await fetch(
+    `/api/v1/admin/logs?retention_days=${retentionDays}`,
+    { method: 'DELETE' },
+  )
+  if (response.status === 401) {
+    const returnTo = encodeURIComponent(window.location.pathname)
+    window.location.href = `/auth/login?return_to=${returnTo}`
+    return new Promise(() => {})
+  }
+  if (response.status === 403) {
+    throw new Error('Access denied')
+  }
+  return response.json()
 }
 
 export async function updateNotes(

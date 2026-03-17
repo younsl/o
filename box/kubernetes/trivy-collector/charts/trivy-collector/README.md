@@ -1,6 +1,6 @@
 # trivy-collector
 
-![Version: 0.8.0](https://img.shields.io/badge/Version-0.8.0-informational?style=flat-square) ![Type: application](https://img.shields.io/badge/Type-application-informational?style=flat-square) ![AppVersion: 1.5.0](https://img.shields.io/badge/AppVersion-1.5.0-informational?style=flat-square)
+![Version: 0.9.0](https://img.shields.io/badge/Version-0.9.0-informational?style=flat-square) ![Type: application](https://img.shields.io/badge/Type-application-informational?style=flat-square) ![AppVersion: 1.5.0](https://img.shields.io/badge/AppVersion-1.5.0-informational?style=flat-square)
 
 Multi-cluster Trivy report collector and viewer
 
@@ -39,7 +39,7 @@ helm install trivy-collector oci://ghcr.io/younsl/charts/trivy-collector -f valu
 Install a specific version:
 
 ```console
-helm install trivy-collector oci://ghcr.io/younsl/charts/trivy-collector --version 0.8.0
+helm install trivy-collector oci://ghcr.io/younsl/charts/trivy-collector --version 0.9.0
 ```
 
 ### Install from local chart
@@ -47,7 +47,7 @@ helm install trivy-collector oci://ghcr.io/younsl/charts/trivy-collector --versi
 Download trivy-collector chart and install from local directory:
 
 ```console
-helm pull oci://ghcr.io/younsl/charts/trivy-collector --untar --version 0.8.0
+helm pull oci://ghcr.io/younsl/charts/trivy-collector --untar --version 0.9.0
 helm install trivy-collector ./trivy-collector
 ```
 
@@ -107,7 +107,7 @@ The following table lists the configurable parameters and their default values.
 | collector.collectSbomReports | bool | `true` | Collect SbomReports |
 | collector.retryAttempts | int | `3` | Number of retry attempts on failure |
 | collector.retryDelaySecs | int | `5` | Delay between retries in seconds |
-| server | object | `{"auth":{"mode":"none","sso":{"clientId":{"key":"client-id","name":"","value":""},"clientSecret":{"key":"client-secret","name":"","value":""},"issuer":"","redirectUrl":"","scopes":["openid","profile","email","groups"]}},"gateway":{"enabled":false,"hostnames":["trivy.example.com"],"name":"","parentRefs":[{"group":"gateway.networking.k8s.io","kind":"Gateway","name":"main-gateway","namespace":"gateway-system","sectionName":"https"}],"rules":[{"backendRefs":[{"name":"","port":3000}],"filters":[],"matches":[{"path":{"type":"PathPrefix","value":"/"}}]}]},"ingress":{"annotations":{},"className":"","enabled":false,"hosts":[{"host":"trivy.example.com","paths":[{"path":"/","pathType":"Prefix"}]}],"tls":[]},"persistence":{"accessMode":"ReadWriteOnce","annotations":{},"enabled":true,"existingClaim":"","labels":{},"size":"1Gi","storageClass":""},"port":3000}` | Server mode configuration (for Central cluster) |
+| server | object | `{"auth":{"mode":"none","rbac":{"defaultPolicy":"role:readonly","policy":"p, role:readonly, reports, get, allow\np, role:readonly, clusters, get, allow\np, role:readonly, stats, get, allow\np, role:readonly, tokens, get, allow\np, role:readonly, tokens, create, allow\np, role:admin, *, *, allow\ng, admin, role:admin\n"},"sso":{"clientId":{"key":"client-id","name":"","value":""},"clientSecret":{"key":"client-secret","name":"","value":""},"issuer":"","redirectUrl":"","scopes":["openid","profile","email","groups"]}},"gateway":{"enabled":false,"hostnames":["trivy.example.com"],"name":"","parentRefs":[{"group":"gateway.networking.k8s.io","kind":"Gateway","name":"main-gateway","namespace":"gateway-system","sectionName":"https"}],"rules":[{"backendRefs":[{"name":"","port":3000}],"filters":[],"matches":[{"path":{"type":"PathPrefix","value":"/"}}]}]},"ingress":{"annotations":{},"className":"","enabled":false,"hosts":[{"host":"trivy.example.com","paths":[{"path":"/","pathType":"Prefix"}]}],"tls":[]},"persistence":{"accessMode":"ReadWriteOnce","annotations":{},"enabled":true,"existingClaim":"","labels":{},"size":"1Gi","storageClass":""},"port":3000}` | Server mode configuration (for Central cluster) |
 | server.port | int | `3000` | HTTP server port |
 | server.persistence | object | `{"accessMode":"ReadWriteOnce","annotations":{},"enabled":true,"existingClaim":"","labels":{},"size":"1Gi","storageClass":""}` | Persistent volume configuration |
 | server.persistence.enabled | bool | `true` | Enable persistent storage |
@@ -130,8 +130,11 @@ The following table lists the configurable parameters and their default values.
 | server.gateway.hostnames | list | `["trivy.example.com"]` | Hostnames for the route |
 | server.gateway.rules | list | `[{"backendRefs":[{"name":"","port":3000}],"filters":[],"matches":[{"path":{"type":"PathPrefix","value":"/"}}]}]` | HTTP route rules |
 | server.gateway.rules[0].filters | list | `[]` | HTTPRoute filters (RequestHeaderModifier, ResponseHeaderModifier, RequestRedirect, URLRewrite, RequestMirror, ExtensionRef) |
-| server.auth | object | `{"mode":"none","sso":{"clientId":{"key":"client-id","name":"","value":""},"clientSecret":{"key":"client-secret","name":"","value":""},"issuer":"","redirectUrl":"","scopes":["openid","profile","email","groups"]}}` | Authentication configuration (server mode only) |
+| server.auth | object | `{"mode":"none","rbac":{"defaultPolicy":"role:readonly","policy":"p, role:readonly, reports, get, allow\np, role:readonly, clusters, get, allow\np, role:readonly, stats, get, allow\np, role:readonly, tokens, get, allow\np, role:readonly, tokens, create, allow\np, role:admin, *, *, allow\ng, admin, role:admin\n"},"sso":{"clientId":{"key":"client-id","name":"","value":""},"clientSecret":{"key":"client-secret","name":"","value":""},"issuer":"","redirectUrl":"","scopes":["openid","profile","email","groups"]}}` | Authentication configuration (server mode only) |
 | server.auth.mode | string | `"none"` | Authentication mode: "none" (anonymous) or "keycloak" (OIDC) |
+| server.auth.rbac | object | `{"defaultPolicy":"role:readonly","policy":"p, role:readonly, reports, get, allow\np, role:readonly, clusters, get, allow\np, role:readonly, stats, get, allow\np, role:readonly, tokens, get, allow\np, role:readonly, tokens, create, allow\np, role:admin, *, *, allow\ng, admin, role:admin\n"}` | RBAC configuration (ArgoCD-style CSV policy) |
+| server.auth.rbac.policy | string | See values | RBAC policy CSV (ArgoCD format) |
+| server.auth.rbac.defaultPolicy | string | `"role:readonly"` | Default RBAC policy for authenticated users without explicit group bindings |
 | server.auth.sso | object | `{"clientId":{"key":"client-id","name":"","value":""},"clientSecret":{"key":"client-secret","name":"","value":""},"issuer":"","redirectUrl":"","scopes":["openid","profile","email","groups"]}` | SSO configuration (only used when auth.mode is "keycloak") |
 | server.auth.sso.issuer | string | `""` | OIDC issuer URL (e.g., https://keycloak.example.com/realms/trivy) |
 | server.auth.sso.clientId | object | `{"key":"client-id","name":"","value":""}` | OIDC client ID configuration |

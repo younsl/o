@@ -8,6 +8,8 @@ pub mod env {
     pub const OIDC_CLIENT_SECRET: &str = "OIDC_CLIENT_SECRET";
     pub const OIDC_REDIRECT_URL: &str = "OIDC_REDIRECT_URL";
     pub const OIDC_SCOPES: &str = "OIDC_SCOPES";
+    pub const RBAC_POLICY_CSV: &str = "RBAC_POLICY_CSV";
+    pub const RBAC_DEFAULT_POLICY: &str = "RBAC_DEFAULT_POLICY";
 }
 
 /// Default OIDC scopes

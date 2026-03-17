@@ -504,11 +504,16 @@ pub async fn auth_me(
 ) -> impl IntoResponse {
     let auth_mode = state.config.auth_mode.as_deref().unwrap_or("none");
 
-    // If auth is disabled, return anonymous status
+    // If auth is disabled, return anonymous status with full permissions
     if auth_mode == "none" {
         return axum::Json(serde_json::json!({
             "authenticated": false,
-            "auth_mode": "none"
+            "auth_mode": "none",
+            "permissions": {
+                "can_admin": true,
+                "can_delete_reports": true,
+                "can_manage_tokens": true,
+            }
         }))
         .into_response();
     }
@@ -518,6 +523,7 @@ pub async fn auth_me(
         && let Ok(session) = serde_json::from_str::<AuthSession>(cookie.value())
         && !session.is_expired()
     {
+        let permissions = state.rbac.get_permissions(&session.groups);
         return axum::Json(serde_json::json!({
             "authenticated": true,
             "auth_mode": "keycloak",
@@ -527,7 +533,8 @@ pub async fn auth_me(
                 "name": session.name,
                 "preferred_username": session.preferred_username,
                 "groups": session.groups,
-            }
+            },
+            "permissions": permissions,
         }))
         .into_response();
     }
