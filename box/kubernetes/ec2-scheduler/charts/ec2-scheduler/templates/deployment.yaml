@@ -27,6 +27,14 @@ spec:
           imagePullPolicy: {{ .Values.image.pullPolicy }}
           args:
             - --log-level={{ .Values.logLevel }}
+          {{- if .Values.slack.enabled }}
+          env:
+            - name: SLACK_WEBHOOK_URL
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "ec2-scheduler.fullname" . }}-slack
+                  key: webhook-url
+          {{- end }}
           ports:
             - name: health
               containerPort: 8080

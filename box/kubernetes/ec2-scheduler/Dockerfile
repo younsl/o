@@ -1,14 +1,12 @@
-# Runtime-only Dockerfile for cross-compiled binaries
+# Runtime-only Dockerfile for cross-compiled static binaries
 # Binaries are built via GitHub Actions cross-compilation (not QEMU emulation)
-FROM alpine:3.23
+FROM scratch
 
 ARG TARGETARCH
 
-RUN addgroup -S ec2-scheduler && adduser -S ec2-scheduler -G ec2-scheduler
+COPY ec2-scheduler-linux-${TARGETARCH} /ec2-scheduler
 
-COPY --chown=ec2-scheduler:ec2-scheduler ec2-scheduler-linux-${TARGETARCH} /usr/local/bin/ec2-scheduler
-
-USER ec2-scheduler:ec2-scheduler
+USER 65532:65532
 EXPOSE 8080
 
-ENTRYPOINT ["ec2-scheduler"]
+ENTRYPOINT ["/ec2-scheduler"]

@@ -84,6 +84,12 @@ tolerations: []
 # -- (object) Affinity rules for pod scheduling.
 affinity: {}
 
+slack:
+  # -- (bool) Whether to create a Slack webhook Secret and inject the URL into the operator.
+  enabled: false
+  # -- (string) Slack Incoming Webhook URL.
+  webhookUrl: ""
+
 # -- (list) EC2Schedule custom resources to create. Each entry creates an EC2Schedule CR that the operator will reconcile.
 ec2Schedules: []
   # ## Select by instance IDs

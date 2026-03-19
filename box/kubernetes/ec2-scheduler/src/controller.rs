@@ -11,6 +11,7 @@ use tracing::{error, info, warn};
 
 use crate::aws::AwsClients;
 use crate::crd::{EC2Schedule, ScheduleAction, SchedulePhase};
+use crate::notify::{self, SlackNotifier};
 use crate::scheduler::{self, ActionToExecute};
 use crate::status;
 use crate::telemetry::metrics::{
@@ -22,6 +23,8 @@ use crate::telemetry::metrics::{
 pub struct Context {
     pub kube_client: kube::Client,
     pub metrics: Arc<Metrics>,
+    /// Slack notifier. `None` when `SLACK_WEBHOOK_URL` is not set.
+    pub slack: Option<Arc<SlackNotifier>>,
 }
 
 /// Reconcile an `EC2Schedule` resource.
@@ -238,6 +241,17 @@ pub async fn reconcile(obj: Arc<EC2Schedule>, ctx: Arc<Context>) -> Result<Actio
                             ),
                         )
                         .await;
+
+                    // Slack notification
+                    if let Some(ref notifier) = ctx.slack {
+                        let msg = notify::build_action_message(
+                            name,
+                            &action_type,
+                            &spec.region,
+                            &described,
+                        );
+                        notifier.send(name, &msg).await;
+                    }
                 }
                 Err(e) => {
                     error!(
@@ -261,6 +275,19 @@ pub async fn reconcile(obj: Arc<EC2Schedule>, ctx: Arc<Context>) -> Result<Actio
                             ),
                         )
                         .await;
+
+                    // Slack notification
+                    if let Some(ref notifier) = ctx.slack {
+                        let msg = notify::build_failed_message(
+                            name,
+                            &action_type,
+                            &spec.region,
+                            &described,
+                            &e.to_string(),
+                        );
+                        notifier.send(name, &msg).await;
+                    }
+
                     new_status.message = Some(format!("Failed to {action_type} instances: {e}"));
                     new_status.observed_generation = generation;
                     let _ = status::patch_status(&api, name, &new_status).await;

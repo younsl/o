@@ -49,6 +49,9 @@ chrono-tz = "0.10"
 # Cron scheduling
 cron = "0.15"
 
+# HTTP client (Slack notifications)
+reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls"] }
+
 # Build info
 const_format = "0.2"
 
