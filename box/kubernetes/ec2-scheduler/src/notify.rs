@@ -103,15 +103,19 @@ mod tests {
             &instances,
         );
         assert_eq!(msg.header, "EC2 Instances Started");
-        assert!(msg.fields.iter().any(|(k, v)| k == "Action" && v == "Start"));
-        assert!(msg
-            .fields
-            .iter()
-            .any(|(k, v)| k == "Region" && v == "ap-northeast-2"));
-        assert!(msg
-            .fields
-            .iter()
-            .any(|(k, v)| k == "Instances" && v.contains("web-server/i-abc") && v.contains("i-def")));
+        assert!(
+            msg.fields
+                .iter()
+                .any(|(k, v)| k == "Action" && v == "Start")
+        );
+        assert!(
+            msg.fields
+                .iter()
+                .any(|(k, v)| k == "Region" && v == "ap-northeast-2")
+        );
+        assert!(msg.fields.iter().any(|(k, v)| k == "Instances"
+            && v.contains("web-server/i-abc")
+            && v.contains("i-def")));
         assert!(msg.context.contains("EC2Schedule/dev-instances"));
     }
 
@@ -139,10 +143,75 @@ mod tests {
             "AccessDenied",
         );
         assert_eq!(msg.header, "EC2 Stop Failed");
+        assert!(
+            msg.fields
+                .iter()
+                .any(|(k, v)| k == "Error" && v == "AccessDenied")
+        );
+        assert!(msg.context.contains("EC2Schedule/dev-instances"));
+    }
+
+    #[test]
+    fn test_build_failed_message_start() {
+        let msg = build_failed_message(
+            "test",
+            &ScheduleAction::Start,
+            "us-east-1",
+            &[],
+            "Throttling",
+        );
+        assert_eq!(msg.header, "EC2 Start Failed");
+    }
+
+    #[test]
+    fn test_build_action_message_empty_instances() {
+        let msg = build_action_message("test", &ScheduleAction::Start, "us-east-1", &[]);
         assert!(msg
             .fields
             .iter()
-            .any(|(k, v)| k == "Error" && v == "AccessDenied"));
-        assert!(msg.context.contains("EC2Schedule/dev-instances"));
+            .any(|(k, v)| k == "Instances" && v.starts_with("0")));
+    }
+
+    #[test]
+    fn test_build_action_message_single_instance() {
+        let instances = vec![ManagedInstance {
+            instance_id: "i-abc".to_string(),
+            name: Some("web".to_string()),
+            state: "running".to_string(),
+            last_transition_time: None,
+        }];
+        let msg = build_action_message("test", &ScheduleAction::Stop, "us-east-1", &instances);
+        assert!(msg
+            .fields
+            .iter()
+            .any(|(k, v)| k == "Instances" && v.contains("1 — web/i-abc")));
+    }
+
+    #[test]
+    fn test_build_action_message_all_without_name_tag() {
+        let instances = vec![
+            ManagedInstance {
+                instance_id: "i-aaa".to_string(),
+                name: None,
+                state: "running".to_string(),
+                last_transition_time: None,
+            },
+            ManagedInstance {
+                instance_id: "i-bbb".to_string(),
+                name: None,
+                state: "running".to_string(),
+                last_transition_time: None,
+            },
+        ];
+        let msg =
+            build_action_message("test", &ScheduleAction::Start, "us-east-1", &instances);
+        let inst_field = msg
+            .fields
+            .iter()
+            .find(|(k, _)| k == "Instances")
+            .unwrap();
+        assert!(inst_field.1.contains("i-aaa"));
+        assert!(inst_field.1.contains("i-bbb"));
+        assert!(!inst_field.1.contains('/'));
     }
 }

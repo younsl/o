@@ -197,4 +197,48 @@ mod tests {
         );
         assert!(status.conditions.iter().any(|c| c.r#type == "Ready"));
     }
+
+    #[test]
+    fn test_set_phase_paused() {
+        let mut status = EC2ScheduleStatus::default();
+        set_phase(&mut status, SchedulePhase::Paused);
+        assert_eq!(status.phase, Some(SchedulePhase::Paused));
+    }
+
+    #[test]
+    fn test_set_phase_preserves_other_fields() {
+        let mut status = EC2ScheduleStatus::default();
+        status.message = Some("existing message".to_string());
+        status.observed_generation = 5;
+        set_phase(&mut status, SchedulePhase::Active);
+        assert_eq!(status.phase, Some(SchedulePhase::Active));
+        assert_eq!(status.message.as_deref(), Some("existing message"));
+        assert_eq!(status.observed_generation, 5);
+    }
+
+    #[test]
+    fn test_set_phase_overwrite() {
+        let mut status = EC2ScheduleStatus::default();
+        set_phase(&mut status, SchedulePhase::Active);
+        set_phase(&mut status, SchedulePhase::Paused);
+        assert_eq!(status.phase, Some(SchedulePhase::Paused));
+    }
+
+    #[test]
+    fn test_set_failed_creates_ready_condition() {
+        let mut status = EC2ScheduleStatus::default();
+        set_failed(&mut status, "error");
+        assert_eq!(status.conditions.len(), 1);
+        assert_eq!(status.conditions[0].r#type, "Ready");
+        assert_eq!(status.conditions[0].status, "False");
+    }
+
+    #[test]
+    fn test_set_condition_last_transition_time_is_recent() {
+        let mut status = EC2ScheduleStatus::default();
+        set_condition(&mut status, "Ready", "True", "Ok", None);
+        let elapsed = chrono::Utc::now()
+            .signed_duration_since(&status.conditions[0].last_transition_time);
+        assert!(elapsed.num_seconds() < 2);
+    }
 }

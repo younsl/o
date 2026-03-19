@@ -68,8 +68,7 @@ pub async fn reconcile(obj: Arc<EC2Schedule>, ctx: Arc<Context>) -> Result<Actio
 
     // Validate: at least one of instanceIds or tags must be set in instanceSelector
     if spec.instance_selector.instance_ids.is_empty() && spec.instance_selector.tags.is_empty() {
-        let msg =
-            "instanceSelector must define at least one of instanceIds or tags";
+        let msg = "instanceSelector must define at least one of instanceIds or tags";
         error!("Validation failed for {}: {}", name, msg);
         let mut new_status = current_status.clone();
         status::set_failed(&mut new_status, msg);
@@ -254,10 +253,7 @@ pub async fn reconcile(obj: Arc<EC2Schedule>, ctx: Arc<Context>) -> Result<Actio
                     }
                 }
                 Err(e) => {
-                    error!(
-                        "Failed to {} instances for {}: {}",
-                        action_type, name, e
-                    );
+                    error!("Failed to {} instances for {}: {}", action_type, name, e);
                     ctx.metrics
                         .actions_total
                         .get_or_create(&ActionLabels {

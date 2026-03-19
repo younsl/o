@@ -79,7 +79,10 @@ impl AwsClients {
     }
 
     /// Describe instances by IDs and return their states.
-    pub async fn describe_instances(&self, instance_ids: &[String]) -> Result<Vec<ManagedInstance>> {
+    pub async fn describe_instances(
+        &self,
+        instance_ids: &[String],
+    ) -> Result<Vec<ManagedInstance>> {
         if instance_ids.is_empty() {
             return Ok(vec![]);
         }

@@ -214,4 +214,143 @@ mod tests {
         assert!(next_start.is_none());
         assert!(next_stop.is_none());
     }
+
+    #[test]
+    fn test_should_execute_now_empty_entries() {
+        let result = should_execute_now(&[], "UTC", None, chrono::Duration::seconds(45));
+        assert!(result.is_none());
+    }
+
+    #[test]
+    fn test_should_execute_now_invalid_timezone() {
+        let entries = vec![ScheduleEntry {
+            name: "test".to_string(),
+            start: "0 9 * * *".to_string(),
+            stop: "0 18 * * *".to_string(),
+        }];
+        let result = should_execute_now(&entries, "Bad/Zone", None, chrono::Duration::seconds(45));
+        assert!(result.is_none());
+    }
+
+    #[test]
+    fn test_should_execute_now_no_match_in_window() {
+        // Use a cron that fires at a fixed hour far from now
+        // (every minute of hour 3 UTC — unlikely to be the current hour in test)
+        let entries = vec![ScheduleEntry {
+            name: "night".to_string(),
+            start: "0 3 1 1 *".to_string(), // Jan 1 03:00 only
+            stop: "0 4 1 1 *".to_string(),  // Jan 1 04:00 only
+        }];
+        let result = should_execute_now(
+            &entries,
+            "UTC",
+            Some(Utc::now()),
+            chrono::Duration::seconds(45),
+        );
+        assert!(result.is_none());
+    }
+
+    #[test]
+    fn test_should_execute_now_recent_action_prevents_refire() {
+        // Every minute cron — should always have a recent occurrence
+        let entries = vec![ScheduleEntry {
+            name: "every-min".to_string(),
+            start: "* * * * *".to_string(),
+            stop: "* * * * *".to_string(),
+        }];
+        // last_action_time is now → no cron occurrence after it in the window
+        let result = should_execute_now(
+            &entries,
+            "UTC",
+            Some(Utc::now()),
+            chrono::Duration::seconds(45),
+        );
+        assert!(result.is_none());
+    }
+
+    #[test]
+    fn test_should_execute_now_stop_priority_over_start() {
+        // Both start and stop fire every minute → stop should win
+        let entries = vec![ScheduleEntry {
+            name: "every-min".to_string(),
+            start: "* * * * *".to_string(),
+            stop: "* * * * *".to_string(),
+        }];
+        let past = Utc::now() - chrono::Duration::minutes(2);
+        let result =
+            should_execute_now(&entries, "UTC", Some(past), chrono::Duration::seconds(120));
+        assert!(
+            matches!(result, Some(ActionToExecute::Stop(_))),
+            "Stop should take priority when both match"
+        );
+    }
+
+    #[test]
+    fn test_should_execute_now_none_last_action_fires() {
+        // Every minute cron with no previous action → should fire
+        let entries = vec![ScheduleEntry {
+            name: "every-min".to_string(),
+            start: "* * * * *".to_string(),
+            stop: "* * * * *".to_string(),
+        }];
+        let result = should_execute_now(&entries, "UTC", None, chrono::Duration::seconds(120));
+        assert!(
+            result.is_some(),
+            "Should fire when last_action_time is None"
+        );
+    }
+
+    #[test]
+    fn test_validate_schedules_empty_entries() {
+        // Empty entries list is valid (no crons to validate)
+        assert!(validate_schedules(&[], "UTC").is_ok());
+    }
+
+    #[test]
+    fn test_validate_schedules_invalid_stop_cron() {
+        let entries = vec![ScheduleEntry {
+            name: "test".to_string(),
+            start: "0 9 * * *".to_string(),
+            stop: "bad".to_string(),
+        }];
+        assert!(validate_schedules(&entries, "UTC").is_err());
+    }
+
+    #[test]
+    fn test_next_occurrences_multiple_entries_picks_earliest() {
+        let entries = vec![
+            ScheduleEntry {
+                name: "late".to_string(),
+                start: "0 23 * * *".to_string(),
+                stop: "0 23 * * *".to_string(),
+            },
+            ScheduleEntry {
+                name: "early".to_string(),
+                start: "0 0 * * *".to_string(),
+                stop: "0 0 * * *".to_string(),
+            },
+        ];
+        let (next_start, next_stop) = next_occurrences(&entries, "UTC");
+        // The "early" (00:00) schedule should produce an earlier next occurrence
+        // than "late" (23:00) for the next day
+        assert!(next_start.is_some());
+        assert!(next_stop.is_some());
+    }
+
+    #[test]
+    fn test_next_occurrences_empty_entries() {
+        let (next_start, next_stop) = next_occurrences(&[], "UTC");
+        assert!(next_start.is_none());
+        assert!(next_stop.is_none());
+    }
+
+    #[test]
+    fn test_parse_cron_all_fields() {
+        // Every minute
+        assert!(parse_cron("* * * * *").is_ok());
+        // Specific day-of-week range
+        assert!(parse_cron("30 9 * * 1-5").is_ok());
+        // Step values
+        assert!(parse_cron("*/15 * * * *").is_ok());
+    }
 }

@@ -171,4 +171,50 @@ mod tests {
         assert!(!SchedulerError::InvalidTimezone("x".into()).is_transient());
         assert!(!SchedulerError::NoInstances("x".into()).is_transient());
     }
+
+    #[test]
+    fn test_extract_details_with_message_pattern() {
+        let debug_str = r#"ServiceError { source: SomeError { message: Some("Instance not found"), code: Some("InvalidInstanceID") } }"#;
+        let display_str = "service error";
+        let details = SchedulerError::extract_error_details(debug_str, display_str);
+        assert_eq!(details, "Instance not found");
+    }
+
+    #[test]
+    fn test_extract_details_fallback_display() {
+        let debug_str = "Error { kind: Other }";
+        let display_str = "connection timed out";
+        let details = SchedulerError::extract_error_details(debug_str, display_str);
+        assert_eq!(details, "connection timed out");
+    }
+
+    #[test]
+    fn test_extract_details_last_resort() {
+        let debug_str = "Error { kind: Other }";
+        let display_str = "service error occurred";
+        let details = SchedulerError::extract_error_details(debug_str, display_str);
+        assert_eq!(details, "AWS API request failed");
+    }
+
+    #[test]
+    fn test_error_aws_credentials_access_denied() {
+        let err = SchedulerError::aws("ec2::stop", "Access Denied");
+        assert!(matches!(err, SchedulerError::AwsCredentials(_, _)));
+    }
+
+    #[test]
+    fn test_error_aws_sdk_display() {
+        let err = SchedulerError::AwsSdk("ec2::client".to_string(), "throttled".to_string());
+        assert_eq!(err.to_string(), "[ec2::client] throttled");
+    }
+
+    #[test]
+    fn test_is_transient_credentials_not_transient() {
+        assert!(!SchedulerError::AwsCredentials("x".into(), "y".into()).is_transient());
+    }
+
+    #[test]
+    fn test_is_transient_region_not_transient() {
+        assert!(!SchedulerError::AwsRegion("x".into(), "y".into()).is_transient());
+    }
 }
