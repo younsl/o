@@ -1,0 +1,161 @@
+crds:
+  # -- (bool) Whether to install CRDs. Set to false if CRDs are managed externally.
+  install: true
+  # -- (object) Annotations to add to the CRD resources.
+  annotations: {}
+
+# -- (int) Number of operator replicas to run.
+replicaCount: 1
+
+# -- (int) Number of old ReplicaSets to retain for rollback.
+revisionHistoryLimit: 10
+
+image:
+  # -- (string) Container image repository.
+  repository: ghcr.io/younsl/ec2-scheduler
+  # -- (string) Image pull policy.
+  pullPolicy: IfNotPresent
+  # -- (string) Image tag. Defaults to `.Chart.AppVersion` if empty.
+  tag: ""
+
+# -- (list) Image pull secrets for private registries.
+imagePullSecrets: []
+
+serviceAccount:
+  # -- (bool) Whether to create a ServiceAccount.
+  create: true
+  # -- (object) Annotations to add to the ServiceAccount.
+  annotations: {}
+  # -- (string) ServiceAccount name. Defaults to the fullname template if empty.
+  name: ""
+
+resources:
+  limits:
+    # -- (string) Memory limit.
+    memory: 64Mi
+  requests:
+    # -- (string) CPU request.
+    cpu: 25m
+    # -- (string) Memory request.
+    memory: 32Mi
+
+# -- (list) In-place resize policies for container resources
+resizePolicy:
+  - resourceName: cpu
+    restartPolicy: NotRequired
+  - resourceName: memory
+    restartPolicy: RestartContainer
+
+podDisruptionBudget:
+  # -- (bool) Whether to create a PodDisruptionBudget.
+  enabled: true
+  # -- (int) Maximum number of pods that can be unavailable during disruption.
+  maxUnavailable: 1
+  # -- (string) Eviction policy for unhealthy pods. One of `IfHealthyBudget` or `AlwaysAllow`
+  unhealthyPodEvictionPolicy: IfHealthyBudget
+
+# -- (object) Container security context.
+securityContext:
+  runAsNonRoot: true
+  runAsUser: 65532
+  readOnlyRootFilesystem: true
+  allowPrivilegeEscalation: false
+  capabilities:
+    drop:
+      - ALL
+
+# -- (string) Log level for the operator. One of: trace, debug, info, warn, error.
+logLevel: info
+
+serviceMonitor:
+  # -- (bool) Whether to create a ServiceMonitor for Prometheus scraping.
+  enabled: false
+  # -- (string) Scrape interval for the ServiceMonitor.
+  interval: 30s
+  # -- (string) Scrape timeout for the ServiceMonitor. Defaults to Prometheus global setting if empty.
+  scrapeTimeout: ""
+  # -- (object) Additional labels to add to the ServiceMonitor resource.
+  additionalLabels: {}
+
+# -- (object) Node selector for pod scheduling.
+nodeSelector: {}
+# -- (list) Tolerations for pod scheduling.
+tolerations: []
+# -- (object) Affinity rules for pod scheduling.
+affinity: {}
+
+# -- (list) EC2Schedule custom resources to create. Each entry creates an EC2Schedule CR that the operator will reconcile.
+ec2Schedules: []
+  # ## Select by instance IDs
+  # - name: dev-instances
+  #   namespace: default
+  #   spec:
+  #     region: ap-northeast-2
+  #     timezone: Asia/Seoul
+  #     instanceSelector:
+  #       instanceIds:
+  #         - i-1234567890abcdef0
+  #     schedules:
+  #       - name: weekday
+  #         start: "0 9 * * 1-5"
+  #         stop: "0 18 * * 1-5"
+  #     paused: false
+  #     dryRun: false
+  #
+  # ## Select by tags
+  # - name: staging-by-tags
+  #   namespace: default
+  #   spec:
+  #     region: ap-northeast-2
+  #     timezone: Asia/Seoul
+  #     instanceSelector:
+  #       tags:
+  #         Environment: staging
+  #         Team: platform
+  #     schedules:
+  #       - name: weekday
+  #         start: "0 9 * * 1-5"
+  #         stop: "0 18 * * 1-5"
+  #     paused: false
+  #
+  # ## Both instance IDs and tags (union)
+  # - name: mixed-selector
+  #   namespace: default
+  #   spec:
+  #     region: ap-northeast-2
+  #     timezone: Asia/Seoul
+  #     instanceSelector:
+  #       instanceIds:
+  #         - i-1234567890abcdef0
+  #       tags:
+  #         Environment: development
+  #     schedules:
+  #       - name: weekday
+  #         start: "0 9 * * 1-5"
+  #         stop: "0 18 * * 1-5"
+  #     paused: false
+  #
+  # ## Cross-account example
+  # - name: cross-account-dev
+  #   namespace: default
+  #   spec:
+  #     region: us-east-1
+  #     timezone: America/New_York
+  #     instanceSelector:
+  #       tags:
+  #         Environment: development
+  #     schedules:
+  #       - name: business-hours
+  #         start: "0 8 * * 1-5"
+  #         stop: "0 20 * * 1-5"
+  #     assumeRoleArn: arn:aws:iam::123456789012:role/ec2-scheduler-role
+  #     paused: false
+
+# -- (list) Additional Kubernetes resources to create alongside the chart.
+extraObjects: []
+  # - apiVersion: v1
+  #   kind: ConfigMap
+  #   metadata:
+  #     name: extra-config
+  #   data:
+  #     key: value

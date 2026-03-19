@@ -1,0 +1,20 @@
+apiVersion: v2
+name: ec2-scheduler
+description: Kubernetes controller for scheduling EC2 instance start/stop via CRD
+type: application
+deprecated: false
+version: 0.1.0
+appVersion: "0.1.0"
+home: https://github.com/younsl/o
+sources:
+  - https://github.com/younsl/o/tree/main/box/kubernetes/ec2-scheduler
+maintainers:
+  - name: younsl
+    email: cysl@kakao.com
+    url: https://github.com/younsl
+keywords:
+  - ec2
+  - scheduler
+  - kubernetes
+  - aws
+  - cost-optimization

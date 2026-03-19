@@ -1,0 +1,203 @@
+{{- if .Values.crds.install }}
+apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata:
+  name: ec2schedules.ec2-scheduler.io
+  labels:
+    {{- include "ec2-scheduler.labels" . | nindent 4 }}
+  {{- with .Values.crds.annotations }}
+  annotations:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+spec:
+  group: ec2-scheduler.io
+  names:
+    kind: EC2Schedule
+    listKind: EC2ScheduleList
+    plural: ec2schedules
+    singular: ec2schedule
+    shortNames:
+      - es
+  scope: Namespaced
+  versions:
+    - name: v1alpha1
+      served: true
+      storage: true
+      schema:
+        openAPIV3Schema:
+          type: object
+          description: EC2Schedule defines a schedule for starting and stopping EC2 instances.
+          properties:
+            spec:
+              type: object
+              description: EC2ScheduleSpec defines the desired scheduling rule.
+              required:
+                - region
+                - instanceSelector
+                - schedules
+              properties:
+                region:
+                  type: string
+                  description: AWS region where the EC2 instances reside (e.g., "ap-northeast-2").
+                timezone:
+                  type: string
+                  default: UTC
+                  description: IANA timezone for cron schedule evaluation (e.g., "Asia/Seoul", "America/New_York").
+                instanceSelector:
+                  type: object
+                  description: Instance selector defining which EC2 instances to manage. At least one of instanceIds or tags must be specified.
+                  x-kubernetes-validations:
+                    - rule: "(has(self.instanceIds) && size(self.instanceIds) > 0) || (has(self.tags) && size(self.tags) > 0)"
+                      message: "at least one of instanceIds or tags must be specified"
+                  properties:
+                    instanceIds:
+                      type: array
+                      description: Explicit list of EC2 instance IDs to manage.
+                      items:
+                        type: string
+                    tags:
+                      type: object
+                      description: Tags to filter instances. All tags must match (AND logic).
+                      additionalProperties:
+                        type: string
+                schedules:
+                  type: array
+                  description: Cron-based schedules for start/stop actions.
+                  items:
+                    type: object
+                    description: A single schedule entry with start and stop cron expressions.
+                    required:
+                      - name
+                      - start
+                      - stop
+                    properties:
+                      name:
+                        type: string
+                        description: Human-readable name for this schedule (e.g., "weekday").
+                      start:
+                        type: string
+                        description: 'Cron expression for starting instances (e.g., "0 9 * * 1-5").'
+                      stop:
+                        type: string
+                        description: 'Cron expression for stopping instances (e.g., "0 18 * * 1-5").'
+                paused:
+                  type: boolean
+                  default: false
+                  description: Pause all scheduling actions. When true, the controller skips start/stop execution and sets phase to Paused.
+                dryRun:
+                  type: boolean
+                  default: false
+                  description: Dry-run mode. When true, the controller logs actions without executing them.
+                assumeRoleArn:
+                  type: string
+                  description: IAM Role ARN to assume for cross-account access.
+            status:
+              type: object
+              description: EC2ScheduleStatus defines the observed state of the schedule.
+              properties:
+                phase:
+                  type: string
+                  description: "Current phase of the schedule: Pending, Active, Paused, or Failed."
+                  enum:
+                    - Pending
+                    - Active
+                    - Paused
+                    - Failed
+                lastAction:
+                  type: string
+                  description: Last action performed (Start or Stop).
+                  enum:
+                    - Start
+                    - Stop
+                lastActionTime:
+                  type: string
+                  format: date-time
+                  description: Timestamp of the last action.
+                nextStartTime:
+                  type: string
+                  format: date-time
+                  description: Next scheduled start time.
+                nextStopTime:
+                  type: string
+                  format: date-time
+                  description: Next scheduled stop time.
+                runningCount:
+                  type: integer
+                  description: Number of running EC2 instances.
+                stoppedCount:
+                  type: integer
+                  description: Number of stopped EC2 instances.
+                managedInstances:
+                  type: array
+                  description: List of managed EC2 instances with their current state.
+                  items:
+                    type: object
+                    description: Status of a managed EC2 instance.
+                    properties:
+                      instanceId:
+                        type: string
+                        description: EC2 instance ID.
+                      name:
+                        type: string
+                        description: EC2 Name tag value.
+                      state:
+                        type: string
+                        description: Current EC2 instance state (running, stopped, etc.).
+                      lastTransitionTime:
+                        type: string
+                        format: date-time
+                        description: Last time the instance transitioned state.
+                conditions:
+                  type: array
+                  description: Standard Kubernetes conditions representing the current state.
+                  items:
+                    type: object
+                    description: A condition on the EC2Schedule resource.
+                    properties:
+                      type:
+                        type: string
+                        description: Type of the condition (e.g., "Ready").
+                      status:
+                        type: string
+                        description: 'Status of the condition: "True", "False", or "Unknown".'
+                      reason:
+                        type: string
+                        description: Machine-readable reason for the condition's last transition.
+                      message:
+                        type: string
+                        description: Human-readable message with details about the condition.
+                      lastTransitionTime:
+                        type: string
+                        format: date-time
+                        description: Last time the condition transitioned from one status to another.
+                observedGeneration:
+                  type: integer
+                  description: Last observed generation of the EC2Schedule spec.
+                message:
+                  type: string
+                  description: Human-readable message about the current state or error details.
+      subresources:
+        status: {}
+      additionalPrinterColumns:
+        - name: REGION
+          type: string
+          jsonPath: .spec.region
+        - name: TIMEZONE
+          type: string
+          jsonPath: .spec.timezone
+        - name: PAUSED
+          type: boolean
+          jsonPath: .spec.paused
+        - name: PHASE
+          type: string
+          jsonPath: .status.phase
+        - name: RUNNING
+          type: integer
+          jsonPath: .status.runningCount
+        - name: STOPPED
+          type: integer
+          jsonPath: .status.stoppedCount
+        - name: AGE
+          type: date
+          jsonPath: .metadata.creationTimestamp
+{{- end }}

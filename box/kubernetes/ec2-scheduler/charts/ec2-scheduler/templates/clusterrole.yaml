@@ -1,0 +1,19 @@
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: {{ include "ec2-scheduler.fullname" . }}
+  labels:
+    {{- include "ec2-scheduler.labels" . | nindent 4 }}
+rules:
+  - apiGroups: ["ec2-scheduler.io"]
+    resources: ["ec2schedules"]
+    verbs: ["get", "list", "watch"]
+  - apiGroups: ["ec2-scheduler.io"]
+    resources: ["ec2schedules/status"]
+    verbs: ["get", "patch", "update"]
+  - apiGroups: ["", "events.k8s.io"]
+    resources: ["events"]
+    verbs: ["create", "patch"]
+  - apiGroups: ["coordination.k8s.io"]
+    resources: ["leases"]
+    verbs: ["get", "create", "update"]
