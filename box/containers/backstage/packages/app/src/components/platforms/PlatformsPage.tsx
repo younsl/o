@@ -15,6 +15,7 @@ import { configApiRef, useApi } from '@backstage/core-plugin-api';
 
 const FALLBACK_LOGO = 'https://backstage.io/logo_assets/svg/Icon_Teal.svg';
 const FAVORITES_STORAGE_KEY = 'backstage-platforms-favorites';
+const VIEW_MODE_STORAGE_KEY = 'backstage-platforms-view-mode';
 
 const tagStyle: React.CSSProperties = {
   display: 'inline-block',
@@ -86,6 +87,196 @@ const ChevronIcon = ({ expanded }: { expanded: boolean }) => (
     <path d="M8.59 16.59L13.17 12 8.59 7.41 10 6l6 6-6 6z" />
   </svg>
 );
+
+const GridViewIcon = () => (
+  <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
+    <circle cx="4" cy="4" r="2.2" />
+    <circle cx="12" cy="4" r="2.2" />
+    <circle cx="20" cy="4" r="2.2" />
+    <circle cx="4" cy="12" r="2.2" />
+    <circle cx="12" cy="12" r="2.2" />
+    <circle cx="20" cy="12" r="2.2" />
+    <circle cx="4" cy="20" r="2.2" />
+    <circle cx="12" cy="20" r="2.2" />
+    <circle cx="20" cy="20" r="2.2" />
+  </svg>
+);
+
+const CardViewIcon = () => (
+  <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
+    <rect x="2" y="2" width="9" height="9" rx="1.5" />
+    <rect x="13" y="2" width="9" height="9" rx="1.5" />
+    <rect x="2" y="13" width="9" height="9" rx="1.5" />
+    <rect x="13" y="13" width="9" height="9" rx="1.5" />
+  </svg>
+);
+
+const GridTile = ({
+  platform,
+  isFavorite,
+  onToggleFavorite,
+}: {
+  platform: Platform;
+  isFavorite: boolean;
+  onToggleFavorite: (name: string, e: React.MouseEvent) => void;
+}) => {
+  const [hovered, setHovered] = useState(false);
+  const isPrd = platform.tags.includes('prd');
+  return (
+    <div
+      style={{ position: 'relative', display: 'inline-flex', flexDirection: 'column', alignItems: 'center' }}
+      onMouseEnter={() => setHovered(true)}
+      onMouseLeave={() => setHovered(false)}
+    >
+      <a
+        href={platform.url || '#'}
+        target="_blank"
+        rel="noopener noreferrer"
+        style={{
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          width: 64,
+          height: 64,
+          borderRadius: 6,
+          border: isPrd
+            ? '2px solid rgba(54, 186, 162, 0.7)'
+            : '1px solid var(--bui-color-border-default, #333)',
+          backgroundColor: hovered
+            ? 'rgba(255, 255, 255, 0.18)'
+            : 'rgba(255, 255, 255, 0.08)',
+          transition: 'background-color 0.15s',
+          textDecoration: 'none',
+        }}
+      >
+        <img
+          src={platform.logo}
+          alt={platform.name}
+          style={{ maxHeight: 36, maxWidth: 36, objectFit: 'contain' }}
+          onError={e => {
+            e.currentTarget.src = FALLBACK_LOGO;
+          }}
+        />
+      </a>
+      {isPrd && (
+        <span
+          style={{
+            marginTop: 3,
+            fontSize: 9,
+            fontWeight: 600,
+            color: '#36BAA2',
+            letterSpacing: 0.5,
+            lineHeight: 1,
+          }}
+        >
+          Production
+        </span>
+      )}
+      {hovered && (
+        <div
+          style={{
+            position: 'absolute',
+            bottom: '100%',
+            left: '50%',
+            transform: 'translateX(-50%)',
+            marginBottom: 8,
+            width: 220,
+            padding: 12,
+            borderRadius: 8,
+            backgroundColor: 'var(--bui-color-bg-elevated, #1e1e1e)',
+            border: '1px solid var(--bui-color-border-default, #444)',
+            boxShadow: '0 8px 24px rgba(0,0,0,0.4)',
+            zIndex: 9999,
+            pointerEvents: 'none',
+          }}
+        >
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6 }}>
+            <img
+              src={platform.logo}
+              alt=""
+              style={{ width: 20, height: 20, objectFit: 'contain' }}
+              onError={e => { e.currentTarget.src = FALLBACK_LOGO; }}
+            />
+            <span style={{ fontSize: 13, fontWeight: 700, color: '#fff' }}>
+              {platform.name}
+            </span>
+          </div>
+          <div style={{ fontSize: 12, color: 'rgba(255,255,255,0.6)', lineHeight: 1.4, marginBottom: 8 }}>
+            {platform.description}
+          </div>
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4 }}>
+            {platform.tags.map(tag => (
+              <span
+                key={tag}
+                style={{
+                  fontSize: 11,
+                  padding: '1px 6px',
+                  borderRadius: 3,
+                  backgroundColor: 'rgba(255,255,255,0.08)',
+                  border: '1px solid rgba(255,255,255,0.12)',
+                  color: 'rgba(255,255,255,0.5)',
+                }}
+              >
+                {tag}
+              </span>
+            ))}
+          </div>
+          {isPrd && (
+            <div
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: 4,
+                marginTop: 8,
+                padding: '3px 6px',
+                backgroundColor: 'rgba(255, 152, 0, 0.15)',
+                borderRadius: 4,
+                fontSize: 11,
+                color: '#ff9800',
+              }}
+            >
+              <WarningIcon />
+              운영망 VPN 연결 필요
+            </div>
+          )}
+        </div>
+      )}
+      {hovered && (
+        <button
+          onClick={e => onToggleFavorite(platform.name, e)}
+          style={{
+            position: 'absolute',
+            top: -6,
+            right: -6,
+            zIndex: 1,
+            background: 'var(--bui-color-bg-elevated, #1e1e1e)',
+            border: '1px solid var(--bui-color-border-default, #333)',
+            borderRadius: '50%',
+            width: 20,
+            height: 20,
+            cursor: 'pointer',
+            padding: 0,
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            color: 'inherit',
+          }}
+          aria-label={isFavorite ? 'Remove from favorites' : 'Add to favorites'}
+        >
+          {isFavorite ? (
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="#ffc107">
+              <path d="M12 17.27L18.18 21l-1.64-7.03L22 9.24l-7.19-.61L12 2 9.19 8.63 2 9.24l5.46 4.73L5.82 21z" />
+            </svg>
+          ) : (
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor" style={{ opacity: 0.5 }}>
+              <path d="M22 9.24l-7.19-.62L12 2 9.19 8.63 2 9.24l5.46 4.73L5.82 21 12 17.27 18.18 21l-1.63-7.03L22 9.24zM12 15.4l-3.76 2.27 1-4.28-3.32-2.88 4.38-.38L12 6.1l1.71 4.04 4.38.38-3.32 2.88 1 4.28L12 15.4z" />
+            </svg>
+          )}
+        </button>
+      )}
+    </div>
+  );
+};
 
 const highlightStyle: React.CSSProperties = {
   backgroundColor: 'rgba(250, 204, 21, 0.4)',
@@ -223,6 +414,23 @@ export const PlatformsPage = () => {
   const tagDropdownRef = useRef<HTMLDivElement>(null);
   const [favorites, setFavorites] = useState<string[]>([]);
   const [expandedSections, setExpandedSections] = useState<Record<string, boolean>>({});
+  const [viewMode, setViewMode] = useState<'grid' | 'card'>(() => {
+    try {
+      const stored = localStorage.getItem(VIEW_MODE_STORAGE_KEY);
+      return stored === 'card' ? 'card' : 'grid';
+    } catch {
+      return 'grid';
+    }
+  });
+
+  const handleViewModeChange = useCallback((mode: 'grid' | 'card') => {
+    setViewMode(mode);
+    try {
+      localStorage.setItem(VIEW_MODE_STORAGE_KEY, mode);
+    } catch {
+      // Ignore localStorage errors
+    }
+  }, []);
 
   useEffect(() => {
     const handleClickOutside = (e: MouseEvent) => {
@@ -546,9 +754,62 @@ export const PlatformsPage = () => {
             }}
           >
             <Flex justify="between" align="center" mb="3">
-              <Text variant="body-medium" weight="bold">
-                Platforms
-              </Text>
+              <Flex align="center" gap="3">
+                <Text variant="body-medium" weight="bold">
+                  Platforms
+                </Text>
+                <div
+                  style={{
+                    display: 'inline-flex',
+                    borderRadius: 6,
+                    overflow: 'hidden',
+                    border: '1px solid var(--bui-color-border-default, #444)',
+                  }}
+                >
+                  <button
+                    onClick={() => handleViewModeChange('grid')}
+                    style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      width: 32,
+                      height: 28,
+                      border: 'none',
+                      cursor: 'pointer',
+                      backgroundColor:
+                        viewMode === 'grid'
+                          ? 'var(--bui-color-bg-accent, #1e40af)'
+                          : 'transparent',
+                      color: viewMode === 'grid' ? '#fff' : 'inherit',
+                    }}
+                    aria-label="Grid view"
+                  >
+                    <GridViewIcon />
+                  </button>
+                  <button
+                    onClick={() => handleViewModeChange('card')}
+                    style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      width: 32,
+                      height: 28,
+                      border: 'none',
+                      borderLeft:
+                        '1px solid var(--bui-color-border-default, #444)',
+                      cursor: 'pointer',
+                      backgroundColor:
+                        viewMode === 'card'
+                          ? 'var(--bui-color-bg-accent, #1e40af)'
+                          : 'transparent',
+                      color: viewMode === 'card' ? '#fff' : 'inherit',
+                    }}
+                    aria-label="Card view"
+                  >
+                    <CardViewIcon />
+                  </button>
+                </div>
+              </Flex>
               <span
                 style={{
                   display: 'inline-flex',
@@ -629,23 +890,36 @@ export const PlatformsPage = () => {
                         즐겨찾기 ({favoritePlatforms.length})
                       </Text>
                     </Flex>
-                    <Grid.Root
-                      columns={{ initial: '1', sm: '2', md: '3', lg: '4' }}
-                      gap="3"
-                    >
-                      {favoritePlatforms.map(platform => (
-                        <Grid.Item key={platform.name}>
-                          <PlatformCard
+                    {viewMode === 'grid' ? (
+                      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+                        {favoritePlatforms.map(platform => (
+                          <GridTile
+                            key={platform.name}
                             platform={platform}
                             isFavorite
                             onToggleFavorite={handleToggleFavorite}
-                            onTagClick={handleTagToggle}
-                            selectedTags={selectedTags}
-                            searchQuery={searchQuery}
                           />
-                        </Grid.Item>
-                      ))}
-                    </Grid.Root>
+                        ))}
+                      </div>
+                    ) : (
+                      <Grid.Root
+                        columns={{ initial: '1', sm: '2', md: '3', lg: '4' }}
+                        gap="3"
+                      >
+                        {favoritePlatforms.map(platform => (
+                          <Grid.Item key={platform.name}>
+                            <PlatformCard
+                              platform={platform}
+                              isFavorite
+                              onToggleFavorite={handleToggleFavorite}
+                              onTagClick={handleTagToggle}
+                              selectedTags={selectedTags}
+                              searchQuery={searchQuery}
+                            />
+                          </Grid.Item>
+                        ))}
+                      </Grid.Root>
+                    )}
                   </div>
                 )}
 
@@ -682,41 +956,71 @@ export const PlatformsPage = () => {
                           expanded={expanded}
                         />
                       </div>
-                      {expanded && (
-                        <Flex direction="column" gap="3" mt="3">
-                          <Text
-                            variant="body-small"
-                            color="secondary"
-                            style={{ paddingLeft: 16 }}
-                          >
-                            {categoryDescriptions[category.name]}
-                          </Text>
-                          <Grid.Root
-                            columns={{
-                              initial: '1',
-                              sm: '2',
-                              md: '3',
-                              lg: '4',
-                            }}
-                            gap="3"
-                          >
-                            {category.platforms.map(platform => (
-                              <Grid.Item key={platform.name}>
-                                <PlatformCard
+                      {expanded &&
+                        (viewMode === 'grid' ? (
+                          <div style={{ padding: '8px 0 4px 16px' }}>
+                            <div style={{ marginBottom: 16 }}>
+                              <Text
+                                variant="body-small"
+                                color="secondary"
+                              >
+                                {categoryDescriptions[category.name]}
+                              </Text>
+                            </div>
+                            <div
+                              style={{
+                                display: 'flex',
+                                flexWrap: 'wrap',
+                                gap: 8,
+                              }}
+                            >
+                              {category.platforms.map(platform => (
+                                <GridTile
+                                  key={platform.name}
                                   platform={platform}
                                   isFavorite={favorites.includes(
                                     platform.name,
                                   )}
                                   onToggleFavorite={handleToggleFavorite}
-                                  onTagClick={handleTagToggle}
-                                  selectedTags={selectedTags}
-                                  searchQuery={searchQuery}
                                 />
-                              </Grid.Item>
-                            ))}
-                          </Grid.Root>
-                        </Flex>
-                      )}
+                              ))}
+                            </div>
+                          </div>
+                        ) : (
+                          <Flex direction="column" gap="3" mt="3">
+                            <Text
+                              variant="body-small"
+                              color="secondary"
+                              style={{ paddingLeft: 16 }}
+                            >
+                              {categoryDescriptions[category.name]}
+                            </Text>
+                            <Grid.Root
+                              columns={{
+                                initial: '1',
+                                sm: '2',
+                                md: '3',
+                                lg: '4',
+                              }}
+                              gap="3"
+                            >
+                              {category.platforms.map(platform => (
+                                <Grid.Item key={platform.name}>
+                                  <PlatformCard
+                                    platform={platform}
+                                    isFavorite={favorites.includes(
+                                      platform.name,
+                                    )}
+                                    onToggleFavorite={handleToggleFavorite}
+                                    onTagClick={handleTagToggle}
+                                    selectedTags={selectedTags}
+                                    searchQuery={searchQuery}
+                                  />
+                                </Grid.Item>
+                              ))}
+                            </Grid.Root>
+                          </Flex>
+                        ))}
                     </div>
                   );
                 })}

@@ -61,7 +61,7 @@ const techdocsContent = (
   <EntityTechdocsContent>
     <Grid.Root columns="12" gap="3">
       <Grid.Item colSpan="12">
-        <EntityAboutCard variant="gridItem" />
+        <EntityAboutCard />
       </Grid.Item>
     </Grid.Root>
   </EntityTechdocsContent>
@@ -91,16 +91,16 @@ const overviewContent = (
   <Grid.Root columns="12" gap="3">
     {entityWarningContent}
     <Grid.Item colSpan={{ initial: '12', md: '6' }}>
-      <EntityAboutCard variant="gridItem" />
+      <EntityAboutCard />
     </Grid.Item>
     <Grid.Item colSpan={{ initial: '12', md: '6' }}>
-      <EntityCatalogGraphCard variant="gridItem" height={400} />
+      <EntityCatalogGraphCard height={400} />
     </Grid.Item>
     <Grid.Item colSpan={{ initial: '12', md: '6' }}>
       <EntityLinksCard />
     </Grid.Item>
     <Grid.Item colSpan={{ initial: '12', md: '6' }}>
-      <EntityHasSubcomponentsCard variant="gridItem" />
+      <EntityHasSubcomponentsCard />
     </Grid.Item>
     <EntitySwitch>
       <EntitySwitch.Case if={isGitlabAvailable}>
@@ -140,10 +140,10 @@ const serviceEntityPage = (
     <EntityLayout.Route path="/dependencies" title="Dependencies">
       <Grid.Root columns="12" gap="3">
         <Grid.Item colSpan={{ initial: '12', md: '6' }}>
-          <EntityDependsOnComponentsCard variant="gridItem" />
+          <EntityDependsOnComponentsCard />
         </Grid.Item>
         <Grid.Item colSpan={{ initial: '12', md: '6' }}>
-          <EntityDependsOnResourcesCard variant="gridItem" />
+          <EntityDependsOnResourcesCard />
         </Grid.Item>
       </Grid.Root>
     </EntityLayout.Route>
@@ -171,10 +171,10 @@ const websiteEntityPage = (
     <EntityLayout.Route path="/dependencies" title="Dependencies">
       <Grid.Root columns="12" gap="3">
         <Grid.Item colSpan={{ initial: '12', md: '6' }}>
-          <EntityDependsOnComponentsCard variant="gridItem" />
+          <EntityDependsOnComponentsCard />
         </Grid.Item>
         <Grid.Item colSpan={{ initial: '12', md: '6' }}>
-          <EntityDependsOnResourcesCard variant="gridItem" />
+          <EntityDependsOnResourcesCard />
         </Grid.Item>
       </Grid.Root>
     </EntityLayout.Route>
@@ -236,7 +236,7 @@ const apiPage = (
           <EntityAboutCard />
         </Grid.Item>
         <Grid.Item colSpan={{ initial: '12', md: '6' }}>
-          <EntityCatalogGraphCard variant="gridItem" height={400} />
+          <EntityCatalogGraphCard height={400} />
         </Grid.Item>
         <Grid.Item colSpan={{ initial: '12', md: '6' }}>
           <EntityLinksCard />
@@ -260,10 +260,10 @@ const userPage = (
       <Grid.Root columns="12" gap="3">
         {entityWarningContent}
         <Grid.Item colSpan={{ initial: '12', md: '6' }}>
-          <EntityUserProfileCard variant="gridItem" />
+          <EntityUserProfileCard />
         </Grid.Item>
         <Grid.Item colSpan={{ initial: '12', md: '6' }}>
-          <EntityOwnershipCard variant="gridItem" />
+          <EntityOwnershipCard />
         </Grid.Item>
       </Grid.Root>
     </EntityLayout.Route>
@@ -276,10 +276,10 @@ const groupPage = (
       <Grid.Root columns="12" gap="3">
         {entityWarningContent}
         <Grid.Item colSpan={{ initial: '12', md: '6' }}>
-          <EntityGroupProfileCard variant="gridItem" />
+          <EntityGroupProfileCard />
         </Grid.Item>
         <Grid.Item colSpan={{ initial: '12', md: '6' }}>
-          <EntityOwnershipCard variant="gridItem" />
+          <EntityOwnershipCard />
         </Grid.Item>
         <Grid.Item colSpan="12">
           <EntityMembersListCard />
@@ -295,23 +295,22 @@ const systemPage = (
       <Grid.Root columns="12" gap="3">
         {entityWarningContent}
         <Grid.Item colSpan={{ initial: '12', md: '6' }}>
-          <EntityAboutCard variant="gridItem" />
+          <EntityAboutCard />
         </Grid.Item>
         <Grid.Item colSpan={{ initial: '12', md: '6' }}>
-          <EntityCatalogGraphCard variant="gridItem" height={400} />
+          <EntityCatalogGraphCard height={400} />
         </Grid.Item>
         <Grid.Item colSpan={{ initial: '12', md: '6' }}>
-          <EntityHasComponentsCard variant="gridItem" />
+          <EntityHasComponentsCard />
         </Grid.Item>
         <Grid.Item colSpan={{ initial: '12', md: '6' }}>
-          <EntityHasResourcesCard variant="gridItem" />
+          <EntityHasResourcesCard />
         </Grid.Item>
       </Grid.Root>
     </EntityLayout.Route>
     <EntityLayout.Route path="/diagram" title="Diagram">
       <EntityCatalogGraphCard
-        variant="gridItem"
-        direction="TB"
+               direction="TB"
         title="System Diagram"
         height={700}
       />
@@ -325,13 +324,13 @@ const domainPage = (
       <Grid.Root columns="12" gap="3">
         {entityWarningContent}
         <Grid.Item colSpan={{ initial: '12', md: '6' }}>
-          <EntityAboutCard variant="gridItem" />
+          <EntityAboutCard />
         </Grid.Item>
         <Grid.Item colSpan={{ initial: '12', md: '6' }}>
-          <EntityCatalogGraphCard variant="gridItem" height={400} />
+          <EntityCatalogGraphCard height={400} />
         </Grid.Item>
         <Grid.Item colSpan={{ initial: '12', md: '6' }}>
-          <EntityHasSystemsCard variant="gridItem" />
+          <EntityHasSystemsCard />
         </Grid.Item>
       </Grid.Root>
     </EntityLayout.Route>
