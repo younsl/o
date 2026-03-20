@@ -1,7 +1,7 @@
 # Backstage with GitLab Discovery
 
 [![GHCR](https://img.shields.io/badge/GHCR-ghcr.io%2Fyounsl%2Fbackstage-black?style=flat-square&logo=github&logoColor=white)](https://ghcr.io/younsl/backstage)
-[![Backstage](https://img.shields.io/badge/Backstage-1.48.4-black?style=flat-square&logo=backstage&logoColor=white)](https://backstage.io)
+[![Backstage](https://img.shields.io/badge/Backstage-1.49.0-black?style=flat-square&logo=backstage&logoColor=white)](https://backstage.io)
 
 Custom Backstage image with GitLab Auto Discovery, Keycloak OIDC, and API Docs plugins.
 
@@ -60,8 +60,8 @@ make dev    # Run dev server (localhost:3000)
 ### Release
 
 ```bash
-git tag backstage/1.48.4-2
-git push origin backstage/1.48.4-2
+git tag backstage/1.49.0-1
+git push origin backstage/1.49.0-1
 ```
 
 ## Environment Variables
@@ -177,13 +177,15 @@ backstage/
 Internal platform services page for developers to discover tools and services.
 
 **Features:**
-- Card-based UI with platform logos
+- Toggleable Grid/Card view (persisted in localStorage)
+- CNCF Landscape-style grid view with compact logo tiles and hover popover
+- Card view with platform logos and descriptions
 - Category grouping (Developer Portal, Observability, CI/CD, Security, Infrastructure, Data, Registry, Documentation)
 - Favorites (즐겨찾기) - starred platforms appear at the top, persisted in localStorage
 - Text search across name, description, category, tags
 - Tag-based filtering (multi-select)
-- Clickable cards open in new tab
-- VPN warning badge for platforms with `prd` tag
+- Clickable cards/tiles open in new tab
+- Production label badge and border for platforms with `prd` tag
 
 **Configuration:**
 
