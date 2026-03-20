@@ -166,10 +166,11 @@ mod tests {
     #[test]
     fn test_build_action_message_empty_instances() {
         let msg = build_action_message("test", &ScheduleAction::Start, "us-east-1", &[]);
-        assert!(msg
-            .fields
-            .iter()
-            .any(|(k, v)| k == "Instances" && v.starts_with("0")));
+        assert!(
+            msg.fields
+                .iter()
+                .any(|(k, v)| k == "Instances" && v.starts_with("0"))
+        );
     }
 
     #[test]
@@ -181,10 +182,11 @@ mod tests {
             last_transition_time: None,
         }];
         let msg = build_action_message("test", &ScheduleAction::Stop, "us-east-1", &instances);
-        assert!(msg
-            .fields
-            .iter()
-            .any(|(k, v)| k == "Instances" && v.contains("1 — web/i-abc")));
+        assert!(
+            msg.fields
+                .iter()
+                .any(|(k, v)| k == "Instances" && v.contains("1 — web/i-abc"))
+        );
     }
 
     #[test]
@@ -203,13 +205,8 @@ mod tests {
                 last_transition_time: None,
             },
         ];
-        let msg =
-            build_action_message("test", &ScheduleAction::Start, "us-east-1", &instances);
-        let inst_field = msg
-            .fields
-            .iter()
-            .find(|(k, _)| k == "Instances")
-            .unwrap();
+        let msg = build_action_message("test", &ScheduleAction::Start, "us-east-1", &instances);
+        let inst_field = msg.fields.iter().find(|(k, _)| k == "Instances").unwrap();
         assert!(inst_field.1.contains("i-aaa"));
         assert!(inst_field.1.contains("i-bbb"));
         assert!(!inst_field.1.contains('/'));

@@ -237,8 +237,8 @@ mod tests {
     fn test_set_condition_last_transition_time_is_recent() {
         let mut status = EC2ScheduleStatus::default();
         set_condition(&mut status, "Ready", "True", "Ok", None);
-        let elapsed = chrono::Utc::now()
-            .signed_duration_since(&status.conditions[0].last_transition_time);
+        let elapsed =
+            chrono::Utc::now().signed_duration_since(&status.conditions[0].last_transition_time);
         assert!(elapsed.num_seconds() < 2);
     }
 }
