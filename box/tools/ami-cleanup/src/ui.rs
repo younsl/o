@@ -519,7 +519,12 @@ fn truncate(s: &str, max: usize) -> String {
 mod tests {
     use super::*;
     use chrono::{Duration, Utc};
+    use ratatui::backend::TestBackend;
     use ratatui::layout::Rect;
+    use ratatui::Terminal;
+
+    use crate::ami::OwnedAmi;
+    use crate::app::{AmiRow, ScanSummary};
 
     #[test]
     fn test_format_elapsed_days() {
@@ -593,5 +598,400 @@ mod tests {
         assert_eq!(result.y, 25);
         assert_eq!(result.width, 20);
         assert_eq!(result.height, 10);
+    }
+
+    // -- Helper functions for draw tests --
+
+    fn make_test_ami(
+        id: &str,
+        name: &str,
+        size_gb: i64,
+        snap_count: usize,
+        shared: bool,
+    ) -> OwnedAmi {
+        OwnedAmi {
+            ami_id: id.to_string(),
+            name: name.to_string(),
+            creation_date: Some(Utc::now() - Duration::days(30)),
+            last_launched: Some(Utc::now() - Duration::days(10)),
+            snapshot_ids: (0..snap_count).map(|i| format!("snap-{id}-{i}")).collect(),
+            size_gb,
+            shared,
+            managed: false,
+        }
+    }
+
+    fn make_row(
+        id: &str,
+        name: &str,
+        size_gb: i64,
+        snaps: usize,
+        status: AmiStatus,
+        selected: bool,
+    ) -> AmiRow {
+        AmiRow {
+            region: "us-east-1".to_string(),
+            ami: make_test_ami(id, name, size_gb, snaps, false),
+            age_days: Some(30),
+            selected,
+            status,
+        }
+    }
+
+    fn browse_app(rows: Vec<AmiRow>) -> App {
+        let mut app = App::new_scanning("123456789012 (profile: test)".into());
+        app.mode = AppMode::Browse;
+        let total_unused = rows.len();
+        let total_snapshots: usize = rows.iter().map(|r| r.ami.snapshot_ids.len()).sum();
+        app.rows = rows;
+        app.summary = ScanSummary {
+            total_owned: 10,
+            total_used: 5,
+            total_shared: 1,
+            total_managed: 1,
+            total_unused,
+            total_snapshots,
+        };
+        app
+    }
+
+    // -- build_title --
+
+    #[test]
+    fn test_build_title() {
+        let title = build_title();
+        assert!(title.contains(cli::APP_NAME));
+        assert!(title.contains(cli::VERSION));
+        assert!(title.contains(cli::COMMIT));
+    }
+
+    // -- draw: SelectOwner mode --
+
+    #[test]
+    fn test_draw_select_owner_mode() {
+        let mut app = App::new_select_profile(vec!["prod".into(), "dev".into(), "staging".into()]);
+        let backend = TestBackend::new(80, 24);
+        let mut terminal = Terminal::new(backend).unwrap();
+        terminal.draw(|f| draw(f, &mut app)).unwrap();
+    }
+
+    #[test]
+    fn test_draw_select_owner_cursor_moved() {
+        let mut app = App::new_select_profile(vec!["prod".into(), "dev".into(), "staging".into()]);
+        app.profile_selector.cursor = 2;
+        let backend = TestBackend::new(80, 24);
+        let mut terminal = Terminal::new(backend).unwrap();
+        terminal.draw(|f| draw(f, &mut app)).unwrap();
+    }
+
+    // -- draw: SelectConsumers mode --
+
+    #[test]
+    fn test_draw_select_consumers_mode() {
+        let mut app = App::new_select_profile(vec!["prod".into(), "dev".into(), "staging".into()]);
+        app.profile_selector.owner_profile = Some("prod".into());
+        app.profile_selector.selected[1] = true;
+        app.mode = AppMode::SelectConsumers;
+        let backend = TestBackend::new(80, 24);
+        let mut terminal = Terminal::new(backend).unwrap();
+        terminal.draw(|f| draw(f, &mut app)).unwrap();
+    }
+
+    #[test]
+    fn test_draw_select_consumers_cursor_on_owner() {
+        let mut app = App::new_select_profile(vec!["prod".into(), "dev".into()]);
+        app.profile_selector.owner_profile = Some("prod".into());
+        app.profile_selector.cursor = 0;
+        app.mode = AppMode::SelectConsumers;
+        let backend = TestBackend::new(80, 24);
+        let mut terminal = Terminal::new(backend).unwrap();
+        terminal.draw(|f| draw(f, &mut app)).unwrap();
+    }
+
+    #[test]
+    fn test_draw_select_consumers_owner_not_cursor() {
+        let mut app = App::new_select_profile(vec!["prod".into(), "dev".into(), "staging".into()]);
+        app.profile_selector.owner_profile = Some("prod".into());
+        app.profile_selector.cursor = 1; // cursor on dev, not on owner (prod)
+        app.mode = AppMode::SelectConsumers;
+        let backend = TestBackend::new(80, 24);
+        let mut terminal = Terminal::new(backend).unwrap();
+        terminal.draw(|f| draw(f, &mut app)).unwrap();
+    }
+
+    // -- draw: Scanning mode --
+
+    #[test]
+    fn test_draw_scanning_mode() {
+        let mut app = App::new_scanning("test-account".into());
+        let backend = TestBackend::new(80, 24);
+        let mut terminal = Terminal::new(backend).unwrap();
+        terminal.draw(|f| draw(f, &mut app)).unwrap();
+    }
+
+    #[test]
+    fn test_draw_scanning_with_mixed_logs() {
+        let mut app = App::new_scanning("test-account".into());
+        app.add_scan_log("Step 1 done".into());
+        app.finish_scan_log("Step 1 completed".into());
+        app.add_scan_log("Step 2 in progress".into());
+        let backend = TestBackend::new(80, 24);
+        let mut terminal = Terminal::new(backend).unwrap();
+        terminal.draw(|f| draw(f, &mut app)).unwrap();
+    }
+
+    // -- draw: Browse mode --
+
+    #[test]
+    fn test_draw_browse_with_rows() {
+        let rows = vec![
+            make_row("ami-1", "test-ami-1", 8, 2, AmiStatus::Pending, false),
+            make_row("ami-2", "test-ami-2", 16, 1, AmiStatus::Pending, true),
+            make_row("ami-3", "deleted-ami", 8, 1, AmiStatus::Deleted, false),
+            make_row(
+                "ami-4",
+                "failed-ami",
+                4,
+                0,
+                AmiStatus::Failed("access denied".into()),
+                false,
+            ),
+            make_row("ami-5", "deleting-ami", 10, 1, AmiStatus::Deleting, true),
+        ];
+        let mut app = browse_app(rows);
+        let backend = TestBackend::new(120, 30);
+        let mut terminal = Terminal::new(backend).unwrap();
+        terminal.draw(|f| draw(f, &mut app)).unwrap();
+    }
+
+    #[test]
+    fn test_draw_browse_bottom_quartile() {
+        let now = Utc::now();
+        let mut rows = vec![
+            make_row("ami-1", "recent", 8, 1, AmiStatus::Pending, false),
+            make_row("ami-2", "medium", 8, 1, AmiStatus::Pending, false),
+            make_row("ami-3", "old", 8, 1, AmiStatus::Pending, false),
+            make_row("ami-4", "ancient", 8, 1, AmiStatus::Pending, false),
+            make_row("ami-5", "never-launched", 8, 1, AmiStatus::Pending, false),
+        ];
+        rows[0].ami.last_launched = Some(now - Duration::days(1));
+        rows[1].ami.last_launched = Some(now - Duration::days(30));
+        rows[2].ami.last_launched = Some(now - Duration::days(90));
+        rows[3].ami.last_launched = Some(now - Duration::days(365));
+        rows[4].ami.last_launched = None;
+        let mut app = browse_app(rows);
+        let backend = TestBackend::new(120, 30);
+        let mut terminal = Terminal::new(backend).unwrap();
+        terminal.draw(|f| draw(f, &mut app)).unwrap();
+    }
+
+    #[test]
+    fn test_draw_browse_shared_ami() {
+        let rows = vec![AmiRow {
+            region: "us-east-1".into(),
+            ami: make_test_ami("ami-1", "shared-test-ami", 8, 2, true),
+            age_days: Some(30),
+            selected: false,
+            status: AmiStatus::Pending,
+        }];
+        let mut app = browse_app(rows);
+        let backend = TestBackend::new(120, 30);
+        let mut terminal = Terminal::new(backend).unwrap();
+        terminal.draw(|f| draw(f, &mut app)).unwrap();
+    }
+
+    #[test]
+    fn test_draw_browse_sorted_by_age() {
+        let rows = vec![
+            make_row("ami-1", "test", 8, 1, AmiStatus::Pending, false),
+            make_row("ami-2", "test2", 16, 1, AmiStatus::Pending, false),
+        ];
+        let mut app = browse_app(rows);
+        app.sort_field = SortField::Age;
+        app.sort_order = SortOrder::Desc;
+        let backend = TestBackend::new(120, 30);
+        let mut terminal = Terminal::new(backend).unwrap();
+        terminal.draw(|f| draw(f, &mut app)).unwrap();
+    }
+
+    #[test]
+    fn test_draw_browse_sorted_by_name_asc() {
+        let rows = vec![
+            make_row("ami-1", "alpha", 8, 1, AmiStatus::Pending, false),
+            make_row("ami-2", "beta", 16, 1, AmiStatus::Pending, false),
+        ];
+        let mut app = browse_app(rows);
+        app.sort_field = SortField::Name;
+        app.sort_order = SortOrder::Asc;
+        let backend = TestBackend::new(120, 30);
+        let mut terminal = Terminal::new(backend).unwrap();
+        terminal.draw(|f| draw(f, &mut app)).unwrap();
+    }
+
+    #[test]
+    fn test_draw_browse_sorted_by_size() {
+        let rows = vec![
+            make_row("ami-1", "small", 4, 1, AmiStatus::Pending, false),
+            make_row("ami-2", "large", 100, 1, AmiStatus::Pending, false),
+        ];
+        let mut app = browse_app(rows);
+        app.sort_field = SortField::Size;
+        app.sort_order = SortOrder::Desc;
+        let backend = TestBackend::new(120, 30);
+        let mut terminal = Terminal::new(backend).unwrap();
+        terminal.draw(|f| draw(f, &mut app)).unwrap();
+    }
+
+    #[test]
+    fn test_draw_browse_sorted_by_last_launched() {
+        let rows = vec![
+            make_row("ami-1", "test", 8, 1, AmiStatus::Pending, false),
+            make_row("ami-2", "test2", 16, 1, AmiStatus::Pending, false),
+        ];
+        let mut app = browse_app(rows);
+        app.sort_field = SortField::LastLaunched;
+        app.sort_order = SortOrder::Asc;
+        let backend = TestBackend::new(120, 30);
+        let mut terminal = Terminal::new(backend).unwrap();
+        terminal.draw(|f| draw(f, &mut app)).unwrap();
+    }
+
+    // -- draw: header with deletions --
+
+    #[test]
+    fn test_draw_header_with_deletions() {
+        let rows = vec![
+            make_row("ami-1", "test", 8, 1, AmiStatus::Deleted, false),
+            make_row(
+                "ami-2",
+                "test2",
+                16,
+                1,
+                AmiStatus::Failed("err".into()),
+                false,
+            ),
+            make_row("ami-3", "test3", 4, 1, AmiStatus::Pending, true),
+        ];
+        let mut app = browse_app(rows);
+        let backend = TestBackend::new(120, 30);
+        let mut terminal = Terminal::new(backend).unwrap();
+        terminal.draw(|f| draw(f, &mut app)).unwrap();
+    }
+
+    #[test]
+    fn test_draw_header_deleted_only() {
+        let rows = vec![make_row("ami-1", "test", 8, 1, AmiStatus::Deleted, false)];
+        let mut app = browse_app(rows);
+        let backend = TestBackend::new(120, 30);
+        let mut terminal = Terminal::new(backend).unwrap();
+        terminal.draw(|f| draw(f, &mut app)).unwrap();
+    }
+
+    // -- draw: Confirm mode --
+
+    #[test]
+    fn test_draw_confirm_mode() {
+        let rows = vec![
+            make_row("ami-1", "test", 8, 2, AmiStatus::Pending, true),
+            make_row("ami-2", "test2", 16, 1, AmiStatus::Pending, true),
+        ];
+        let mut app = browse_app(rows);
+        app.mode = AppMode::Confirm;
+        let backend = TestBackend::new(120, 30);
+        let mut terminal = Terminal::new(backend).unwrap();
+        terminal.draw(|f| draw(f, &mut app)).unwrap();
+    }
+
+    // -- draw: Done mode --
+
+    #[test]
+    fn test_draw_done_empty() {
+        let mut app = browse_app(vec![]);
+        app.mode = AppMode::Done;
+        let backend = TestBackend::new(120, 30);
+        let mut terminal = Terminal::new(backend).unwrap();
+        terminal.draw(|f| draw(f, &mut app)).unwrap();
+    }
+
+    // -- draw: edge cases --
+
+    #[test]
+    fn test_draw_browse_failed_long_error() {
+        let rows = vec![make_row(
+            "ami-1",
+            "test",
+            8,
+            1,
+            AmiStatus::Failed(
+                "This is a very long error message that exceeds thirty characters easily".into(),
+            ),
+            false,
+        )];
+        let mut app = browse_app(rows);
+        let backend = TestBackend::new(120, 30);
+        let mut terminal = Terminal::new(backend).unwrap();
+        terminal.draw(|f| draw(f, &mut app)).unwrap();
+    }
+
+    #[test]
+    fn test_draw_browse_no_creation_date() {
+        let mut ami = make_test_ami("ami-1", "no-date", 8, 1, false);
+        ami.creation_date = None;
+        ami.last_launched = None;
+        let rows = vec![AmiRow {
+            region: "us-east-1".into(),
+            ami,
+            age_days: None,
+            selected: false,
+            status: AmiStatus::Pending,
+        }];
+        let mut app = browse_app(rows);
+        let backend = TestBackend::new(120, 30);
+        let mut terminal = Terminal::new(backend).unwrap();
+        terminal.draw(|f| draw(f, &mut app)).unwrap();
+    }
+
+    #[test]
+    fn test_draw_browse_long_name_truncated() {
+        let rows = vec![make_row(
+            "ami-1",
+            "this-is-a-very-long-ami-name-that-should-be-truncated-at-some-point",
+            8,
+            1,
+            AmiStatus::Pending,
+            false,
+        )];
+        let mut app = browse_app(rows);
+        let backend = TestBackend::new(120, 30);
+        let mut terminal = Terminal::new(backend).unwrap();
+        terminal.draw(|f| draw(f, &mut app)).unwrap();
+    }
+
+    #[test]
+    fn test_draw_browse_cursor_on_row() {
+        let rows = vec![
+            make_row("ami-1", "first", 8, 1, AmiStatus::Pending, false),
+            make_row("ami-2", "second", 16, 1, AmiStatus::Pending, false),
+        ];
+        let mut app = browse_app(rows);
+        app.cursor = 1;
+        let backend = TestBackend::new(120, 30);
+        let mut terminal = Terminal::new(backend).unwrap();
+        terminal.draw(|f| draw(f, &mut app)).unwrap();
+    }
+
+    #[test]
+    fn test_draw_browse_cursor_on_sorted_column() {
+        let rows = vec![
+            make_row("ami-1", "first", 8, 1, AmiStatus::Pending, false),
+            make_row("ami-2", "second", 16, 1, AmiStatus::Pending, false),
+        ];
+        let mut app = browse_app(rows);
+        app.cursor = 0;
+        app.sort_field = SortField::Age;
+        app.sort_order = SortOrder::Asc;
+        let backend = TestBackend::new(120, 30);
+        let mut terminal = Terminal::new(backend).unwrap();
+        terminal.draw(|f| draw(f, &mut app)).unwrap();
     }
 }
