@@ -97,19 +97,28 @@ jobs:
         working-directory: ${{ env.PROJECT_BASE_DIR }}
         run: mkdir -p static
 
+      - name: Check formatting
+        working-directory: ${{ env.PROJECT_BASE_DIR }}
+        run: cargo fmt --check
+
+      - name: Run clippy
+        working-directory: ${{ env.PROJECT_BASE_DIR }}
+        run: cargo clippy -- -D warnings
+
       - name: Run tests
         working-directory: ${{ env.PROJECT_BASE_DIR }}
         run: |
           cargo test --verbose
           cargo test --release --verbose
 
-      - name: Run clippy
-        working-directory: ${{ env.PROJECT_BASE_DIR }}
-        run: cargo clippy -- -D warnings
+      - name: Install cargo-llvm-cov
+        uses: taiki-e/install-action@v2.69.4
+        with:
+          tool: cargo-llvm-cov
 
-      - name: Check formatting
+      - name: Check test coverage (minimum 70%)
         working-directory: ${{ env.PROJECT_BASE_DIR }}
-        run: cargo fmt --check
+        run: cargo llvm-cov --fail-under-lines 70
 
   build-binaries:
     needs: [extract-version, check, test]
