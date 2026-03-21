@@ -148,9 +148,10 @@ mod tests {
         let msg = yaml_err.to_string();
         let e: Error = yaml_err.into();
         assert!(matches!(e, Error::Config(_)));
-        assert!(e
-            .to_string()
-            .contains(&msg.split('\n').next().unwrap()[..20]));
+        assert!(
+            e.to_string()
+                .contains(&msg.split('\n').next().unwrap()[..20])
+        );
     }
 
     // --- source() tests ---

@@ -56,8 +56,10 @@ impl App {
 
         self.print_selection(selected);
 
-        let session =
-            SessionManager::new(self.config.profile.clone(), self.config.shell_commands.clone());
+        let session = SessionManager::new(
+            self.config.profile.clone(),
+            self.config.shell_commands.clone(),
+        );
 
         if let Some(ref pf) = port_forward {
             self.print_forward_info(selected, pf);

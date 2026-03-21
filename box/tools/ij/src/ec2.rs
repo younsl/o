@@ -42,7 +42,6 @@ pub fn format_age(secs: u64) -> String {
     }
 }
 
-
 impl Instance {
     /// Extract region from AZ (e.g., "ap-northeast-2a" → "ap-northeast-2").
     pub fn region(&self) -> &str {
@@ -563,10 +562,7 @@ mod tests {
                     .build(),
             )
             .build();
-        assert_eq!(
-            extract_name_tag(&instance),
-            Some("my-instance".to_string())
-        );
+        assert_eq!(extract_name_tag(&instance), Some("my-instance".to_string()));
     }
 
     #[test]
@@ -610,10 +606,7 @@ mod tests {
                     .build(),
             )
             .build();
-        assert_eq!(
-            extract_name_tag(&instance),
-            Some("web-server".to_string())
-        );
+        assert_eq!(extract_name_tag(&instance), Some("web-server".to_string()));
     }
 
     #[test]
@@ -673,5 +666,4 @@ mod tests {
         assert_eq!(format_age(86400), "1d");
         assert_eq!(format_age(86400 * 365), "365d");
     }
-
 }
