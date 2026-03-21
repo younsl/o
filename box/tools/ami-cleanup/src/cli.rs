@@ -29,3 +29,70 @@ pub struct Cli {
     #[arg(long = "consumer-profile")]
     pub consumer_profiles: Vec<String>,
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use clap::Parser;
+
+    #[test]
+    fn test_cli_defaults() {
+        let cli = Cli::try_parse_from(["ami-cleanup"]).unwrap();
+        assert!(cli.profile.is_none());
+        assert!(cli.region.is_empty());
+        assert_eq!(cli.min_age_days, 0);
+        assert!(cli.consumer_profiles.is_empty());
+    }
+
+    #[test]
+    fn test_cli_with_profile() {
+        let cli = Cli::try_parse_from(["ami-cleanup", "--profile", "prod"]).unwrap();
+        assert_eq!(cli.profile, Some("prod".into()));
+    }
+
+    #[test]
+    fn test_cli_with_regions() {
+        let cli =
+            Cli::try_parse_from(["ami-cleanup", "-r", "us-east-1", "-r", "eu-west-1"]).unwrap();
+        assert_eq!(cli.region, vec!["us-east-1", "eu-west-1"]);
+    }
+
+    #[test]
+    fn test_cli_with_min_age_days() {
+        let cli = Cli::try_parse_from(["ami-cleanup", "--min-age-days", "30"]).unwrap();
+        assert_eq!(cli.min_age_days, 30);
+    }
+
+    #[test]
+    fn test_cli_with_consumer_profiles() {
+        let cli = Cli::try_parse_from([
+            "ami-cleanup",
+            "--consumer-profile",
+            "dev",
+            "--consumer-profile",
+            "stg",
+        ])
+        .unwrap();
+        assert_eq!(cli.consumer_profiles, vec!["dev", "stg"]);
+    }
+
+    #[test]
+    fn test_cli_all_options() {
+        let cli = Cli::try_parse_from([
+            "ami-cleanup",
+            "--profile",
+            "prod",
+            "-r",
+            "us-east-1",
+            "--min-age-days",
+            "90",
+            "--consumer-profile",
+            "dev",
+        ])
+        .unwrap();
+        assert_eq!(cli.profile, Some("prod".into()));
+        assert_eq!(cli.region, vec!["us-east-1"]);
+        assert_eq!(cli.min_age_days, 90);
+        assert_eq!(cli.consumer_profiles, vec!["dev"]);
+    }
+}

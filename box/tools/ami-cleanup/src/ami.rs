@@ -322,3 +322,98 @@ async fn get_asg_ami_ids(asg: &AsgClient) -> anyhow::Result<HashSet<String>> {
 
     Ok(ami_ids)
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use chrono::{Duration, Utc};
+
+    fn make_ami(id: &str, days_old: i64, managed: bool) -> OwnedAmi {
+        OwnedAmi {
+            ami_id: id.to_string(),
+            name: format!("test-{id}"),
+            creation_date: Some(Utc::now() - Duration::days(days_old)),
+            last_launched: None,
+            snapshot_ids: vec![],
+            size_gb: 8,
+            shared: false,
+            managed,
+        }
+    }
+
+    #[test]
+    fn test_compute_unused_filters_used_amis() {
+        let amis = vec![make_ami("ami-1", 30, false), make_ami("ami-2", 30, false)];
+        let used: HashSet<String> = ["ami-1".to_string()].into();
+        let unused = compute_unused(&amis, &used, 0);
+        assert_eq!(unused.len(), 1);
+        assert_eq!(unused[0].ami_id, "ami-2");
+    }
+
+    #[test]
+    fn test_compute_unused_filters_managed_amis() {
+        let amis = vec![make_ami("ami-1", 30, true), make_ami("ami-2", 30, false)];
+        let unused = compute_unused(&amis, &HashSet::new(), 0);
+        assert_eq!(unused.len(), 1);
+        assert_eq!(unused[0].ami_id, "ami-2");
+    }
+
+    #[test]
+    fn test_compute_unused_filters_by_min_age() {
+        let amis = vec![
+            make_ami("ami-old", 60, false),
+            make_ami("ami-new", 5, false),
+        ];
+        let unused = compute_unused(&amis, &HashSet::new(), 30);
+        assert_eq!(unused.len(), 1);
+        assert_eq!(unused[0].ami_id, "ami-old");
+    }
+
+    #[test]
+    fn test_compute_unused_no_creation_date_with_age_filter() {
+        let mut ami = make_ami("ami-1", 0, false);
+        ami.creation_date = None;
+        let amis = vec![ami];
+        let unused = compute_unused(&amis, &HashSet::new(), 30);
+        assert_eq!(
+            unused.len(),
+            1,
+            "AMIs without creation date should be included"
+        );
+    }
+
+    #[test]
+    fn test_compute_unused_no_filter() {
+        let amis = vec![make_ami("ami-1", 5, false), make_ami("ami-2", 10, false)];
+        let unused = compute_unused(&amis, &HashSet::new(), 0);
+        assert_eq!(unused.len(), 2);
+    }
+
+    #[test]
+    fn test_compute_unused_all_filtered() {
+        let amis = vec![make_ami("ami-1", 30, true)];
+        let used: HashSet<String> = ["ami-1".to_string()].into();
+        let unused = compute_unused(&amis, &used, 0);
+        assert!(unused.is_empty());
+    }
+
+    #[test]
+    fn test_compute_unused_empty_input() {
+        let unused = compute_unused(&[], &HashSet::new(), 0);
+        assert!(unused.is_empty());
+    }
+
+    #[test]
+    fn test_compute_unused_combined_filters() {
+        let amis = vec![
+            make_ami("ami-used", 60, false),
+            make_ami("ami-managed", 60, true),
+            make_ami("ami-young", 5, false),
+            make_ami("ami-target", 60, false),
+        ];
+        let used: HashSet<String> = ["ami-used".to_string()].into();
+        let unused = compute_unused(&amis, &used, 30);
+        assert_eq!(unused.len(), 1);
+        assert_eq!(unused[0].ami_id, "ami-target");
+    }
+}

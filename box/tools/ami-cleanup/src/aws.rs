@@ -82,3 +82,94 @@ pub fn list_profiles() -> Vec<String> {
 
     profiles.into_iter().collect()
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use serial_test::serial;
+    use std::io::Write;
+    use tempfile::NamedTempFile;
+
+    fn with_aws_files(config_content: &str, creds_content: &str) -> Vec<String> {
+        let mut config_file = NamedTempFile::new().unwrap();
+        write!(config_file, "{}", config_content).unwrap();
+        let mut creds_file = NamedTempFile::new().unwrap();
+        write!(creds_file, "{}", creds_content).unwrap();
+
+        std::env::set_var("AWS_CONFIG_FILE", config_file.path());
+        std::env::set_var("AWS_SHARED_CREDENTIALS_FILE", creds_file.path());
+
+        let result = list_profiles();
+
+        std::env::remove_var("AWS_CONFIG_FILE");
+        std::env::remove_var("AWS_SHARED_CREDENTIALS_FILE");
+
+        result
+    }
+
+    #[test]
+    #[serial]
+    fn test_list_profiles_config_file() {
+        let profiles = with_aws_files(
+            "[default]\nregion=us-east-1\n\n[profile dev]\nregion=ap-northeast-2\n\n[profile prod]\nregion=eu-west-1\n",
+            "",
+        );
+        assert!(profiles.contains(&"default".to_string()));
+        assert!(profiles.contains(&"dev".to_string()));
+        assert!(profiles.contains(&"prod".to_string()));
+    }
+
+    #[test]
+    #[serial]
+    fn test_list_profiles_credentials_file() {
+        let profiles = with_aws_files(
+            "",
+            "[default]\naws_access_key_id=xxx\n\n[staging]\naws_access_key_id=yyy\n",
+        );
+        assert!(profiles.contains(&"default".to_string()));
+        assert!(profiles.contains(&"staging".to_string()));
+    }
+
+    #[test]
+    #[serial]
+    fn test_list_profiles_combined_dedup() {
+        let profiles = with_aws_files(
+            "[default]\nregion=us-east-1\n[profile dev]\n",
+            "[default]\naws_access_key_id=xxx\n[dev]\naws_access_key_id=yyy\n",
+        );
+        assert_eq!(profiles.iter().filter(|p| *p == "default").count(), 1);
+        assert_eq!(profiles.iter().filter(|p| *p == "dev").count(), 1);
+    }
+
+    #[test]
+    #[serial]
+    fn test_list_profiles_sorted() {
+        let profiles = with_aws_files("[profile z-profile]\n[profile a-profile]\n[default]\n", "");
+        assert_eq!(profiles, vec!["a-profile", "default", "z-profile"]);
+    }
+
+    #[test]
+    #[serial]
+    fn test_list_profiles_missing_files() {
+        std::env::set_var("AWS_CONFIG_FILE", "/nonexistent/config");
+        std::env::set_var("AWS_SHARED_CREDENTIALS_FILE", "/nonexistent/credentials");
+        let profiles = list_profiles();
+        std::env::remove_var("AWS_CONFIG_FILE");
+        std::env::remove_var("AWS_SHARED_CREDENTIALS_FILE");
+        assert!(profiles.is_empty());
+    }
+
+    #[test]
+    #[serial]
+    fn test_list_profiles_empty_files() {
+        let profiles = with_aws_files("", "");
+        assert!(profiles.is_empty());
+    }
+
+    #[test]
+    #[serial]
+    fn test_list_profiles_ignores_empty_section() {
+        let profiles = with_aws_files("", "[]\n");
+        assert!(profiles.is_empty());
+    }
+}

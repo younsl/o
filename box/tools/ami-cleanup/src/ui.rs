@@ -514,3 +514,84 @@ fn truncate(s: &str, max: usize) -> String {
         s.to_string()
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use chrono::{Duration, Utc};
+    use ratatui::layout::Rect;
+
+    #[test]
+    fn test_format_elapsed_days() {
+        let dt = Utc::now() - Duration::days(5);
+        assert_eq!(format_elapsed(dt), "5d");
+    }
+
+    #[test]
+    fn test_format_elapsed_hours() {
+        let dt = Utc::now() - Duration::hours(12);
+        assert_eq!(format_elapsed(dt), "12h");
+    }
+
+    #[test]
+    fn test_format_elapsed_zero_hours() {
+        let dt = Utc::now() - Duration::minutes(30);
+        assert_eq!(format_elapsed(dt), "0h");
+    }
+
+    #[test]
+    fn test_format_elapsed_large_days() {
+        let dt = Utc::now() - Duration::days(365);
+        assert_eq!(format_elapsed(dt), "365d");
+    }
+
+    #[test]
+    fn test_truncate_short_string() {
+        assert_eq!(truncate("hello", 10), "hello");
+    }
+
+    #[test]
+    fn test_truncate_exact_length() {
+        assert_eq!(truncate("hello", 5), "hello");
+    }
+
+    #[test]
+    fn test_truncate_long_string() {
+        assert_eq!(truncate("hello world", 8), "hello...");
+    }
+
+    #[test]
+    fn test_truncate_very_short_max() {
+        assert_eq!(truncate("hello", 4), "h...");
+    }
+
+    #[test]
+    fn test_centered_rect() {
+        let area = Rect::new(0, 0, 100, 50);
+        let result = centered_rect(50, 10, area);
+        assert_eq!(result.x, 25);
+        assert_eq!(result.y, 20);
+        assert_eq!(result.width, 50);
+        assert_eq!(result.height, 10);
+    }
+
+    #[test]
+    fn test_centered_rect_larger_than_area() {
+        let area = Rect::new(0, 0, 30, 20);
+        let result = centered_rect(50, 30, area);
+        assert_eq!(result.x, 0);
+        assert_eq!(result.y, 0);
+        assert_eq!(result.width, 30);
+        assert_eq!(result.height, 20);
+    }
+
+    #[test]
+    fn test_centered_rect_with_offset() {
+        let area = Rect::new(10, 5, 100, 50);
+        let result = centered_rect(20, 10, area);
+        assert_eq!(result.x, 50);
+        assert_eq!(result.y, 25);
+        assert_eq!(result.width, 20);
+        assert_eq!(result.height, 10);
+    }
+}
