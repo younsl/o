@@ -679,7 +679,12 @@ git tag grafana-dashboards/charts/1.0.0 && git push --tags
 
 ## Testing Guidelines
 
-**Current State**: Most tools lack comprehensive test coverage but Makefiles include test targets.
+**Coverage Policy**: All applications under `kubernetes/` and `tools/` must maintain a minimum of 70% test coverage. Measure coverage with `cargo llvm-cov`:
+
+```bash
+cargo llvm-cov                # Run tests and show line coverage summary
+cargo llvm-cov --html         # Generate HTML report (target/llvm-cov/html/)
+```
 
 **When Adding Tests**:
 
