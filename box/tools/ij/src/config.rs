@@ -13,6 +13,8 @@ const BUILD_DATE: &str = env!("BUILD_DATE");
 pub enum Command {
     /// Initialize configuration file interactively
     Init,
+    /// Find and remove unused AMIs and associated EBS snapshots (TUI)
+    AmiCleanup(crate::ami_cleanup::AmiCleanupArgs),
 }
 
 /// CLI arguments.

@@ -1,6 +1,6 @@
 use std::time::Instant;
 
-use crate::ami::{OwnedAmi, ScanResult};
+use super::ami::{OwnedAmi, ScanResult};
 use chrono::Utc;
 use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 
@@ -158,11 +158,11 @@ impl App {
     }
 
     pub fn finish_scan_log(&mut self, result: String) {
-        if let Some(last) = self.scan_logs.last_mut() {
-            if !last.done {
-                last.text = result;
-                last.done = true;
-            }
+        if let Some(last) = self.scan_logs.last_mut()
+            && !last.done
+        {
+            last.text = result;
+            last.done = true;
         }
     }
 
@@ -366,10 +366,10 @@ impl App {
                 AppAction::None
             }
             KeyCode::Char(' ') => {
-                if let Some(row) = self.rows.get_mut(self.cursor) {
-                    if row.status == AmiStatus::Pending {
-                        row.selected = !row.selected;
-                    }
+                if let Some(row) = self.rows.get_mut(self.cursor)
+                    && row.status == AmiStatus::Pending
+                {
+                    row.selected = !row.selected;
                 }
                 AppAction::None
             }
@@ -533,8 +533,8 @@ impl App {
 
 #[cfg(test)]
 mod tests {
+    use super::super::ami::{OwnedAmi, ScanResult};
     use super::*;
-    use crate::ami::{OwnedAmi, ScanResult};
     use chrono::{Duration, Utc};
     use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
     use std::collections::HashSet;

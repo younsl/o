@@ -1,55 +1,37 @@
 use std::collections::HashSet;
 
-use crate::app::{AmiStatus, App, AppMode, SortField, SortOrder};
-use crate::cli;
+use super::app::{AmiStatus, App, AppMode, SortField, SortOrder};
 use ratatui::{
+    Frame,
     layout::{Constraint, Layout, Rect},
     style::{Color, Modifier, Style},
     text::{Line, Span},
     widgets::{Block, Borders, Cell, Clear, Paragraph, Row, Table},
-    Frame,
 };
 
-pub fn draw(frame: &mut Frame, app: &mut App) {
+pub fn draw(frame: &mut Frame, app: &mut App, area: Rect) {
     match app.mode {
-        AppMode::SelectOwner | AppMode::SelectConsumers => draw_profile_select(frame, app),
-        AppMode::Scanning => draw_scanning(frame, app),
-        _ => draw_main(frame, app),
+        AppMode::SelectOwner | AppMode::SelectConsumers => draw_profile_select(frame, app, area),
+        AppMode::Scanning => draw_scanning(frame, app, area),
+        _ => draw_main(frame, app, area),
     }
 }
 
-fn draw_profile_select(frame: &mut Frame, app: &mut App) {
+fn draw_profile_select(frame: &mut Frame, app: &mut App, area: Rect) {
     let is_owner = app.mode == AppMode::SelectOwner;
     let ps = &mut app.profile_selector;
 
     let chunks = Layout::vertical([
-        Constraint::Length(3), // header
+        Constraint::Length(1), // description
         Constraint::Min(5),    // list
         Constraint::Length(1), // help
     ])
-    .split(frame.area());
+    .split(area);
 
-    // Header
-    let subtitle = if is_owner {
-        " Select Owner Profile (AMI source) "
-    } else {
-        " Select Consumer Profiles (AMI usage check) "
-    };
-    let block = Block::default()
-        .borders(Borders::ALL)
-        .title(build_title())
-        .title_bottom(subtitle);
-
-    let desc = if is_owner {
-        "Choose the AWS profile that owns the AMIs"
-    } else {
-        let owner = ps.owner_profile.as_deref().unwrap_or("?");
-        &format!("Owner: {owner}  |  Select profiles that use these AMIs (Space to toggle, Enter to proceed)")
-    };
-    // Need to handle the lifetime issue with format!
+    // Description line
     let desc_line = if is_owner {
         Line::from(vec![Span::styled(
-            format!(" {desc}"),
+            " Select Owner Profile (AMI source)",
             Style::default().fg(Color::Yellow),
         )])
     } else {
@@ -63,8 +45,7 @@ fn draw_profile_select(frame: &mut Frame, app: &mut App) {
             ),
         ])
     };
-    let paragraph = Paragraph::new(desc_line).block(block);
-    frame.render_widget(paragraph, chunks[0]);
+    frame.render_widget(Paragraph::new(desc_line), chunks[0]);
 
     // Profile list
     let block = Block::default().borders(Borders::ALL).title(" Profiles ");
@@ -128,18 +109,17 @@ fn draw_profile_select(frame: &mut Frame, app: &mut App) {
     frame.render_widget(help, chunks[2]);
 }
 
-fn draw_scanning(frame: &mut Frame, app: &App) {
+fn draw_scanning(frame: &mut Frame, app: &App, area: Rect) {
     let chunks = Layout::vertical([
-        Constraint::Length(3), // header
+        Constraint::Length(1), // header
         Constraint::Min(5),    // scan log
         Constraint::Length(1), // help
     ])
-    .split(frame.area());
+    .split(area);
 
-    // Header
+    // Header line
     let elapsed = app.elapsed_secs();
-    let block = Block::default().borders(Borders::ALL).title(build_title());
-    let paragraph = Paragraph::new(Line::from(vec![
+    let header = Line::from(vec![
         Span::styled(
             format!(" {} ", app.header),
             Style::default().fg(Color::DarkGray),
@@ -148,9 +128,8 @@ fn draw_scanning(frame: &mut Frame, app: &App) {
             format!("Scanning... ({elapsed}s)"),
             Style::default().fg(Color::Yellow),
         ),
-    ]))
-    .block(block);
-    frame.render_widget(paragraph, chunks[0]);
+    ]);
+    frame.render_widget(Paragraph::new(header), chunks[0]);
 
     // Scan log
     let block = Block::default()
@@ -189,20 +168,20 @@ fn draw_scanning(frame: &mut Frame, app: &App) {
     frame.render_widget(help, chunks[2]);
 }
 
-fn draw_main(frame: &mut Frame, app: &mut App) {
+fn draw_main(frame: &mut Frame, app: &mut App, area: Rect) {
     let chunks = Layout::vertical([
-        Constraint::Length(3), // header
+        Constraint::Length(1), // header
         Constraint::Min(5),    // table
         Constraint::Length(1), // help bar
     ])
-    .split(frame.area());
+    .split(area);
 
     draw_header(frame, app, chunks[0]);
     draw_table(frame, app, chunks[1]);
     draw_help(frame, app, chunks[2]);
 
     if app.mode == AppMode::Confirm {
-        draw_confirm(frame, app);
+        draw_confirm(frame, app, area);
     }
 }
 
@@ -250,9 +229,7 @@ fn draw_header(frame: &mut Frame, app: &App, area: Rect) {
         }
     }
 
-    let block = Block::default().borders(Borders::ALL).title(build_title());
-
-    let paragraph = Paragraph::new(Line::from(spans)).block(block);
+    let paragraph = Paragraph::new(Line::from(spans));
     frame.render_widget(paragraph, area);
 }
 
@@ -451,10 +428,10 @@ fn draw_help(frame: &mut Frame, app: &App, area: Rect) {
     }
 }
 
-fn draw_confirm(frame: &mut Frame, app: &App) {
+fn draw_confirm(frame: &mut Frame, app: &App, parent_area: Rect) {
     let width = 50u16;
     let height = 5u16;
-    let area = centered_rect(width, height, frame.area());
+    let area = centered_rect(width, height, parent_area);
 
     frame.render_widget(Clear, area);
 
@@ -493,10 +470,6 @@ fn centered_rect(width: u16, height: u16, area: Rect) -> Rect {
     Rect::new(x, y, width.min(area.width), height.min(area.height))
 }
 
-fn build_title() -> String {
-    format!(" {} v{} ({}) ", cli::APP_NAME, cli::VERSION, cli::COMMIT)
-}
-
 fn format_elapsed(dt: chrono::DateTime<chrono::Utc>) -> String {
     let dur = chrono::Utc::now() - dt;
     let days = dur.num_days();
@@ -519,12 +492,11 @@ fn truncate(s: &str, max: usize) -> String {
 mod tests {
     use super::*;
     use chrono::{Duration, Utc};
-    use ratatui::backend::TestBackend;
-    use ratatui::layout::Rect;
     use ratatui::Terminal;
+    use ratatui::backend::TestBackend;
 
-    use crate::ami::OwnedAmi;
-    use crate::app::{AmiRow, ScanSummary};
+    use super::super::ami::OwnedAmi;
+    use super::super::app::{AmiRow, ScanSummary};
 
     #[test]
     fn test_format_elapsed_days() {
@@ -655,16 +627,6 @@ mod tests {
         app
     }
 
-    // -- build_title --
-
-    #[test]
-    fn test_build_title() {
-        let title = build_title();
-        assert!(title.contains(cli::APP_NAME));
-        assert!(title.contains(cli::VERSION));
-        assert!(title.contains(cli::COMMIT));
-    }
-
     // -- draw: SelectOwner mode --
 
     #[test]
@@ -672,7 +634,7 @@ mod tests {
         let mut app = App::new_select_profile(vec!["prod".into(), "dev".into(), "staging".into()]);
         let backend = TestBackend::new(80, 24);
         let mut terminal = Terminal::new(backend).unwrap();
-        terminal.draw(|f| draw(f, &mut app)).unwrap();
+        terminal.draw(|f| draw(f, &mut app, f.area())).unwrap();
     }
 
     #[test]
@@ -681,7 +643,7 @@ mod tests {
         app.profile_selector.cursor = 2;
         let backend = TestBackend::new(80, 24);
         let mut terminal = Terminal::new(backend).unwrap();
-        terminal.draw(|f| draw(f, &mut app)).unwrap();
+        terminal.draw(|f| draw(f, &mut app, f.area())).unwrap();
     }
 
     // -- draw: SelectConsumers mode --
@@ -694,7 +656,7 @@ mod tests {
         app.mode = AppMode::SelectConsumers;
         let backend = TestBackend::new(80, 24);
         let mut terminal = Terminal::new(backend).unwrap();
-        terminal.draw(|f| draw(f, &mut app)).unwrap();
+        terminal.draw(|f| draw(f, &mut app, f.area())).unwrap();
     }
 
     #[test]
@@ -705,18 +667,18 @@ mod tests {
         app.mode = AppMode::SelectConsumers;
         let backend = TestBackend::new(80, 24);
         let mut terminal = Terminal::new(backend).unwrap();
-        terminal.draw(|f| draw(f, &mut app)).unwrap();
+        terminal.draw(|f| draw(f, &mut app, f.area())).unwrap();
     }
 
     #[test]
     fn test_draw_select_consumers_owner_not_cursor() {
         let mut app = App::new_select_profile(vec!["prod".into(), "dev".into(), "staging".into()]);
         app.profile_selector.owner_profile = Some("prod".into());
-        app.profile_selector.cursor = 1; // cursor on dev, not on owner (prod)
+        app.profile_selector.cursor = 1;
         app.mode = AppMode::SelectConsumers;
         let backend = TestBackend::new(80, 24);
         let mut terminal = Terminal::new(backend).unwrap();
-        terminal.draw(|f| draw(f, &mut app)).unwrap();
+        terminal.draw(|f| draw(f, &mut app, f.area())).unwrap();
     }
 
     // -- draw: Scanning mode --
@@ -726,7 +688,7 @@ mod tests {
         let mut app = App::new_scanning("test-account".into());
         let backend = TestBackend::new(80, 24);
         let mut terminal = Terminal::new(backend).unwrap();
-        terminal.draw(|f| draw(f, &mut app)).unwrap();
+        terminal.draw(|f| draw(f, &mut app, f.area())).unwrap();
     }
 
     #[test]
@@ -737,7 +699,7 @@ mod tests {
         app.add_scan_log("Step 2 in progress".into());
         let backend = TestBackend::new(80, 24);
         let mut terminal = Terminal::new(backend).unwrap();
-        terminal.draw(|f| draw(f, &mut app)).unwrap();
+        terminal.draw(|f| draw(f, &mut app, f.area())).unwrap();
     }
 
     // -- draw: Browse mode --
@@ -761,7 +723,7 @@ mod tests {
         let mut app = browse_app(rows);
         let backend = TestBackend::new(120, 30);
         let mut terminal = Terminal::new(backend).unwrap();
-        terminal.draw(|f| draw(f, &mut app)).unwrap();
+        terminal.draw(|f| draw(f, &mut app, f.area())).unwrap();
     }
 
     #[test]
@@ -782,7 +744,7 @@ mod tests {
         let mut app = browse_app(rows);
         let backend = TestBackend::new(120, 30);
         let mut terminal = Terminal::new(backend).unwrap();
-        terminal.draw(|f| draw(f, &mut app)).unwrap();
+        terminal.draw(|f| draw(f, &mut app, f.area())).unwrap();
     }
 
     #[test]
@@ -797,7 +759,7 @@ mod tests {
         let mut app = browse_app(rows);
         let backend = TestBackend::new(120, 30);
         let mut terminal = Terminal::new(backend).unwrap();
-        terminal.draw(|f| draw(f, &mut app)).unwrap();
+        terminal.draw(|f| draw(f, &mut app, f.area())).unwrap();
     }
 
     #[test]
@@ -811,7 +773,7 @@ mod tests {
         app.sort_order = SortOrder::Desc;
         let backend = TestBackend::new(120, 30);
         let mut terminal = Terminal::new(backend).unwrap();
-        terminal.draw(|f| draw(f, &mut app)).unwrap();
+        terminal.draw(|f| draw(f, &mut app, f.area())).unwrap();
     }
 
     #[test]
@@ -825,7 +787,7 @@ mod tests {
         app.sort_order = SortOrder::Asc;
         let backend = TestBackend::new(120, 30);
         let mut terminal = Terminal::new(backend).unwrap();
-        terminal.draw(|f| draw(f, &mut app)).unwrap();
+        terminal.draw(|f| draw(f, &mut app, f.area())).unwrap();
     }
 
     #[test]
@@ -839,7 +801,7 @@ mod tests {
         app.sort_order = SortOrder::Desc;
         let backend = TestBackend::new(120, 30);
         let mut terminal = Terminal::new(backend).unwrap();
-        terminal.draw(|f| draw(f, &mut app)).unwrap();
+        terminal.draw(|f| draw(f, &mut app, f.area())).unwrap();
     }
 
     #[test]
@@ -853,7 +815,7 @@ mod tests {
         app.sort_order = SortOrder::Asc;
         let backend = TestBackend::new(120, 30);
         let mut terminal = Terminal::new(backend).unwrap();
-        terminal.draw(|f| draw(f, &mut app)).unwrap();
+        terminal.draw(|f| draw(f, &mut app, f.area())).unwrap();
     }
 
     // -- draw: header with deletions --
@@ -875,7 +837,7 @@ mod tests {
         let mut app = browse_app(rows);
         let backend = TestBackend::new(120, 30);
         let mut terminal = Terminal::new(backend).unwrap();
-        terminal.draw(|f| draw(f, &mut app)).unwrap();
+        terminal.draw(|f| draw(f, &mut app, f.area())).unwrap();
     }
 
     #[test]
@@ -884,7 +846,7 @@ mod tests {
         let mut app = browse_app(rows);
         let backend = TestBackend::new(120, 30);
         let mut terminal = Terminal::new(backend).unwrap();
-        terminal.draw(|f| draw(f, &mut app)).unwrap();
+        terminal.draw(|f| draw(f, &mut app, f.area())).unwrap();
     }
 
     // -- draw: Confirm mode --
@@ -899,7 +861,7 @@ mod tests {
         app.mode = AppMode::Confirm;
         let backend = TestBackend::new(120, 30);
         let mut terminal = Terminal::new(backend).unwrap();
-        terminal.draw(|f| draw(f, &mut app)).unwrap();
+        terminal.draw(|f| draw(f, &mut app, f.area())).unwrap();
     }
 
     // -- draw: Done mode --
@@ -910,7 +872,7 @@ mod tests {
         app.mode = AppMode::Done;
         let backend = TestBackend::new(120, 30);
         let mut terminal = Terminal::new(backend).unwrap();
-        terminal.draw(|f| draw(f, &mut app)).unwrap();
+        terminal.draw(|f| draw(f, &mut app, f.area())).unwrap();
     }
 
     // -- draw: edge cases --
@@ -930,7 +892,7 @@ mod tests {
         let mut app = browse_app(rows);
         let backend = TestBackend::new(120, 30);
         let mut terminal = Terminal::new(backend).unwrap();
-        terminal.draw(|f| draw(f, &mut app)).unwrap();
+        terminal.draw(|f| draw(f, &mut app, f.area())).unwrap();
     }
 
     #[test]
@@ -948,7 +910,7 @@ mod tests {
         let mut app = browse_app(rows);
         let backend = TestBackend::new(120, 30);
         let mut terminal = Terminal::new(backend).unwrap();
-        terminal.draw(|f| draw(f, &mut app)).unwrap();
+        terminal.draw(|f| draw(f, &mut app, f.area())).unwrap();
     }
 
     #[test]
@@ -964,7 +926,7 @@ mod tests {
         let mut app = browse_app(rows);
         let backend = TestBackend::new(120, 30);
         let mut terminal = Terminal::new(backend).unwrap();
-        terminal.draw(|f| draw(f, &mut app)).unwrap();
+        terminal.draw(|f| draw(f, &mut app, f.area())).unwrap();
     }
 
     #[test]
@@ -977,7 +939,7 @@ mod tests {
         app.cursor = 1;
         let backend = TestBackend::new(120, 30);
         let mut terminal = Terminal::new(backend).unwrap();
-        terminal.draw(|f| draw(f, &mut app)).unwrap();
+        terminal.draw(|f| draw(f, &mut app, f.area())).unwrap();
     }
 
     #[test]
@@ -992,6 +954,6 @@ mod tests {
         app.sort_order = SortOrder::Asc;
         let backend = TestBackend::new(120, 30);
         let mut terminal = Terminal::new(backend).unwrap();
-        terminal.draw(|f| draw(f, &mut app)).unwrap();
+        terminal.draw(|f| draw(f, &mut app, f.area())).unwrap();
     }
 }

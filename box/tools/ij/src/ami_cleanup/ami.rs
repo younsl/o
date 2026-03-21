@@ -5,7 +5,7 @@ use aws_sdk_ec2::Client as Ec2Client;
 use chrono::{DateTime, Utc};
 use futures::stream::{self, StreamExt};
 
-use crate::error::AppError;
+use super::error::AppError;
 
 const API_CONCURRENCY: usize = 10;
 
@@ -150,11 +150,7 @@ pub async fn check_shared_amis(ec2: &Ec2Client, amis: &mut [OwnedAmi]) {
                             .launch_permissions()
                             .iter()
                             .any(|lp| lp.user_id().is_some() || lp.group().is_some());
-                        if is_shared {
-                            Some(ami_id)
-                        } else {
-                            None
-                        }
+                        if is_shared { Some(ami_id) } else { None }
                     }
                     Err(_) => None,
                 }
@@ -288,27 +284,26 @@ async fn get_asg_ami_ids(asg: &AsgClient) -> anyhow::Result<HashSet<String>> {
             .map_err(|e| AppError::AutoScaling(e.to_string()))?;
 
         for group in resp.auto_scaling_groups() {
-            if let Some(lc_name) = group.launch_configuration_name() {
-                if let Ok(lc_resp) = asg
+            if let Some(lc_name) = group.launch_configuration_name()
+                && let Ok(lc_resp) = asg
                     .describe_launch_configurations()
                     .launch_configuration_names(lc_name)
                     .send()
                     .await
-                {
-                    for lc in lc_resp.launch_configurations() {
-                        if let Some(ami_id) = lc.image_id() {
-                            ami_ids.insert(ami_id.to_string());
-                        }
+            {
+                for lc in lc_resp.launch_configurations() {
+                    if let Some(ami_id) = lc.image_id() {
+                        ami_ids.insert(ami_id.to_string());
                     }
                 }
             }
 
-            if let Some(policy) = group.mixed_instances_policy() {
-                if let Some(lt_spec) = policy.launch_template() {
-                    for ovr in lt_spec.overrides() {
-                        if let Some(ami_id) = ovr.image_id() {
-                            ami_ids.insert(ami_id.to_string());
-                        }
+            if let Some(policy) = group.mixed_instances_policy()
+                && let Some(lt_spec) = policy.launch_template()
+            {
+                for ovr in lt_spec.overrides() {
+                    if let Some(ami_id) = ovr.image_id() {
+                        ami_ids.insert(ami_id.to_string());
                     }
                 }
             }

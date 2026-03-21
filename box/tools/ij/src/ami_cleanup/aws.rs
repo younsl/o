@@ -96,13 +96,20 @@ mod tests {
         let mut creds_file = NamedTempFile::new().unwrap();
         write!(creds_file, "{}", creds_content).unwrap();
 
-        std::env::set_var("AWS_CONFIG_FILE", config_file.path());
-        std::env::set_var("AWS_SHARED_CREDENTIALS_FILE", creds_file.path());
+        // SAFETY: Tests using this helper run serially via #[serial], so no
+        // concurrent access to environment variables occurs.
+        unsafe {
+            std::env::set_var("AWS_CONFIG_FILE", config_file.path());
+            std::env::set_var("AWS_SHARED_CREDENTIALS_FILE", creds_file.path());
+        }
 
         let result = list_profiles();
 
-        std::env::remove_var("AWS_CONFIG_FILE");
-        std::env::remove_var("AWS_SHARED_CREDENTIALS_FILE");
+        // SAFETY: Tests using this helper run serially via #[serial].
+        unsafe {
+            std::env::remove_var("AWS_CONFIG_FILE");
+            std::env::remove_var("AWS_SHARED_CREDENTIALS_FILE");
+        }
 
         result
     }
@@ -151,11 +158,16 @@ mod tests {
     #[test]
     #[serial]
     fn test_list_profiles_missing_files() {
-        std::env::set_var("AWS_CONFIG_FILE", "/nonexistent/config");
-        std::env::set_var("AWS_SHARED_CREDENTIALS_FILE", "/nonexistent/credentials");
+        // SAFETY: Tests using this helper run serially via #[serial].
+        unsafe {
+            std::env::set_var("AWS_CONFIG_FILE", "/nonexistent/config");
+            std::env::set_var("AWS_SHARED_CREDENTIALS_FILE", "/nonexistent/credentials");
+        }
         let profiles = list_profiles();
-        std::env::remove_var("AWS_CONFIG_FILE");
-        std::env::remove_var("AWS_SHARED_CREDENTIALS_FILE");
+        unsafe {
+            std::env::remove_var("AWS_CONFIG_FILE");
+            std::env::remove_var("AWS_SHARED_CREDENTIALS_FILE");
+        }
         assert!(profiles.is_empty());
     }
 

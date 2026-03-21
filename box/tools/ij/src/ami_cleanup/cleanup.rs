@@ -1,6 +1,6 @@
 use aws_sdk_ec2::Client as Ec2Client;
 
-use crate::ami::OwnedAmi;
+use super::ami::OwnedAmi;
 
 #[derive(Debug)]
 pub struct CleanupResult {

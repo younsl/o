@@ -15,7 +15,6 @@ All CLI tools are built with [Rust](https://github.com/rust-lang/rust) 1.93+. Ru
 | CLI | [qg](./qg/) (qr generator) | [Rust](./qg/Cargo.toml) | CLI tool that generates QR code images from text or URLs. |
 | CLI | [s3vget](./s3vget/) (S3 version get) | [Rust](./s3vget/Cargo.toml) | S3 Object Version Downloader with interactive prompts and configurable timezone support. |
 | CLI | [ij](./ij/) (Instance Jump) | [Rust](./ij/Cargo.toml) | Interactive EC2 Session Manager jump tool with multi-region scanning and fuzzy search. |
-| CLI | [ami-cleanup](./ami-cleanup/) | [Rust](./ami-cleanup/Cargo.toml) | TUI tool to find and remove unused AMIs and associated EBS snapshots across multiple accounts and regions. |
 
 ## License
 
