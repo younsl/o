@@ -259,4 +259,64 @@ mod tests {
         let pf = PortForward::parse("3306:rds.example.com:3306").unwrap();
         assert_eq!(pf.display_info(), "localhost:3306 -> rds.example.com:3306");
     }
+
+    // --- Boundary and edge case tests ---
+
+    #[test]
+    fn parse_port_min_valid() {
+        let pf = PortForward::parse("1").unwrap();
+        assert_eq!(
+            pf,
+            PortForward::Instance {
+                local_port: 1,
+                remote_port: 1,
+            }
+        );
+    }
+
+    #[test]
+    fn parse_port_max_valid() {
+        let pf = PortForward::parse("65535").unwrap();
+        assert_eq!(
+            pf,
+            PortForward::Instance {
+                local_port: 65535,
+                remote_port: 65535,
+            }
+        );
+    }
+
+    #[test]
+    fn parse_port_overflow() {
+        assert!(PortForward::parse("65536").is_err());
+    }
+
+    #[test]
+    fn parse_empty_string() {
+        assert!(PortForward::parse("").is_err());
+    }
+
+    #[test]
+    fn parse_host_with_port_zero() {
+        assert!(PortForward::parse("host.example.com:0").is_err());
+    }
+
+    #[test]
+    fn parse_ipv4_as_host() {
+        let pf = PortForward::parse("10.0.0.1:3306").unwrap();
+        assert_eq!(
+            pf,
+            PortForward::RemoteHost {
+                local_port: 3306,
+                remote_host: "10.0.0.1".to_string(),
+                remote_port: 3306,
+            }
+        );
+    }
+
+    #[test]
+    fn display_info_same_ports() {
+        let pf = PortForward::parse("80").unwrap();
+        assert_eq!(pf.display_info(), "localhost:80 -> instance:80");
+    }
 }

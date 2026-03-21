@@ -59,6 +59,10 @@ pub struct Args {
     /// Port forwarding spec (e.g., 80, 8080:80, host:3306, 3306:host:3306)
     #[arg(short = 'L', long = "forward", value_name = "SPEC")]
     pub forward: Option<String>,
+
+    /// Shell command to execute on connect, use multiple -s for multiple commands
+    #[arg(short = 's', long)]
+    pub shell_commands: Vec<String>,
 }
 
 /// Application configuration derived from CLI args + file config.
@@ -72,6 +76,7 @@ pub struct Config {
     pub running_only: bool,
     pub log_level: String,
     pub forward: Option<String>,
+    pub shell_commands: Vec<String>,
 }
 
 impl Config {
@@ -111,6 +116,15 @@ impl Config {
 
         let scan_regions = fc.scan_regions;
 
+        let shell_commands = if !args.shell_commands.is_empty() {
+            // CLI flags override everything
+            args.shell_commands
+        } else if fc.shell_commands.enabled {
+            fc.shell_commands.commands
+        } else {
+            Vec::new()
+        };
+
         Self {
             profile,
             aws_config_file,
@@ -120,6 +134,7 @@ impl Config {
             running_only,
             log_level,
             forward: args.forward,
+            shell_commands,
         }
     }
 
@@ -145,6 +160,7 @@ mod tests {
             running_only: None,
             log_level: None,
             forward: None,
+            shell_commands: Vec::new(),
         }
     }
 
@@ -170,6 +186,7 @@ mod tests {
             tag_filters: vec!["Team=sre".into()],
             running_only: Some(false),
             log_level: Some("debug".into()),
+            shell_commands: crate::file_config::ShellCommands::default(),
         };
         let config = Config::from_args_and_file(empty_args(), Some(fc));
         assert_eq!(config.profile.as_deref(), Some("file-profile"));
@@ -189,6 +206,7 @@ mod tests {
             tag_filters: vec!["Team=sre".into()],
             running_only: Some(false),
             log_level: Some("debug".into()),
+            shell_commands: crate::file_config::ShellCommands::default(),
         };
         let mut args = empty_args();
         args.profile = Some("cli-profile".into());
@@ -256,6 +274,47 @@ mod tests {
     fn profile_display_without_profile() {
         let config = Config::from_args_and_file(empty_args(), None);
         assert_eq!(config.profile_display(), "default");
+    }
+
+    #[test]
+    fn shell_commands_enabled_passes_commands() {
+        let fc = FileConfig {
+            shell_commands: crate::file_config::ShellCommands {
+                enabled: true,
+                commands: vec!["sudo su -".into()],
+            },
+            ..FileConfig::default()
+        };
+        let config = Config::from_args_and_file(empty_args(), Some(fc));
+        assert_eq!(config.shell_commands, vec!["sudo su -"]);
+    }
+
+    #[test]
+    fn shell_commands_disabled_returns_empty() {
+        let fc = FileConfig {
+            shell_commands: crate::file_config::ShellCommands {
+                enabled: false,
+                commands: vec!["sudo su -".into()],
+            },
+            ..FileConfig::default()
+        };
+        let config = Config::from_args_and_file(empty_args(), Some(fc));
+        assert!(config.shell_commands.is_empty());
+    }
+
+    #[test]
+    fn cli_shell_commands_override_disabled_config() {
+        let fc = FileConfig {
+            shell_commands: crate::file_config::ShellCommands {
+                enabled: false,
+                commands: vec!["sudo su -".into()],
+            },
+            ..FileConfig::default()
+        };
+        let mut args = empty_args();
+        args.shell_commands = vec!["whoami".into()];
+        let config = Config::from_args_and_file(args, Some(fc));
+        assert_eq!(config.shell_commands, vec!["whoami"]);
     }
 }
 

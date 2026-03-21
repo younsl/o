@@ -5,9 +5,99 @@
 
 use std::path::PathBuf;
 
-use serde::{Deserialize, Serialize};
+use serde::{Deserialize, Deserializer, Serialize};
 
 use crate::error::{Error, Result};
+
+/// Field documentation: (yaml_key, type_label, description).
+const FIELD_DOCS: &[(&str, &str, &str)] = &[
+    ("aws_profile", "string", "AWS profile name"),
+    ("aws_config_file", "string", "AWS CLI config file path"),
+    (
+        "scan_regions",
+        "list<string>",
+        "Regions to scan, empty means all regions",
+    ),
+    (
+        "tag_filters",
+        "list<string>",
+        "Tag filters in Key=Value format",
+    ),
+    ("running_only", "bool", "Only show running instances"),
+    (
+        "log_level",
+        "string",
+        "Log level: trace, debug, info, warn, error",
+    ),
+    (
+        "shell_commands",
+        "",
+        "Shell commands executed on SSM connect",
+    ),
+    ("enabled", "bool", "Enable shell commands"),
+    (
+        "commands",
+        "list<string>",
+        "Commands to execute, joined with \";\"",
+    ),
+];
+
+/// Insert `# (type) description` comments above matching YAML keys.
+fn insert_comments(yaml: &str) -> String {
+    let mut out = String::new();
+    for line in yaml.lines() {
+        let trimmed = line.trim_start();
+        if let Some(&(_, typ, desc)) = trimmed
+            .split(':')
+            .next()
+            .and_then(|key| FIELD_DOCS.iter().find(|(k, _, _)| *k == key))
+        {
+            let indent = &line[..line.len() - trimmed.len()];
+            if typ.is_empty() {
+                out.push_str(&format!("{indent}# {desc}\n"));
+            } else {
+                out.push_str(&format!("{indent}# ({typ}) {desc}\n"));
+            }
+        }
+        // Indent root-level list items
+        if !line.starts_with(' ') && trimmed.starts_with('-') {
+            out.push_str("  ");
+        }
+        out.push_str(line);
+        out.push('\n');
+    }
+    out
+}
+
+/// Deserialize a field that can be either a string or a list of strings.
+fn string_or_vec<'de, D>(deserializer: D) -> std::result::Result<Vec<String>, D::Error>
+where
+    D: Deserializer<'de>,
+{
+    #[derive(Deserialize)]
+    #[serde(untagged)]
+    enum StringOrVec {
+        String(String),
+        Vec(Vec<String>),
+    }
+
+    match StringOrVec::deserialize(deserializer)? {
+        StringOrVec::String(s) => Ok(vec![s]),
+        StringOrVec::Vec(v) => Ok(v),
+    }
+}
+
+/// Shell commands configuration.
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct ShellCommands {
+    /// Whether shell commands are enabled.
+    #[serde(default)]
+    pub enabled: bool,
+
+    /// Commands to execute on connect (joined with ";").
+    #[serde(default, deserialize_with = "string_or_vec")]
+    pub commands: Vec<String>,
+}
 
 /// File-based configuration.
 /// Default AWS CLI config file path.
@@ -42,6 +132,10 @@ pub struct FileConfig {
     /// Log level (trace, debug, info, warn, error).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub log_level: Option<String>,
+
+    /// Shell commands configuration.
+    #[serde(default)]
+    pub shell_commands: ShellCommands,
 }
 
 impl Default for FileConfig {
@@ -53,8 +147,25 @@ impl Default for FileConfig {
             tag_filters: Vec::new(),
             running_only: None,
             log_level: None,
+            shell_commands: ShellCommands::default(),
         }
     }
+}
+
+/// Resolve config base directory from an optional XDG path and home directory.
+///
+/// Pure function: no env var or filesystem access.
+pub fn resolve_config_path(
+    xdg_config_home: Option<&str>,
+    home_dir: Option<PathBuf>,
+) -> Result<PathBuf> {
+    let base = match xdg_config_home {
+        Some(xdg) if !xdg.is_empty() => PathBuf::from(xdg),
+        _ => home_dir
+            .ok_or_else(|| Error::Config("could not determine home directory".into()))?
+            .join(".config"),
+    };
+    Ok(base.join("ij").join("config.yaml"))
 }
 
 impl FileConfig {
@@ -62,22 +173,23 @@ impl FileConfig {
     ///
     /// Uses `$XDG_CONFIG_HOME/ij/config.yaml`, falling back to `~/.config/ij/config.yaml`.
     pub fn default_path() -> Result<PathBuf> {
-        let base = match std::env::var("XDG_CONFIG_HOME") {
-            Ok(xdg) if !xdg.is_empty() => PathBuf::from(xdg),
-            _ => dirs::home_dir()
-                .ok_or_else(|| Error::Config("could not determine home directory".into()))?
-                .join(".config"),
-        };
-        Ok(base.join("ij").join("config.yaml"))
+        resolve_config_path(
+            std::env::var("XDG_CONFIG_HOME").ok().as_deref(),
+            dirs::home_dir(),
+        )
     }
 
     /// Load config from the default path. Returns `Ok(None)` if the file does not exist.
     pub fn load_default() -> Result<Option<Self>> {
-        let path = Self::default_path()?;
+        Self::load_if_exists(&Self::default_path()?)
+    }
+
+    /// Load config from a path if it exists. Returns `Ok(None)` if the file does not exist.
+    pub fn load_if_exists(path: &PathBuf) -> Result<Option<Self>> {
         if !path.exists() {
             return Ok(None);
         }
-        Self::load(&path).map(Some)
+        Self::load(path).map(Some)
     }
 
     /// Load config from a specific path.
@@ -100,7 +212,10 @@ impl FileConfig {
             std::fs::create_dir_all(parent)?;
         }
         let yaml = serde_yaml::to_string(self)?;
-        let content = format!("# ij configuration file\n# Generated by `ij init`\n{yaml}");
+        let content = format!(
+            "# ij configuration file\n# Generated by `ij init`\n\n{}",
+            insert_comments(&yaml)
+        );
         std::fs::write(path, content)?;
         Ok(())
     }
@@ -131,6 +246,10 @@ mod tests {
             tag_filters: vec!["Environment=production".into()],
             running_only: Some(true),
             log_level: Some("debug".into()),
+            shell_commands: ShellCommands {
+                enabled: true,
+                commands: vec!["sudo su -".into()],
+            },
         };
         let yaml = serde_yaml::to_string(&fc).unwrap();
         assert!(yaml.contains("aws_profile: prod"));
@@ -211,6 +330,7 @@ log_level: warn
             tag_filters: vec!["Env=test".into()],
             running_only: Some(false),
             log_level: Some("trace".into()),
+            shell_commands: ShellCommands::default(),
         };
         original.save(&path).unwrap();
 
@@ -248,6 +368,182 @@ log_level: warn
         let path = PathBuf::from("/tmp/ij-test-nonexistent-12345/config.yaml");
         let result = FileConfig::load(&path);
         assert!(result.is_err());
+    }
+
+    // --- resolve_config_path tests (pure function, no env var manipulation) ---
+
+    #[test]
+    fn resolve_config_path_with_xdg() {
+        let path = resolve_config_path(Some("/tmp/xdg"), None).unwrap();
+        assert_eq!(path, PathBuf::from("/tmp/xdg/ij/config.yaml"));
+    }
+
+    #[test]
+    fn resolve_config_path_empty_xdg_falls_back_to_home() {
+        let home = PathBuf::from("/home/testuser");
+        let path = resolve_config_path(Some(""), Some(home)).unwrap();
+        assert_eq!(path, PathBuf::from("/home/testuser/.config/ij/config.yaml"));
+    }
+
+    #[test]
+    fn resolve_config_path_none_xdg_falls_back_to_home() {
+        let home = PathBuf::from("/Users/testuser");
+        let path = resolve_config_path(None, Some(home)).unwrap();
+        assert_eq!(
+            path,
+            PathBuf::from("/Users/testuser/.config/ij/config.yaml")
+        );
+    }
+
+    #[test]
+    fn resolve_config_path_no_xdg_no_home_returns_error() {
+        let result = resolve_config_path(None, None);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn default_path_returns_valid_path() {
+        let path = FileConfig::default_path().unwrap();
+        assert!(path.ends_with("ij/config.yaml"));
+    }
+
+    #[test]
+    fn load_default_does_not_error() {
+        // load_default should return Ok regardless of whether the config file exists
+        let result = FileConfig::load_default();
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn load_if_exists_returns_none_when_missing() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("nonexistent.yaml");
+        let result = FileConfig::load_if_exists(&path).unwrap();
+        assert!(result.is_none());
+    }
+
+    #[test]
+    fn load_if_exists_returns_some_when_present() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("config.yaml");
+        FileConfig::default().save(&path).unwrap();
+        let result = FileConfig::load_if_exists(&path).unwrap();
+        assert!(result.is_some());
+    }
+
+    #[test]
+    fn save_and_load_via_explicit_path() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("ij").join("config.yaml");
+
+        let config = FileConfig {
+            aws_profile: Some("test".into()),
+            ..FileConfig::default()
+        };
+        config.save(&path).unwrap();
+
+        // Simulate what load_default does: check exists, then load
+        assert!(path.exists());
+        let loaded = FileConfig::load(&path).unwrap();
+        assert_eq!(loaded.aws_profile.as_deref(), Some("test"));
+    }
+
+    // --- ShellCommands deserialize tests ---
+
+    #[test]
+    fn deserialize_shell_commands_struct() {
+        let yaml = r#"
+shell_commands:
+  enabled: true
+  commands:
+    - "sudo su -"
+    - "whoami"
+"#;
+        let fc: FileConfig = serde_yaml::from_str(yaml).unwrap();
+        assert!(fc.shell_commands.enabled);
+        assert_eq!(fc.shell_commands.commands, vec!["sudo su -", "whoami"]);
+    }
+
+    #[test]
+    fn deserialize_shell_commands_disabled() {
+        let yaml = r#"
+shell_commands:
+  enabled: false
+  commands:
+    - "sudo su -"
+"#;
+        let fc: FileConfig = serde_yaml::from_str(yaml).unwrap();
+        assert!(!fc.shell_commands.enabled);
+        assert_eq!(fc.shell_commands.commands, vec!["sudo su -"]);
+    }
+
+    #[test]
+    fn deserialize_shell_commands_missing_defaults() {
+        let yaml = "{}";
+        let fc: FileConfig = serde_yaml::from_str(yaml).unwrap();
+        assert!(!fc.shell_commands.enabled);
+        assert!(fc.shell_commands.commands.is_empty());
+    }
+
+    #[test]
+    fn deserialize_shell_commands_single_string() {
+        let yaml = r#"
+shell_commands:
+  enabled: true
+  commands: "sudo su -"
+"#;
+        let fc: FileConfig = serde_yaml::from_str(yaml).unwrap();
+        assert_eq!(fc.shell_commands.commands, vec!["sudo su -"]);
+    }
+
+    // --- insert_comments tests ---
+
+    #[test]
+    fn insert_comments_adds_type_annotations() {
+        let yaml = "aws_profile: default\nrunning_only: true\n";
+        let result = insert_comments(yaml);
+        assert!(result.contains("# (string) AWS profile name\naws_profile: default"));
+        assert!(result.contains("# (bool) Only show running instances\nrunning_only: true"));
+    }
+
+    #[test]
+    fn insert_comments_shell_commands_section() {
+        let yaml = "shell_commands:\n  enabled: true\n  commands:\n  - sudo su -\n";
+        let result = insert_comments(yaml);
+        assert!(result.contains("# Shell commands executed on SSM connect\nshell_commands:"));
+        assert!(result.contains("  # (bool) Enable shell commands\n  enabled: true"));
+        assert!(result.contains("  # (list<string>) Commands to execute"));
+    }
+
+    #[test]
+    fn insert_comments_indents_root_list_items() {
+        let yaml = "scan_regions:\n- ap-northeast-2\n- us-east-1\n";
+        let result = insert_comments(yaml);
+        assert!(result.contains("  - ap-northeast-2"));
+        assert!(result.contains("  - us-east-1"));
+    }
+
+    #[test]
+    fn save_generates_commented_yaml() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("config.yaml");
+
+        let fc = FileConfig {
+            aws_profile: Some("prod".into()),
+            scan_regions: vec!["us-east-1".into()],
+            shell_commands: ShellCommands {
+                enabled: true,
+                commands: vec!["sudo su -".into()],
+            },
+            ..FileConfig::default()
+        };
+        fc.save(&path).unwrap();
+
+        let content = std::fs::read_to_string(&path).unwrap();
+        assert!(content.starts_with("# ij configuration file"));
+        assert!(content.contains("# (string) AWS profile name\naws_profile: prod"));
+        assert!(content.contains("# (bool) Enable shell commands"));
+        assert!(content.contains("  - us-east-1"));
     }
 
     #[test]

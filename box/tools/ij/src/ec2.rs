@@ -12,37 +12,61 @@ use crate::error::{Error, Result};
 /// EC2 instance information.
 #[derive(Debug, Clone, Tabled)]
 pub struct Instance {
-    #[tabled(rename = "REGION")]
-    pub region: String,
     #[tabled(rename = "NAME")]
     pub name: String,
     #[tabled(rename = "INSTANCE ID")]
     pub instance_id: String,
     #[tabled(rename = "TYPE")]
     pub instance_type: String,
+    #[tabled(rename = "AZ")]
+    pub az: String,
     #[tabled(rename = "PRIVATE IP")]
     pub private_ip: String,
-    #[tabled(rename = "PLATFORM")]
+    #[tabled(rename = "OS")]
     pub platform: String,
+    #[tabled(rename = "AGE")]
+    pub age: String,
 }
 
+/// Format a duration as a human-readable age string (kubectl-style).
+pub fn format_age(secs: u64) -> String {
+    const MINUTE: u64 = 60;
+    const HOUR: u64 = 3600;
+    const DAY: u64 = 86400;
+
+    match secs {
+        s if s < MINUTE => format!("{}s", s),
+        s if s < HOUR => format!("{}m", s / MINUTE),
+        s if s < DAY => format!("{}h", s / HOUR),
+        s => format!("{}d", s / DAY),
+    }
+}
+
+
 impl Instance {
+    /// Extract region from AZ (e.g., "ap-northeast-2a" → "ap-northeast-2").
+    pub fn region(&self) -> &str {
+        self.az.trim_end_matches(|c: char| c.is_ascii_alphabetic())
+    }
+
     /// Format instance as a row for selection list.
     pub fn to_row(&self, widths: &ColumnWidths) -> String {
         format!(
-            "{:<w0$}  {:<w1$}  {:<w2$}  {:<w3$}  {:<w4$}  {:<w5$}",
-            self.region,
+            "{:<w0$}  {:<w1$}  {:<w2$}  {:<w3$}  {:<w4$}  {:<w5$}  {:<w6$}",
             self.name,
             self.instance_id,
             self.instance_type,
+            self.az,
             self.private_ip,
             self.platform,
-            w0 = widths.region,
-            w1 = widths.name,
-            w2 = widths.instance_id,
-            w3 = widths.instance_type,
+            self.age,
+            w0 = widths.name,
+            w1 = widths.instance_id,
+            w2 = widths.instance_type,
+            w3 = widths.az,
             w4 = widths.private_ip,
             w5 = widths.platform,
+            w6 = widths.age,
         )
     }
 }
@@ -50,12 +74,13 @@ impl Instance {
 /// Column widths for table formatting.
 #[derive(Debug, Clone)]
 pub struct ColumnWidths {
-    pub region: usize,
     pub name: usize,
     pub instance_id: usize,
     pub instance_type: usize,
+    pub az: usize,
     pub private_ip: usize,
     pub platform: usize,
+    pub age: usize,
 }
 
 impl ColumnWidths {
@@ -63,20 +88,22 @@ impl ColumnWidths {
     pub fn from_instances(instances: &[Instance]) -> Self {
         instances.iter().fold(
             Self {
-                region: 6,
                 name: 4,
                 instance_id: 11,
                 instance_type: 4,
+                az: 2,
                 private_ip: 10,
-                platform: 8,
+                platform: 5,
+                age: 3,
             },
             |mut w, i| {
-                w.region = w.region.max(i.region.len());
                 w.name = w.name.max(i.name.len());
                 w.instance_id = w.instance_id.max(i.instance_id.len());
                 w.instance_type = w.instance_type.max(i.instance_type.len());
+                w.az = w.az.max(i.az.len());
                 w.private_ip = w.private_ip.max(i.private_ip.len());
                 w.platform = w.platform.max(i.platform.len());
+                w.age = w.age.max(i.age.len());
                 w
             },
         )
@@ -85,19 +112,21 @@ impl ColumnWidths {
     /// Format header row.
     pub fn header(&self) -> String {
         format!(
-            "{:<w0$}  {:<w1$}  {:<w2$}  {:<w3$}  {:<w4$}  {:<w5$}",
-            "REGION",
+            "{:<w0$}  {:<w1$}  {:<w2$}  {:<w3$}  {:<w4$}  {:<w5$}  {:<w6$}",
             "NAME",
             "INSTANCE ID",
             "TYPE",
+            "AZ",
             "PRIVATE IP",
-            "PLATFORM",
-            w0 = self.region,
-            w1 = self.name,
-            w2 = self.instance_id,
-            w3 = self.instance_type,
+            "OS",
+            "AGE",
+            w0 = self.name,
+            w1 = self.instance_id,
+            w2 = self.instance_type,
+            w3 = self.az,
             w4 = self.private_ip,
             w5 = self.platform,
+            w6 = self.age,
         )
     }
 }
@@ -173,7 +202,7 @@ impl Scanner {
             }
         }
 
-        instances.sort_by(|a, b| a.region.cmp(&b.region).then_with(|| a.name.cmp(&b.name)));
+        instances.sort_by(|a, b| a.az.cmp(&b.az).then_with(|| a.name.cmp(&b.name)));
 
         let elapsed = start.elapsed();
 
@@ -234,7 +263,6 @@ async fn fetch_region_instances_with_config(
         .iter()
         .flat_map(|r| r.instances())
         .map(|i| Instance {
-            region: region.to_string(),
             name: extract_name_tag(i).unwrap_or_else(|| "(no name)".to_string()),
             instance_id: i.instance_id().unwrap_or("N/A").to_string(),
             instance_type: i
@@ -242,7 +270,23 @@ async fn fetch_region_instances_with_config(
                 .map(|t| t.as_str())
                 .unwrap_or("N/A")
                 .to_string(),
+            az: i
+                .placement()
+                .and_then(|p| p.availability_zone())
+                .unwrap_or(region)
+                .to_string(),
             private_ip: i.private_ip_address().unwrap_or("N/A").to_string(),
+            age: i
+                .launch_time()
+                .and_then(|lt| {
+                    let now = std::time::SystemTime::now()
+                        .duration_since(std::time::UNIX_EPOCH)
+                        .ok()?
+                        .as_secs();
+                    let launched = u64::try_from(lt.secs()).ok()?;
+                    Some(format_age(now.saturating_sub(launched)))
+                })
+                .unwrap_or_else(|| "-".to_string()),
             platform: i
                 .platform()
                 .map(|p| p.as_str())
@@ -308,6 +352,7 @@ mod tests {
             running_only: true,
             log_level: "info".into(),
             forward: None,
+            shell_commands: Vec::new(),
         }
     }
 
@@ -383,62 +428,250 @@ mod tests {
     #[test]
     fn column_widths_empty_instances() {
         let widths = ColumnWidths::from_instances(&[]);
-        assert_eq!(widths.region, 6);
         assert_eq!(widths.name, 4);
         assert_eq!(widths.instance_id, 11);
         assert_eq!(widths.instance_type, 4);
+        assert_eq!(widths.az, 2);
         assert_eq!(widths.private_ip, 10);
-        assert_eq!(widths.platform, 8);
+        assert_eq!(widths.age, 3);
+        assert_eq!(widths.platform, 5);
     }
 
     #[test]
     fn column_widths_expands_for_long_values() {
         let instances = vec![Instance {
-            region: "ap-southeast-3".into(),           // 14 chars > 6
             name: "very-long-instance-name".into(),    // 23 chars > 4
             instance_id: "i-01234567890abcdef".into(), // 19 chars > 11
             instance_type: "m5.24xlarge".into(),       // 11 chars > 4
+            az: "ap-southeast-3a".into(),              // 15 chars > 2
             private_ip: "192.168.100.200".into(),      // 15 chars > 10
-            platform: "Windows".into(),                // 7 chars < 8
+            age: "365d".into(),                        // 4 chars > 3
+            platform: "Windows".into(),                // 7 chars > 5
         }];
         let widths = ColumnWidths::from_instances(&instances);
-        assert_eq!(widths.region, 14);
         assert_eq!(widths.name, 23);
         assert_eq!(widths.instance_id, 19);
         assert_eq!(widths.instance_type, 11);
+        assert_eq!(widths.az, 15);
         assert_eq!(widths.private_ip, 15);
-        assert_eq!(widths.platform, 8); // minimum kept
+        assert_eq!(widths.age, 4);
+        assert_eq!(widths.platform, 7); // "Windows" > min(5)
     }
 
     #[test]
     fn column_widths_header_matches_format() {
         let widths = ColumnWidths::from_instances(&[]);
         let header = widths.header();
-        assert!(header.contains("REGION"));
         assert!(header.contains("NAME"));
         assert!(header.contains("INSTANCE ID"));
         assert!(header.contains("TYPE"));
+        assert!(header.contains("AZ"));
         assert!(header.contains("PRIVATE IP"));
-        assert!(header.contains("PLATFORM"));
+        assert!(header.contains("AGE"));
+        assert!(header.contains("OS"));
     }
 
     #[test]
     fn instance_to_row_format() {
         let instance = Instance {
-            region: "us-east-1".into(),
             name: "web-1".into(),
             instance_id: "i-abc123".into(),
             instance_type: "t3.micro".into(),
+            az: "us-east-1a".into(),
             private_ip: "10.0.0.1".into(),
             platform: "Linux".into(),
+            age: "5d".into(),
         };
         let widths = ColumnWidths::from_instances(&[instance.clone()]);
         let row = instance.to_row(&widths);
-        assert!(row.contains("us-east-1"));
         assert!(row.contains("web-1"));
         assert!(row.contains("i-abc123"));
         assert!(row.contains("t3.micro"));
+        assert!(row.contains("us-east-1a"));
         assert!(row.contains("10.0.0.1"));
         assert!(row.contains("Linux"));
     }
+
+    // --- region() extraction tests ---
+
+    #[test]
+    fn region_from_az() {
+        let instance = Instance {
+            name: "test".into(),
+            instance_id: "i-test".into(),
+            instance_type: "t3.micro".into(),
+            az: "ap-northeast-2a".into(),
+            private_ip: "10.0.0.1".into(),
+            platform: "Linux".into(),
+            age: "1d".into(),
+        };
+        assert_eq!(instance.region(), "ap-northeast-2");
+    }
+
+    #[test]
+    fn region_from_az_multi_letter_suffix() {
+        let instance = Instance {
+            name: "test".into(),
+            instance_id: "i-test".into(),
+            instance_type: "t3.micro".into(),
+            az: "us-east-1f".into(),
+            private_ip: "10.0.0.1".into(),
+            platform: "Linux".into(),
+            age: "1d".into(),
+        };
+        assert_eq!(instance.region(), "us-east-1");
+    }
+
+    // --- Additional edge case tests ---
+
+    #[test]
+    fn build_filters_tag_with_equals_in_value() {
+        let tags = vec!["Key=Val=ue".to_string()];
+        let filters = build_filters(&tags, false);
+        assert_eq!(filters.len(), 1);
+        assert_eq!(filters[0].name(), Some("tag:Key"));
+        assert_eq!(filters[0].values(), &["Val=ue"]);
+    }
+
+    #[test]
+    fn build_filters_empty_key() {
+        let tags = vec!["=value".to_string()];
+        let filters = build_filters(&tags, false);
+        assert_eq!(filters.len(), 1);
+        assert_eq!(filters[0].name(), Some("tag:"));
+        assert_eq!(filters[0].values(), &["value"]);
+    }
+
+    #[test]
+    fn build_filters_empty_value() {
+        let tags = vec!["Key=".to_string()];
+        let filters = build_filters(&tags, false);
+        assert_eq!(filters.len(), 1);
+        assert_eq!(filters[0].name(), Some("tag:Key"));
+        assert_eq!(filters[0].values(), &[""]);
+    }
+
+    // --- extract_name_tag tests ---
+
+    #[test]
+    fn extract_name_tag_found() {
+        let instance = aws_sdk_ec2::types::Instance::builder()
+            .tags(
+                aws_sdk_ec2::types::Tag::builder()
+                    .key("Name")
+                    .value("my-instance")
+                    .build(),
+            )
+            .build();
+        assert_eq!(
+            extract_name_tag(&instance),
+            Some("my-instance".to_string())
+        );
+    }
+
+    #[test]
+    fn extract_name_tag_not_found() {
+        let instance = aws_sdk_ec2::types::Instance::builder()
+            .tags(
+                aws_sdk_ec2::types::Tag::builder()
+                    .key("Environment")
+                    .value("prod")
+                    .build(),
+            )
+            .build();
+        assert_eq!(extract_name_tag(&instance), None);
+    }
+
+    #[test]
+    fn extract_name_tag_no_tags() {
+        let instance = aws_sdk_ec2::types::Instance::builder().build();
+        assert_eq!(extract_name_tag(&instance), None);
+    }
+
+    #[test]
+    fn extract_name_tag_multiple_tags() {
+        let instance = aws_sdk_ec2::types::Instance::builder()
+            .tags(
+                aws_sdk_ec2::types::Tag::builder()
+                    .key("Environment")
+                    .value("prod")
+                    .build(),
+            )
+            .tags(
+                aws_sdk_ec2::types::Tag::builder()
+                    .key("Name")
+                    .value("web-server")
+                    .build(),
+            )
+            .tags(
+                aws_sdk_ec2::types::Tag::builder()
+                    .key("Team")
+                    .value("platform")
+                    .build(),
+            )
+            .build();
+        assert_eq!(
+            extract_name_tag(&instance),
+            Some("web-server".to_string())
+        );
+    }
+
+    #[test]
+    fn column_widths_multiple_instances_takes_max() {
+        let instances = vec![
+            Instance {
+                name: "short".into(),
+                instance_id: "i-abc".into(),
+                instance_type: "t3.micro".into(),
+                az: "us-east-1a".into(),
+                private_ip: "10.0.0.1".into(),
+                age: "3d".into(),
+                platform: "Linux".into(),
+            },
+            Instance {
+                name: "very-long-instance-name".into(),
+                instance_id: "i-01234567890abcdef".into(),
+                instance_type: "m5.24xlarge".into(),
+                az: "ap-southeast-3a".into(),
+                private_ip: "192.168.100.200".into(),
+                age: "120d".into(),
+                platform: "Windows".into(),
+            },
+        ];
+        let widths = ColumnWidths::from_instances(&instances);
+        assert_eq!(widths.name, 23); // "very-long-instance-name"
+        assert_eq!(widths.instance_id, 19); // "i-01234567890abcdef"
+        assert_eq!(widths.instance_type, 11); // "m5.24xlarge"
+        assert_eq!(widths.az, 15); // "ap-southeast-3a"
+        assert_eq!(widths.private_ip, 15); // "192.168.100.200"
+        assert_eq!(widths.age, 4); // "120d"
+        assert_eq!(widths.platform, 7); // "Windows"(7) > min(5)
+    }
+
+    // --- format_age tests ---
+
+    #[test]
+    fn format_age_seconds() {
+        assert_eq!(format_age(0), "0s");
+        assert_eq!(format_age(59), "59s");
+    }
+
+    #[test]
+    fn format_age_minutes() {
+        assert_eq!(format_age(60), "1m");
+        assert_eq!(format_age(3599), "59m");
+    }
+
+    #[test]
+    fn format_age_hours() {
+        assert_eq!(format_age(3600), "1h");
+        assert_eq!(format_age(86399), "23h");
+    }
+
+    #[test]
+    fn format_age_days() {
+        assert_eq!(format_age(86400), "1d");
+        assert_eq!(format_age(86400 * 365), "365d");
+    }
+
 }

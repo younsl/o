@@ -56,7 +56,8 @@ impl App {
 
         self.print_selection(selected);
 
-        let session = SessionManager::new(self.config.profile.clone());
+        let session =
+            SessionManager::new(self.config.profile.clone(), self.config.shell_commands.clone());
 
         if let Some(ref pf) = port_forward {
             self.print_forward_info(selected, pf);
@@ -94,7 +95,7 @@ impl App {
             "{} {} ({})",
             "Selected:".bright_blue(),
             instance.name.bright_cyan().bold(),
-            instance.region.bright_blue()
+            instance.az.bright_blue()
         );
     }
 

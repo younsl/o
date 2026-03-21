@@ -13,19 +13,24 @@ mod pty;
 /// Session manager for SSM connections.
 pub struct SessionManager {
     profile: Option<String>,
+    shell_commands: Vec<String>,
 }
 
 impl SessionManager {
     /// Create a new session manager.
-    pub fn new(profile: Option<String>) -> Self {
-        Self { profile }
+    pub fn new(profile: Option<String>, shell_commands: Vec<String>) -> Self {
+        Self {
+            profile,
+            shell_commands,
+        }
     }
 
     /// Connect to an EC2 instance via SSM.
     pub fn connect(&self, instance: &Instance) -> Result<()> {
         debug!(
             "Connecting to {} in {} via Session Manager",
-            instance.instance_id, instance.region
+            instance.instance_id,
+            instance.region()
         );
 
         let mut cmd = Command::new("aws");
@@ -35,8 +40,20 @@ impl SessionManager {
             "--target",
             &instance.instance_id,
             "--region",
-            &instance.region,
+            instance.region(),
         ]);
+
+        if !self.shell_commands.is_empty() {
+            debug!("Using shell commands: {:?}", self.shell_commands);
+            let joined = self.shell_commands.join("; ");
+            let params = serde_json::json!({"command": [joined]}).to_string();
+            cmd.args([
+                "--document-name",
+                "AWS-StartInteractiveCommand",
+                "--parameters",
+                &params,
+            ]);
+        }
 
         if let Some(ref profile) = self.profile {
             cmd.args(["--profile", profile]);
@@ -70,7 +87,7 @@ impl SessionManager {
         debug!(
             "Port forwarding via {} in {}: {}",
             instance.instance_id,
-            instance.region,
+            instance.region(),
             pf.display_info(),
         );
 
@@ -81,7 +98,7 @@ impl SessionManager {
             "--target",
             &instance.instance_id,
             "--region",
-            &instance.region,
+            instance.region(),
             "--document-name",
             pf.document_name(),
             "--parameters",

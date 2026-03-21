@@ -1,4 +1,4 @@
-.PHONY: build release run dev test fmt lint clean install install-local help deps
+.PHONY: build release run dev test fmt lint clean install install-local help deps coverage
 
 # Binary name
 BINARY_NAME := ij
@@ -70,6 +70,12 @@ install-local: release
 	@echo "Installing $(BINARY_NAME) to /usr/local/bin/..."
 	@sudo cp target/release/$(BINARY_NAME) /usr/local/bin/
 	@echo "Installed $(BINARY_NAME) to /usr/local/bin/$(BINARY_NAME)"
+
+## Generate test coverage report
+coverage:
+	@echo "Generating coverage report..."
+	@PATH="$(TOOLCHAIN_PATH):$$PATH" cargo llvm-cov --html
+	@echo "Coverage report: target/llvm-cov/html/index.html"
 
 ## Show this help message
 help:

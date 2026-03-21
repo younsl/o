@@ -2,7 +2,7 @@
 
 use anyhow::{Context, Result};
 use colored::Colorize;
-use nix::poll::{PollFd, PollFlags, PollTimeout, poll};
+use nix::poll::{poll, PollFd, PollFlags, PollTimeout};
 use nix::sys::signal::{self, Signal};
 use nix::sys::termios::{self, SetArg};
 use nix::unistd;

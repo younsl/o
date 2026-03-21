@@ -6,7 +6,7 @@ use dialoguer::{Confirm, Input, MultiSelect, Select};
 
 use crate::config::AWS_REGIONS;
 use crate::error::Result;
-use crate::file_config::FileConfig;
+use crate::file_config::{FileConfig, ShellCommands};
 
 /// Run the interactive configuration wizard.
 pub fn run_wizard() -> Result<()> {
@@ -142,6 +142,51 @@ pub fn run_wizard() -> Result<()> {
         .interact()
         .map_err(|_| crate::error::Error::Cancelled)?;
 
+    // 7. Shell commands
+    let existing_sc = existing.shell_commands;
+
+    let shell_enabled = Confirm::new()
+        .with_prompt(
+            style("Enable shell commands on connect?")
+                .bold()
+                .to_string(),
+        )
+        .default(existing_sc.enabled)
+        .interact()
+        .map_err(|_| crate::error::Error::Cancelled)?;
+
+    let shell_commands = if shell_enabled {
+        let shell_input: String = Input::new()
+            .with_prompt(
+                style("Shell commands (semicolon-separated, e.g., 'sudo su -; cd /var/log')")
+                    .bold()
+                    .to_string(),
+            )
+            .default(existing_sc.commands.join("; "))
+            .allow_empty(true)
+            .interact_text()
+            .map_err(|_| crate::error::Error::Cancelled)?;
+        let commands: Vec<String> = if shell_input.is_empty() {
+            Vec::new()
+        } else {
+            shell_input
+                .split(';')
+                .map(|s| s.trim().to_string())
+                .filter(|s| !s.is_empty())
+                .collect()
+        };
+        ShellCommands {
+            enabled: true,
+            commands,
+        }
+    } else {
+        // Preserve existing commands but disabled
+        ShellCommands {
+            enabled: false,
+            commands: existing_sc.commands,
+        }
+    };
+
     let config = FileConfig {
         aws_profile,
         aws_config_file,
@@ -149,6 +194,7 @@ pub fn run_wizard() -> Result<()> {
         tag_filters,
         running_only: Some(running_only),
         log_level: Some(log_levels[level_idx].to_string()),
+        shell_commands,
     };
 
     let saved_path = config.save_default()?;
