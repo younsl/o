@@ -71,6 +71,48 @@ serviceMonitor:
   # -- (object) Additional labels to add to the ServiceMonitor resource.
   additionalLabels: {}
 
+prometheusRule:
+  # -- (bool) Whether to create a PrometheusRule for alerting. Requires monitoring.coreos.com/v1 CRD.
+  enabled: false
+  # -- (object) Additional labels to add to the PrometheusRule resource.
+  additionalLabels: {}
+  # -- (object) Annotations to add to the PrometheusRule resource.
+  annotations: {}
+  # -- (list) Prometheus rule groups. Each group contains a list of alerting/recording rules.
+  groups: []
+    # - name: kuo.rules
+    #   rules:
+    #     - alert: KuoUpgradeFailed
+    #       expr: increase(kuo_upgrade_failed_total[5m]) > 0
+    #       for: 0m
+    #       labels:
+    #         severity: critical
+    #       annotations:
+    #         summary: "EKS upgrade failed for {{ $labels.cluster_name }}"
+    #         description: "EKS cluster {{ $labels.cluster_name }} in {{ $labels.region }} upgrade has failed."
+    #     - alert: KuoReconcileErrorRate
+    #       expr: |
+    #         (
+    #           sum by (cluster_name, region) (rate(kuo_reconcile_total{result="error"}[5m]))
+    #           /
+    #           sum by (cluster_name, region) (rate(kuo_reconcile_total[5m]))
+    #         ) > 0.5
+    #       for: 10m
+    #       labels:
+    #         severity: warning
+    #       annotations:
+    #         summary: "High reconcile error rate for {{ $labels.cluster_name }}"
+    #         description: "Reconcile error rate for cluster {{ $labels.cluster_name }} exceeds 50% over 10 minutes."
+    #     - alert: KuoUpgradeStuck
+    #       expr: |
+    #         kuo_upgrade_phase_info{phase=~"UpgradingControlPlane|UpgradingAddons|UpgradingNodeGroups"} == 1
+    #       for: 60m
+    #       labels:
+    #         severity: warning
+    #       annotations:
+    #         summary: "EKS upgrade stuck for {{ $labels.cluster_name }}"
+    #         description: "Cluster {{ $labels.cluster_name }} has been in {{ $labels.phase }} phase for over 60 minutes."
+
 # -- (object) Node selector for pod scheduling.
 nodeSelector: {}
 # -- (list) Tolerations for pod scheduling.

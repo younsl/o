@@ -95,6 +95,10 @@ The following table lists the configurable parameters and their default values.
 | serviceMonitor.interval | string | `"30s"` | Scrape interval for the ServiceMonitor. |
 | serviceMonitor.scrapeTimeout | string | `""` | Scrape timeout for the ServiceMonitor. Defaults to Prometheus global setting if empty. |
 | serviceMonitor.additionalLabels | object | `{}` | Additional labels to add to the ServiceMonitor resource. |
+| prometheusRule.enabled | bool | `false` | Whether to create a PrometheusRule for alerting. Requires monitoring.coreos.com/v1 CRD. |
+| prometheusRule.additionalLabels | object | `{}` | Additional labels to add to the PrometheusRule resource. |
+| prometheusRule.annotations | object | `{}` | Annotations to add to the PrometheusRule resource. |
+| prometheusRule.groups | list | `[]` | Prometheus rule groups. Each group contains a list of alerting/recording rules. |
 | nodeSelector | object | `{}` | Node selector for pod scheduling. |
 | tolerations | list | `[]` | Tolerations for pod scheduling. |
 | affinity | object | `{}` | Affinity rules for pod scheduling. |
