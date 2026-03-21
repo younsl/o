@@ -345,6 +345,23 @@ mod tests {
     }
 
     #[test]
+    fn test_should_execute_now_start_only_fires() {
+        // Only start cron fires every minute, stop is far away
+        let entries = vec![ScheduleEntry {
+            name: "start-only".to_string(),
+            start: "* * * * *".to_string(),
+            stop: "0 0 1 1 *".to_string(), // Jan 1 only
+        }];
+        let past = Utc::now() - chrono::Duration::minutes(2);
+        let result =
+            should_execute_now(&entries, "UTC", Some(past), chrono::Duration::seconds(120));
+        assert!(
+            matches!(result, Some(ActionToExecute::Start(_))),
+            "Should return Start when only start cron matches"
+        );
+    }
+
+    #[test]
     fn test_parse_cron_all_fields() {
         // Every minute
         assert!(parse_cron("* * * * *").is_ok());

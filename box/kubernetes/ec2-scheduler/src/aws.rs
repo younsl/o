@@ -18,6 +18,16 @@ pub struct AwsClients {
 }
 
 impl AwsClients {
+    /// Create `AwsClients` from pre-built SDK config (for testing).
+    #[cfg(test)]
+    pub fn from_conf(config: &aws_config::SdkConfig) -> Self {
+        Self {
+            ec2: Ec2Client::new(config),
+            _sts: StsClient::new(config),
+            _region: "test-region".to_string(),
+        }
+    }
+
     /// Create AWS clients for a given region.
     ///
     /// Uses default credential chain (IRSA, EKS Pod Identity, instance profile, env vars).
@@ -161,7 +171,7 @@ impl AwsClients {
         Ok(ids)
     }
 
-    /// Build AWS config by assuming an IAM role in a target account.
+    /// Build AWS config by assuming an IAM role in a target account (cross-account).
     async fn build_assumed_role_config(
         region: &str,
         role_arn: &str,
@@ -195,5 +205,199 @@ impl AwsClients {
             .await;
 
         Ok(config)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use aws_smithy_runtime::client::http::test_util::StaticReplayClient;
+    use aws_smithy_types::body::SdkBody;
+
+    /// Build an `AwsClients` with a mock HTTP client that returns canned responses.
+    fn mock_clients(events: Vec<(http::StatusCode, &str)>) -> AwsClients {
+        let replay_events: Vec<_> = events
+            .into_iter()
+            .map(|(status, body)| {
+                aws_smithy_runtime::client::http::test_util::ReplayEvent::new(
+                    http::Request::builder().body(SdkBody::empty()).unwrap(),
+                    http::Response::builder()
+                        .status(status)
+                        .body(SdkBody::from(body))
+                        .unwrap(),
+                )
+            })
+            .collect();
+
+        let http_client = StaticReplayClient::new(replay_events);
+        let creds = aws_sdk_ec2::config::Credentials::new("test", "test", None, None, "test");
+        let sdk_config = aws_config::SdkConfig::builder()
+            .http_client(http_client)
+            .credentials_provider(aws_sdk_ec2::config::SharedCredentialsProvider::new(creds))
+            .behavior_version(aws_config::BehaviorVersion::latest())
+            .region(aws_config::Region::new("us-east-1"))
+            .build();
+
+        AwsClients {
+            ec2: Ec2Client::new(&sdk_config),
+            _sts: StsClient::new(&sdk_config),
+            _region: "us-east-1".to_string(),
+        }
+    }
+
+    // --- start_instances tests ---
+
+    #[tokio::test]
+    async fn start_instances_empty_is_noop() {
+        let clients = mock_clients(vec![]);
+        let result = clients.start_instances(&[]).await;
+        assert!(result.is_ok());
+    }
+
+    #[tokio::test]
+    async fn start_instances_sends_request() {
+        let body = r#"<StartInstancesResponse xmlns="http://ec2.amazonaws.com/doc/2016-11-15/">
+            <instancesSet>
+                <item><instanceId>i-123</instanceId><currentState><code>0</code><name>pending</name></currentState></item>
+            </instancesSet>
+        </StartInstancesResponse>"#;
+        let clients = mock_clients(vec![(http::StatusCode::OK, body)]);
+        let result = clients.start_instances(&["i-123".into()]).await;
+        assert!(result.is_ok());
+    }
+
+    // --- stop_instances tests ---
+
+    #[tokio::test]
+    async fn stop_instances_empty_is_noop() {
+        let clients = mock_clients(vec![]);
+        let result = clients.stop_instances(&[]).await;
+        assert!(result.is_ok());
+    }
+
+    #[tokio::test]
+    async fn stop_instances_sends_request() {
+        let body = r#"<StopInstancesResponse xmlns="http://ec2.amazonaws.com/doc/2016-11-15/">
+            <instancesSet>
+                <item><instanceId>i-123</instanceId><currentState><code>64</code><name>stopping</name></currentState></item>
+            </instancesSet>
+        </StopInstancesResponse>"#;
+        let clients = mock_clients(vec![(http::StatusCode::OK, body)]);
+        let result = clients.stop_instances(&["i-123".into()]).await;
+        assert!(result.is_ok());
+    }
+
+    // --- describe_instances tests ---
+
+    #[tokio::test]
+    async fn describe_instances_empty_is_noop() {
+        let clients = mock_clients(vec![]);
+        let result = clients.describe_instances(&[]).await;
+        assert!(result.is_ok());
+        assert!(result.unwrap().is_empty());
+    }
+
+    #[tokio::test]
+    async fn describe_instances_parses_response() {
+        let body = r#"<DescribeInstancesResponse xmlns="http://ec2.amazonaws.com/doc/2016-11-15/">
+            <reservationSet>
+                <item>
+                    <instancesSet>
+                        <item>
+                            <instanceId>i-abc</instanceId>
+                            <instanceState><code>16</code><name>running</name></instanceState>
+                            <tagSet>
+                                <item><key>Name</key><value>web-server</value></item>
+                            </tagSet>
+                        </item>
+                    </instancesSet>
+                </item>
+            </reservationSet>
+        </DescribeInstancesResponse>"#;
+        let clients = mock_clients(vec![(http::StatusCode::OK, body)]);
+        let result = clients.describe_instances(&["i-abc".into()]).await.unwrap();
+        assert_eq!(result.len(), 1);
+        assert_eq!(result[0].instance_id, "i-abc");
+        assert_eq!(result[0].name, Some("web-server".to_string()));
+        assert_eq!(result[0].state, "running");
+    }
+
+    #[tokio::test]
+    async fn describe_instances_no_name_tag() {
+        let body = r#"<DescribeInstancesResponse xmlns="http://ec2.amazonaws.com/doc/2016-11-15/">
+            <reservationSet>
+                <item>
+                    <instancesSet>
+                        <item>
+                            <instanceId>i-noname</instanceId>
+                            <instanceState><code>80</code><name>stopped</name></instanceState>
+                            <tagSet></tagSet>
+                        </item>
+                    </instancesSet>
+                </item>
+            </reservationSet>
+        </DescribeInstancesResponse>"#;
+        let clients = mock_clients(vec![(http::StatusCode::OK, body)]);
+        let result = clients
+            .describe_instances(&["i-noname".into()])
+            .await
+            .unwrap();
+        assert_eq!(result.len(), 1);
+        assert_eq!(result[0].instance_id, "i-noname");
+        assert_eq!(result[0].name, None);
+        assert_eq!(result[0].state, "stopped");
+    }
+
+    #[tokio::test]
+    async fn describe_instances_multiple_reservations() {
+        let body = r#"<DescribeInstancesResponse xmlns="http://ec2.amazonaws.com/doc/2016-11-15/">
+            <reservationSet>
+                <item>
+                    <instancesSet>
+                        <item>
+                            <instanceId>i-001</instanceId>
+                            <instanceState><code>16</code><name>running</name></instanceState>
+                        </item>
+                    </instancesSet>
+                </item>
+                <item>
+                    <instancesSet>
+                        <item>
+                            <instanceId>i-002</instanceId>
+                            <instanceState><code>16</code><name>running</name></instanceState>
+                        </item>
+                    </instancesSet>
+                </item>
+            </reservationSet>
+        </DescribeInstancesResponse>"#;
+        let clients = mock_clients(vec![(http::StatusCode::OK, body)]);
+        let result = clients
+            .describe_instances(&["i-001".into(), "i-002".into()])
+            .await
+            .unwrap();
+        assert_eq!(result.len(), 2);
+    }
+
+    // --- resolve_instances_by_tags tests ---
+
+    #[tokio::test]
+    async fn resolve_instances_by_tags_returns_ids() {
+        let body = r#"<DescribeInstancesResponse xmlns="http://ec2.amazonaws.com/doc/2016-11-15/">
+            <reservationSet>
+                <item>
+                    <instancesSet>
+                        <item><instanceId>i-111</instanceId></item>
+                        <item><instanceId>i-222</instanceId></item>
+                    </instancesSet>
+                </item>
+            </reservationSet>
+        </DescribeInstancesResponse>"#;
+        let clients = mock_clients(vec![(http::StatusCode::OK, body)]);
+        let mut tags = std::collections::HashMap::new();
+        tags.insert("Environment".to_string(), "production".to_string());
+        let result = clients.resolve_instances_by_tags(&tags).await.unwrap();
+        assert_eq!(result.len(), 2);
+        assert!(result.contains(&"i-111".to_string()));
+        assert!(result.contains(&"i-222".to_string()));
     }
 }

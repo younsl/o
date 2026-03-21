@@ -88,4 +88,24 @@ mod tests {
         state.set_ready(true);
         assert!(cloned.is_ready());
     }
+
+    #[tokio::test]
+    async fn test_healthz_returns_ok() {
+        assert_eq!(healthz().await, StatusCode::OK);
+    }
+
+    #[tokio::test]
+    async fn test_readyz_returns_ok_when_ready() {
+        let state = HealthState::new();
+        state.set_ready(true);
+        let result = readyz(axum::extract::State(state)).await;
+        assert_eq!(result, StatusCode::OK);
+    }
+
+    #[tokio::test]
+    async fn test_readyz_returns_unavailable_when_not_ready() {
+        let state = HealthState::new();
+        let result = readyz(axum::extract::State(state)).await;
+        assert_eq!(result, StatusCode::SERVICE_UNAVAILABLE);
+    }
 }

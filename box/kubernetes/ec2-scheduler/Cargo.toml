@@ -55,6 +55,11 @@ reqwest = { version = "0.12", default-features = false, features = ["json", "rus
 # Build info
 const_format = "0.2"
 
+[dev-dependencies]
+aws-smithy-runtime = { version = "1", features = ["test-util"] }
+aws-smithy-types = "1"
+http = "1"
+
 [lints.rust]
 unsafe_code = "forbid"
 

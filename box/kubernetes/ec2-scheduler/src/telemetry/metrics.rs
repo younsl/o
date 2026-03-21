@@ -408,4 +408,15 @@ mod tests {
 
         assert!(buf.ends_with("# EOF\n"), "missing EOF marker");
     }
+
+    #[tokio::test]
+    async fn test_metrics_handler_returns_ok() {
+        let mut registry = Registry::default();
+        let _ = Metrics::new(&mut registry);
+        let registry = Arc::new(registry);
+
+        let response = metrics_handler(State(registry)).await;
+        let response = response.into_response();
+        assert_eq!(response.status(), StatusCode::OK);
+    }
 }

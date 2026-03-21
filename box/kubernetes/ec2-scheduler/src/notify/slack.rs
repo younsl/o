@@ -163,6 +163,32 @@ mod tests {
     }
 
     #[test]
+    fn test_slack_notifier_new() {
+        let notifier = SlackNotifier::new("https://hooks.slack.com/test".to_string());
+        // Verify the struct is created (webhook_url is private, so just ensure no panic)
+        let _ = notifier;
+    }
+
+    #[test]
+    fn test_build_blocks_payload_many_fields() {
+        let msg = SlackMessage {
+            header: "Multi-field".to_string(),
+            fields: vec![
+                ("Region".to_string(), "ap-northeast-2".to_string()),
+                ("Action".to_string(), "Stop".to_string()),
+                ("Instances".to_string(), "3".to_string()),
+                ("Status".to_string(), "Success".to_string()),
+            ],
+            context: "ec2-scheduler v0.1.0".to_string(),
+        };
+        let payload = build_blocks_payload(&msg);
+        let blocks = payload["blocks"].as_array().unwrap();
+        // header + section(4 fields) + divider + context
+        assert_eq!(blocks.len(), 4);
+        assert_eq!(blocks[1]["fields"].as_array().unwrap().len(), 4);
+    }
+
+    #[test]
     fn test_field_mrkdwn_format() {
         let msg = SlackMessage {
             header: "H".to_string(),
