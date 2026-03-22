@@ -2,7 +2,6 @@
 
 use aws_config::BehaviorVersion;
 use aws_sdk_ec2::types::Filter;
-use colored::Colorize;
 use tabled::Tabled;
 use tracing::{debug, warn};
 
@@ -146,12 +145,6 @@ impl Scanner {
     /// Returns the instances and the elapsed time for scanning.
     pub async fn fetch_instances(&self) -> Result<(Vec<Instance>, std::time::Duration)> {
         let regions = self.get_regions();
-
-        println!(
-            "{} {} region(s)...",
-            "Scanning".bright_blue().bold(),
-            regions.len().to_string().bright_yellow()
-        );
 
         let start = std::time::Instant::now();
 

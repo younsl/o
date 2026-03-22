@@ -104,10 +104,12 @@ pub(crate) async fn run_tabbed(config: Config) -> Result<TabResult> {
     // Build region display string for EC2 scanning indicator
     let ec2_regions_display = if let Some(ref r) = config.region {
         r.clone()
+    } else if config.scan_regions.len() == 1 {
+        config.scan_regions[0].clone()
     } else if !config.scan_regions.is_empty() {
-        config.scan_regions.join(", ")
+        format!("{} regions", config.scan_regions.len())
     } else {
-        "all (22 regions)".to_string()
+        "22 regions".to_string()
     };
 
     let mut app = TabApp {

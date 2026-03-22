@@ -166,11 +166,9 @@ impl Ec2Phase {
                 let spinner = SPINNER_FRAMES[spinner_frame % SPINNER_FRAMES.len()];
 
                 let chunks = Layout::vertical([
-                    Constraint::Min(1),    // spacer
                     Constraint::Length(1), // scanning message
-                    Constraint::Length(1), // region info
                     Constraint::Length(1), // hint
-                    Constraint::Min(1),    // spacer
+                    Constraint::Min(0),    // remaining space
                 ])
                 .split(area);
 
@@ -178,25 +176,19 @@ impl Ec2Phase {
                     Span::styled(format!(" {spinner} "), Style::default().fg(Color::Yellow)),
                     Span::styled(
                         format!(
-                            "Scanning instances... ({elapsed}s) (profile: {})",
+                            "Scanning EC2 instances in {regions} ({elapsed}s) (profile: {})",
                             config.profile_display()
                         ),
                         Style::default().fg(Color::Yellow),
                     ),
                 ]);
-                frame.render_widget(Paragraph::new(msg), chunks[1]);
-
-                let region_line = Line::from(Span::styled(
-                    format!("   regions: {regions}"),
-                    Style::default().fg(Color::DarkGray),
-                ));
-                frame.render_widget(Paragraph::new(region_line), chunks[2]);
+                frame.render_widget(Paragraph::new(msg), chunks[0]);
 
                 let hint = Line::from(Span::styled(
                     "   q/Esc to quit",
                     Style::default().fg(Color::DarkGray),
                 ));
-                frame.render_widget(Paragraph::new(hint), chunks[3]);
+                frame.render_widget(Paragraph::new(hint), chunks[1]);
             }
             Self::Ready {
                 items,
@@ -208,10 +200,9 @@ impl Ec2Phase {
             }
             Self::Error(msg) => {
                 let chunks = Layout::vertical([
-                    Constraint::Min(1),
-                    Constraint::Length(1),
-                    Constraint::Length(1),
-                    Constraint::Min(1),
+                    Constraint::Length(1), // error message
+                    Constraint::Length(1), // hint
+                    Constraint::Min(0),    // remaining space
                 ])
                 .split(area);
 
@@ -219,13 +210,13 @@ impl Ec2Phase {
                     format!(" Error: {msg}"),
                     Style::default().fg(Color::Red),
                 ));
-                frame.render_widget(Paragraph::new(err), chunks[1]);
+                frame.render_widget(Paragraph::new(err), chunks[0]);
 
                 let hint = Line::from(Span::styled(
                     "   q/Esc to quit",
                     Style::default().fg(Color::DarkGray),
                 ));
-                frame.render_widget(Paragraph::new(hint), chunks[2]);
+                frame.render_widget(Paragraph::new(hint), chunks[1]);
             }
         }
     }
