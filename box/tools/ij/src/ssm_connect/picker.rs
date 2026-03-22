@@ -2,11 +2,11 @@
 
 use nucleo::{Config as NucleoConfig, Matcher, Utf32Str};
 use ratatui::{
-    Frame,
     layout::{Constraint, Direction, Layout, Rect},
     style::{Color, Modifier, Style},
     text::{Line, Span},
     widgets::{List, ListItem, ListState, Paragraph},
+    Frame,
 };
 
 use crate::config::Config;
@@ -134,10 +134,10 @@ pub(crate) fn draw_picker(
     let total = items.len();
 
     let search_line = Line::from(vec![
-        Span::styled("Profile: ", Style::default().fg(Color::DarkGray)),
+        Span::styled("Profile: ", Style::default().fg(Color::White)),
         Span::styled(format!("{} ", profile), Style::default().fg(Color::Cyan)),
         Span::styled("| ", Style::default().fg(Color::DarkGray)),
-        Span::styled("Region: ", Style::default().fg(Color::DarkGray)),
+        Span::styled("Region: ", Style::default().fg(Color::White)),
         Span::styled(format!("{} ", region), Style::default().fg(Color::Cyan)),
         Span::styled(
             format!("[{}/{}] ", filtered, total),
@@ -203,8 +203,8 @@ mod tests {
     use super::*;
     use crate::config::Config;
     use crate::ec2::{ColumnWidths, Instance};
-    use ratatui::Terminal;
     use ratatui::backend::TestBackend;
+    use ratatui::Terminal;
 
     // --- PickerState initialization ---
 

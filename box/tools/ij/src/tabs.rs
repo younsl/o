@@ -26,6 +26,10 @@ use crate::error::{Error, Result};
 use crate::ssm_connect::{Ec2Action, Ec2Phase};
 
 const TAB_LABELS: &[&str] = &["EC2 Connect", "AMI Cleanup"];
+const TAB_DESCS: &[&str] = &[
+    "Connect to EC2 instances via SSM Session Manager",
+    "Scan and delete unused AMIs across regions",
+];
 
 #[derive(Clone, Copy, PartialEq)]
 enum ActiveTab {
@@ -332,7 +336,7 @@ fn draw_menu_bar(frame: &mut Frame, area: Rect, active: ActiveTab) {
     let active_label = TAB_LABELS[active.index()];
 
     let line = Line::from(vec![
-        Span::styled(format!(" {version}"), bar_style),
+        Span::styled(format!(" {version}"), bar_style.add_modifier(Modifier::BOLD)),
         Span::styled(" | ", bar_style),
         Span::styled(
             format!("[Tab] {active_label}"),
@@ -346,9 +350,10 @@ fn draw_menu_bar(frame: &mut Frame, area: Rect, active: ActiveTab) {
 }
 
 /// Dropdown menu overlaid below the menu bar.
-fn draw_dropdown(frame: &mut Frame, bar_area: Rect, cursor: usize, active: ActiveTab) {
-    let width = 20u16;
-    let height = TAB_LABELS.len() as u16 + 2; // +2 for border
+fn draw_dropdown(frame: &mut Frame, bar_area: Rect, cursor: usize, _active: ActiveTab) {
+    let width = 52u16;
+    // Each menu item = label line + description line → 2 lines per item, +2 for border
+    let height = TAB_LABELS.len() as u16 * 2 + 2;
 
     // Position below the bar, aligned to the right side of the version text
     let x = bar_area.x + 2;
@@ -371,28 +376,29 @@ fn draw_dropdown(frame: &mut Frame, bar_area: Rect, cursor: usize, active: Activ
     let inner = block.inner(dropdown_area);
     frame.render_widget(block, dropdown_area);
 
-    let lines: Vec<Line> = TAB_LABELS
-        .iter()
-        .enumerate()
-        .map(|(i, label)| {
-            let is_cursor = i == cursor;
-            let is_active = i == active.index();
+    let inner_width = inner.width as usize;
 
-            let prefix = if is_cursor { " > " } else { "   " };
-            let suffix = if is_active { " ●" } else { "" };
+    let mut lines: Vec<Line> = Vec::new();
+    for (i, (label, desc)) in TAB_LABELS.iter().zip(TAB_DESCS.iter()).enumerate() {
+        let is_cursor = i == cursor;
+        let prefix = if is_cursor { " > " } else { "   " };
 
-            let style = if is_cursor {
-                Style::default()
-                    .fg(Color::Black)
-                    .bg(Color::Yellow)
-                    .add_modifier(Modifier::BOLD)
-            } else {
-                Style::default().fg(Color::White).bg(Color::Black)
-            };
+        let label_style = if is_cursor {
+            Style::default()
+                .fg(Color::Black)
+                .bg(Color::Yellow)
+                .add_modifier(Modifier::BOLD)
+        } else {
+            Style::default().fg(Color::White).bg(Color::Black)
+        };
 
-            Line::from(Span::styled(format!("{prefix}{label}{suffix}"), style))
-        })
-        .collect();
+        let desc_style = Style::default().fg(Color::DarkGray).bg(Color::Black);
+
+        let label_text = format!("{prefix}{label}");
+        let padded_label = format!("{:<width$}", label_text, width = inner_width);
+        lines.push(Line::from(Span::styled(padded_label, label_style)));
+        lines.push(Line::from(Span::styled(format!("   {desc}"), desc_style)));
+    }
 
     frame.render_widget(Paragraph::new(lines), inner);
 }
