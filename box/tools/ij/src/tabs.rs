@@ -336,7 +336,10 @@ fn draw_menu_bar(frame: &mut Frame, area: Rect, active: ActiveTab) {
     let active_label = TAB_LABELS[active.index()];
 
     let line = Line::from(vec![
-        Span::styled(format!(" {version}"), bar_style.add_modifier(Modifier::BOLD)),
+        Span::styled(
+            format!(" {version}"),
+            bar_style.add_modifier(Modifier::BOLD),
+        ),
         Span::styled(" | ", bar_style),
         Span::styled(
             format!("[Tab] {active_label}"),
