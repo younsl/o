@@ -22,7 +22,7 @@ Kubernetes tools, policy resources, and architecture documentation organized by 
 | Kubernetes Addon | [trivy-collector](./trivy-collector/) | [Rust](./trivy-collector/Cargo.toml) | Active | Multi-cluster [Trivy Operator](https://github.com/aquasecurity/trivy-operator) report collector and viewer running as Kubernetes [Deployment](https://kubernetes.io/docs/concepts/workloads/controllers/deployment/) with Web UI (Helm chart available) |
 | Kubernetes Operator | [kuo](./kubernetes-upgrade-operator/) | [Rust](./kubernetes-upgrade-operator/Cargo.toml) | Active | Kubernetes Upgrade Operator that watches EKSUpgrade CRD and performs declarative EKS cluster upgrades with sequential control plane upgrades, add-on updates, and managed node group rolling updates |
 | Kubernetes Operator | [ec2-scheduler](./ec2-scheduler/) | [Rust](./ec2-scheduler/Cargo.toml) | Active | EC2 instance start/stop scheduler that watches EC2Schedule CRD with cron-based scheduling, IANA timezone support, and cross-account access via STS AssumeRole (Helm chart available) |
-| Helm Charts | [charts](./charts/) | [Helm](./charts/charts/) | Active | Standalone Helm charts repository distributed via OCI artifacts on GHCR |
+| Helm Charts | [charts](./charts/) | [Helm](./charts/) | Active | Standalone Helm charts repository distributed via OCI artifacts on GHCR |
 | Tools | [karc](./karc/) | [Rust](./karc/Cargo.toml) | Active | Karpenter NodePool consolidation manager CLI with disruption schedule timetable and pause/resume support |
 
 ## Related

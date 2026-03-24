@@ -4,7 +4,7 @@ repos:
     hooks:
       - id: helm-docs
         args:
-          - --chart-search-root=charts
+          - --chart-search-root=.
           - --template-files=../.github/templates/README.md.gotmpl
           - --sort-values-order=file
           - --log-level=debug
@@ -14,5 +14,5 @@ repos:
         name: Update README.md charts table
         entry: .github/scripts/update-readme-charts.sh
         language: script
-        files: charts/.*/Chart\.yaml
+        files: .+/Chart\.yaml
         pass_filenames: false

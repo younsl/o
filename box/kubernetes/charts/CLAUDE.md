@@ -23,30 +23,30 @@ This is a Helm charts repository that distributes charts via OCI artifacts on Gi
 make docs
 
 # Generate docs for specific chart (uses .github/templates/README.md.gotmpl template)
-helm-docs --chart-search-root charts/<chart-name> --template-files=../../.github/templates/README.md.gotmpl --sort-values-order file --log-level info
+helm-docs --chart-search-root <chart-name> --template-files=../.github/templates/README.md.gotmpl --sort-values-order file --log-level info
 ```
 
 ### Linting and Validation
 ```bash
 # Lint a specific chart
-helm lint charts/<chart-name>
+helm lint <chart-name>
 
 # Template a chart to validate rendering
-helm template <release-name> charts/<chart-name>
+helm template <release-name> <chart-name>
 
 # Dry-run installation to validate against cluster
-helm install <release-name> charts/<chart-name> --dry-run --debug
+helm install <release-name> <chart-name> --dry-run --debug
 ```
 
 ### Testing
 ```bash
 # Run local tests with Kind cluster
 kind create cluster
-helm install test-release charts/<chart-name>
+helm install test-release <chart-name>
 helm test test-release
 
 # Test with specific CI values (if chart has ci/test-values.yaml)
-helm install test-release charts/<chart-name> -f charts/<chart-name>/ci/test-values.yaml
+helm install test-release <chart-name> -f <chart-name>/ci/test-values.yaml
 
 # Use CI script for comprehensive testing (mimics GitHub Actions)
 CHARTS_TO_TEST='["<chart-name>"]' KUBERNETES_VERSION="1.34.0" .github/scripts/test-charts.sh
@@ -62,7 +62,7 @@ helm show chart oci://ghcr.io/younsl/charts/<chart-name>
 helm show values oci://ghcr.io/younsl/charts/<chart-name>
 
 # Package a chart
-helm package charts/<chart-name>
+helm package <chart-name>
 
 # Push to OCI registry (requires authentication)
 helm push <chart-name>-<version>.tgz oci://ghcr.io/younsl/charts
@@ -91,7 +91,7 @@ helm install <release-name> oci://ghcr.io/younsl/charts/<chart-name> \
 ## Architecture and Structure
 
 ### Directory Layout
-- `charts/`: Contains all Helm charts, each in its own directory
+- Chart directories are at the repository root, each in its own directory
 - `.github/workflows/`: CI/CD pipelines for automated testing and releases
 - `.github/scripts/`: Automation scripts for testing, releasing, and documentation
 - `.github/templates/`: Shared templates for documentation generation (helm-docs)
@@ -156,7 +156,7 @@ The CI testing process:
 2. Runs `helm lint` validation
 3. Creates Kind cluster with custom configuration (API server performance tuning)
 4. Performs dry-run validation
-5. Discovers and runs all test files matching `charts/<chart-name>/ci/*.yaml`
+5. Discovers and runs all test files matching `<chart-name>/ci/*.yaml`
 6. Installs chart using discovered test values
 7. Runs `helm test` if test resources exist and skip-test is false
 8. Captures comprehensive logs and results
@@ -211,7 +211,7 @@ CHARTS_TO_TEST='["chart-name"]' KUBERNETES_VERSION="1.34.0" .github/scripts/test
 .github/scripts/detect-changed-charts.sh
 
 # Verify chart can be packaged
-helm package charts/<chart-name> --destination /tmp
+helm package <chart-name> --destination /tmp
 
 # Check if version exists in registry
 crane ls ghcr.io/younsl/charts/<chart-name> | grep <version>
