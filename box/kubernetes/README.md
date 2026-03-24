@@ -8,7 +8,7 @@ This directory contains [Kubernetes](https://kubernetes.io/) related resources i
 
 Built on the [Unix philosophy](https://en.wikipedia.org/wiki/Unix_philosophy): "Do One Thing and Do It Well". Each Kubernetes addon solves one specific operational problem, and internally, the application architecture follows the same principle with small, focused modules.
 
-All applications are built with **[Rust](https://github.com/rust-lang/rust) 1.93+**. Rust provides key operational benefits: minimal container sizes, low memory footprint, single static binaries with no runtime dependencies, memory safety preventing null pointer and buffer overflow crashes, and compile-time guarantees ensuring system stability in production.
+All applications are built with **[Rust](https://github.com/rust-lang/rust) 1.94+**. Rust provides key operational benefits: minimal container sizes, low memory footprint, single static binaries with no runtime dependencies, memory safety preventing null pointer and buffer overflow crashes, and compile-time guarantees ensuring system stability in production.
 
 ## List of Contents
 
@@ -21,6 +21,7 @@ Kubernetes tools, policy resources, and architecture documentation organized by 
 | Kubernetes Addon | [redis-console](./redis-console/) | [Rust](./redis-console/Cargo.toml) | Active | Centralized terminal running as Kubernetes [Deployment](https://kubernetes.io/docs/concepts/workloads/controllers/deployment/) for managing multiple Redis and AWS ElastiCache clusters (Helm chart available) |
 | Kubernetes Addon | [trivy-collector](./trivy-collector/) | [Rust](./trivy-collector/Cargo.toml) | Active | Multi-cluster [Trivy Operator](https://github.com/aquasecurity/trivy-operator) report collector and viewer running as Kubernetes [Deployment](https://kubernetes.io/docs/concepts/workloads/controllers/deployment/) with Web UI (Helm chart available) |
 | Kubernetes Operator | [kuo](./kubernetes-upgrade-operator/) | [Rust](./kubernetes-upgrade-operator/Cargo.toml) | Active | Kubernetes Upgrade Operator that watches EKSUpgrade CRD and performs declarative EKS cluster upgrades with sequential control plane upgrades, add-on updates, and managed node group rolling updates |
+| Kubernetes Operator | [ec2-scheduler](./ec2-scheduler/) | [Rust](./ec2-scheduler/Cargo.toml) | Active | EC2 instance start/stop scheduler that watches EC2Schedule CRD with cron-based scheduling, IANA timezone support, and cross-account access via STS AssumeRole (Helm chart available) |
 | Helm Charts | [charts](./charts/) | [Helm](./charts/charts/) | Active | Standalone Helm charts repository distributed via OCI artifacts on GHCR |
 | Tools | [karc](./karc/) | [Rust](./karc/Cargo.toml) | Active | Karpenter NodePool consolidation manager CLI with disruption schedule timetable and pause/resume support |
 
