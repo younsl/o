@@ -1,4 +1,4 @@
-//! Tabbed TUI shell: EC2 Connect + AMI Cleanup tabs with dropdown menu.
+//! Tabbed TUI shell: EC2 Connect + AMI Cleanup + ASG Scaling tabs with dropdown menu.
 
 use std::io::stdout;
 use std::time::Duration;
@@ -20,21 +20,26 @@ use tokio::sync::mpsc;
 use crate::ami_cleanup;
 use crate::ami_cleanup::app::{App as AmiApp, AppAction, AppMode};
 use crate::ami_cleanup::{AmiCleanupArgs, ScanMsg};
+use crate::asg_scaling;
+use crate::asg_scaling::Msg as AsgMsg;
+use crate::asg_scaling::app::{App as AsgApp, AppAction as AsgAction, AppMode as AsgMode};
 use crate::config::Config;
 use crate::ec2::{Instance, Scanner};
 use crate::error::{Error, Result};
 use crate::ssm_connect::{Ec2Action, Ec2Phase};
 
-const TAB_LABELS: &[&str] = &["EC2 Connect", "AMI Cleanup"];
+const TAB_LABELS: &[&str] = &["EC2 Connect", "AMI Cleanup", "ASG Scaling"];
 const TAB_DESCS: &[&str] = &[
     "Connect to EC2 instances via SSM Session Manager",
     "Scan and delete unused AMIs across regions",
+    "View and scale Auto Scaling Groups",
 ];
 
 #[derive(Clone, Copy, PartialEq)]
 enum ActiveTab {
     Ec2Connect,
     AmiCleanup,
+    AsgScaling,
 }
 
 impl ActiveTab {
@@ -42,13 +47,15 @@ impl ActiveTab {
         match self {
             Self::Ec2Connect => 0,
             Self::AmiCleanup => 1,
+            Self::AsgScaling => 2,
         }
     }
 
     fn from_index(i: usize) -> Self {
         match i {
             0 => Self::Ec2Connect,
-            _ => Self::AmiCleanup,
+            1 => Self::AmiCleanup,
+            _ => Self::AsgScaling,
         }
     }
 }
@@ -66,6 +73,8 @@ struct TabApp {
     ec2: Ec2Phase,
     ami_app: AmiApp,
     ami_args: AmiCleanupArgs,
+    asg_app: AsgApp,
+    asg_scan_started: bool,
     config: Config,
 }
 
@@ -112,6 +121,10 @@ pub(crate) async fn run_tabbed(config: Config) -> Result<TabResult> {
         "22 regions".to_string()
     };
 
+    // Build ASG regions display string (reuse the same logic)
+    let asg_regions_display = ec2_regions_display.clone();
+    let asg_app = AsgApp::new_scanning(asg_regions_display);
+
     let mut app = TabApp {
         active_tab: ActiveTab::Ec2Connect,
         menu_open: false,
@@ -119,6 +132,8 @@ pub(crate) async fn run_tabbed(config: Config) -> Result<TabResult> {
         ec2: Ec2Phase::new_scanning(ec2_regions_display),
         ami_app,
         ami_args,
+        asg_app,
+        asg_scan_started: false,
         config: config.clone(),
     };
 
@@ -136,6 +151,9 @@ pub(crate) async fn run_tabbed(config: Config) -> Result<TabResult> {
 
     // AMI scan channel
     let (ami_tx, mut ami_rx) = mpsc::unbounded_channel::<ScanMsg>();
+
+    // ASG channels
+    let (asg_tx, mut asg_rx) = mpsc::unbounded_channel::<AsgMsg>();
 
     let mut reader = EventStream::new();
     let mut tick = tokio::time::interval(Duration::from_millis(100));
@@ -185,10 +203,20 @@ pub(crate) async fn run_tabbed(config: Config) -> Result<TabResult> {
                             continue;
                         }
 
-                        // Tab key opens dropdown menu
+                        // Tab key opens dropdown menu (but not when ASG tab is in text-input modes)
                         if key.code == KeyCode::Tab {
-                            app.menu_open = true;
-                            app.menu_cursor = app.active_tab.index();
+                            // In ASG InputAbsolute/Preview mode, Tab should not open menu
+                            if app.active_tab == ActiveTab::AsgScaling
+                                && matches!(
+                                    app.asg_app.mode,
+                                    AsgMode::InputAbsolute | AsgMode::Preview
+                                )
+                            {
+                                app.asg_app.handle_key(key);
+                            } else {
+                                app.menu_open = true;
+                                app.menu_cursor = app.active_tab.index();
+                            }
                             continue;
                         }
 
@@ -225,6 +253,26 @@ pub(crate) async fn run_tabbed(config: Config) -> Result<TabResult> {
                                     AppAction::None => {}
                                 }
                             }
+                            ActiveTab::AsgScaling => {
+                                match app.asg_app.handle_key(key) {
+                                    AsgAction::Quit => break TabResult::Quit,
+                                    AsgAction::Apply => {
+                                        // Collect updates from selected rows
+                                        let updates: Vec<_> = app.asg_app.rows.iter()
+                                            .filter(|r| r.selected && r.has_changes())
+                                            .map(|r| (
+                                                r.info.name.clone(),
+                                                r.info.region.clone(),
+                                                r.new_min.unwrap_or(r.info.min_size),
+                                                r.new_max.unwrap_or(r.info.max_size),
+                                                r.new_desired.unwrap_or(r.info.desired_capacity),
+                                            ))
+                                            .collect();
+                                        asg_scaling::spawn_apply(&app.config, updates, asg_tx.clone());
+                                    }
+                                    AsgAction::None => {}
+                                }
+                            }
                         }
                     }
                     Some(Ok(Event::Resize(_, _))) => {}
@@ -249,6 +297,34 @@ pub(crate) async fn run_tabbed(config: Config) -> Result<TabResult> {
                 }
                 // Disable this branch — EC2 scan is one-shot
                 ec2_rx = None;
+            }
+
+            // ASG messages
+            msg = asg_rx.recv() => {
+                match msg {
+                    Some(AsgMsg::ScanFinished(asgs)) => {
+                        if asgs.is_empty() {
+                            app.asg_app.set_error("No ASGs found".into());
+                        } else {
+                            app.asg_app.load_results(asgs);
+                        }
+                    }
+                    Some(AsgMsg::ScanError(e)) => {
+                        app.asg_app.set_error(e);
+                    }
+                    Some(AsgMsg::ApplyOk(name)) => {
+                        app.asg_app.apply_logs.push(format!("{name}: OK"));
+                        app.asg_app.mark_applied(&name);
+                    }
+                    Some(AsgMsg::ApplyErr(name, err)) => {
+                        app.asg_app.apply_logs.push(format!("{name}: FAILED ({err})"));
+                        app.asg_app.mark_failed(&name, err);
+                    }
+                    Some(AsgMsg::ApplyDone) => {
+                        app.asg_app.mode = AsgMode::Done;
+                    }
+                    None => {}
+                }
             }
 
             // AMI scan messages
@@ -286,6 +362,18 @@ pub(crate) async fn run_tabbed(config: Config) -> Result<TabResult> {
                 if app.ami_app.mode == AppMode::Scanning {
                     app.ami_app.tick_spinner();
                 }
+                if matches!(app.asg_app.mode, AsgMode::Scanning | AsgMode::Applying) {
+                    app.asg_app.tick_spinner();
+                }
+
+                // Lazy ASG scan: start when the tab is first displayed
+                if app.active_tab == ActiveTab::AsgScaling
+                    && !app.asg_scan_started
+                    && app.asg_app.mode == AsgMode::Scanning
+                {
+                    app.asg_scan_started = true;
+                    asg_scaling::spawn_scan(&app.config, asg_tx.clone());
+                }
             }
         }
     };
@@ -317,6 +405,10 @@ fn draw_frame(frame: &mut Frame, app: &mut TabApp) {
     match app.active_tab {
         ActiveTab::Ec2Connect => app.ec2.draw(frame, chunks[1], &app.config),
         ActiveTab::AmiCleanup => ami_cleanup::ui::draw(frame, &mut app.ami_app, chunks[1]),
+        ActiveTab::AsgScaling => {
+            let profile = app.config.profile_display().to_string();
+            asg_scaling::ui::draw(frame, &mut app.asg_app, chunks[1], &profile);
+        }
     }
 
     // Dropdown overlay (drawn last so it's on top)

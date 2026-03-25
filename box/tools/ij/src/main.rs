@@ -1,4 +1,5 @@
 mod ami_cleanup;
+mod asg_scaling;
 mod config;
 mod ec2;
 mod error;
