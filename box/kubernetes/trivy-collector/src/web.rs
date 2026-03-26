@@ -592,8 +592,7 @@ mod tests {
     fn create_test_app_state() -> AppState {
         let db = Arc::new(crate::storage::Database::new(":memory:").unwrap());
         let mut registry = prometheus_client::registry::Registry::default();
-        let metrics =
-            crate::metrics::Metrics::new(&mut registry, crate::config::Mode::Server);
+        let metrics = crate::metrics::Metrics::new(&mut registry, crate::config::Mode::Server);
 
         AppState {
             db,
