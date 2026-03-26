@@ -1,27 +1,16 @@
-# Runtime-only Dockerfile for cross-compiled binaries
-# Binaries are built via GitHub Actions cross-compilation (not QEMU emulation)
-FROM alpine:3.23
-
-ARG TARGETARCH
-
+# Statically linked binary built via GitHub Actions cross-compilation
+FROM alpine:3.23 AS certs
 RUN apk add --no-cache ca-certificates
 
-RUN addgroup -g 1000 trivy && \
-    adduser -D -u 1000 -G trivy trivy
-
-RUN mkdir -p /data && chown trivy:trivy /data
-
-USER trivy
-WORKDIR /app
-
-COPY --chown=trivy:trivy trivy-collector-linux-${TARGETARCH} /app/trivy-collector
-
+FROM scratch AS runtime
+ARG TARGETARCH
+COPY --from=certs /etc/ssl/certs/ca-certificates.crt /etc/ssl/certs/
+COPY --chmod=755 trivy-collector-linux-${TARGETARCH} /app/trivy-collector
 EXPOSE 3000 8080
-
-ENV MODE=server
-ENV STORAGE_PATH=/data
-ENV SERVER_PORT=3000
-ENV HEALTH_PORT=8080
-ENV LOG_FORMAT=json
-
+ENV MODE=server \
+    STORAGE_PATH=/data \
+    SERVER_PORT=3000 \
+    HEALTH_PORT=8080 \
+    LOG_FORMAT=json
+USER 1000:1000
 ENTRYPOINT ["/app/trivy-collector"]

@@ -1,8 +1,10 @@
 use anyhow::{Context, Result};
-use std::time::Duration;
+use std::sync::Arc;
+use std::time::{Duration, Instant};
 use tracing::{debug, error, info, warn};
 
 use crate::collector::types::{ReportEvent, ReportEventType, ReportPayload};
+use crate::metrics::{Metrics, ReportTypeLabels, SendLabels};
 
 pub struct ReportSender {
     client: reqwest::Client,
@@ -10,6 +12,7 @@ pub struct ReportSender {
     cluster_name: String,
     retry_attempts: u32,
     retry_delay: Duration,
+    metrics: Arc<Metrics>,
 }
 
 impl ReportSender {
@@ -18,6 +21,7 @@ impl ReportSender {
         cluster_name: String,
         retry_attempts: u32,
         retry_delay_secs: u64,
+        metrics: Arc<Metrics>,
     ) -> Result<Self> {
         let client = reqwest::Client::builder()
             .timeout(Duration::from_secs(30))
@@ -31,6 +35,7 @@ impl ReportSender {
             cluster_name,
             retry_attempts,
             retry_delay: Duration::from_secs(retry_delay_secs),
+            metrics,
         })
     }
 
@@ -61,10 +66,33 @@ impl ReportSender {
 
     async fn send_with_retry(&self, event: &ReportEvent) -> Result<()> {
         let mut last_error = None;
+        let report_type = event.payload.report_type.clone();
 
         for attempt in 1..=self.retry_attempts {
+            let start = Instant::now();
             match self.send_once(event).await {
                 Ok(()) => {
+                    let duration = start.elapsed().as_secs_f64();
+
+                    // Record send duration
+                    if let Some(ref histogram) = self.metrics.reports_send_duration_seconds {
+                        histogram
+                            .get_or_create(&ReportTypeLabels {
+                                report_type: report_type.clone(),
+                            })
+                            .observe(duration);
+                    }
+
+                    // Record success
+                    if let Some(ref counter) = self.metrics.reports_sent_total {
+                        counter
+                            .get_or_create(&SendLabels {
+                                report_type: report_type.clone(),
+                                result: "success".to_string(),
+                            })
+                            .inc();
+                    }
+
                     if attempt > 1 {
                         info!(
                             attempt = attempt,
@@ -80,6 +108,15 @@ impl ReportSender {
                 Err(e) => {
                     last_error = Some(e);
                     if attempt < self.retry_attempts {
+                        // Record retry
+                        if let Some(ref counter) = self.metrics.send_retries_total {
+                            counter
+                                .get_or_create(&ReportTypeLabels {
+                                    report_type: report_type.clone(),
+                                })
+                                .inc();
+                        }
+
                         warn!(
                             attempt = attempt,
                             max_attempts = self.retry_attempts,
@@ -93,6 +130,16 @@ impl ReportSender {
                     }
                 }
             }
+        }
+
+        // Record failure after all retries exhausted
+        if let Some(ref counter) = self.metrics.reports_sent_total {
+            counter
+                .get_or_create(&SendLabels {
+                    report_type,
+                    result: "error".to_string(),
+                })
+                .inc();
         }
 
         Err(last_error.unwrap_or_else(|| anyhow::anyhow!("Unknown error")))

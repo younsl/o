@@ -9,6 +9,7 @@ use tracing::info;
 
 use crate::config::Config;
 use crate::health::HealthServer;
+use crate::metrics::Metrics;
 use health_checker::HealthChecker;
 use sender::ReportSender;
 use watcher::K8sWatcher;
@@ -17,6 +18,7 @@ pub async fn run(
     config: Config,
     health_server: HealthServer,
     shutdown: tokio::sync::watch::Receiver<bool>,
+    metrics: Arc<Metrics>,
 ) -> Result<()> {
     info!(
         cluster = %config.get_cluster_name(),
@@ -32,6 +34,7 @@ pub async fn run(
         config.get_cluster_name().to_string(),
         config.retry_attempts,
         config.retry_delay_secs,
+        metrics.clone(),
     )?);
 
     // Create watcher
@@ -40,6 +43,7 @@ pub async fn run(
         config.namespaces.clone(),
         config.collect_vulnerability_reports,
         config.collect_sbom_reports,
+        metrics.clone(),
     )
     .await?;
 
@@ -47,6 +51,7 @@ pub async fn run(
     let health_checker = HealthChecker::new(
         config.get_server_url().to_string(),
         config.health_check_interval_secs,
+        metrics,
     )?;
     let health_shutdown = shutdown.clone();
     tokio::spawn(async move {

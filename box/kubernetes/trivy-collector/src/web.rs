@@ -143,6 +143,7 @@ use crate::auth;
 use crate::auth::rbac::RbacPolicy;
 use crate::config::Config;
 use crate::health::HealthServer;
+use crate::metrics::{CleanupResultLabels, Metrics, ReportTypeLabels};
 use crate::storage::Database;
 
 #[derive(Embed)]
@@ -153,6 +154,7 @@ pub async fn run(
     config: Config,
     health_server: HealthServer,
     mut shutdown: tokio::sync::watch::Receiver<bool>,
+    metrics: Arc<Metrics>,
 ) -> Result<()> {
     info!(
         port = config.server_port,
@@ -293,6 +295,7 @@ pub async fn run(
         runtime: runtime_info,
         auth: auth_state,
         rbac,
+        metrics: metrics.clone(),
     };
 
     // Configure CORS
@@ -314,6 +317,7 @@ pub async fn run(
 
     // Start background log cleanup task (every 6 hours, retain 7 days)
     let db_cleanup = db.clone();
+    let metrics_cleanup = metrics.clone();
     let mut shutdown_cleanup = shutdown.clone();
     tokio::spawn(async move {
         let mut interval = tokio::time::interval(std::time::Duration::from_secs(6 * 3600));
@@ -321,16 +325,71 @@ pub async fn run(
             tokio::select! {
                 _ = interval.tick() => {
                     match db_cleanup.cleanup_old_api_logs(7, "system") {
-                        Ok(deleted) if deleted > 0 => {
-                            info!(deleted = deleted, "Background API log cleanup completed");
+                        Ok(deleted) => {
+                            if let Some(ref runs) = metrics_cleanup.api_logs_cleanup_runs_total {
+                                runs.get_or_create(&CleanupResultLabels {
+                                    result: "success".to_string(),
+                                }).inc();
+                            }
+                            if deleted > 0 {
+                                if let Some(ref deleted_counter) = metrics_cleanup.api_logs_cleanup_deleted_total {
+                                    deleted_counter.inc_by(deleted);
+                                }
+                                info!(deleted = deleted, "Background API log cleanup completed");
+                            }
                         }
-                        Ok(_) => {}
                         Err(e) => {
+                            if let Some(ref runs) = metrics_cleanup.api_logs_cleanup_runs_total {
+                                runs.get_or_create(&CleanupResultLabels {
+                                    result: "error".to_string(),
+                                }).inc();
+                            }
                             warn!(error = %e, "Background API log cleanup failed");
                         }
                     }
                 }
                 _ = shutdown_cleanup.changed() => {
+                    break;
+                }
+            }
+        }
+    });
+
+    // Start background DB metrics refresh task (every 60 seconds)
+    let db_metrics_refresh = db.clone();
+    let metrics_refresh = metrics.clone();
+    let db_path = config.get_db_path();
+    let mut shutdown_metrics = shutdown.clone();
+    tokio::spawn(async move {
+        let mut interval = tokio::time::interval(std::time::Duration::from_secs(60));
+        loop {
+            tokio::select! {
+                _ = interval.tick() => {
+                    // Update DB file size gauge
+                    if let Some(ref gauge) = metrics_refresh.db_size_bytes
+                        && let Ok(metadata) = std::fs::metadata(&db_path) {
+                            gauge.set(metadata.len() as i64);
+                    }
+                    // Update report count gauges
+                    if let Some(ref family) = metrics_refresh.db_reports_total {
+                        if let Ok(count) = db_metrics_refresh.count_reports("vulnerabilityreport") {
+                            family.get_or_create(&ReportTypeLabels {
+                                report_type: "vulnerabilityreport".to_string(),
+                            }).set(count);
+                        }
+                        if let Ok(count) = db_metrics_refresh.count_reports("sbomreport") {
+                            family.get_or_create(&ReportTypeLabels {
+                                report_type: "sbomreport".to_string(),
+                            }).set(count);
+                        }
+                    }
+                    // Update API logs count gauge
+                    if let Some(ref gauge) = metrics_refresh.api_logs_total
+                        && let Ok(count) = db_metrics_refresh.count_api_logs() {
+                            gauge.set(count);
+                    }
+                }
+                _ = shutdown_metrics.changed() => {
                     break;
                 }
             }
@@ -520,5 +579,497 @@ async fn serve_static(axum::extract::Path(path): axum::extract::Path<String>) ->
                 .into_response()
         }
         None => (StatusCode::NOT_FOUND, "Not found").into_response(),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use axum::body::Body;
+    use http_body_util::BodyExt;
+    use tower::ServiceExt;
+
+    fn create_test_app_state() -> AppState {
+        let db = Arc::new(crate::storage::Database::new(":memory:").unwrap());
+        let mut registry = prometheus_client::registry::Registry::default();
+        let metrics =
+            crate::metrics::Metrics::new(&mut registry, crate::config::Mode::Server);
+
+        AppState {
+            db,
+            watcher_status: Arc::new(WatcherStatus::new()),
+            config: Arc::new(state::ConfigInfo {
+                mode: "server".to_string(),
+                log_format: "json".to_string(),
+                log_level: "info".to_string(),
+                health_port: 8080,
+                cluster_name: "test".to_string(),
+                namespaces: vec![],
+                collect_vulnerability_reports: true,
+                collect_sbom_reports: true,
+                server_port: 3000,
+                storage_path: ":memory:".to_string(),
+                watch_local: false,
+                auth_mode: None,
+            }),
+            runtime: Arc::new(state::RuntimeInfo::new()),
+            auth: None,
+            rbac: Arc::new(
+                auth::rbac::RbacPolicy::from_csv(
+                    auth::rbac::RbacPolicy::default_csv(),
+                    "role:readonly",
+                )
+                .unwrap(),
+            ),
+            metrics,
+        }
+    }
+
+    fn create_router_no_auth() -> Router {
+        let state = create_test_app_state();
+        build_router(state, auth::AuthMode::None)
+    }
+
+    #[tokio::test]
+    async fn test_build_router_version() {
+        let app = create_router_no_auth();
+        let resp = app
+            .oneshot(
+                axum::http::Request::builder()
+                    .uri("/api/v1/version")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(resp.status(), StatusCode::OK);
+        let body = resp.into_body().collect().await.unwrap().to_bytes();
+        let json: serde_json::Value = serde_json::from_slice(&body).unwrap();
+        assert!(json["version"].is_string());
+    }
+
+    #[tokio::test]
+    async fn test_build_router_status() {
+        let app = create_router_no_auth();
+        let resp = app
+            .oneshot(
+                axum::http::Request::builder()
+                    .uri("/api/v1/status")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(resp.status(), StatusCode::OK);
+    }
+
+    #[tokio::test]
+    async fn test_build_router_config() {
+        let app = create_router_no_auth();
+        let resp = app
+            .oneshot(
+                axum::http::Request::builder()
+                    .uri("/api/v1/config")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(resp.status(), StatusCode::OK);
+    }
+
+    #[tokio::test]
+    async fn test_build_router_stats() {
+        let app = create_router_no_auth();
+        let resp = app
+            .oneshot(
+                axum::http::Request::builder()
+                    .uri("/api/v1/stats")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(resp.status(), StatusCode::OK);
+    }
+
+    #[tokio::test]
+    async fn test_build_router_clusters() {
+        let app = create_router_no_auth();
+        let resp = app
+            .oneshot(
+                axum::http::Request::builder()
+                    .uri("/api/v1/clusters")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(resp.status(), StatusCode::OK);
+    }
+
+    #[tokio::test]
+    async fn test_build_router_watcher_status() {
+        let app = create_router_no_auth();
+        let resp = app
+            .oneshot(
+                axum::http::Request::builder()
+                    .uri("/api/v1/watcher/status")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(resp.status(), StatusCode::OK);
+    }
+
+    #[tokio::test]
+    async fn test_build_router_vuln_reports() {
+        let app = create_router_no_auth();
+        let resp = app
+            .oneshot(
+                axum::http::Request::builder()
+                    .uri("/api/v1/vulnerabilityreports")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(resp.status(), StatusCode::OK);
+    }
+
+    #[tokio::test]
+    async fn test_build_router_sbom_reports() {
+        let app = create_router_no_auth();
+        let resp = app
+            .oneshot(
+                axum::http::Request::builder()
+                    .uri("/api/v1/sbomreports")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(resp.status(), StatusCode::OK);
+    }
+
+    #[tokio::test]
+    async fn test_build_router_admin_info() {
+        let app = create_router_no_auth();
+        let resp = app
+            .oneshot(
+                axum::http::Request::builder()
+                    .uri("/api/v1/admin/info")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(resp.status(), StatusCode::OK);
+    }
+
+    #[tokio::test]
+    async fn test_build_router_admin_logs() {
+        let app = create_router_no_auth();
+        let resp = app
+            .oneshot(
+                axum::http::Request::builder()
+                    .uri("/api/v1/admin/logs")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(resp.status(), StatusCode::OK);
+    }
+
+    #[tokio::test]
+    async fn test_build_router_admin_log_stats() {
+        let app = create_router_no_auth();
+        let resp = app
+            .oneshot(
+                axum::http::Request::builder()
+                    .uri("/api/v1/admin/logs/stats")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(resp.status(), StatusCode::OK);
+    }
+
+    #[tokio::test]
+    async fn test_build_router_dashboard_trends() {
+        let app = create_router_no_auth();
+        let resp = app
+            .oneshot(
+                axum::http::Request::builder()
+                    .uri("/api/v1/dashboard/trends")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(resp.status(), StatusCode::OK);
+    }
+
+    #[tokio::test]
+    async fn test_build_router_receive_report() {
+        let app = create_router_no_auth();
+        let body = serde_json::json!({
+            "event_type": "Apply",
+            "payload": {
+                "cluster": "test",
+                "report_type": "vulnerabilityreport",
+                "namespace": "default",
+                "name": "test-report",
+                "data_json": "{}",
+                "received_at": "2024-01-01T00:00:00Z"
+            }
+        });
+        let resp = app
+            .oneshot(
+                axum::http::Request::builder()
+                    .method(Method::POST)
+                    .uri("/api/v1/reports")
+                    .header("content-type", "application/json")
+                    .body(Body::from(serde_json::to_vec(&body).unwrap()))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(resp.status(), StatusCode::OK);
+    }
+
+    #[tokio::test]
+    async fn test_build_router_auth_me() {
+        let app = create_router_no_auth();
+        let resp = app
+            .oneshot(
+                axum::http::Request::builder()
+                    .uri("/api/v1/auth/me")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        // Without auth, should return 200 with anonymous user
+        assert_eq!(resp.status(), StatusCode::OK);
+    }
+
+    #[tokio::test]
+    async fn test_build_router_namespaces() {
+        let app = create_router_no_auth();
+        let resp = app
+            .oneshot(
+                axum::http::Request::builder()
+                    .uri("/api/v1/namespaces")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(resp.status(), StatusCode::OK);
+    }
+
+    #[tokio::test]
+    async fn test_build_router_static_not_found() {
+        let app = create_router_no_auth();
+        let resp = app
+            .oneshot(
+                axum::http::Request::builder()
+                    .uri("/static/nonexistent.js")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(resp.status(), StatusCode::NOT_FOUND);
+    }
+
+    #[tokio::test]
+    async fn test_build_router_asset_not_found() {
+        let app = create_router_no_auth();
+        let resp = app
+            .oneshot(
+                axum::http::Request::builder()
+                    .uri("/assets/nonexistent.css")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(resp.status(), StatusCode::NOT_FOUND);
+    }
+
+    #[tokio::test]
+    async fn test_build_router_vuln_search() {
+        let app = create_router_no_auth();
+        let resp = app
+            .oneshot(
+                axum::http::Request::builder()
+                    .uri("/api/v1/vulnerabilityreports/vulnerabilities/search?q=CVE-2024")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(resp.status(), StatusCode::OK);
+    }
+
+    #[tokio::test]
+    async fn test_build_router_vuln_suggest() {
+        let app = create_router_no_auth();
+        let resp = app
+            .oneshot(
+                axum::http::Request::builder()
+                    .uri("/api/v1/vulnerabilityreports/vulnerabilities/suggest?q=CVE")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(resp.status(), StatusCode::OK);
+    }
+
+    #[tokio::test]
+    async fn test_build_router_sbom_search() {
+        let app = create_router_no_auth();
+        let resp = app
+            .oneshot(
+                axum::http::Request::builder()
+                    .uri("/api/v1/sbomreports/components/search?component=log4j")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(resp.status(), StatusCode::OK);
+    }
+
+    #[tokio::test]
+    async fn test_build_router_sbom_suggest() {
+        let app = create_router_no_auth();
+        let resp = app
+            .oneshot(
+                axum::http::Request::builder()
+                    .uri("/api/v1/sbomreports/components/suggest?q=log")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(resp.status(), StatusCode::OK);
+    }
+
+    #[tokio::test]
+    async fn test_build_router_auth_tokens_list() {
+        let app = create_router_no_auth();
+        let resp = app
+            .oneshot(
+                axum::http::Request::builder()
+                    .uri("/api/v1/auth/tokens")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        // Without auth cookie, handler returns either tokens list or unauthorized
+        assert!(resp.status() == StatusCode::OK || resp.status() == StatusCode::UNAUTHORIZED);
+    }
+
+    #[tokio::test]
+    async fn test_build_router_fallback_index() {
+        let app = create_router_no_auth();
+        let resp = app
+            .oneshot(
+                axum::http::Request::builder()
+                    .uri("/some/unknown/path")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        // Fallback serves index or 404
+        let status = resp.status();
+        assert!(status == StatusCode::OK || status == StatusCode::NOT_FOUND);
+    }
+
+    #[tokio::test]
+    async fn test_build_router_root() {
+        let app = create_router_no_auth();
+        let resp = app
+            .oneshot(
+                axum::http::Request::builder()
+                    .uri("/")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        let status = resp.status();
+        assert!(status == StatusCode::OK || status == StatusCode::NOT_FOUND);
+    }
+
+    #[tokio::test]
+    async fn test_build_router_swagger_ui() {
+        let app = create_router_no_auth();
+        let resp = app
+            .oneshot(
+                axum::http::Request::builder()
+                    .uri("/swagger-ui/")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        // Swagger UI should redirect or serve
+        assert!(resp.status().is_success() || resp.status().is_redirection());
+    }
+
+    #[tokio::test]
+    async fn test_build_router_auth_login() {
+        let app = create_router_no_auth();
+        let resp = app
+            .oneshot(
+                axum::http::Request::builder()
+                    .uri("/auth/login")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        // Without OIDC configured, login redirects to /
+        assert!(resp.status().is_redirection());
+    }
+
+    #[tokio::test]
+    async fn test_build_router_auth_callback() {
+        let app = create_router_no_auth();
+        let resp = app
+            .oneshot(
+                axum::http::Request::builder()
+                    .uri("/auth/callback")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert!(resp.status().is_redirection() || resp.status().is_client_error());
+    }
+
+    #[tokio::test]
+    async fn test_build_router_auth_logout() {
+        let app = create_router_no_auth();
+        let resp = app
+            .oneshot(
+                axum::http::Request::builder()
+                    .uri("/auth/logout")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert!(resp.status().is_redirection() || resp.status().is_success());
     }
 }

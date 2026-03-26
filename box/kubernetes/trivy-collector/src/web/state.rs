@@ -7,6 +7,7 @@ use std::time::Instant;
 use crate::auth::AuthState;
 use crate::auth::rbac::RbacPolicy;
 use crate::config::Config;
+use crate::metrics::Metrics;
 use crate::storage::Database;
 
 /// Watcher status shared across the application
@@ -138,6 +139,8 @@ pub struct AppState {
     pub auth: Option<Arc<AuthState>>,
     /// RBAC policy engine
     pub rbac: Arc<RbacPolicy>,
+    /// Prometheus metrics
+    pub metrics: Arc<Metrics>,
 }
 
 /// Allow axum-extra PrivateCookieJar to extract the cookie Key from AppState
@@ -197,5 +200,86 @@ mod tests {
         let runtime = RuntimeInfo::new();
         // hostname should be non-empty
         assert!(!runtime.hostname.is_empty());
+    }
+
+    #[test]
+    fn test_runtime_info_default() {
+        let runtime = RuntimeInfo::default();
+        assert!(!runtime.hostname.is_empty());
+        assert_eq!(runtime.uptime_string(), "0s");
+    }
+
+    #[test]
+    fn test_config_info_from_server() {
+        let config = crate::config::Config {
+            command: None,
+            mode: crate::config::Mode::Server,
+            log_format: "json".to_string(),
+            log_level: "debug".to_string(),
+            health_port: 9090,
+            server_url: None,
+            cluster_name: "my-cluster".to_string(),
+            namespaces: vec!["ns1".to_string()],
+            collect_vulnerability_reports: true,
+            collect_sbom_reports: false,
+            retry_attempts: 3,
+            retry_delay_secs: 5,
+            health_check_interval_secs: 30,
+            server_port: 8080,
+            storage_path: "/tmp".to_string(),
+            watch_local: true,
+            auth_mode: "keycloak".to_string(),
+            oidc_issuer_url: None,
+            oidc_client_id: None,
+            oidc_client_secret: None,
+            oidc_redirect_url: None,
+            oidc_scopes: "openid".to_string(),
+            rbac_policy_csv: String::new(),
+            rbac_default_policy: "role:readonly".to_string(),
+        };
+        let info = ConfigInfo::from(&config);
+        assert_eq!(info.mode, "server");
+        assert_eq!(info.log_level, "debug");
+        assert_eq!(info.health_port, 9090);
+        assert_eq!(info.cluster_name, "my-cluster");
+        assert_eq!(info.namespaces, vec!["ns1"]);
+        assert!(info.collect_vulnerability_reports);
+        assert!(!info.collect_sbom_reports);
+        assert_eq!(info.server_port, 8080);
+        assert!(info.watch_local);
+        assert_eq!(info.auth_mode, Some("keycloak".to_string()));
+    }
+
+    #[test]
+    fn test_config_info_auth_mode_none() {
+        let config = crate::config::Config {
+            command: None,
+            mode: crate::config::Mode::Collector,
+            log_format: "pretty".to_string(),
+            log_level: "info".to_string(),
+            health_port: 8080,
+            server_url: Some("http://server:3000".to_string()),
+            cluster_name: "edge".to_string(),
+            namespaces: vec![],
+            collect_vulnerability_reports: true,
+            collect_sbom_reports: true,
+            retry_attempts: 3,
+            retry_delay_secs: 5,
+            health_check_interval_secs: 30,
+            server_port: 3000,
+            storage_path: "/data".to_string(),
+            watch_local: false,
+            auth_mode: "none".to_string(),
+            oidc_issuer_url: None,
+            oidc_client_id: None,
+            oidc_client_secret: None,
+            oidc_redirect_url: None,
+            oidc_scopes: "openid".to_string(),
+            rbac_policy_csv: String::new(),
+            rbac_default_policy: "role:readonly".to_string(),
+        };
+        let info = ConfigInfo::from(&config);
+        assert_eq!(info.mode, "collector");
+        assert!(info.auth_mode.is_none());
     }
 }

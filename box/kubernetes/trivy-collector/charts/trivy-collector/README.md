@@ -147,9 +147,10 @@ The following table lists the configurable parameters and their default values.
 | server.auth.sso.clientSecret.key | string | `"client-secret"` | Secret key for client secret |
 | server.auth.sso.redirectUrl | string | `""` | OIDC redirect URL (full callback URL, e.g., https://trivy.example.com/auth/callback) |
 | server.auth.sso.scopes | list | `["openid","profile","email","groups"]` | OIDC scopes |
-| service | object | `{"port":3000,"type":"ClusterIP"}` | Service configuration |
+| service | object | `{"annotations":{},"port":3000,"type":"ClusterIP"}` | Service configuration |
 | service.type | string | `"ClusterIP"` | Service type |
 | service.port | int | `3000` | Service port |
+| service.annotations | object | `{}` | Annotations to add to the Service |
 | health | object | `{"port":8080}` | Health check configuration |
 | health.port | int | `8080` | Health check server port |
 | logging | object | `{"format":"json","level":"info"}` | Logging configuration |
@@ -170,6 +171,11 @@ The following table lists the configurable parameters and their default values.
 | readinessProbe.periodSeconds | int | `10` | Probe interval |
 | readinessProbe.timeoutSeconds | int | `5` | Probe timeout |
 | readinessProbe.failureThreshold | int | `3` | Number of failures before marking not ready |
+| serviceMonitor | object | `{"additionalLabels":{},"enabled":false,"interval":"30s","scrapeTimeout":""}` | ServiceMonitor configuration (requires Prometheus Operator) |
+| serviceMonitor.enabled | bool | `false` | Create a ServiceMonitor for Prometheus scraping |
+| serviceMonitor.interval | string | `"30s"` | Scrape interval |
+| serviceMonitor.scrapeTimeout | string | `""` | Scrape timeout (defaults to Prometheus global setting if empty) |
+| serviceMonitor.additionalLabels | object | `{}` | Additional labels to add to the ServiceMonitor |
 | nodeSelector | object | `{}` | Node selector for pod scheduling |
 | tolerations | list | `[]` | Tolerations for pod scheduling |
 | affinity | object | `{}` | Affinity rules for pod scheduling |

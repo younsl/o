@@ -188,3 +188,134 @@ pub async fn admin_info(State(state): State<AppState>) -> impl IntoResponse {
         "rbac": rbac_summary,
     }))
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use axum::{Router, body::Body, http::Request, routing::get};
+    use http_body_util::BodyExt;
+    use std::sync::Arc;
+    use tower::ServiceExt;
+
+    use crate::auth::rbac::RbacPolicy;
+    use crate::storage::Database;
+    use crate::web::state::{AppState, ConfigInfo, RuntimeInfo, WatcherStatus};
+
+    fn create_test_state() -> AppState {
+        let db = Arc::new(Database::new(":memory:").expect("Failed to create test database"));
+        let mut registry = prometheus_client::registry::Registry::default();
+        let metrics = crate::metrics::Metrics::new(&mut registry, crate::config::Mode::Server);
+
+        AppState {
+            db,
+            watcher_status: Arc::new(WatcherStatus::new()),
+            config: Arc::new(ConfigInfo {
+                mode: "server".to_string(),
+                log_format: "json".to_string(),
+                log_level: "info".to_string(),
+                health_port: 8080,
+                cluster_name: "test".to_string(),
+                namespaces: vec![],
+                collect_vulnerability_reports: true,
+                collect_sbom_reports: true,
+                server_port: 3000,
+                storage_path: ":memory:".to_string(),
+                watch_local: false,
+                auth_mode: None,
+            }),
+            runtime: Arc::new(RuntimeInfo::new()),
+            auth: None,
+            rbac: Arc::new(
+                RbacPolicy::from_csv(RbacPolicy::default_csv(), "role:readonly").unwrap(),
+            ),
+            metrics,
+        }
+    }
+
+    #[tokio::test]
+    async fn test_admin_info() {
+        let state = create_test_state();
+        let app = Router::new()
+            .route("/api/v1/admin/info", get(admin_info))
+            .with_state(state);
+
+        let resp = app
+            .oneshot(
+                Request::builder()
+                    .uri("/api/v1/admin/info")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(resp.status(), StatusCode::OK);
+        let body = resp.into_body().collect().await.unwrap().to_bytes();
+        let json: serde_json::Value = serde_json::from_slice(&body).unwrap();
+        assert_eq!(json["log_count"], 0);
+        assert!(json["rbac"]["default_policy"].is_string());
+    }
+
+    #[tokio::test]
+    async fn test_list_api_logs_handler() {
+        let state = create_test_state();
+        // Insert test data
+        state
+            .db
+            .insert_api_log(&crate::storage::ApiLogEntry {
+                id: None,
+                method: "GET".to_string(),
+                path: "/api/v1/stats".to_string(),
+                status_code: 200,
+                duration_ms: 10,
+                user_sub: String::new(),
+                user_email: String::new(),
+                remote_addr: String::new(),
+                user_agent: String::new(),
+                created_at: chrono::Utc::now().format("%Y-%m-%dT%H:%M:%SZ").to_string(),
+            })
+            .unwrap();
+
+        let app = Router::new()
+            .route("/api/v1/admin/logs", get(list_api_logs))
+            .with_state(state);
+
+        let resp = app
+            .oneshot(
+                Request::builder()
+                    .uri("/api/v1/admin/logs")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(resp.status(), StatusCode::OK);
+        let body = resp.into_body().collect().await.unwrap().to_bytes();
+        let json: serde_json::Value = serde_json::from_slice(&body).unwrap();
+        assert_eq!(json["total"], 1);
+    }
+
+    #[tokio::test]
+    async fn test_get_api_log_stats_handler() {
+        let state = create_test_state();
+        let app = Router::new()
+            .route("/api/v1/admin/logs/stats", get(get_api_log_stats))
+            .with_state(state);
+
+        let resp = app
+            .oneshot(
+                Request::builder()
+                    .uri("/api/v1/admin/logs/stats")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(resp.status(), StatusCode::OK);
+        let body = resp.into_body().collect().await.unwrap().to_bytes();
+        let json: serde_json::Value = serde_json::from_slice(&body).unwrap();
+        assert_eq!(json["total_requests"], 0);
+    }
+}

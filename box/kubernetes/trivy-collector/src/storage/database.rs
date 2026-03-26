@@ -100,6 +100,28 @@ impl Database {
         }
     }
 
+    /// Count reports by type (for metrics)
+    pub fn count_reports(&self, report_type: &str) -> Result<i64> {
+        let conn = self.conn.lock().unwrap();
+        let count: i64 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM reports WHERE report_type = ?1",
+                [report_type],
+                |row| row.get(0),
+            )
+            .unwrap_or(0);
+        Ok(count)
+    }
+
+    /// Count API log entries (for metrics)
+    pub fn count_api_logs(&self) -> Result<i64> {
+        let conn = self.conn.lock().unwrap();
+        let count: i64 = conn
+            .query_row("SELECT COUNT(*) FROM api_logs", [], |row| row.get(0))
+            .unwrap_or(0);
+        Ok(count)
+    }
+
     /// Format bytes into human-readable string
     pub(super) fn format_bytes(bytes: u64) -> String {
         const KB: u64 = 1024;

@@ -217,6 +217,8 @@ service:
   type: ClusterIP
   # -- (int) Service port
   port: 3000
+  # -- (object) Annotations to add to the Service
+  annotations: {}
 
 # -- Health check configuration
 health:
@@ -276,6 +278,17 @@ readinessProbe:
   timeoutSeconds: 5
   # -- (int) Number of failures before marking not ready
   failureThreshold: 3
+
+# -- ServiceMonitor configuration (requires Prometheus Operator)
+serviceMonitor:
+  # -- (bool) Create a ServiceMonitor for Prometheus scraping
+  enabled: false
+  # -- (string) Scrape interval
+  interval: 30s
+  # -- (string) Scrape timeout (defaults to Prometheus global setting if empty)
+  scrapeTimeout: ""
+  # -- (object) Additional labels to add to the ServiceMonitor
+  additionalLabels: {}
 
 # -- (object) Node selector for pod scheduling
 nodeSelector: {}

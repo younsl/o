@@ -11,6 +11,7 @@ use tracing::{debug, error, info};
 
 use crate::collector::types::{ReportEvent, ReportEventType};
 use crate::config::env;
+use crate::metrics::ReportReceivedLabels;
 use crate::storage::{
     ClusterInfo, ComponentSearchResult, FullReport, ReportMeta, Stats, TrendResponse,
     VulnSearchResult,
@@ -83,6 +84,16 @@ pub async fn receive_report(
         name = %event.payload.name,
         "Received report event"
     );
+
+    // Record reports_received_total metric
+    if let Some(ref counter) = state.metrics.reports_received_total {
+        counter
+            .get_or_create(&ReportReceivedLabels {
+                cluster: event.payload.cluster.clone(),
+                report_type: event.payload.report_type.clone(),
+            })
+            .inc();
+    }
 
     match event.event_type {
         ReportEventType::Apply => match state.db.upsert_report(&event.payload) {
@@ -904,6 +915,9 @@ mod tests {
         });
         let runtime = Arc::new(RuntimeInfo::new());
 
+        let mut registry = prometheus_client::registry::Registry::default();
+        let metrics = crate::metrics::Metrics::new(&mut registry, crate::config::Mode::Server);
+
         AppState {
             db,
             watcher_status,
@@ -917,6 +931,7 @@ mod tests {
                 )
                 .unwrap(),
             ),
+            metrics,
         }
     }
 

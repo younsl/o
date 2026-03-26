@@ -10,6 +10,7 @@ use tracing::{debug, error, info, warn};
 
 use crate::collector::sender::ReportSender;
 use crate::collector::types::{ReportEventType, SbomReport, VulnerabilityReport};
+use crate::metrics::{Metrics, WatcherLabels};
 
 pub struct K8sWatcher {
     client: Client,
@@ -17,6 +18,7 @@ pub struct K8sWatcher {
     namespaces: Vec<String>,
     collect_vuln: bool,
     collect_sbom: bool,
+    metrics: Arc<Metrics>,
 }
 
 impl K8sWatcher {
@@ -25,6 +27,7 @@ impl K8sWatcher {
         namespaces: Vec<String>,
         collect_vuln: bool,
         collect_sbom: bool,
+        metrics: Arc<Metrics>,
     ) -> Result<Self> {
         let client = Client::try_default()
             .await
@@ -36,6 +39,7 @@ impl K8sWatcher {
             namespaces,
             collect_vuln,
             collect_sbom,
+            metrics,
         })
     }
 
@@ -55,9 +59,10 @@ impl K8sWatcher {
             let sender = self.sender.clone();
             let namespaces = self.namespaces.clone();
             let shutdown_rx = shutdown.clone();
+            let metrics = self.metrics.clone();
 
             let handle = tokio::spawn(async move {
-                watch_vulnerability_reports(client, sender, namespaces, shutdown_rx).await
+                watch_vulnerability_reports(client, sender, namespaces, shutdown_rx, metrics).await
             });
             handles.push(handle);
         }
@@ -67,9 +72,10 @@ impl K8sWatcher {
             let sender = self.sender.clone();
             let namespaces = self.namespaces.clone();
             let shutdown_rx = shutdown.clone();
+            let metrics = self.metrics.clone();
 
             let handle = tokio::spawn(async move {
-                watch_sbom_reports(client, sender, namespaces, shutdown_rx).await
+                watch_sbom_reports(client, sender, namespaces, shutdown_rx, metrics).await
             });
             handles.push(handle);
         }
@@ -94,11 +100,23 @@ impl K8sWatcher {
     }
 }
 
+fn record_watcher_event(metrics: &Metrics, report_type: &str, event_type: &str) {
+    if let Some(ref counter) = metrics.watcher_events_total {
+        counter
+            .get_or_create(&WatcherLabels {
+                report_type: report_type.to_string(),
+                event_type: event_type.to_string(),
+            })
+            .inc();
+    }
+}
+
 async fn watch_vulnerability_reports(
     client: Client,
     sender: Arc<ReportSender>,
     namespaces: Vec<String>,
     mut shutdown: tokio::sync::watch::Receiver<bool>,
+    metrics: Arc<Metrics>,
 ) -> Result<()> {
     let api: Api<VulnerabilityReport> = if namespaces.is_empty() {
         Api::all(client)
@@ -127,7 +145,7 @@ async fn watch_vulnerability_reports(
             event = stream.next() => {
                 match event {
                     Some(Ok(ev)) => {
-                        if let Err(e) = handle_vuln_event(&sender, ev, &namespaces, &mut sync_count, &mut is_initial_sync, &mut sync_start_time).await {
+                        if let Err(e) = handle_vuln_event(&sender, ev, &namespaces, &mut sync_count, &mut is_initial_sync, &mut sync_start_time, &metrics).await {
                             error!(error = %e, "Failed to handle VulnerabilityReport event");
                         }
                     }
@@ -151,6 +169,7 @@ async fn watch_sbom_reports(
     sender: Arc<ReportSender>,
     namespaces: Vec<String>,
     mut shutdown: tokio::sync::watch::Receiver<bool>,
+    metrics: Arc<Metrics>,
 ) -> Result<()> {
     // Watch all namespaces and filter later
     let api: Api<SbomReport> = Api::all(client);
@@ -174,7 +193,7 @@ async fn watch_sbom_reports(
             event = stream.next() => {
                 match event {
                     Some(Ok(ev)) => {
-                        if let Err(e) = handle_sbom_event(&sender, ev, &namespaces, &mut sync_count, &mut is_initial_sync, &mut sync_start_time).await {
+                        if let Err(e) = handle_sbom_event(&sender, ev, &namespaces, &mut sync_count, &mut is_initial_sync, &mut sync_start_time, &metrics).await {
                             error!(error = %e, "Failed to handle SbomReport event");
                         }
                     }
@@ -200,9 +219,12 @@ async fn handle_vuln_event(
     sync_count: &mut u64,
     is_initial_sync: &mut bool,
     sync_start_time: &mut Option<std::time::Instant>,
+    metrics: &Metrics,
 ) -> Result<()> {
     match event {
         Event::Apply(report) => {
+            record_watcher_event(metrics, "vulnerabilityreport", "apply");
+
             let namespace = report.metadata.namespace.as_deref().unwrap_or("default");
             let name = report.metadata.name.as_deref().unwrap_or("unknown");
 
@@ -233,6 +255,8 @@ async fn handle_vuln_event(
                 .await?;
         }
         Event::InitApply(report) => {
+            record_watcher_event(metrics, "vulnerabilityreport", "init_apply");
+
             let namespace = report.metadata.namespace.as_deref().unwrap_or("default");
             let name = report.metadata.name.as_deref().unwrap_or("unknown");
 
@@ -265,6 +289,8 @@ async fn handle_vuln_event(
             *sync_count += 1;
         }
         Event::Delete(report) => {
+            record_watcher_event(metrics, "vulnerabilityreport", "delete");
+
             let namespace = report.metadata.namespace.as_deref().unwrap_or("default");
             let name = report.metadata.name.as_deref().unwrap_or("unknown");
 
@@ -289,12 +315,14 @@ async fn handle_vuln_event(
                 .await?;
         }
         Event::Init => {
+            record_watcher_event(metrics, "vulnerabilityreport", "init");
             *is_initial_sync = true;
             *sync_count = 0;
             *sync_start_time = Some(std::time::Instant::now());
             debug!("VulnerabilityReport initial sync started");
         }
         Event::InitDone => {
+            record_watcher_event(metrics, "vulnerabilityreport", "init_done");
             *is_initial_sync = false;
             let elapsed_secs = sync_start_time
                 .map(|t| t.elapsed().as_secs_f64())
@@ -317,9 +345,12 @@ async fn handle_sbom_event(
     sync_count: &mut u64,
     is_initial_sync: &mut bool,
     sync_start_time: &mut Option<std::time::Instant>,
+    metrics: &Metrics,
 ) -> Result<()> {
     match event {
         Event::Apply(report) => {
+            record_watcher_event(metrics, "sbomreport", "apply");
+
             let namespace = report.metadata.namespace.as_deref().unwrap_or("default");
             let name = report.metadata.name.as_deref().unwrap_or("unknown");
 
@@ -348,6 +379,8 @@ async fn handle_sbom_event(
                 .await?;
         }
         Event::InitApply(report) => {
+            record_watcher_event(metrics, "sbomreport", "init_apply");
+
             let namespace = report.metadata.namespace.as_deref().unwrap_or("default");
             let name = report.metadata.name.as_deref().unwrap_or("unknown");
 
@@ -378,6 +411,8 @@ async fn handle_sbom_event(
             *sync_count += 1;
         }
         Event::Delete(report) => {
+            record_watcher_event(metrics, "sbomreport", "delete");
+
             let namespace = report.metadata.namespace.as_deref().unwrap_or("default");
             let name = report.metadata.name.as_deref().unwrap_or("unknown");
 
@@ -402,12 +437,14 @@ async fn handle_sbom_event(
                 .await?;
         }
         Event::Init => {
+            record_watcher_event(metrics, "sbomreport", "init");
             *is_initial_sync = true;
             *sync_count = 0;
             *sync_start_time = Some(std::time::Instant::now());
             debug!("SbomReport initial sync started");
         }
         Event::InitDone => {
+            record_watcher_event(metrics, "sbomreport", "init_done");
             *is_initial_sync = false;
             let elapsed_secs = sync_start_time
                 .map(|t| t.elapsed().as_secs_f64())

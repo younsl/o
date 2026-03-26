@@ -1,8 +1,11 @@
 use anyhow::Result;
+use prometheus_client::registry::Registry;
+use std::sync::Arc;
 use tracing::{error, info};
 
 use trivy_collector::config::{Command, Config, Mode};
 use trivy_collector::health::HealthServer;
+use trivy_collector::metrics::Metrics;
 use trivy_collector::{collector, logging, web};
 
 #[tokio::main]
@@ -38,9 +41,14 @@ async fn main() -> Result<()> {
         std::process::exit(1);
     }
 
-    // Start health check server
+    // Initialize Prometheus metrics registry
+    let mut registry = Registry::default();
+    let metrics = Metrics::new(&mut registry, config.mode);
+    let registry = Arc::new(registry);
+
+    // Start health check server (with /metrics endpoint)
     let health_port = config.health_port;
-    let health_server = HealthServer::new();
+    let health_server = HealthServer::new(registry);
     let health_server_clone = health_server.clone();
 
     let (health_ready_tx, health_ready_rx) = tokio::sync::oneshot::channel();
@@ -62,7 +70,7 @@ async fn main() -> Result<()> {
 
     // Run based on mode
     let result = tokio::select! {
-        result = run_mode(config, health_server, shutdown_rx) => result,
+        result = run_mode(config, health_server, shutdown_rx, metrics) => result,
         _ = tokio::signal::ctrl_c() => {
             info!("Received shutdown signal");
             let _ = shutdown_tx.send(true);
@@ -83,6 +91,7 @@ async fn run_mode(
     config: Config,
     health_server: HealthServer,
     shutdown_rx: tokio::sync::watch::Receiver<bool>,
+    metrics: Arc<Metrics>,
 ) -> Result<()> {
     match config.mode {
         Mode::Collector => {
@@ -91,7 +100,7 @@ async fn run_mode(
                 server_url = %config.get_server_url(),
                 "Running in collector mode"
             );
-            collector::run(config, health_server, shutdown_rx).await
+            collector::run(config, health_server, shutdown_rx, metrics).await
         }
         Mode::Server => {
             info!(
@@ -101,7 +110,7 @@ async fn run_mode(
                 watch_local = config.watch_local,
                 "Running in server mode"
             );
-            web::run(config, health_server, shutdown_rx).await
+            web::run(config, health_server, shutdown_rx, metrics).await
         }
     }
 }

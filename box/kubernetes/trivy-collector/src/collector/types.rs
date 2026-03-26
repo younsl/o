@@ -451,4 +451,107 @@ mod tests {
         let metadata = ObjectMeta::default();
         assert_eq!(extract_container_name(&metadata), "unknown");
     }
+
+    #[test]
+    fn test_report_event_serialization() {
+        let event = ReportEvent {
+            event_type: ReportEventType::Apply,
+            payload: ReportPayload {
+                cluster: "test-cluster".to_string(),
+                report_type: "vulnerabilityreport".to_string(),
+                namespace: "default".to_string(),
+                name: "test-report".to_string(),
+                data_json: "{}".to_string(),
+                received_at: chrono::Utc::now(),
+            },
+        };
+        let json = serde_json::to_string(&event).unwrap();
+        assert!(json.contains("test-cluster"));
+        assert!(json.contains("Apply"));
+
+        // Deserialize back
+        let deserialized: ReportEvent = serde_json::from_str(&json).unwrap();
+        assert_eq!(deserialized.payload.cluster, "test-cluster");
+    }
+
+    #[test]
+    fn test_report_event_type_delete() {
+        let event = ReportEvent {
+            event_type: ReportEventType::Delete,
+            payload: ReportPayload {
+                cluster: "c".to_string(),
+                report_type: "sbomreport".to_string(),
+                namespace: "ns".to_string(),
+                name: "n".to_string(),
+                data_json: "{}".to_string(),
+                received_at: chrono::Utc::now(),
+            },
+        };
+        let json = serde_json::to_string(&event).unwrap();
+        assert!(json.contains("Delete"));
+    }
+
+    #[test]
+    fn test_vulnerability_report_resource_trait() {
+        assert_eq!(VulnerabilityReport::kind(&()), "VulnerabilityReport");
+        assert_eq!(VulnerabilityReport::group(&()), "aquasecurity.github.io");
+        assert_eq!(VulnerabilityReport::version(&()), "v1alpha1");
+        assert_eq!(VulnerabilityReport::plural(&()), "vulnerabilityreports");
+    }
+
+    #[test]
+    fn test_sbom_report_resource_trait() {
+        assert_eq!(SbomReport::kind(&()), "SbomReport");
+        assert_eq!(SbomReport::group(&()), "aquasecurity.github.io");
+        assert_eq!(SbomReport::version(&()), "v1alpha1");
+        assert_eq!(SbomReport::plural(&()), "sbomreports");
+    }
+
+    #[test]
+    fn test_vulnerability_summary_default() {
+        let summary = VulnerabilitySummary::default();
+        assert_eq!(summary.critical_count, 0);
+        assert_eq!(summary.high_count, 0);
+        assert_eq!(summary.medium_count, 0);
+    }
+
+    #[test]
+    fn test_sbom_summary_default() {
+        let summary = SbomSummary::default();
+        assert_eq!(summary.components_count, 0);
+    }
+
+    #[test]
+    fn test_artifact_default() {
+        let artifact = Artifact::default();
+        assert!(artifact.repository.is_empty());
+        assert!(artifact.tag.is_empty());
+    }
+
+    #[test]
+    fn test_vulnerability_report_data_default() {
+        let data = VulnerabilityReportData::default();
+        assert!(data.vulnerabilities.is_empty());
+    }
+
+    #[test]
+    fn test_sbom_report_data_default() {
+        let data = SbomReportData::default();
+        assert!(data.artifact.repository.is_empty());
+    }
+
+    #[test]
+    fn test_report_payload_display() {
+        let payload = ReportPayload {
+            cluster: "prod".to_string(),
+            report_type: "vulnerabilityreport".to_string(),
+            namespace: "app".to_string(),
+            name: "scan-1".to_string(),
+            data_json: r#"{"report":{}}"#.to_string(),
+            received_at: chrono::Utc::now(),
+        };
+        let json = serde_json::to_value(&payload).unwrap();
+        assert_eq!(json["cluster"], "prod");
+        assert_eq!(json["report_type"], "vulnerabilityreport");
+    }
 }

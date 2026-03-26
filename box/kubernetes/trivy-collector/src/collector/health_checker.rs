@@ -1,15 +1,23 @@
+use std::sync::Arc;
 use std::time::Duration;
 use tracing::{debug, error, info, warn};
+
+use crate::metrics::Metrics;
 
 /// Periodic health checker for the central server
 pub struct HealthChecker {
     client: reqwest::Client,
     server_url: String,
     interval_secs: u64,
+    metrics: Arc<Metrics>,
 }
 
 impl HealthChecker {
-    pub fn new(server_url: String, interval_secs: u64) -> anyhow::Result<Self> {
+    pub fn new(
+        server_url: String,
+        interval_secs: u64,
+        metrics: Arc<Metrics>,
+    ) -> anyhow::Result<Self> {
         let client = reqwest::Client::builder()
             .timeout(Duration::from_secs(10))
             .connect_timeout(Duration::from_secs(5))
@@ -19,6 +27,7 @@ impl HealthChecker {
             client,
             server_url,
             interval_secs,
+            metrics,
         })
     }
 
@@ -63,6 +72,9 @@ impl HealthChecker {
                 let status = response.status();
 
                 if status.is_success() {
+                    if let Some(ref gauge) = self.metrics.server_up {
+                        gauge.set(1);
+                    }
                     info!(
                         server_url = %self.server_url,
                         status = "success",
@@ -72,6 +84,9 @@ impl HealthChecker {
                     );
                     true
                 } else {
+                    if let Some(ref gauge) = self.metrics.server_up {
+                        gauge.set(0);
+                    }
                     warn!(
                         server_url = %self.server_url,
                         status = "failed",
@@ -85,6 +100,9 @@ impl HealthChecker {
             }
             Err(e) => {
                 let elapsed = start.elapsed();
+                if let Some(ref gauge) = self.metrics.server_up {
+                    gauge.set(0);
+                }
                 error!(
                     server_url = %self.server_url,
                     status = "failed",

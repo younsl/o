@@ -269,3 +269,115 @@ fn column_exists_in(conn: &Connection, table_name: &str, column_name: &str) -> R
         .unwrap_or(false);
     Ok(exists)
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_init_schema_fresh_db() {
+        let conn = Connection::open_in_memory().unwrap();
+        init_schema(&conn).unwrap();
+
+        // Verify tables exist
+        assert!(table_exists_check(&conn, "reports").unwrap());
+        assert!(table_exists_check(&conn, "api_tokens").unwrap());
+        assert!(table_exists_check(&conn, "api_logs").unwrap());
+        assert!(table_exists_check(&conn, "cleanup_history").unwrap());
+    }
+
+    #[test]
+    fn test_init_schema_idempotent() {
+        let conn = Connection::open_in_memory().unwrap();
+        init_schema(&conn).unwrap();
+        // Running again should not fail
+        init_schema(&conn).unwrap();
+    }
+
+    #[test]
+    fn test_table_exists_check() {
+        let conn = Connection::open_in_memory().unwrap();
+        assert!(!table_exists_check(&conn, "reports").unwrap());
+        init_schema(&conn).unwrap();
+        assert!(table_exists_check(&conn, "reports").unwrap());
+        assert!(!table_exists_check(&conn, "nonexistent").unwrap());
+    }
+
+    #[test]
+    fn test_column_exists() {
+        let conn = Connection::open_in_memory().unwrap();
+        init_schema(&conn).unwrap();
+        assert!(column_exists(&conn, "notes").unwrap());
+        assert!(column_exists(&conn, "notes_created_at").unwrap());
+        assert!(column_exists(&conn, "notes_updated_at").unwrap());
+        assert!(!column_exists(&conn, "nonexistent_col").unwrap());
+    }
+
+    #[test]
+    fn test_column_exists_in() {
+        let conn = Connection::open_in_memory().unwrap();
+        init_schema(&conn).unwrap();
+        assert!(column_exists_in(&conn, "api_tokens", "description").unwrap());
+        assert!(column_exists_in(&conn, "api_tokens", "user_sub").unwrap());
+        assert!(!column_exists_in(&conn, "api_tokens", "nonexistent").unwrap());
+    }
+
+    #[test]
+    fn test_migrations_on_existing_db() {
+        let conn = Connection::open_in_memory().unwrap();
+        // Create only the reports table (simulating old schema without notes)
+        conn.execute_batch(
+            r#"
+            CREATE TABLE reports (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                cluster TEXT NOT NULL,
+                namespace TEXT NOT NULL,
+                name TEXT NOT NULL,
+                report_type TEXT NOT NULL,
+                app TEXT DEFAULT '',
+                image TEXT DEFAULT '',
+                registry TEXT DEFAULT '',
+                critical_count INTEGER DEFAULT 0,
+                high_count INTEGER DEFAULT 0,
+                medium_count INTEGER DEFAULT 0,
+                low_count INTEGER DEFAULT 0,
+                unknown_count INTEGER DEFAULT 0,
+                components_count INTEGER DEFAULT 0,
+                data TEXT NOT NULL,
+                received_at TEXT NOT NULL,
+                updated_at TEXT NOT NULL,
+                UNIQUE(cluster, namespace, name, report_type)
+            );
+            "#,
+        )
+        .unwrap();
+
+        // Run migrations should add missing columns and tables
+        run_migrations(&conn).unwrap();
+
+        // Verify migrations applied
+        assert!(column_exists(&conn, "notes").unwrap());
+        assert!(column_exists(&conn, "notes_created_at").unwrap());
+        assert!(column_exists(&conn, "notes_updated_at").unwrap());
+        assert!(table_exists_check(&conn, "api_tokens").unwrap());
+        assert!(table_exists_check(&conn, "api_logs").unwrap());
+        assert!(table_exists_check(&conn, "cleanup_history").unwrap());
+        assert!(column_exists_in(&conn, "api_tokens", "description").unwrap());
+    }
+
+    #[test]
+    fn test_indexes_created() {
+        let conn = Connection::open_in_memory().unwrap();
+        init_schema(&conn).unwrap();
+
+        let index_count: i64 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM sqlite_master WHERE type='index'",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        // Should have at least the report indexes
+        assert!(index_count > 0);
+    }
+}

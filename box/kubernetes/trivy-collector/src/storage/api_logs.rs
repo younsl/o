@@ -213,3 +213,264 @@ impl Database {
         Ok(deleted_count)
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::storage::models::{ApiLogEntry, ApiLogQuery};
+
+    fn sample_log(method: &str, path: &str, status: u16) -> ApiLogEntry {
+        ApiLogEntry {
+            id: None,
+            method: method.to_string(),
+            path: path.to_string(),
+            status_code: status,
+            duration_ms: 42,
+            user_sub: "sub-123".to_string(),
+            user_email: "user@example.com".to_string(),
+            remote_addr: "10.0.0.1".to_string(),
+            user_agent: "test-agent".to_string(),
+            created_at: chrono::Utc::now().format("%Y-%m-%dT%H:%M:%SZ").to_string(),
+        }
+    }
+
+    fn old_log(method: &str, path: &str) -> ApiLogEntry {
+        ApiLogEntry {
+            id: None,
+            method: method.to_string(),
+            path: path.to_string(),
+            status_code: 200,
+            duration_ms: 10,
+            user_sub: String::new(),
+            user_email: String::new(),
+            remote_addr: String::new(),
+            user_agent: String::new(),
+            created_at: "2020-01-01T00:00:00Z".to_string(),
+        }
+    }
+
+    #[test]
+    fn test_insert_and_list_api_logs() {
+        let db = Database::new(":memory:").unwrap();
+        db.insert_api_log(&sample_log("GET", "/api/v1/stats", 200))
+            .unwrap();
+        db.insert_api_log(&sample_log("POST", "/api/v1/reports", 500))
+            .unwrap();
+
+        let (items, total) = db
+            .list_api_logs(&ApiLogQuery {
+                limit: 50,
+                ..Default::default()
+            })
+            .unwrap();
+
+        assert_eq!(total, 2);
+        assert_eq!(items.len(), 2);
+        assert!(items[0].id.is_some());
+    }
+
+    #[test]
+    fn test_list_api_logs_filter_by_method() {
+        let db = Database::new(":memory:").unwrap();
+        db.insert_api_log(&sample_log("GET", "/api/v1/stats", 200))
+            .unwrap();
+        db.insert_api_log(&sample_log("POST", "/api/v1/reports", 200))
+            .unwrap();
+
+        let (items, total) = db
+            .list_api_logs(&ApiLogQuery {
+                method: Some("GET".to_string()),
+                limit: 50,
+                ..Default::default()
+            })
+            .unwrap();
+
+        assert_eq!(total, 1);
+        assert_eq!(items[0].method, "GET");
+    }
+
+    #[test]
+    fn test_list_api_logs_filter_by_path_prefix() {
+        let db = Database::new(":memory:").unwrap();
+        db.insert_api_log(&sample_log("GET", "/api/v1/stats", 200))
+            .unwrap();
+        db.insert_api_log(&sample_log("GET", "/api/v1/clusters", 200))
+            .unwrap();
+        db.insert_api_log(&sample_log("GET", "/api/v1/admin/logs", 200))
+            .unwrap();
+
+        let (items, total) = db
+            .list_api_logs(&ApiLogQuery {
+                path_prefix: Some("/api/v1/admin".to_string()),
+                limit: 50,
+                ..Default::default()
+            })
+            .unwrap();
+
+        assert_eq!(total, 1);
+        assert_eq!(items[0].path, "/api/v1/admin/logs");
+    }
+
+    #[test]
+    fn test_list_api_logs_filter_by_status_range() {
+        let db = Database::new(":memory:").unwrap();
+        db.insert_api_log(&sample_log("GET", "/a", 200)).unwrap();
+        db.insert_api_log(&sample_log("GET", "/b", 404)).unwrap();
+        db.insert_api_log(&sample_log("GET", "/c", 500)).unwrap();
+
+        let (items, total) = db
+            .list_api_logs(&ApiLogQuery {
+                status_min: Some(400),
+                status_max: Some(499),
+                limit: 50,
+                ..Default::default()
+            })
+            .unwrap();
+
+        assert_eq!(total, 1);
+        assert_eq!(items[0].status_code, 404);
+    }
+
+    #[test]
+    fn test_list_api_logs_filter_by_user() {
+        let db = Database::new(":memory:").unwrap();
+        db.insert_api_log(&sample_log("GET", "/a", 200)).unwrap();
+
+        let (_, total) = db
+            .list_api_logs(&ApiLogQuery {
+                user: Some("user@example.com".to_string()),
+                limit: 50,
+                ..Default::default()
+            })
+            .unwrap();
+        assert_eq!(total, 1);
+
+        let (_, total) = db
+            .list_api_logs(&ApiLogQuery {
+                user: Some("nobody@example.com".to_string()),
+                limit: 50,
+                ..Default::default()
+            })
+            .unwrap();
+        assert_eq!(total, 0);
+    }
+
+    #[test]
+    fn test_list_api_logs_pagination() {
+        let db = Database::new(":memory:").unwrap();
+        for i in 0..5 {
+            db.insert_api_log(&sample_log("GET", &format!("/path/{}", i), 200))
+                .unwrap();
+        }
+
+        let (items, total) = db
+            .list_api_logs(&ApiLogQuery {
+                limit: 2,
+                offset: 0,
+                ..Default::default()
+            })
+            .unwrap();
+        assert_eq!(total, 5);
+        assert_eq!(items.len(), 2);
+
+        let (items, _) = db
+            .list_api_logs(&ApiLogQuery {
+                limit: 2,
+                offset: 4,
+                ..Default::default()
+            })
+            .unwrap();
+        assert_eq!(items.len(), 1);
+    }
+
+    #[test]
+    fn test_get_api_log_stats_empty() {
+        let db = Database::new(":memory:").unwrap();
+        let stats = db.get_api_log_stats().unwrap();
+        assert_eq!(stats.total_requests, 0);
+        assert_eq!(stats.requests_today, 0);
+        assert_eq!(stats.error_count, 0);
+        assert_eq!(stats.unique_users, 0);
+        assert!(stats.top_paths.is_empty());
+        assert!(stats.last_cleanup.is_none());
+    }
+
+    #[test]
+    fn test_get_api_log_stats_with_data() {
+        let db = Database::new(":memory:").unwrap();
+        db.insert_api_log(&sample_log("GET", "/api/v1/stats", 200))
+            .unwrap();
+        db.insert_api_log(&sample_log("GET", "/api/v1/stats", 500))
+            .unwrap();
+        db.insert_api_log(&sample_log("POST", "/api/v1/reports", 200))
+            .unwrap();
+
+        let stats = db.get_api_log_stats().unwrap();
+        assert_eq!(stats.total_requests, 3);
+        assert_eq!(stats.requests_today, 3);
+        assert_eq!(stats.error_count, 1);
+        assert_eq!(stats.unique_users, 1);
+        assert!(!stats.top_paths.is_empty());
+        // /api/v1/stats should be top path with 2 requests
+        assert_eq!(stats.top_paths[0].0, "/api/v1/stats");
+        assert_eq!(stats.top_paths[0].1, 2);
+    }
+
+    #[test]
+    fn test_cleanup_old_api_logs() {
+        let db = Database::new(":memory:").unwrap();
+        // Insert old logs (2020) and recent logs
+        db.insert_api_log(&old_log("GET", "/old")).unwrap();
+        db.insert_api_log(&old_log("GET", "/old2")).unwrap();
+        db.insert_api_log(&sample_log("GET", "/recent", 200))
+            .unwrap();
+
+        let deleted = db.cleanup_old_api_logs(7, "test-user").unwrap();
+        assert_eq!(deleted, 2);
+
+        // Verify only recent log remains
+        let (items, total) = db
+            .list_api_logs(&ApiLogQuery {
+                limit: 50,
+                ..Default::default()
+            })
+            .unwrap();
+        assert_eq!(total, 1);
+        assert_eq!(items[0].path, "/recent");
+
+        // Verify cleanup history recorded
+        let stats = db.get_api_log_stats().unwrap();
+        assert!(stats.last_cleanup.is_some());
+        let cleanup = stats.last_cleanup.unwrap();
+        assert_eq!(cleanup.retention_days, 7);
+        assert_eq!(cleanup.deleted_count, 2);
+        assert_eq!(cleanup.triggered_by, "test-user");
+    }
+
+    #[test]
+    fn test_cleanup_no_old_logs() {
+        let db = Database::new(":memory:").unwrap();
+        db.insert_api_log(&sample_log("GET", "/recent", 200))
+            .unwrap();
+
+        let deleted = db.cleanup_old_api_logs(7, "system").unwrap();
+        assert_eq!(deleted, 0);
+    }
+
+    #[test]
+    fn test_count_api_logs() {
+        let db = Database::new(":memory:").unwrap();
+        assert_eq!(db.count_api_logs().unwrap(), 0);
+
+        db.insert_api_log(&sample_log("GET", "/a", 200)).unwrap();
+        db.insert_api_log(&sample_log("POST", "/b", 201)).unwrap();
+        assert_eq!(db.count_api_logs().unwrap(), 2);
+    }
+
+    #[test]
+    fn test_count_reports() {
+        let db = Database::new(":memory:").unwrap();
+        assert_eq!(db.count_reports("vulnerabilityreport").unwrap(), 0);
+        assert_eq!(db.count_reports("sbomreport").unwrap(), 0);
+    }
+}
