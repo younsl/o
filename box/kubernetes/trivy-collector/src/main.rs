@@ -42,15 +42,18 @@ async fn main() -> Result<()> {
     }
 
     // Initialize Prometheus metrics registry
+    info!(mode = %config.mode, "Initializing Prometheus metrics registry");
     let mut registry = Registry::default();
     let metrics = Metrics::new(&mut registry, config.mode);
     let registry = Arc::new(registry);
+    info!(mode = %config.mode, metrics_count = metrics.count(), "Prometheus metrics registered successfully");
 
     // Start health check server (with /metrics endpoint)
     let health_port = config.health_port;
     let health_server = HealthServer::new(registry);
     let health_server_clone = health_server.clone();
 
+    info!(port = health_port, endpoint = "/metrics", "Starting Prometheus metrics endpoint");
     let (health_ready_tx, health_ready_rx) = tokio::sync::oneshot::channel();
     tokio::spawn(async move {
         if let Err(e) = health_server_clone
@@ -63,7 +66,7 @@ async fn main() -> Result<()> {
 
     // Wait for health server to be ready
     health_ready_rx.await.ok();
-    info!(port = health_port, "Health check server started");
+    info!(port = health_port, endpoint = "/metrics", "Prometheus metrics endpoint is ready");
 
     // Create shutdown channel
     let (shutdown_tx, shutdown_rx) = tokio::sync::watch::channel(false);

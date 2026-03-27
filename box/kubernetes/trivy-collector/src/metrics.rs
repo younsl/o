@@ -77,6 +77,9 @@ const SEND_DURATION_BUCKETS: &[f64] = &[0.01, 0.05, 0.1, 0.5, 1.0, 5.0, 10.0, 30
 /// Server-only and collector-only fields are wrapped in `Option`
 /// so that only the relevant metrics are registered per mode.
 pub struct Metrics {
+    // -- Metadata --
+    registered_count: usize,
+
     // -- Common --
     pub info: Family<InfoLabels, Gauge>,
 
@@ -113,6 +116,7 @@ impl Metrics {
         .set(1);
 
         let mut metrics = Metrics {
+            registered_count: 1, // info (always registered)
             info,
             http_requests_total: None,
             http_request_duration_seconds: None,
@@ -129,10 +133,11 @@ impl Metrics {
             server_up: None,
         };
 
-        match mode {
+        let mode_count = match mode {
             Mode::Server => metrics.register_server(registry),
             Mode::Collector => metrics.register_collector(registry),
-        }
+        };
+        metrics.registered_count += mode_count;
 
         let metrics = Arc::new(metrics);
 
@@ -144,7 +149,15 @@ impl Metrics {
         metrics
     }
 
-    fn register_server(&mut self, registry: &mut Registry) {
+    /// Returns the total number of registered metric families.
+    pub fn count(&self) -> usize {
+        self.registered_count
+    }
+
+    /// Returns the number of metrics registered for server mode.
+    fn register_server(&mut self, registry: &mut Registry) -> usize {
+        let mut count = 0;
+
         let http_requests_total = Family::<HttpLabels, Counter>::default();
         registry.register(
             "trivy_collector_http_requests",
@@ -152,6 +165,7 @@ impl Metrics {
             http_requests_total.clone(),
         );
         self.http_requests_total = Some(http_requests_total);
+        count += 1;
 
         let http_request_duration_seconds =
             Family::<HttpDurationLabels, Histogram>::new_with_constructor(|| {
@@ -163,6 +177,7 @@ impl Metrics {
             http_request_duration_seconds.clone(),
         );
         self.http_request_duration_seconds = Some(http_request_duration_seconds);
+        count += 1;
 
         let reports_received_total = Family::<ReportReceivedLabels, Counter>::default();
         registry.register(
@@ -171,6 +186,7 @@ impl Metrics {
             reports_received_total.clone(),
         );
         self.reports_received_total = Some(reports_received_total);
+        count += 1;
 
         let db_size_bytes = Gauge::default();
         registry.register(
@@ -179,6 +195,7 @@ impl Metrics {
             db_size_bytes.clone(),
         );
         self.db_size_bytes = Some(db_size_bytes);
+        count += 1;
 
         let db_reports_total = Family::<ReportTypeLabels, Gauge>::default();
         registry.register(
@@ -187,6 +204,7 @@ impl Metrics {
             db_reports_total.clone(),
         );
         self.db_reports_total = Some(db_reports_total);
+        count += 1;
 
         let api_logs_total = Gauge::default();
         registry.register(
@@ -195,6 +213,7 @@ impl Metrics {
             api_logs_total.clone(),
         );
         self.api_logs_total = Some(api_logs_total);
+        count += 1;
 
         let api_logs_cleanup_runs_total = Family::<CleanupResultLabels, Counter>::default();
         registry.register(
@@ -203,6 +222,7 @@ impl Metrics {
             api_logs_cleanup_runs_total.clone(),
         );
         self.api_logs_cleanup_runs_total = Some(api_logs_cleanup_runs_total);
+        count += 1;
 
         let api_logs_cleanup_deleted_total = Counter::default();
         registry.register(
@@ -211,9 +231,15 @@ impl Metrics {
             api_logs_cleanup_deleted_total.clone(),
         );
         self.api_logs_cleanup_deleted_total = Some(api_logs_cleanup_deleted_total);
+        count += 1;
+
+        count
     }
 
-    fn register_collector(&mut self, registry: &mut Registry) {
+    /// Returns the number of metrics registered for collector mode.
+    fn register_collector(&mut self, registry: &mut Registry) -> usize {
+        let mut count = 0;
+
         let reports_sent_total = Family::<SendLabels, Counter>::default();
         registry.register(
             "trivy_collector_reports_sent",
@@ -221,6 +247,7 @@ impl Metrics {
             reports_sent_total.clone(),
         );
         self.reports_sent_total = Some(reports_sent_total);
+        count += 1;
 
         let reports_send_duration_seconds =
             Family::<ReportTypeLabels, Histogram>::new_with_constructor(|| {
@@ -232,6 +259,7 @@ impl Metrics {
             reports_send_duration_seconds.clone(),
         );
         self.reports_send_duration_seconds = Some(reports_send_duration_seconds);
+        count += 1;
 
         let watcher_events_total = Family::<WatcherLabels, Counter>::default();
         registry.register(
@@ -240,6 +268,7 @@ impl Metrics {
             watcher_events_total.clone(),
         );
         self.watcher_events_total = Some(watcher_events_total);
+        count += 1;
 
         let send_retries_total = Family::<ReportTypeLabels, Counter>::default();
         registry.register(
@@ -248,6 +277,7 @@ impl Metrics {
             send_retries_total.clone(),
         );
         self.send_retries_total = Some(send_retries_total);
+        count += 1;
 
         let server_up = Gauge::default();
         registry.register(
@@ -256,6 +286,9 @@ impl Metrics {
             server_up.clone(),
         );
         self.server_up = Some(server_up);
+        count += 1;
+
+        count
     }
 
     /// Pre-initialize server counters to avoid No data on first scrape.
@@ -430,9 +463,7 @@ mod tests {
 
         let mut buf = String::new();
         encode(&mut buf, &registry).unwrap();
-        assert!(
-            buf.contains(r#"trivy_collector_http_requests_total{method="GET",status="200"} 1"#)
-        );
+        assert!(buf.contains(r#"trivy_collector_http_requests_total{method="GET",status="200"} 1"#));
     }
 
     #[test]
