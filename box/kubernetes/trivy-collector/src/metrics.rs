@@ -463,7 +463,9 @@ mod tests {
 
         let mut buf = String::new();
         encode(&mut buf, &registry).unwrap();
-        assert!(buf.contains(r#"trivy_collector_http_requests_total{method="GET",status="200"} 1"#));
+        assert!(
+            buf.contains(r#"trivy_collector_http_requests_total{method="GET",status="200"} 1"#)
+        );
     }
 
     #[test]
