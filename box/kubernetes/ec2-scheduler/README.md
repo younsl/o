@@ -1,5 +1,10 @@
 # ec2-scheduler
 
+[![GitHub Container Registry](https://img.shields.io/badge/ghcr.io-ec2--scheduler-black?style=flat-square&logo=docker&logoColor=white)](https://github.com/younsl/o/pkgs/container/ec2-scheduler)
+[![Helm Chart](https://img.shields.io/badge/ghcr.io-charts%2Fec2--scheduler-black?style=flat-square&logo=helm&logoColor=white)](https://github.com/younsl/o/pkgs/container/charts%2Fec2-scheduler)
+[![Rust](https://img.shields.io/badge/rust-1.94-black?style=flat-square&logo=rust&logoColor=white)](https://www.rust-lang.org/)
+[![GitHub license](https://img.shields.io/github/license/younsl/o?style=flat-square&color=black)](https://github.com/younsl/o/blob/main/LICENSE)
+
 Kubernetes controller for scheduling EC2 instance start/stop via `EC2Schedule` CRD. Watches `EC2Schedule` custom resources and performs declarative start/stop actions based on cron schedules with IANA timezone support.
 
 ## Features
