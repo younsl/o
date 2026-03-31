@@ -3,8 +3,8 @@ name: istio-envoyfilters
 description: A Helm chart for managing Istio EnvoyFilter resources. This chart enables customization of Envoy proxy configurations across namespaces.
 deprecated: false
 type: application
-version: 0.1.0
-appVersion: "0.1.0"
+version: 0.2.0
+appVersion: "0.2.0"
 keywords:
   - istio
   - envoyfilter

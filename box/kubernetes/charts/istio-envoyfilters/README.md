@@ -1,6 +1,6 @@
 # istio-envoyfilters
 
-![Version: 0.1.0](https://img.shields.io/badge/Version-0.1.0-informational?style=flat-square) ![Type: application](https://img.shields.io/badge/Type-application-informational?style=flat-square) ![AppVersion: 0.1.0](https://img.shields.io/badge/AppVersion-0.1.0-informational?style=flat-square)
+![Version: 0.2.0](https://img.shields.io/badge/Version-0.2.0-informational?style=flat-square) ![Type: application](https://img.shields.io/badge/Type-application-informational?style=flat-square) ![AppVersion: 0.2.0](https://img.shields.io/badge/AppVersion-0.2.0-informational?style=flat-square)
 
 A Helm chart for managing Istio EnvoyFilter resources. This chart enables customization of Envoy proxy configurations across namespaces.
 
@@ -39,7 +39,7 @@ helm install istio-envoyfilters oci://ghcr.io/younsl/charts/istio-envoyfilters -
 Install a specific version:
 
 ```console
-helm install istio-envoyfilters oci://ghcr.io/younsl/charts/istio-envoyfilters --version 0.1.0
+helm install istio-envoyfilters oci://ghcr.io/younsl/charts/istio-envoyfilters --version 0.2.0
 ```
 
 ### Install from local chart
@@ -47,7 +47,7 @@ helm install istio-envoyfilters oci://ghcr.io/younsl/charts/istio-envoyfilters -
 Download istio-envoyfilters chart and install from local directory:
 
 ```console
-helm pull oci://ghcr.io/younsl/charts/istio-envoyfilters --untar --version 0.1.0
+helm pull oci://ghcr.io/younsl/charts/istio-envoyfilters --untar --version 0.2.0
 helm install istio-envoyfilters ./istio-envoyfilters
 ```
 
@@ -79,6 +79,7 @@ The following table lists the configurable parameters and their default values.
 | commonLabels | object | `{}` | Common labels to add to all EnvoyFilter resources. |
 | commonAnnotations | object | `{}` | Common annotations to add to all EnvoyFilter resources. |
 | envoyFilters | object | `{}` | Map of EnvoyFilter configurations. Key is used as the EnvoyFilter name. |
+| extraObjects | list | `[]` | Additional Kubernetes objects to deploy alongside EnvoyFilters. Supports any valid Kubernetes resource manifest. Useful for deploying related resources like ServiceEntry, DestinationRule, etc. |
 
 ## Source Code
 
