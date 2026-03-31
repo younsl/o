@@ -1,42 +1,79 @@
-name: Release karc
-run-name: "\U0001F4E6 Release karc ${{ github.ref_name }}"
+name: Release Rust CLI
+run-name: "\U0001F4E6 Release ${{ github.ref_name }}"
 
 on:
   push:
     tags:
+      - 'ij/[0-9]+.[0-9]+.[0-9]+'
       - 'karc/[0-9]+.[0-9]+.[0-9]+'
   workflow_dispatch:
     inputs:
+      project:
+        description: "Project to release"
+        required: true
+        type: choice
+        options:
+          - ij
+          - karc
       version:
         description: "Semantic version to release (e.g. 1.0.0)"
         required: true
         default: "x.y.z"
 
 jobs:
-  extract-version:
+  extract-info:
     runs-on: ubuntu-24.04
     permissions: {}
     outputs:
-      version: ${{ steps.get-version.outputs.version }}
+      project_name: ${{ steps.info.outputs.project_name }}
+      version: ${{ steps.info.outputs.version }}
+      project_base_dir: ${{ steps.info.outputs.project_base_dir }}
+      macos_runner: ${{ steps.info.outputs.macos_runner }}
     steps:
-      - name: Extract version from tag or input
-        id: get-version
+      - name: Extract project info from tag or input
+        id: info
         run: |
           if [ "${{ github.event_name }}" = "push" ]; then
-            VERSION="${GITHUB_REF#refs/tags/karc/}"
+            TAG="${GITHUB_REF#refs/tags/}"
+            PROJECT_NAME="${TAG%%/*}"
+            VERSION="${TAG#*/}"
           else
+            PROJECT_NAME="${{ inputs.project }}"
             VERSION="${{ inputs.version }}"
           fi
+
+          case "${PROJECT_NAME}" in
+            ij)
+              PROJECT_BASE_DIR="box/tools/ij"
+              MACOS_RUNNER="macos-latest"
+              ;;
+            karc)
+              PROJECT_BASE_DIR="box/kubernetes/karc"
+              MACOS_RUNNER="macos-26"
+              ;;
+            *)
+              echo "Error: Unknown project '${PROJECT_NAME}'"
+              exit 1
+              ;;
+          esac
+
+          echo "project_name=${PROJECT_NAME}" >> $GITHUB_OUTPUT
           echo "version=${VERSION}" >> $GITHUB_OUTPUT
-          echo "Extracted version: ${VERSION}"
+          echo "project_base_dir=${PROJECT_BASE_DIR}" >> $GITHUB_OUTPUT
+          echo "macos_runner=${MACOS_RUNNER}" >> $GITHUB_OUTPUT
+
+          echo "Project: ${PROJECT_NAME}"
+          echo "Version: ${VERSION}"
+          echo "Base dir: ${PROJECT_BASE_DIR}"
+          echo "macOS runner: ${MACOS_RUNNER}"
 
   test:
-    needs: [extract-version]
+    needs: [extract-info]
     runs-on: ubuntu-24.04
     permissions:
       contents: read
     env:
-      PROJECT_BASE_DIR: box/kubernetes/karc
+      PROJECT_BASE_DIR: ${{ needs.extract-info.outputs.project_base_dir }}
     steps:
       - name: Checkout
         uses: actions/checkout@v6
@@ -80,14 +117,14 @@ jobs:
         run: cargo llvm-cov --fail-under-lines 70
 
   build-binaries:
-    needs: [extract-version, test]
+    needs: [extract-info, test]
     runs-on: ${{ matrix.os }}
     permissions:
       contents: read
     env:
-      PROJECT_NAME: karc
-      PROJECT_BASE_DIR: box/kubernetes/karc
-      VERSION: ${{ needs.extract-version.outputs.version }}
+      PROJECT_NAME: ${{ needs.extract-info.outputs.project_name }}
+      PROJECT_BASE_DIR: ${{ needs.extract-info.outputs.project_base_dir }}
+      VERSION: ${{ needs.extract-info.outputs.version }}
     strategy:
       matrix:
         include:
@@ -99,11 +136,11 @@ jobs:
             target: aarch64-unknown-linux-gnu
             platform: linux
             arch: arm64
-          - os: macos-26
+          - os: ${{ needs.extract-info.outputs.macos_runner }}
             target: x86_64-apple-darwin
             platform: darwin
             arch: amd64
-          - os: macos-26
+          - os: ${{ needs.extract-info.outputs.macos_runner }}
             target: aarch64-apple-darwin
             platform: darwin
             arch: arm64
@@ -198,12 +235,13 @@ jobs:
 
   release:
     runs-on: ubuntu-24.04
-    needs: [extract-version, build-binaries, test]
+    needs: [extract-info, build-binaries, test]
     permissions:
       contents: write
     env:
-      PROJECT_NAME: karc
-      VERSION: ${{ needs.extract-version.outputs.version }}
+      PROJECT_NAME: ${{ needs.extract-info.outputs.project_name }}
+      PROJECT_BASE_DIR: ${{ needs.extract-info.outputs.project_base_dir }}
+      VERSION: ${{ needs.extract-info.outputs.version }}
     steps:
       - name: Checkout
         uses: actions/checkout@v6
@@ -214,7 +252,7 @@ jobs:
         uses: actions/download-artifact@v7
         with:
           path: artifacts
-          pattern: karc-*
+          pattern: ${{ env.PROJECT_NAME }}-*
 
       - name: Prepare release assets
         run: |
@@ -224,31 +262,30 @@ jobs:
           ls -lh release-assets/
 
       - name: Generate checksums table
-        id: checksums
         working-directory: release-assets
         run: |
           {
             echo "| Platform | Architecture | Binary | SHA256 Checksum |"
             echo "|----------|--------------|--------|-----------------|"
 
-            if [ -f "karc-linux-amd64.tar.gz" ]; then
-              checksum=$(sha256sum karc-linux-amd64.tar.gz | awk '{print $1}')
-              echo "| Linux | amd64 | \`karc-linux-amd64.tar.gz\` | \`$checksum\` |"
+            if [ -f "${PROJECT_NAME}-linux-amd64.tar.gz" ]; then
+              checksum=$(sha256sum "${PROJECT_NAME}-linux-amd64.tar.gz" | awk '{print $1}')
+              echo "| Linux | amd64 | \`${PROJECT_NAME}-linux-amd64.tar.gz\` | \`$checksum\` |"
             fi
 
-            if [ -f "karc-linux-arm64.tar.gz" ]; then
-              checksum=$(sha256sum karc-linux-arm64.tar.gz | awk '{print $1}')
-              echo "| Linux | arm64 | \`karc-linux-arm64.tar.gz\` | \`$checksum\` |"
+            if [ -f "${PROJECT_NAME}-linux-arm64.tar.gz" ]; then
+              checksum=$(sha256sum "${PROJECT_NAME}-linux-arm64.tar.gz" | awk '{print $1}')
+              echo "| Linux | arm64 | \`${PROJECT_NAME}-linux-arm64.tar.gz\` | \`$checksum\` |"
             fi
 
-            if [ -f "karc-darwin-amd64.tar.gz" ]; then
-              checksum=$(sha256sum karc-darwin-amd64.tar.gz | awk '{print $1}')
-              echo "| macOS | amd64 (Intel) | \`karc-darwin-amd64.tar.gz\` | \`$checksum\` |"
+            if [ -f "${PROJECT_NAME}-darwin-amd64.tar.gz" ]; then
+              checksum=$(sha256sum "${PROJECT_NAME}-darwin-amd64.tar.gz" | awk '{print $1}')
+              echo "| macOS | amd64 (Intel) | \`${PROJECT_NAME}-darwin-amd64.tar.gz\` | \`$checksum\` |"
             fi
 
-            if [ -f "karc-darwin-arm64.tar.gz" ]; then
-              checksum=$(sha256sum karc-darwin-arm64.tar.gz | awk '{print $1}')
-              echo "| macOS | arm64 (Apple Silicon) | \`karc-darwin-arm64.tar.gz\` | \`$checksum\` |"
+            if [ -f "${PROJECT_NAME}-darwin-arm64.tar.gz" ]; then
+              checksum=$(sha256sum "${PROJECT_NAME}-darwin-arm64.tar.gz" | awk '{print $1}')
+              echo "| macOS | arm64 (Apple Silicon) | \`${PROJECT_NAME}-darwin-arm64.tar.gz\` | \`$checksum\` |"
             fi
           } > checksums_table.txt
 
@@ -261,97 +298,28 @@ jobs:
           echo "Generated checksums table:"
           cat checksums_table.txt
 
+      - name: Generate release body from template
+        env:
+          REPOSITORY: ${{ github.repository }}
+        run: |
+          TEMPLATE=".github/release-templates/${PROJECT_NAME}.md"
+
+          if [ ! -f "${TEMPLATE}" ]; then
+            echo "Error: Release template not found at ${TEMPLATE}"
+            exit 1
+          fi
+
+          envsubst '${PROJECT_NAME} ${VERSION} ${REPOSITORY} ${CHECKSUMS_TABLE}' < "${TEMPLATE}" > release-body.md
+
+          echo "Generated release body:"
+          cat release-body.md
+
       - name: Create Release
         uses: softprops/action-gh-release@v2
         with:
           files: release-assets/*
           name: ${{ env.PROJECT_NAME }} ${{ env.VERSION }}
-          body: |
-            # ${{ env.PROJECT_NAME }} ${{ env.VERSION }}
-
-            **[karc](https://github.com/${{ github.repository }}/tree/main/box/kubernetes/karc)** - Karpenter NodePool consolidation manager CLI tool built with Rust.
-
-            ## Features
-
-            - NodePool consolidation status with disruption schedule timetable
-            - Timezone-aware schedule window display (auto-detect or `--timezone`)
-            - Pause/resume consolidation via budget manipulation
-            - Karpenter API version detection with v1/v1beta1 fallback
-            - Fallback row showing unbounded disruption when no schedule is active
-
-            ## Installation
-
-            ### Binary Installation
-
-            Download the appropriate binary for your platform:
-
-            ${{ env.CHECKSUMS_TABLE }}
-
-            **Quick install** (auto-detects platform):
-
-            ```bash
-            # Detect platform
-            ARCH=$(uname -m | sed 's/x86_64/amd64/;s/aarch64/arm64/')
-            OS=$(uname -s | tr '[:upper:]' '[:lower:]')
-
-            # Download and install
-            curl -LO https://github.com/${{ github.repository }}/releases/download/karc/${{ env.VERSION }}/karc-${OS}-${ARCH}.tar.gz
-            tar -xzf karc-${OS}-${ARCH}.tar.gz
-            chmod +x karc-${OS}-${ARCH}
-            sudo mv karc-${OS}-${ARCH} /usr/local/bin/karc
-
-            # Verify installation
-            karc --version
-            ```
-
-            ### From Source
-
-            Requires Rust 1.93 or later:
-
-            ```bash
-            git clone https://github.com/${{ github.repository }}.git
-            cd o/box/kubernetes/karc
-            cargo build --release
-            ./target/release/karc --version
-            ```
-
-            ## Usage
-
-            ```bash
-            # Show all NodePools status
-            karc status
-
-            # Show status with timezone conversion
-            karc status --timezone Asia/Seoul
-
-            # Pause a specific NodePool
-            karc pause <NODEPOOL>
-
-            # Pause all NodePools
-            karc pause all
-
-            # Resume all NodePools (skip confirmation)
-            karc resume all --yes
-
-            # Preview only
-            karc pause <NODEPOOL> --dry-run
-
-            # Show help
-            karc --help
-            ```
-
-            ## Documentation
-
-            - [README](https://github.com/${{ github.repository }}/blob/main/box/kubernetes/karc/README.md)
-
-            ## Built With
-
-            - **Rust 1.93+ Edition 2024** - Memory safety, zero-cost abstractions
-            - **Tokio** - Async runtime
-            - **Clap** - CLI argument parsing
-            - **kube-rs** - Kubernetes API client
-            - **tabled** - Table rendering
-            - **chrono-tz** - Timezone conversion
+          body_path: release-body.md
           generate_release_notes: true
           draft: false
           prerelease: false
@@ -359,12 +327,12 @@ jobs:
 
   update-homebrew:
     runs-on: ubuntu-24.04
-    needs: [extract-version, release]
+    needs: [extract-info, release]
     permissions:
       contents: read
     env:
-      PROJECT_NAME: karc
-      VERSION: ${{ needs.extract-version.outputs.version }}
+      PROJECT_NAME: ${{ needs.extract-info.outputs.project_name }}
+      VERSION: ${{ needs.extract-info.outputs.version }}
       HOMEBREW_TAP_REPO: younsl/homebrew-tap
     steps:
       - name: Download release assets and compute SHA256

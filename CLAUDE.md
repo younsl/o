@@ -185,7 +185,7 @@ Rust cross-compilation is more complex than Go and requires additional setup:
 - Rust crates often depend on C libraries (openssl, sqlite, etc.)
 - Must install target-specific gcc/g++ and configure linker paths
 
-See `.github/workflows/release-ij.yml` for complete ARM64 cross-compilation example.
+See `.github/workflows/release-rust-cli.yml` for complete ARM64 cross-compilation example.
 
 ## AWS Integration Points
 
@@ -662,8 +662,7 @@ git tag gss/charts/1.0.0 && git push --tags
 git tag grafana-dashboards/charts/1.0.0 && git push --tags
 
 # Available workflows:
-# - release-ij.yml                           (Rust CLI)
-# - release-karc.yml                         (Rust CLI)
+# - release-rust-cli.yml                     (Unified Rust CLI release: ij, karc)
 # - release-kuo.yml                          (Rust container + operator)
 # - release-rust-containers.yml              (Unified Rust container release: filesystem-cleaner, elasticache-backup, redis-console, gss)
 # - release-trivy-collector.yml              (Rust container)
