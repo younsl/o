@@ -136,6 +136,33 @@ jobs:
         run: |
           helm lint "${CHART_PATH}"
 
+      - name: Install helm-docs
+        env:
+          HELM_DOCS_VERSION: "1.14.2"
+        run: |
+          curl -sSL "https://github.com/norwoodj/helm-docs/releases/download/v${HELM_DOCS_VERSION}/helm-docs_${HELM_DOCS_VERSION}_Linux_x86_64.tar.gz" \
+            | tar xz -C /usr/local/bin helm-docs
+
+      - name: Validate helm-docs
+        env:
+          CHART_PATH: ${{ matrix.chart_path }}
+        run: |
+          SHARED_TEMPLATE="$(pwd)/box/kubernetes/charts/README.md.gotmpl"
+
+          if [ -f "${CHART_PATH}/README.md.gotmpl" ]; then
+            helm-docs --chart-search-root "${CHART_PATH}" --template-files="README.md.gotmpl" --sort-values-order file --log-level info
+          elif [ -f "${SHARED_TEMPLATE}" ]; then
+            helm-docs --chart-search-root "${CHART_PATH}" --template-files="${SHARED_TEMPLATE}" --sort-values-order file --log-level info
+          else
+            echo "No helm-docs template found, skipping validation"
+            exit 0
+          fi
+
+          if ! git diff --exit-code -- "${CHART_PATH}/README.md"; then
+            echo "::error::helm-docs validation failed: ${CHART_PATH}/README.md is out of date. Run 'helm-docs' locally and commit the changes."
+            exit 1
+          fi
+
       - name: Login to GitHub Container Registry
         run: |
           echo "${{ secrets.GITHUB_TOKEN }}" | helm registry login "${REGISTRY}" --username "${{ github.actor }}" --password-stdin
