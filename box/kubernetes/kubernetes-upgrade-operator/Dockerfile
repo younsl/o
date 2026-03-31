@@ -1,14 +1,11 @@
-# Runtime-only Dockerfile for cross-compiled binaries
-# Binaries are built via GitHub Actions cross-compilation (not QEMU emulation)
-FROM alpine:3.23
+# Statically linked binary built via GitHub Actions cross-compilation
+FROM alpine:3.23 AS certs
+RUN apk add --no-cache ca-certificates
 
+FROM scratch AS runtime
 ARG TARGETARCH
-
-RUN addgroup -S kuo && adduser -S kuo -G kuo
-
-COPY --chown=kuo:kuo kuo-linux-${TARGETARCH} /usr/local/bin/kuo
-
-USER kuo:kuo
+COPY --from=certs /etc/ssl/certs/ca-certificates.crt /etc/ssl/certs/
+COPY --chmod=755 kuo-linux-${TARGETARCH} /app/kuo
 EXPOSE 8080
-
-ENTRYPOINT ["kuo"]
+USER 65532:65532
+ENTRYPOINT ["/app/kuo"]

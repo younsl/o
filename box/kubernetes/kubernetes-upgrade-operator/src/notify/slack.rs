@@ -178,4 +178,51 @@ mod tests {
         let field_text = payload["blocks"][1]["fields"][0]["text"].as_str().unwrap();
         assert_eq!(field_text, "*Cluster*\nprod");
     }
+
+    #[test]
+    fn test_build_blocks_payload_many_fields_chunked() {
+        // >10 fields should be split into multiple section blocks
+        let fields: Vec<(String, String)> = (0..12)
+            .map(|i| (format!("field_{i}"), format!("value_{i}")))
+            .collect();
+        let msg = SlackMessage {
+            header: "Many Fields".to_string(),
+            fields,
+            context: "ctx".to_string(),
+        };
+
+        let payload = build_blocks_payload(&msg);
+        let blocks = payload["blocks"].as_array().unwrap();
+        // header + 2 section blocks (10 + 2 fields) + divider + context = 5 blocks
+        assert_eq!(blocks.len(), 5);
+        assert_eq!(blocks[0]["type"], "header");
+        assert_eq!(blocks[1]["type"], "section");
+        assert_eq!(blocks[1]["fields"].as_array().unwrap().len(), 10);
+        assert_eq!(blocks[2]["type"], "section");
+        assert_eq!(blocks[2]["fields"].as_array().unwrap().len(), 2);
+        assert_eq!(blocks[3]["type"], "divider");
+        assert_eq!(blocks[4]["type"], "context");
+    }
+
+    #[test]
+    fn test_slack_notifier_new() {
+        let notifier = SlackNotifier::new("https://hooks.slack.com/services/T/B/X".to_string());
+        assert_eq!(
+            notifier.webhook_url,
+            "https://hooks.slack.com/services/T/B/X"
+        );
+    }
+
+    #[test]
+    fn test_build_blocks_payload_fallback_text() {
+        let msg = SlackMessage {
+            header: "Alert Title".to_string(),
+            fields: vec![],
+            context: "Sent by kuo".to_string(),
+        };
+        let payload = build_blocks_payload(&msg);
+        let text = payload["text"].as_str().unwrap();
+        assert!(text.contains("Alert Title"));
+        assert!(text.contains("Sent by kuo"));
+    }
 }

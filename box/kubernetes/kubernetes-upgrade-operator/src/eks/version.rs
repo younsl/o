@@ -88,4 +88,39 @@ mod tests {
         let path = calculate_upgrade_path("1.33", "1.33").unwrap();
         assert!(path.is_empty());
     }
+
+    #[test]
+    fn test_calculate_upgrade_path_single_step() {
+        let path = calculate_upgrade_path("1.32", "1.33").unwrap();
+        assert_eq!(path, vec!["1.33"]);
+    }
+
+    #[test]
+    fn test_calculate_upgrade_path_cross_major() {
+        let result = calculate_upgrade_path("1.32", "2.0");
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_parse_k8s_version_with_patch() {
+        // Version with patch number should still parse major.minor
+        let (major, minor) = parse_k8s_version("1.32.0").unwrap();
+        assert_eq!((major, minor), (1, 32));
+    }
+
+    #[test]
+    fn test_parse_k8s_version_empty() {
+        assert!(parse_k8s_version("").is_err());
+    }
+
+    #[test]
+    fn test_parse_k8s_version_non_numeric() {
+        assert!(parse_k8s_version("a.b").is_err());
+    }
+
+    #[test]
+    fn test_calculate_upgrade_path_many_steps() {
+        let path = calculate_upgrade_path("1.28", "1.34").unwrap();
+        assert_eq!(path, vec!["1.29", "1.30", "1.31", "1.32", "1.33", "1.34"]);
+    }
 }

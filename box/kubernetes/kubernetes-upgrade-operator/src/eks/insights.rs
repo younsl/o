@@ -302,6 +302,47 @@ mod tests {
     }
 
     #[test]
+    fn test_insight_finding_no_recommendation() {
+        let finding = InsightFinding {
+            category: "UPGRADE_READINESS".to_string(),
+            description: "No issues".to_string(),
+            severity: "PASSING".to_string(),
+            recommendation: None,
+            resources: vec![],
+        };
+        assert!(finding.recommendation.is_none());
+        assert!(finding.resources.is_empty());
+    }
+
+    #[test]
+    fn test_insights_summary_zero_findings() {
+        let summary = InsightsSummary {
+            total_findings: 0,
+            critical_count: 0,
+            warning_count: 0,
+            passing_count: 0,
+            info_count: 0,
+            findings: vec![],
+        };
+        assert!(!summary.has_critical_blockers());
+        assert_eq!(summary.total_findings, 0);
+    }
+
+    #[test]
+    fn test_insight_resource_types() {
+        let addon_res = InsightResource {
+            resource_type: "addon".to_string(),
+            resource_id: "kube-proxy".to_string(),
+        };
+        let k8s_res = InsightResource {
+            resource_type: "deployments".to_string(),
+            resource_id: "kube-system/coredns".to_string(),
+        };
+        assert_eq!(addon_res.resource_type, "addon");
+        assert_eq!(k8s_res.resource_type, "deployments");
+    }
+
+    #[test]
     fn test_insight_finding_with_resources() {
         let finding = InsightFinding {
             category: "UPGRADE_READINESS".to_string(),

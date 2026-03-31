@@ -209,6 +209,33 @@ mod tests {
     }
 
     #[test]
+    fn test_set_failed_then_set_condition_overwrites() {
+        let mut status = EKSUpgradeStatus::default();
+        set_failed(&mut status, "first error");
+        assert_eq!(status.conditions.len(), 1);
+        set_condition(&mut status, "Ready", "True", "Fixed", None);
+        assert_eq!(status.conditions.len(), 1);
+        assert_eq!(status.conditions[0].status, "True");
+    }
+
+    #[test]
+    fn test_set_phase_planning() {
+        let mut status = EKSUpgradeStatus::default();
+        set_phase(&mut status, UpgradePhase::Planning);
+        assert_eq!(status.phase, Some(UpgradePhase::Planning));
+        assert!(status.completed_at.is_none());
+    }
+
+    #[test]
+    fn test_set_phase_failed_does_not_set_completed_at() {
+        let mut status = EKSUpgradeStatus::default();
+        set_phase(&mut status, UpgradePhase::Failed);
+        // set_phase only sets completed_at for Completed, not Failed
+        assert!(status.completed_at.is_none());
+        assert_eq!(status.phase, Some(UpgradePhase::Failed));
+    }
+
+    #[test]
     fn test_set_condition_fields() {
         let mut status = EKSUpgradeStatus::default();
         set_condition(

@@ -15,6 +15,34 @@ use crate::status;
 /// Requeue interval for polling in-progress addon upgrades.
 pub const POLL_INTERVAL: Duration = Duration::from_secs(15);
 
+/// Apply the result of polling an addon update to the status.
+fn apply_addon_poll_result(
+    new_status: &mut EKSUpgradeStatus,
+    idx: usize,
+    addon_name: &str,
+    poll_result: &str,
+) -> Option<Duration> {
+    match poll_result {
+        "ACTIVE" => {
+            info!("Addon {} upgrade completed", addon_name);
+            new_status.phases.addons[idx].status = ComponentStatus::Completed;
+            new_status.phases.addons[idx].completed_at = Some(Utc::now());
+            Some(Duration::from_secs(0))
+        }
+        "CREATE_FAILED" | "UPDATE_FAILED" | "DELETE_FAILED" | "DEGRADED" => {
+            warn!("Addon {} upgrade failed: {}", addon_name, poll_result);
+            new_status.phases.addons[idx].status = ComponentStatus::Failed;
+            new_status.phases.addons[idx].completed_at = Some(Utc::now());
+            status::set_failed(
+                new_status,
+                format!("Addon {addon_name} upgrade failed: {poll_result}"),
+            );
+            None
+        }
+        _ => Some(POLL_INTERVAL),
+    }
+}
+
 /// Execute one step of addon upgrades.
 ///
 /// Finds the first pending/in-progress addon and either initiates or polls it.
@@ -59,39 +87,16 @@ pub async fn execute(
             let status_str =
                 addon::poll_addon_status(&aws.eks, &spec.cluster_name, &addon_name).await?;
 
-            match status_str.as_str() {
-                "ACTIVE" => {
-                    info!(
-                        "Addon {} upgrade completed: {} to {}",
-                        addon_name, current_version, target_version
-                    );
-                    new_status.phases.addons[idx].status = ComponentStatus::Completed;
-                    new_status.phases.addons[idx].completed_at = Some(Utc::now());
-                    // Requeue immediately to process next addon
-                    Ok((new_status, Some(Duration::from_secs(0))))
-                }
-                "CREATE_FAILED" | "UPDATE_FAILED" | "DELETE_FAILED" | "DEGRADED" => {
-                    warn!(
-                        "Addon {} upgrade failed: {} ({} to {})",
-                        addon_name, status_str, current_version, target_version
-                    );
-                    new_status.phases.addons[idx].status = ComponentStatus::Failed;
-                    new_status.phases.addons[idx].completed_at = Some(Utc::now());
-                    status::set_failed(
-                        &mut new_status,
-                        format!("Addon {addon_name} upgrade failed: {status_str}"),
-                    );
-                    Ok((new_status, None))
-                }
-                _ => {
-                    // Still updating
-                    info!(
-                        "Polling addon {} upgrade: {} to {} (status: {})",
-                        addon_name, current_version, target_version, status_str
-                    );
-                    Ok((new_status, Some(POLL_INTERVAL)))
-                }
+            let requeue = apply_addon_poll_result(&mut new_status, idx, &addon_name, &status_str);
+
+            if requeue.is_some_and(|d| d == POLL_INTERVAL) {
+                info!(
+                    "Polling addon {} upgrade: {} to {} (status: {})",
+                    addon_name, current_version, target_version, status_str
+                );
             }
+
+            Ok((new_status, requeue))
         }
         ComponentStatus::Failed => {
             // Already failed → mark overall as failed
@@ -152,5 +157,159 @@ mod tests {
     #[test]
     fn test_poll_interval_constant() {
         assert_eq!(POLL_INTERVAL, Duration::from_secs(15));
+    }
+
+    // --- execute early-return path tests ---
+
+    fn make_spec() -> EKSUpgradeSpec {
+        EKSUpgradeSpec {
+            cluster_name: "test-cluster".to_string(),
+            target_version: "1.33".to_string(),
+            region: "us-east-1".to_string(),
+            assume_role_arn: None,
+            addon_versions: None,
+            skip_pdb_check: false,
+            dry_run: false,
+            timeouts: None,
+            notification: None,
+        }
+    }
+
+    #[tokio::test]
+    async fn test_execute_all_addons_completed() {
+        let aws = crate::aws::AwsClients::test_instance("us-east-1").await;
+        let spec = make_spec();
+        let mut status = EKSUpgradeStatus::default();
+        status.phases.addons = vec![
+            make_addon("coredns", ComponentStatus::Completed),
+            make_addon("vpc-cni", ComponentStatus::Completed),
+        ];
+        let (new_status, requeue) = execute(&spec, &status, &aws).await.unwrap();
+        assert!(requeue.is_none());
+        assert_eq!(new_status.phase, Some(UpgradePhase::Completed));
+    }
+
+    #[tokio::test]
+    async fn test_execute_all_addons_completed_with_nodegroups() {
+        let aws = crate::aws::AwsClients::test_instance("us-east-1").await;
+        let spec = make_spec();
+        let mut status = EKSUpgradeStatus::default();
+        status.phases.addons = vec![make_addon("coredns", ComponentStatus::Completed)];
+        status.phases.nodegroups.push(NodegroupStatus {
+            name: "ng-system".to_string(),
+            current_version: "1.32".to_string(),
+            target_version: "1.33".to_string(),
+            status: ComponentStatus::Pending,
+            update_id: None,
+            started_at: None,
+            completed_at: None,
+        });
+        let (new_status, requeue) = execute(&spec, &status, &aws).await.unwrap();
+        assert!(requeue.is_none());
+        assert_eq!(new_status.phase, Some(UpgradePhase::UpgradingNodeGroups));
+    }
+
+    #[tokio::test]
+    async fn test_execute_failed_addon() {
+        let aws = crate::aws::AwsClients::test_instance("us-east-1").await;
+        let spec = make_spec();
+        let mut status = EKSUpgradeStatus::default();
+        status.phases.addons = vec![make_addon("coredns", ComponentStatus::Failed)];
+        let (new_status, requeue) = execute(&spec, &status, &aws).await.unwrap();
+        assert!(requeue.is_none());
+        assert_eq!(new_status.phase, Some(UpgradePhase::Failed));
+    }
+
+    #[tokio::test]
+    async fn test_execute_empty_addons() {
+        let aws = crate::aws::AwsClients::test_instance("us-east-1").await;
+        let spec = make_spec();
+        let status = EKSUpgradeStatus::default();
+        let (new_status, requeue) = execute(&spec, &status, &aws).await.unwrap();
+        assert!(requeue.is_none());
+        assert_eq!(new_status.phase, Some(UpgradePhase::Completed));
+    }
+
+    // --- apply_addon_poll_result tests ---
+
+    fn make_addon(name: &str, status: ComponentStatus) -> crate::crd::AddonStatus {
+        crate::crd::AddonStatus {
+            name: name.to_string(),
+            current_version: "v1.11.1-eksbuild.1".to_string(),
+            target_version: "v1.11.3-eksbuild.2".to_string(),
+            status,
+            started_at: None,
+            completed_at: None,
+        }
+    }
+
+    fn make_status_with_addons(addons: Vec<crate::crd::AddonStatus>) -> EKSUpgradeStatus {
+        let mut s = EKSUpgradeStatus::default();
+        s.phases.addons = addons;
+        s
+    }
+
+    #[test]
+    fn test_addon_poll_result_active() {
+        let mut s =
+            make_status_with_addons(vec![make_addon("coredns", ComponentStatus::InProgress)]);
+        let requeue = apply_addon_poll_result(&mut s, 0, "coredns", "ACTIVE");
+        assert_eq!(requeue, Some(Duration::from_secs(0)));
+        assert_eq!(s.phases.addons[0].status, ComponentStatus::Completed);
+        assert!(s.phases.addons[0].completed_at.is_some());
+    }
+
+    #[test]
+    fn test_addon_poll_result_create_failed() {
+        let mut s =
+            make_status_with_addons(vec![make_addon("coredns", ComponentStatus::InProgress)]);
+        let requeue = apply_addon_poll_result(&mut s, 0, "coredns", "CREATE_FAILED");
+        assert!(requeue.is_none());
+        assert_eq!(s.phases.addons[0].status, ComponentStatus::Failed);
+        assert_eq!(s.phase, Some(UpgradePhase::Failed));
+    }
+
+    #[test]
+    fn test_addon_poll_result_update_failed() {
+        let mut s =
+            make_status_with_addons(vec![make_addon("vpc-cni", ComponentStatus::InProgress)]);
+        let requeue = apply_addon_poll_result(&mut s, 0, "vpc-cni", "UPDATE_FAILED");
+        assert!(requeue.is_none());
+        assert_eq!(s.phases.addons[0].status, ComponentStatus::Failed);
+    }
+
+    #[test]
+    fn test_addon_poll_result_degraded() {
+        let mut s =
+            make_status_with_addons(vec![make_addon("coredns", ComponentStatus::InProgress)]);
+        let requeue = apply_addon_poll_result(&mut s, 0, "coredns", "DEGRADED");
+        assert!(requeue.is_none());
+        assert_eq!(s.phases.addons[0].status, ComponentStatus::Failed);
+    }
+
+    #[test]
+    fn test_addon_poll_result_delete_failed() {
+        let mut s =
+            make_status_with_addons(vec![make_addon("coredns", ComponentStatus::InProgress)]);
+        let requeue = apply_addon_poll_result(&mut s, 0, "coredns", "DELETE_FAILED");
+        assert!(requeue.is_none());
+        assert_eq!(s.phases.addons[0].status, ComponentStatus::Failed);
+    }
+
+    #[test]
+    fn test_addon_poll_result_updating() {
+        let mut s =
+            make_status_with_addons(vec![make_addon("coredns", ComponentStatus::InProgress)]);
+        let requeue = apply_addon_poll_result(&mut s, 0, "coredns", "UPDATING");
+        assert_eq!(requeue, Some(POLL_INTERVAL));
+        assert_eq!(s.phases.addons[0].status, ComponentStatus::InProgress);
+    }
+
+    #[test]
+    fn test_addon_poll_result_creating() {
+        let mut s =
+            make_status_with_addons(vec![make_addon("coredns", ComponentStatus::InProgress)]);
+        let requeue = apply_addon_poll_result(&mut s, 0, "coredns", "CREATING");
+        assert_eq!(requeue, Some(POLL_INTERVAL));
     }
 }

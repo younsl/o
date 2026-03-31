@@ -262,6 +262,36 @@ mod tests {
     use super::*;
 
     #[test]
+    fn test_addon_version_info_non_default() {
+        let v = AddonVersionInfo {
+            version: "v1.16.0-eksbuild.1".to_string(),
+            default_version: false,
+        };
+        assert!(!v.default_version);
+    }
+
+    #[test]
+    fn test_addon_info_debug() {
+        let addon = AddonInfo {
+            name: "coredns".to_string(),
+            current_version: "v1.11.1-eksbuild.1".to_string(),
+        };
+        let debug = format!("{addon:?}");
+        assert!(debug.contains("coredns"));
+    }
+
+    #[test]
+    fn test_addon_info_clone() {
+        let addon = AddonInfo {
+            name: "kube-proxy".to_string(),
+            current_version: "v1.32.0-eksbuild.1".to_string(),
+        };
+        let cloned = addon.clone();
+        assert_eq!(cloned.name, "kube-proxy");
+        assert_eq!(cloned.current_version, addon.current_version);
+    }
+
+    #[test]
     fn test_addon_info_creation() {
         let addon = AddonInfo {
             name: "vpc-cni".to_string(),
@@ -326,6 +356,43 @@ mod tests {
         // Invalid
         assert_eq!(parse_addon_version("invalid"), None);
         assert_eq!(parse_addon_version("v1.2"), None);
+    }
+
+    #[test]
+    fn test_addon_plan_result() {
+        let mut result = AddonPlanResult::new();
+        let addon = AddonInfo {
+            name: "vpc-cni".to_string(),
+            current_version: "v1.18.0-eksbuild.1".to_string(),
+        };
+        result.add_upgrade((addon, "v1.18.1-eksbuild.3".to_string()));
+        result.add_skipped();
+        assert_eq!(result.upgrade_count(), 1);
+        assert_eq!(result.skipped_count(), 1);
+    }
+
+    #[test]
+    fn test_parse_addon_version_only_major_minor() {
+        // Only two components should fail
+        assert_eq!(parse_addon_version("v1.2"), None);
+    }
+
+    #[test]
+    fn test_parse_addon_version_no_prefix_no_eksbuild() {
+        assert_eq!(parse_addon_version("1.2.3"), Some((1, 2, 3, 0)));
+    }
+
+    #[test]
+    fn test_compare_addon_versions_equal_no_eksbuild() {
+        assert_eq!(compare_addon_versions("v1.5.0", "v1.5.0"), Ordering::Equal);
+    }
+
+    #[test]
+    fn test_compare_addon_versions_major_version_diff() {
+        assert_eq!(
+            compare_addon_versions("v2.0.0-eksbuild.1", "v1.9.0-eksbuild.1"),
+            Ordering::Greater
+        );
     }
 
     #[test]

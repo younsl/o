@@ -218,6 +218,51 @@ mod tests {
         assert!(check.summary.contains("1/3"));
     }
 
+    #[test]
+    fn test_cluster_insights_pass() {
+        let summary = InsightsSummary {
+            total_findings: 5,
+            critical_count: 0,
+            warning_count: 2,
+            passing_count: 2,
+            info_count: 1,
+            findings: vec![],
+        };
+        let check = PreflightCheckResult::cluster_insights(&summary);
+        assert_eq!(check.name, "EKS Cluster Insights");
+        assert_eq!(check.status, CheckStatus::Pass);
+        assert!(check.summary.contains("No critical insights"));
+        assert!(check.summary.contains("2 warning"));
+    }
+
+    #[test]
+    fn test_cluster_insights_fail_with_critical() {
+        let summary = InsightsSummary {
+            total_findings: 3,
+            critical_count: 1,
+            warning_count: 1,
+            passing_count: 0,
+            info_count: 1,
+            findings: vec![],
+        };
+        let check = PreflightCheckResult::cluster_insights(&summary);
+        assert_eq!(check.status, CheckStatus::Fail);
+        assert!(check.summary.contains("1 critical insight"));
+    }
+
+    #[test]
+    fn test_skipped_check_builders() {
+        let dp = SkippedCheck::deletion_protection("unable to determine");
+        assert_eq!(dp.name, "EKS Deletion Protection");
+        assert_eq!(dp.reason, "unable to determine");
+
+        let ci = SkippedCheck::cluster_insights("API unavailable");
+        assert_eq!(ci.name, "EKS Cluster Insights");
+
+        let pdb = SkippedCheck::pdb_drain_deadlock("skipped by user");
+        assert_eq!(pdb.name, "PDB Drain Deadlock");
+    }
+
     // ---- PreflightResults tests ----
 
     #[test]

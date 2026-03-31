@@ -88,4 +88,86 @@ mod tests {
         state.set_ready(true);
         assert!(cloned.is_ready());
     }
+
+    #[tokio::test]
+    async fn test_healthz_returns_ok() {
+        let result = healthz().await;
+        assert_eq!(result, StatusCode::OK);
+    }
+
+    #[tokio::test]
+    async fn test_readyz_not_ready() {
+        let state = HealthState::new();
+        let result = readyz(axum::extract::State(state)).await;
+        assert_eq!(result, StatusCode::SERVICE_UNAVAILABLE);
+    }
+
+    #[tokio::test]
+    async fn test_readyz_ready() {
+        let state = HealthState::new();
+        state.set_ready(true);
+        let result = readyz(axum::extract::State(state)).await;
+        assert_eq!(result, StatusCode::OK);
+    }
+
+    #[tokio::test]
+    async fn test_serve_healthz_and_readyz() {
+        let state = HealthState::new();
+        let state_clone = state.clone();
+
+        // Start server on a random available port
+        let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let port = listener.local_addr().unwrap().port();
+
+        let app = Router::new()
+            .route("/healthz", get(healthz))
+            .route("/readyz", get(readyz))
+            .with_state(state_clone);
+
+        tokio::spawn(async move {
+            axum::serve(listener, app).await.unwrap();
+        });
+
+        let client = reqwest::Client::new();
+
+        // healthz should always be 200
+        let resp = client
+            .get(format!("http://127.0.0.1:{port}/healthz"))
+            .send()
+            .await
+            .unwrap();
+        assert_eq!(resp.status().as_u16(), 200);
+
+        // readyz should be 503 when not ready
+        let resp = client
+            .get(format!("http://127.0.0.1:{port}/readyz"))
+            .send()
+            .await
+            .unwrap();
+        assert_eq!(resp.status().as_u16(), 503);
+
+        // Set ready and check again
+        state.set_ready(true);
+        let resp = client
+            .get(format!("http://127.0.0.1:{port}/readyz"))
+            .send()
+            .await
+            .unwrap();
+        assert_eq!(resp.status().as_u16(), 200);
+    }
+
+    #[tokio::test]
+    async fn test_readyz_toggled() {
+        let state = HealthState::new();
+        state.set_ready(true);
+        assert_eq!(
+            readyz(axum::extract::State(state.clone())).await,
+            StatusCode::OK
+        );
+        state.set_ready(false);
+        assert_eq!(
+            readyz(axum::extract::State(state)).await,
+            StatusCode::SERVICE_UNAVAILABLE
+        );
+    }
 }

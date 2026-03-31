@@ -17,6 +17,23 @@ pub struct AwsClients {
 }
 
 impl AwsClients {
+    /// Create a test instance with dummy credentials.
+    /// AWS API calls will fail, but early-return paths in phase handlers can be tested.
+    #[cfg(test)]
+    pub(crate) async fn test_instance(region: &str) -> Self {
+        let config = aws_config::defaults(aws_config::BehaviorVersion::latest())
+            .region(aws_config::Region::new(region.to_string()))
+            .test_credentials()
+            .load()
+            .await;
+        Self {
+            eks: EksClient::new(&config),
+            sts: StsClient::new(&config),
+            region: region.to_string(),
+            config,
+        }
+    }
+
     /// Create AWS clients for a given region.
     ///
     /// Uses default credential chain (IRSA, EKS Pod Identity, instance profile, env vars).

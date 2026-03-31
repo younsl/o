@@ -208,6 +208,26 @@ mod tests {
     }
 
     #[test]
+    fn test_is_transient_non_transient_variants() {
+        assert!(!KuoError::AwsCredentials("x".into(), "y".into()).is_transient());
+        assert!(!KuoError::AwsRegion("x".into(), "y".into()).is_transient());
+        assert!(!KuoError::InvalidVersion("x".into()).is_transient());
+        assert!(!KuoError::UpgradeNotPossible("x".into()).is_transient());
+    }
+
+    #[test]
+    fn test_error_aws_credentials_invalid_token() {
+        let err = KuoError::aws("test", "InvalidClientTokenId: token is bad");
+        assert!(matches!(err, KuoError::AwsCredentials(_, _)));
+    }
+
+    #[test]
+    fn test_error_aws_credentials_signature() {
+        let err = KuoError::aws("test", "SignatureDoesNotMatch");
+        assert!(matches!(err, KuoError::AwsCredentials(_, _)));
+    }
+
+    #[test]
     fn test_is_transient() {
         assert!(KuoError::AwsSdk("x".into(), "y".into()).is_transient());
         assert!(KuoError::KubernetesApi("z".into()).is_transient());

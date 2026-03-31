@@ -162,6 +162,32 @@ mod tests {
     }
 
     #[test]
+    fn test_nodegroup_plan_result() {
+        let mut result = NodeGroupPlanResult::new();
+        let ng = NodeGroupInfo {
+            name: "ng-app".to_string(),
+            version: Some("1.32".to_string()),
+        };
+        result.add_upgrade(ng);
+        result.add_skipped();
+        result.add_skipped();
+        assert_eq!(result.upgrade_count(), 1);
+        assert_eq!(result.skipped_count(), 2);
+        assert_eq!(result.upgrades[0].name, "ng-app");
+    }
+
+    #[test]
+    fn test_nodegroup_info_debug() {
+        let ng = NodeGroupInfo {
+            name: "ng-system".to_string(),
+            version: Some("1.33".to_string()),
+        };
+        let debug = format!("{ng:?}");
+        assert!(debug.contains("ng-system"));
+        assert!(debug.contains("1.33"));
+    }
+
+    #[test]
     fn test_nodegroup_info_clone() {
         let ng = NodeGroupInfo {
             name: "ng-app".to_string(),

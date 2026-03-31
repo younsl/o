@@ -227,4 +227,67 @@ mod tests {
         assert!(lifecycle.end_of_standard_support.is_some());
         assert!(lifecycle.end_of_extended_support.is_some());
     }
+
+    #[test]
+    fn test_version_lifecycle_no_dates() {
+        let lifecycle = VersionLifecycle {
+            version: "1.33".to_string(),
+            status: "standard-support".to_string(),
+            end_of_standard_support: None,
+            end_of_extended_support: None,
+        };
+        assert!(lifecycle.end_of_standard_support.is_none());
+        assert!(lifecycle.end_of_extended_support.is_none());
+    }
+
+    #[test]
+    fn test_cluster_info_display() {
+        let info = ClusterInfo {
+            name: "prod-cluster".to_string(),
+            version: "1.33".to_string(),
+            region: "ap-northeast-2".to_string(),
+            endpoint: None,
+            ca_data: None,
+            deletion_protection: Some(true),
+        };
+        let display = format!("{info}");
+        assert_eq!(display, "prod-cluster (1.33) - ap-northeast-2");
+    }
+
+    #[test]
+    fn test_cluster_info_fields() {
+        let info = ClusterInfo {
+            name: "staging".to_string(),
+            version: "1.32".to_string(),
+            region: "us-east-1".to_string(),
+            endpoint: Some("https://eks.example.com".to_string()),
+            ca_data: Some("base64data".to_string()),
+            deletion_protection: Some(false),
+        };
+        assert_eq!(info.endpoint.as_deref(), Some("https://eks.example.com"));
+        assert_eq!(info.ca_data.as_deref(), Some("base64data"));
+        assert_eq!(info.deletion_protection, Some(false));
+    }
+
+    #[test]
+    fn test_cluster_info_clone() {
+        let info = ClusterInfo {
+            name: "test".to_string(),
+            version: "1.33".to_string(),
+            region: "eu-west-1".to_string(),
+            endpoint: None,
+            ca_data: None,
+            deletion_protection: None,
+        };
+        let cloned = info.clone();
+        assert_eq!(cloned.name, info.name);
+        assert_eq!(cloned.deletion_protection, None);
+    }
+
+    #[test]
+    fn test_smithy_datetime_to_chrono_with_nanos() {
+        let smithy_dt = aws_smithy_types::DateTime::from_fractional_secs(1_742_688_000, 0.5);
+        let chrono_dt = smithy_datetime_to_chrono(&smithy_dt);
+        assert!(chrono_dt.is_some());
+    }
 }

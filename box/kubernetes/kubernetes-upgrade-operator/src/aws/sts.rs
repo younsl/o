@@ -574,4 +574,200 @@ mod tests {
             "5031fe3d989c6d1537a013fa6e739da23463fdaec3b70137d828e36ace221bd0"
         );
     }
+
+    #[test]
+    fn test_hmac_sha256_long_key() {
+        // Key longer than block size (64) triggers hash-first path
+        let long_key = vec![0xAA; 128];
+        let result = hmac_sha256(&long_key, b"test");
+        assert_eq!(result.len(), 32);
+    }
+
+    #[test]
+    fn test_hex_encode_basic() {
+        assert_eq!(hex_encode(&[0x00, 0xFF, 0xAB]), "00ffab");
+        assert_eq!(hex_encode(&[]), "");
+        assert_eq!(hex_encode(&[0xDE, 0xAD, 0xBE, 0xEF]), "deadbeef");
+    }
+
+    #[test]
+    fn test_hex_sha256_abc() {
+        let hash = hex_sha256(b"abc");
+        assert_eq!(
+            hash,
+            "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad"
+        );
+    }
+
+    #[test]
+    fn test_sha256_multi_block() {
+        // Input > 64 bytes triggers multi-block processing
+        let data = vec![0x61; 128]; // 128 bytes of 'a'
+        let hash = hex_sha256(&data);
+        // Known SHA-256 of 128 'a' chars
+        assert_eq!(hash.len(), 64); // 32 bytes = 64 hex chars
+        assert_ne!(hash, hex_sha256(b"")); // different from empty
+    }
+
+    #[test]
+    fn test_sha256_exactly_56_bytes() {
+        // Edge case: 56 bytes needs exactly one padding block
+        let data = vec![0x42; 56];
+        let hash = hex_sha256(&data);
+        assert_eq!(hash.len(), 64);
+    }
+
+    #[test]
+    fn test_base64url_encode_hello() {
+        let encoded = base64url_encode(b"Hello");
+        // base64url of "Hello" = "SGVsbG8="
+        assert_eq!(encoded, "SGVsbG8=");
+    }
+
+    #[test]
+    fn test_base64url_encode_empty() {
+        assert_eq!(base64url_encode(b""), "");
+    }
+
+    #[test]
+    fn test_base64url_encode_one_byte() {
+        let encoded = base64url_encode(b"A");
+        // 1 byte → 2 chars + 2 padding
+        assert_eq!(encoded.len(), 4);
+        assert!(encoded.ends_with("=="));
+    }
+
+    #[test]
+    fn test_base64url_encode_two_bytes() {
+        let encoded = base64url_encode(b"AB");
+        // 2 bytes → 3 chars + 1 padding
+        assert_eq!(encoded.len(), 4);
+        assert!(encoded.ends_with('='));
+        assert!(!encoded.ends_with("=="));
+    }
+
+    #[test]
+    fn test_base64url_encode_three_bytes() {
+        let encoded = base64url_encode(b"ABC");
+        // 3 bytes → 4 chars, no padding
+        assert_eq!(encoded.len(), 4);
+        assert!(!encoded.contains('='));
+    }
+
+    #[test]
+    fn test_base64url_encode_uses_url_safe_chars() {
+        // base64url uses - and _ instead of + and /
+        let encoded = base64url_encode(b"\xfb\xff\xfe");
+        assert!(!encoded.contains('+'));
+        assert!(!encoded.contains('/'));
+    }
+
+    #[test]
+    fn test_build_presigned_token_format() {
+        let token = build_presigned_token(
+            "AKIAIOSFODNN7EXAMPLE",
+            "wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY",
+            None,
+            "us-east-1",
+            "my-cluster",
+        )
+        .unwrap();
+        assert!(token.starts_with("k8s-aws-v1."));
+        // Token must not have trailing = padding
+        assert!(!token.ends_with('='));
+    }
+
+    #[test]
+    fn test_build_presigned_token_with_session_token() {
+        let token = build_presigned_token(
+            "AKIAIOSFODNN7EXAMPLE",
+            "wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY",
+            Some("FwoGZXIvYXdzEBYaDHExampleSessionToken"),
+            "ap-northeast-2",
+            "test-cluster",
+        )
+        .unwrap();
+        assert!(token.starts_with("k8s-aws-v1."));
+        assert!(!token.ends_with('='));
+        // Session token variant should produce a different (longer) token
+        let token_no_session = build_presigned_token(
+            "AKIAIOSFODNN7EXAMPLE",
+            "wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY",
+            None,
+            "ap-northeast-2",
+            "test-cluster",
+        )
+        .unwrap();
+        assert!(token.len() > token_no_session.len());
+    }
+
+    #[test]
+    fn test_build_presigned_token_different_regions() {
+        let t1 = build_presigned_token("AK", "SK", None, "us-east-1", "c1").unwrap();
+        let t2 = build_presigned_token("AK", "SK", None, "eu-west-1", "c1").unwrap();
+        // Different regions produce different tokens (different host, credential scope)
+        assert_ne!(t1, t2);
+    }
+
+    #[test]
+    fn test_build_presigned_token_different_clusters() {
+        let t1 = build_presigned_token("AK", "SK", None, "us-east-1", "cluster-a").unwrap();
+        let t2 = build_presigned_token("AK", "SK", None, "us-east-1", "cluster-b").unwrap();
+        // Different cluster names produce different tokens (x-k8s-aws-id header)
+        assert_ne!(t1, t2);
+    }
+
+    #[test]
+    fn test_url_encode_special_chars() {
+        assert_eq!(url_encode("key=value"), "key%3Dvalue");
+        assert_eq!(url_encode("a&b"), "a%26b");
+        assert_eq!(url_encode("100%"), "100%25");
+        // Tilde, hyphen, underscore, dot are unreserved
+        assert_eq!(url_encode("a-b_c.d~e"), "a-b_c.d~e");
+    }
+
+    #[test]
+    fn test_base64_decode_two_pad() {
+        // "A" in base64 is "QQ==" (two padding chars)
+        let decoded = base64_decode("QQ==").unwrap();
+        assert_eq!(decoded, b"A");
+    }
+
+    #[test]
+    fn test_base64_decode_one_pad() {
+        // "AB" in base64 is "QUI=" (one padding char)
+        let decoded = base64_decode("QUI=").unwrap();
+        assert_eq!(decoded, b"AB");
+    }
+
+    #[test]
+    fn test_base64_decode_no_pad() {
+        // "ABC" in base64 is "QUJD" (no padding)
+        let decoded = base64_decode("QUJD").unwrap();
+        assert_eq!(decoded, b"ABC");
+    }
+
+    #[test]
+    fn test_base64_roundtrip() {
+        // Verify base64url_encode and standard base64_decode handle the same data
+        let original = b"Hello, World!";
+        let encoded = base64url_encode(original);
+        // base64url uses - and _, standard uses + and /
+        // Replace url-safe chars back for standard decode
+        let standard = encoded.replace('-', "+").replace('_', "/");
+        let decoded = base64_decode(&standard).unwrap();
+        assert_eq!(decoded, original);
+    }
+
+    #[test]
+    fn test_pem_to_der_certs_with_extra_content() {
+        let pem = b"some header text\n\
+                     -----BEGIN CERTIFICATE-----\n\
+                     SGVsbG8=\n\
+                     -----END CERTIFICATE-----\n\
+                     some footer text\n";
+        let certs = pem_to_der_certs(pem).unwrap();
+        assert_eq!(certs.len(), 1);
+        assert_eq!(certs[0], b"Hello");
+    }
 }
