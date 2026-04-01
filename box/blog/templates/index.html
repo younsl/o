@@ -1,8 +1,6 @@
 {% extends "base.html" %}
 
 {% block content %}
-  {% set blog_section = get_section(path="blog/_index.md") %}
-
   <nav>
     {% for item in config.extra.nav %}
       <a href="{{ item.url }}">{{ item.name }}</a>
@@ -10,7 +8,7 @@
   </nav>
 
   {% for is_pinned in [true, false] %}
-    {% for page in blog_section.pages %}
+    {% for page in section.pages %}
       {% set pinned = page.extra.pinnedToTop | default(value=false) %}
       {% if pinned == is_pinned %}
         <p class="post-item">
