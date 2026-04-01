@@ -7,6 +7,8 @@ keywords: ["kubernetes", "admission-policy", "cel", "validatingadmissionpolicy",
 tags: ["devops", "kubernetes"]
 ---
 
+<img src="kubernetes-logo.svg" alt="Kubernetes" width="32" height="32">
+
 ## Overview
 
 A guide to Kubernetes native admission policies.
