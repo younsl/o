@@ -19,3 +19,4 @@ Production-ready tools, controllers, and automation resources for Kubernetes and
 - **[kubernetes](./box/kubernetes/)** - Kubernetes addons and CLI tools
 - **[containers](./box/containers/)** - Runtime images for CI/CD and data platforms
 - **[terraform](./box/terraform/)** - Infrastructure modules
+- **[blog](./box/blog/)** - Tech blog powered by Zola, deployed to GitHub Pages
