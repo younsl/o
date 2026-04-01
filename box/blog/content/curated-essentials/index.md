@@ -61,6 +61,7 @@ A curated collection of learning resources for Site Reliability Engineers (SRE) 
 - [mkamadeus](https://mkamadeus.dev/): Infrastructure Engineer @Xendit
 - [James Strong](https://jamesstrong.dev) @Isovalent
 - [Michael Hausenblas](https://github.com/mhausenblas): Open Source Observability @AWS
+- [Matt Klein](https://mattklein123.dev/): Creator of Envoy Proxy
 
 **Book**:
 
