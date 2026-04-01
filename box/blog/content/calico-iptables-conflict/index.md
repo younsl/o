@@ -13,7 +13,7 @@ tags: []
 
 해당 인시던트에 대한 트러블슈팅 기록입니다.
 
-EKS 클러스터에서 Calico를 사용한 가장 큰 이유는 Network Policy를 통한 파드의 아웃바운드(Egress) 트래픽 제어입니다. EKS의 기본 VPC CNI는 Network Policy 리소스를 지원하지만, Calico는 더 세분화된 정책(GlobalNetworkPolicy, 도메인 기반 Egress 제어 등)을 제공합니다.
+EKS 클러스터에서 Calico를 사용한 가장 큰 이유는 Network Policy를 통한 파드의 아웃바운드(Egress) 트래픽 제어입니다. EKS의 기본 [VPC CNI도 Network Policy를 지원](https://aws.amazon.com/ko/blogs/korea/amazon-vpc-cni-now-supports-kubernetes-network-policies/)하지만, Calico는 더 세분화된 정책(GlobalNetworkPolicy, 도메인 기반 Egress 제어 등)을 제공합니다.
 
 ## 환경
 
