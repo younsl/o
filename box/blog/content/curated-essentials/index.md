@@ -10,6 +10,8 @@ extra:
   showAdvertisement: false
 ---
 
+![thumbnail](thumbnail.png)
+
 ## Overview
 
 A curated collection of learning resources for Site Reliability Engineers (SRE) and DevOps Engineers.
