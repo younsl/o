@@ -276,7 +276,7 @@ config:
   # -- (string) Squid configuration file content
   # This configuration will be mounted to /etc/squid/squid.conf inside the squid container
   # See: https://www.squid-cache.org/Versions/v6/cfgman/
-  # @default -- Default squid.conf with basic ACLs and security settings. See [values.yaml](https://github.com/younsl/younsl.github.io/blob/main/content/charts/squid/values.yaml) for full configuration.
+  # @default -- Default squid.conf with basic ACLs and security settings. See [values.yaml](https://github.com/younsl/o/blob/main/box/kubernetes/charts/squid/values.yaml) for full configuration.
   squid.conf: |
     ## Squid normally listens to port {{ .Values.service.targetPort | default 3128 }}
     http_port {{ .Values.service.targetPort | default 3128 }}

@@ -21,7 +21,7 @@ maintainers:
     url: https://github.com/younsl
 sources:
   - https://karpenter.sh/
-  - https://github.com/younsl/younsl.github.io
+  - https://github.com/younsl/o
 annotations:
   "helm.sh/skip-test": "true"
   "helm.sh/skip-test-reason": "Requires Karpenter controller to be installed"

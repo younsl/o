@@ -61,6 +61,15 @@ With ValidatingAdmissionPolicy becoming GA and MutatingAdmissionPolicy reaching 
 
 While Kubernetes native admission policies now cover both validation and mutation, Kyverno still offers additional features like Generate, VerifyImage, and Cleanup policies that are not available natively.
 
+### Why CEL?
+
+CEL is becoming the standard policy language across the Kubernetes ecosystem. There are two key reasons to write admission policies in CEL:
+
+1. **Kubernetes native support**: ValidatingAdmissionPolicy (GA in 1.30) and MutatingAdmissionPolicy (Beta in 1.34) both use CEL. Policies run inside kube-apiserver without external webhooks, reducing latency and operational overhead.
+2. **Kyverno is also converging on CEL**: Kyverno v1.17 [officially deprecated](https://kyverno.io/blog/2026/02/02/announcing-kyverno-release-1.17/) legacy `ClusterPolicy` and `CleanupPolicy` in favor of new CEL-based policy types (`ValidatingPolicy`, `MutatingPolicy`, `GeneratingPolicy`, `DeletingPolicy`). Kyverno v1.20 will completely remove the legacy DSL-based policies.
+
+Writing policies in CEL now means they are portable between Kubernetes native admission policies and Kyverno, and future-proof regardless of which engine you choose. For migration guidance, see the [Migrating to CEL Policies](https://kyverno.io/docs/guides/migration-to-cel/) documentation.
+
 For more details, see the [related discussion on Reddit](https://www.reddit.com/r/kubernetes/comments/1gpvk95/so_are_validating_admission_policies_a/).
 
 ## Helm Chart
@@ -88,7 +97,8 @@ For simple policies, use Kubernetes native admission policies instead of Kyverno
 - [MutatingAdmissionPolicy](https://kubernetes.io/docs/reference/access-authn-authz/mutating-admission-policy/)
 - [Kubernetes 1.30: Validating Admission Policy Is Generally Available](https://kubernetes.io/blog/2024/04/24/validating-admission-policy-ga/)
 
-**Related Posts**
-- [Kyverno](https://younsl.github.io/blog/kyverno/)
+**Kyverno**
+- [Announcing Kyverno 1.17](https://kyverno.io/blog/2026/02/02/announcing-kyverno-release-1.17/)
+- [Migrating to CEL Policies](https://kyverno.io/docs/guides/migration-to-cel/)
 
 [cel]: https://kubernetes.io/docs/reference/using-api/cel/

@@ -14,8 +14,7 @@ version: 0.4.1
 appVersion: 0.4.1
 home: https://kubernetes.io/docs/reference/access-authn-authz/rbac/
 sources:
-  - https://github.com/younsl/younsl.github.io
-  - https://younsl.github.io/charts/
+  - https://github.com/younsl/o
 maintainers:
 - name: younsl
   email: cysl@kakao.com
