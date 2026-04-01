@@ -18,4 +18,4 @@ Production-ready tools, controllers, and automation resources for Kubernetes and
 - **[tools](./box/tools/)** - CLI tools for monitoring and testing
 - **[kubernetes](./box/kubernetes/)** - Kubernetes addons and CLI tools
 - **[containers](./box/containers/)** - Runtime images for CI/CD and data platforms
-- **[blog](./box/blog/)** - Tech blog powered by Zola, deployed to GitHub Pages
+- **[blog](./box/blog/)** - Tech blog powered by [Zola](https://github.com/getzola/zola)(a fast static site generator written in Rust), deployed to GitHub Pages
