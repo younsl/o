@@ -463,7 +463,6 @@ Graceful shutdown in Kubernetes ensures applications terminate safely. This is a
 #### Graceful Shutdown Configuration Example
 
 ```yaml
----
 apiVersion: v1
 kind: Pod
 metadata:
