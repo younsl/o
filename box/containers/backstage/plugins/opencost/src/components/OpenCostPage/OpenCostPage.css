@@ -121,6 +121,7 @@
   color: var(--bui-color-text-primary, #fff);
 }
 
+
 .oc-empty-state {
   display: flex;
   justify-content: center;

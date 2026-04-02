@@ -1,1 +1,1 @@
-export { opencostPlugin, OpenCostPage } from './plugin';
+export { opencostPlugin, OpenCostPage, CostAdjustPage } from './plugin';
