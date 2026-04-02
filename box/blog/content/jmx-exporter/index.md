@@ -12,7 +12,7 @@ tags: ["java", "prometheus", "monitoring", "aws"]
 
 ## Background
 
-A standalone EC2 instance running a Java process occasionally hung and went down without any observable signal. Since Prometheus Node Exporter only supports the pull model and cannot push metrics via Remote Write, Grafana Alloy was used instead as a Node Exporter with Remote Write capability, sending system-level metrics to Prometheus. However, there was no way to monitor the JVM state itself, making it difficult to detect and diagnose issues before they caused downtime. JMX Exporter was introduced to expose JVM metrics on the same instance, allowing Alloy to scrape and forward them alongside the existing node metrics.
+A standalone EC2 instance running a Java process occasionally hung and went down without any observable signal. Since Prometheus Node Exporter only supports the pull model and cannot push metrics via [Remote Write](https://prometheus.io/docs/specs/remote_write_spec_2_0/), Grafana Alloy was used instead as a Node Exporter with Remote Write capability, sending system-level metrics to Prometheus. However, there was no way to monitor the JVM state itself, making it difficult to detect and diagnose issues before they caused downtime. JMX Exporter was introduced to expose JVM metrics on the same instance, allowing Alloy to scrape and forward them alongside the existing node metrics.
 
 ```mermaid
 ---
@@ -183,7 +183,7 @@ jvm_memory_bytes_used{area="nonheap"} 3.8462704E7
 
 ## Alloy scrape configuration
 
-If [Grafana Alloy](https://grafana.com/docs/alloy/latest/) is installed on the same server, add a `prometheus.scrape` block for JMX Exporter to `config.alloy`.
+If [Grafana Alloy](https://grafana.com/docs/alloy/latest/) is installed on the same server, add a prometheus.scrape block for JMX Exporter to config.alloy. The default configuration file path is /etc/alloy/config.alloy.
 
 ```hcl
 prometheus.exporter.unix "node" {}
