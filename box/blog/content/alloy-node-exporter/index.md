@@ -51,7 +51,7 @@ Alloy (EC2) ---+
 
 ### Remote Write Protocol
 
-Remote Write is a standard protocol defined by Prometheus for sending metrics to a remote server via HTTP(S) POST.
+[Remote Write](https://prometheus.io/docs/specs/remote_write_spec_2_0/) is a standard protocol defined by Prometheus for sending metrics to a remote server via HTTP(S) POST.
 
 - **Protocol**: HTTP(S) POST
 - **Endpoint**: `/api/v1/write`
@@ -132,6 +132,8 @@ alloy --version
 RPM package automatically creates systemd service, `alloy` user/group, and directories (`/etc/alloy/`, `/var/lib/alloy/`).
 
 ### Configure
+
+The default configuration file path on Linux is `/etc/alloy/config.alloy`.
 
 `prometheus.exporter.unix "node" {}` with empty block enables all default collectors (cpu, diskstats, filesystem, loadavg, meminfo, netdev, etc.). See [Custom Collectors](#custom-collectors) section to enable specific collectors only.
 
