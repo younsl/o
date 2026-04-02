@@ -6,7 +6,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 A monorepo serving as a DevOps toolbox containing Kubernetes utilities, infrastructure code, and engineering documentation.
 
-All applications in `kubernetes/`, `tools/`, and `containers/` are built with **[Rust](https://github.com/rust-lang/rust) 1.94+**. Rust provides key operational benefits: minimal container sizes, low memory footprint, single static binaries with no runtime dependencies, memory safety preventing null pointer and buffer overflow crashes, and compile-time guarantees ensuring system stability in production.
+Most applications in `kubernetes/`, `tools/`, and `containers/` are built with **[Rust](https://github.com/rust-lang/rust) 1.94+**. Rust provides key operational benefits: minimal container sizes, low memory footprint, single static binaries with no runtime dependencies, memory safety preventing null pointer and buffer overflow crashes, and compile-time guarantees ensuring system stability in production. Exceptions: `containers/backstage/` (Node.js/React) and `containers/logstash-with-opensearch-plugin/` (JVM).
 
 ## Design Philosophy
 
@@ -129,7 +129,7 @@ box/
 │   ├── qg/                # QR code generator (Rust)
 │   └── s3vget/            # S3 object version downloader (Rust)
 ├── containers/            # Custom container images
-│   ├── backstage/         # Backstage with GitLab Auto Discovery (Node.js)
+│   ├── backstage/         # Internal Developer Portal with GitLab catalog discovery and custom plugins (Node.js)
 │   ├── filesystem-cleaner/# File system cleanup tool (Rust)
 │   └── logstash-with-opensearch-plugin/  # Logstash with OpenSearch plugin for ECK
 └── terraform/             # Infrastructure as Code
@@ -561,6 +561,55 @@ image: ghcr.io/younsl/logstash-with-opensearch-plugin:8.17.0
 ```
 
 **Why this exists**: Official Logstash image lacks the OpenSearch plugin; installing via initContainer causes 5+ minute startup delays.
+
+### backstage - Internal Developer Portal (Node.js)
+
+Custom Backstage (v1.49.0) instance serving as a centralized Internal Developer Platform (IDP). Provides service catalog with GitLab auto-discovery, CI/CD pipeline visibility, infrastructure management, and self-service workflows for developers.
+
+```bash
+# Local development
+make init          # Install dependencies (yarn install)
+make dev           # Run dev server (frontend :3000, backend :7007)
+make dev-local     # Dev without GitLab integration
+
+# Container
+make build         # Build docker image (auto-detects docker/podman)
+make run           # Run container locally with SQLite
+make push          # Push to ghcr.io/younsl/backstage
+```
+
+**Technology Stack**: Node.js 25, React 18, Yarn Berry 4.12.0, SQLite (dev) / PostgreSQL (prod)
+
+**Authentication**: Keycloak OIDC with redirect flow (guest login disabled)
+
+**Integrations**:
+- **GitLab**: Auto-discovery of `catalog-info.yaml`, CI/CD pipelines, MR visibility, user/group sync
+- **ArgoCD**: ApplicationSet management with mute/unmute and Slack alerts
+- **OpenCost**: Multi-cluster Kubernetes cost visualization (5 clusters)
+- **SonarQube**: Code quality metrics with auto-annotation injection
+- **AWS**: IAM user auditing, S3 log extraction, ElastiCache
+- **Kafka**: Self-service topic creation with approval workflow
+- **Slack**: Notifications via incoming webhooks and bot token
+
+**Custom Plugins** (7 frontend + 7 backend):
+
+| Plugin | Purpose |
+|--------|---------|
+| openapi-registry | Register external OpenAPI specs by URL |
+| argocd-appset | ArgoCD ApplicationSet management with audit logs |
+| iam-user-audit | AWS IAM inactive user monitoring and alerts |
+| kafka-topic | Self-service Kafka topic creation with approval |
+| catalog-health | Track catalog-info.yaml coverage across GitLab |
+| opencost | Multi-cluster K8s cost visualization |
+| s3-log-extract | S3-based Java log extraction with approval |
+
+**Architecture**: Monolithic (backend serves bundled frontend on port 7007), 3-stage Docker build, Helm-deployable via official Backstage chart
+
+**Custom Plugin Design Patterns**:
+- Async initialization: `static async create()` factory method, synchronous constructors
+- `registerTasks()` for scheduled task registration only
+- Audit logging via Backstage Auditor Service with IP/User-Agent tracking
+- `@backstage/ui` CSS-first design system for new plugins
 
 ### gss - GHES Schedule Scanner (Rust)
 

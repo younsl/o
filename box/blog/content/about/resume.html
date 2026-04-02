@@ -492,8 +492,8 @@ h3 + .job-header {
     <div class="job-header-line">
       <div>DevOps Engineer (L5)</div>
       <div class="date">
-        <span class="lang-ko active">2025년 12월 8일 ― 현재 (4개월)</span>
-        <span class="lang-en">Dec 8, 2025 ― Present (4 mos)</span>
+        <span class="lang-ko active">2025년 12월 8일 ― 현재 (5개월)</span>
+        <span class="lang-en">Dec 8, 2025 ― Present (5 mos)</span>
       </div>
     </div>
   </div>
@@ -502,7 +502,7 @@ h3 + .job-header {
   <ul>
   <li>Kubernetes Upgrade Operator를 직접 개발하여 EKS 클러스터 업그레이드를 자동화하고 운영 오버헤드 절감</li>
   <li>Blackbox Exporter와 YACE를 도입하여 엔드포인트 헬스체크 및 AWS 리소스 메트릭 통합 모니터링 체계 구축</li>
-  <li>Backstage 기반 내부 개발자 포털을 구축하여 흩어진 서비스 목록, API 문서, 기술 문서를 한 곳에서 검색·조회할 수 있도록 개선하고, 요청·승인 기반의 패스워드 초기화 셀프 서비스 구현</li>
+  <li>Backstage 기반 내부 개발자 포털을 구축하고 7개 커스텀 플러그인을 개발하여 Kafka 토픽 생성, 비용 조회, IAM 감사 등 개발자 셀프서비스를 제공</li>
   <li>멀티 클러스터 SBOM 및 취약점 보고서의 집계, 시각화, 분석 자동화를 위한 trivy-collector를 직접 개발하여 보안 취약점 가시성 확보</li>
   </ul>
   </div>
@@ -511,7 +511,7 @@ h3 + .job-header {
   <ul>
   <li>Developed Kubernetes Upgrade Operator to centralize EKS cluster upgrade management and reduce operational overhead</li>
   <li>Established unified monitoring system for endpoint health checks and AWS resource metrics using Blackbox Exporter and YACE</li>
-  <li>Built an internal developer portal using Backstage, enabling developers to discover and access all services, APIs, and technical docs in one place, and implemented request-approval based password reset self-service</li>
+  <li>Built an internal developer portal on Backstage with 7 custom plugins, providing developer self-service for Kafka topic creation, cost inquiry, and IAM auditing</li>
   <li>Developed trivy-collector to automate aggregation, visualization, and analysis of multi-cluster SBOM and vulnerability reports, improving security vulnerability visibility</li>
   </ul>
   </div>
@@ -636,7 +636,7 @@ h3 + .job-header {
   <h4>운영 자동화</h4>
   <ul>
   <li><strong><a href="https://github.com/younsl/o/tree/main/box/kubernetes/kubernetes-upgrade-operator">kubernetes-upgrade-operator</a></strong>: EKS 클러스터 업그레이드 자동화 Kubernetes Operator</li>
-  <li><strong><a href="https://github.com/younsl/o/tree/main/box/containers/backstage">backstage</a></strong>: GitLab Auto Discovery 기반 Internal Developer Portal</li>
+  <li><strong><a href="https://github.com/younsl/o/tree/main/box/containers/backstage">backstage</a></strong>: 7개 커스텀 플러그인으로 개발자 셀프서비스를 제공하는 Internal Developer Portal</li>
   <li><strong><a href="https://github.com/younsl/o/tree/main/box/kubernetes/trivy-collector">trivy-collector</a></strong>: 멀티 클러스터 SBOM 및 취약점 보고서의 집계, 시각화, 분석 자동화를 위한 도구</li>
   <li><strong><a href="https://github.com/younsl/o/tree/main/box/kubernetes/elasticache-backup">elasticache-backup</a></strong>: Rust로 개발된 AWS ElastiCache Redis 클러스터 자동 백업 Kubernetes CronJob</li>
   <li><strong><a href="https://github.com/younsl/o/tree/main/box/kubernetes/gss">gss</a></strong>: GitHub Enterprise Server의 Scheduled Workflow를 위한 Kubernetes 기반 스캐너</li>
@@ -652,7 +652,7 @@ h3 + .job-header {
   <h4>Operations Automation</h4>
   <ul>
   <li><strong><a href="https://github.com/younsl/o/tree/main/box/kubernetes/kubernetes-upgrade-operator">kubernetes-upgrade-operator</a></strong>: EKS cluster upgrade automation Kubernetes Operator</li>
-  <li><strong><a href="https://github.com/younsl/o/tree/main/box/containers/backstage">backstage</a></strong>: Internal Developer Portal with GitLab Auto Discovery</li>
+  <li><strong><a href="https://github.com/younsl/o/tree/main/box/containers/backstage">backstage</a></strong>: Internal Developer Portal providing developer self-service with 7 custom plugins</li>
   <li><strong><a href="https://github.com/younsl/o/tree/main/box/kubernetes/trivy-collector">trivy-collector</a></strong>: Trivy Operator report collector and Web UI that enables Security Engineers to analyze multi-cluster vulnerabilities without kubectl</li>
   <li><strong><a href="https://github.com/younsl/o/tree/main/box/kubernetes/elasticache-backup">elasticache-backup</a></strong>: Automated AWS ElastiCache Redis cluster backup Kubernetes CronJob written in Rust</li>
   <li><strong><a href="https://github.com/younsl/o/tree/main/box/kubernetes/gss">gss</a></strong>: Kubernetes-based scanner for scheduled workflows in GitHub Enterprise Server</li>
