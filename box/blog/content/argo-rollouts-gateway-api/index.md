@@ -237,11 +237,11 @@ spec:
     - backendRefs:
         - name: my-app-stable
           port: 80
-          # patched from 100 to 75
+          # patched from 100 to 75 by argo-rollouts controller
           weight: 75
         - name: my-app-canary
           port: 80
-          # patched from 0 to 25
+          # patched from 0 to 25 by argo-rollouts controller
           weight: 25
 ```
 
