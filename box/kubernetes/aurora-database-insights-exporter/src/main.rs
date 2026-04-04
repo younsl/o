@@ -23,6 +23,7 @@ const VERSION: &str = env!("CARGO_PKG_VERSION");
 
 #[tokio::main]
 async fn main() {
+    let init_start = std::time::Instant::now();
     let args = Args::parse();
 
     // Load config
@@ -40,23 +41,32 @@ async fn main() {
     tracing::info!(
         version = VERSION,
         config_path = %args.config.display(),
-        leader_election = config.leader_election.enabled,
         "Starting aurora-database-insights-exporter"
     );
 
+    tracing::info!(
+        region = %config.aws.region,
+        discovery_interval_seconds = config.discovery.interval_seconds,
+        collection_interval_seconds = config.collection.interval_seconds,
+        top_sql_limit = config.collection.top_sql_limit,
+        top_host_limit = config.collection.top_host_limit,
+        max_concurrent_api_calls = config.collection.max_concurrent_api_calls,
+        exported_tags = ?config.discovery.exported_tags,
+        "Loaded configuration"
+    );
+
     // Initialize AWS SDK
+    tracing::info!(region = %config.aws.region, "Initializing AWS SDK");
+
     let aws_config = aws_config::defaults(aws_config::BehaviorVersion::latest())
         .region(aws_config::Region::new(config.aws.region.clone()))
         .load()
         .await;
 
-    tracing::info!(
-        region = %config.aws.region,
-        "Initialized AWS SDK"
-    );
-
     let rds_client = aws_sdk_rds::Client::new(&aws_config);
     let pi_client = aws_sdk_pi::Client::new(&aws_config);
+
+    tracing::info!("Initialized RDS and Performance Insights API clients");
 
     let discoverer = Arc::new(AwsRdsDiscoverer::new(rds_client));
     let pi_collector = Arc::new(AwsPiCollector::new(pi_client));
@@ -67,13 +77,26 @@ async fn main() {
     let ready_flag = Arc::new(RwLock::new(false));
     let is_leader = Arc::new(RwLock::new(!config.leader_election.enabled)); // true if LE disabled
 
+    tracing::info!(
+        metrics_count = 14,
+        exported_tag_labels = config.discovery.exported_tags.len(),
+        "Registered Prometheus metrics"
+    );
+
     // Leader election
     let leader_elector: Option<Arc<LeaderElector>> = if config.leader_election.enabled {
+        tracing::info!(
+            lease_name = %config.leader_election.lease_name,
+            lease_namespace = %config.leader_election.lease_namespace,
+            lease_duration_seconds = config.leader_election.lease_duration_seconds,
+            "Initializing leader election"
+        );
         match LeaderElector::new(config.leader_election.clone(), is_leader.clone()).await {
             Ok(le) => {
                 let le = Arc::new(le);
                 let le_run = le.clone();
                 tokio::spawn(async move { le_run.run().await });
+                tracing::info!("Started leader election loop");
                 Some(le)
             }
             Err(e) => {
@@ -124,6 +147,12 @@ async fn main() {
         .await;
     });
 
+    tracing::info!(
+        discovery_interval_seconds = config.discovery.interval_seconds,
+        collection_interval_seconds = config.collection.interval_seconds,
+        "Started background loops for discovery and collection"
+    );
+
     // Start HTTP server
     let state = AppState {
         metrics,
@@ -137,7 +166,13 @@ async fn main() {
 
     tracing::info!(
         address = %config.server.listen_address,
+        endpoints = "/metrics, /healthz, /readyz",
         "HTTP server started"
+    );
+
+    tracing::info!(
+        duration_ms = init_start.elapsed().as_millis() as u64,
+        "Initialization complete. Waiting for first discovery cycle"
     );
 
     // Graceful shutdown on SIGTERM

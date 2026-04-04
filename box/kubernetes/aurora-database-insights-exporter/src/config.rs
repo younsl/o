@@ -182,9 +182,10 @@ impl Default for LoggingConfig {
 impl Default for LeaderElectionConfig {
     fn default() -> Self {
         Self {
-            enabled: false,
+            enabled: true,
             lease_name: "adie-leader".to_string(),
-            lease_namespace: "default".to_string(),
+            lease_namespace: std::env::var("POD_NAMESPACE")
+                .unwrap_or_else(|_| "default".to_string()),
             lease_duration_seconds: 15,
             renew_deadline_seconds: 10,
             retry_period_seconds: 2,
@@ -412,7 +413,7 @@ leader_election:
     #[test]
     fn test_default_leader_election() {
         let config = Config::default();
-        assert!(!config.leader_election.enabled);
+        assert!(config.leader_election.enabled);
         assert_eq!(config.leader_election.lease_name, "adie-leader");
         assert_eq!(config.leader_election.lease_duration_seconds, 15);
         assert_eq!(config.leader_election.renew_deadline_seconds, 10);

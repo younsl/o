@@ -1,6 +1,12 @@
 # -- (int) Number of replicas
 replicaCount: 1
 
+# -- (int) Number of old ReplicaSets to retain
+revisionHistoryLimit: 3
+
+# -- (object) Additional pod annotations
+podAnnotations: {}
+
 image:
   # -- (string) Container image repository
   repository: ghcr.io/younsl/aurora-database-insights-exporter
@@ -38,6 +44,11 @@ serviceMonitor:
   scrapeTimeout: 30s
   # -- (object) Additional labels for ServiceMonitor
   labels: {}
+  # -- (list) Metric relabeling rules applied after scrape
+  metricRelabelings: []
+    # - sourceLabels: [__name__]
+    #   regex: "aurora_dbinsights_sql_info"
+    #   action: drop
 
 # -- (object) adie config (mounted as ConfigMap)
 config:
@@ -59,6 +70,14 @@ config:
     # -- (int) Top host limit per instance
     topHostLimit: 20
 
+# -- (list) Container resize policy for in-place resource updates (requires InPlacePodVerticalScaling feature gate)
+# @default -- See `values.yaml`
+resizePolicy:
+  - resourceName: cpu
+    restartPolicy: NotRequired
+  - resourceName: memory
+    restartPolicy: RestartContainer
+
 resources:
   requests:
     # -- (string) CPU request
@@ -68,19 +87,25 @@ resources:
   limits:
     # -- (string) Memory limit
     memory: 128Mi
-  # CPU limits omitted (burstable)
 
-leaderElection:
-  # -- (bool) Enable leader election via Kubernetes Lease
-  enabled: true
-  # -- (string) Lease resource name
-  leaseName: adie-leader
-  # -- (int) Lease duration in seconds
-  leaseDurationSeconds: 15
-  # -- (int) Renew deadline in seconds
-  renewDeadlineSeconds: 10
-  # -- (int) Retry period in seconds
-  retryPeriodSeconds: 2
+# -- (object) Pod-level security context
+# @default -- See `values.yaml`
+podSecurityContext:
+  runAsNonRoot: true
+  runAsUser: 65532
+  runAsGroup: 65532
+  fsGroup: 65532
+  seccompProfile:
+    type: RuntimeDefault
+
+# -- (object) Container-level security context
+# @default -- See `values.yaml`
+securityContext:
+  allowPrivilegeEscalation: false
+  readOnlyRootFilesystem: true
+  capabilities:
+    drop:
+      - ALL
 
 pdb:
   # -- (bool) Enable PodDisruptionBudget
@@ -90,9 +115,6 @@ pdb:
   # -- (string) Unhealthy pod eviction policy (IfReady or AlwaysAllow)
   unhealthyPodEvictionPolicy: IfReady
 
-# -- (list) Container resize policy for in-place resource updates (requires InPlacePodVerticalScaling feature gate)
-resizePolicy: []
-
 # -- (object) Node selector
 nodeSelector: {}
 # -- (list) Tolerations
@@ -101,9 +123,18 @@ tolerations: []
 affinity: {}
 # -- (list) Topology spread constraints
 topologySpreadConstraints: []
-# - maxSkew: 1
-#   topologyKey: topology.kubernetes.io/zone
-#   whenUnsatisfiable: ScheduleAnyway
-#   labelSelector:
-#     matchLabels:
-#       app.kubernetes.io/name: aurora-database-insights-exporter
+  # - maxSkew: 1
+  #   topologyKey: topology.kubernetes.io/zone
+  #   whenUnsatisfiable: ScheduleAnyway
+  #   labelSelector:
+  #     matchLabels:
+  #       app.kubernetes.io/name: aurora-database-insights-exporter
+
+# -- (list) Extra Kubernetes objects to deploy with tpl support
+extraObjects: []
+  # - apiVersion: v1
+  #   kind: ConfigMap
+  #   metadata:
+  #     name: "{{ include \"aurora-database-insights-exporter.fullname\" . }}-extra"
+  #   data:
+  #     key: value

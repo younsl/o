@@ -21,15 +21,6 @@ data:
       interval_seconds: {{ .Values.config.collection.intervalSeconds }}
       top_sql_limit: {{ .Values.config.collection.topSqlLimit }}
       top_host_limit: {{ .Values.config.collection.topHostLimit }}
-    {{- if .Values.leaderElection.enabled }}
-    leader_election:
-      enabled: true
-      lease_name: {{ .Values.leaderElection.leaseName }}
-      lease_namespace: {{ .Release.Namespace }}
-      lease_duration_seconds: {{ .Values.leaderElection.leaseDurationSeconds }}
-      renew_deadline_seconds: {{ .Values.leaderElection.renewDeadlineSeconds }}
-      retry_period_seconds: {{ .Values.leaderElection.retryPeriodSeconds }}
-    {{- end }}
     logging:
       level: "info"
       format: "json"

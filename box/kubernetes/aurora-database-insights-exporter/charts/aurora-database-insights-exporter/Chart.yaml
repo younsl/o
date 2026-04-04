@@ -1,9 +1,28 @@
 apiVersion: v2
-name: prometheus-aurora-database-insights-exporter
+name: aurora-database-insights-exporter
 description: Prometheus exporter for AWS Aurora MySQL Database Insights metrics
 type: application
+deprecated: false
 version: 0.1.0
 appVersion: "0.1.0"
+home: https://github.com/younsl/o
+sources:
+  - https://github.com/younsl/o/tree/main/box/kubernetes/aurora-database-insights-exporter
 maintainers:
   - name: younsl
     email: cysl@kakao.com
+    url: https://github.com/younsl
+keywords:
+  - aurora
+  - mysql
+  - prometheus
+  - exporter
+  - database-insights
+  - performance-insights
+  - aws
+  - rds
+annotations:
+  artifacthub.io/changes: |
+    - kind: added
+      description: "Initial release of aurora-database-insights-exporter chart"
+  artifacthub.io/license: MIT
