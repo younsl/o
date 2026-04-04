@@ -83,6 +83,7 @@ The following table lists the configurable parameters and their default values.
 | serviceAccount.create | bool | `true` | Create a ServiceAccount |
 | serviceAccount.name | string | `""` | ServiceAccount name (defaults to fullname template) |
 | serviceAccount.annotations | object | `{}` | Annotations for the ServiceAccount (e.g., IRSA role ARN) |
+| serviceAccount.automountServiceAccountToken | bool | `true` | Automount API credentials for the ServiceAccount |
 | service.type | string | `"ClusterIP"` | Service type |
 | service.port | int | `9090` | Service port |
 | service.trafficDistribution | string | `""` | Traffic distribution policy |
@@ -91,6 +92,10 @@ The following table lists the configurable parameters and their default values.
 | serviceMonitor.scrapeTimeout | string | `"30s"` | Scrape timeout |
 | serviceMonitor.labels | object | `{}` | Additional labels for ServiceMonitor |
 | serviceMonitor.metricRelabelings | list | `[]` | Metric relabeling rules applied after scrape |
+| prometheusRules.enabled | bool | `false` | Enable PrometheusRule for Prometheus Operator |
+| prometheusRules.namespace | string | `""` | Namespace override for PrometheusRule |
+| prometheusRules.labels | object | `{}` | Additional labels for PrometheusRule |
+| prometheusRules.rules | list | See `values.yaml` | Alerting rules |
 | config | object | `{"aws":{"region":"ap-northeast-2"},"collection":{"intervalSeconds":60,"topHostLimit":20,"topSqlLimit":10},"discovery":{"exportedTags":[],"intervalSeconds":300}}` | adie config (mounted as ConfigMap) |
 | config.aws.region | string | `"ap-northeast-2"` | AWS region |
 | config.discovery.intervalSeconds | int | `300` | Discovery interval in seconds |
@@ -102,6 +107,7 @@ The following table lists the configurable parameters and their default values.
 | resources.requests.cpu | string | `"30m"` | CPU request |
 | resources.requests.memory | string | `"64Mi"` | Memory request |
 | resources.limits.memory | string | `"128Mi"` | Memory limit |
+| priorityClassName | string | `""` | Priority class name for the pod |
 | podSecurityContext | object | See `values.yaml` | Pod-level security context |
 | securityContext | object | See `values.yaml` | Container-level security context |
 | pdb.enabled | bool | `false` | Enable PodDisruptionBudget |

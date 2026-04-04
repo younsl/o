@@ -1,6 +1,6 @@
 # Metrics
 
-All Prometheus metrics exposed by aurora-database-insights-exporter.
+14 Prometheus metrics exposed by aurora-database-insights-exporter.
 
 ## Label structure
 
@@ -26,63 +26,31 @@ AWS tags listed in `discovery.exported_tags` become dynamic labels. Keys are nor
 | `Environment` | `tag_environment` | `production` |
 | `app-name` | `tag_app_name` | `order-service` |
 
-## Instance-level metrics
+## All metrics
 
-Static labels per instance. Updated every collection cycle.
+Dynamic label metrics (marked with Reset=yes) are cleared and re-populated every collection cycle to prevent stale time series.
 
-| Metric | Type | Labels | Description |
-|--------|------|--------|-------------|
-| `aurora_dbinsights_db_load` | Gauge | base + tag_* | Total DB Load (Average Active Sessions) |
-| `aurora_dbinsights_db_load_cpu` | Gauge | base + tag_* | DB Load attributed to CPU wait events |
-| `aurora_dbinsights_db_load_non_cpu` | Gauge | base + tag_* | DB Load from non-CPU wait events (total - cpu) |
-| `aurora_dbinsights_vcpu` | Gauge | base + tag_* | vCPU count derived from instance class |
-| `aurora_dbinsights_up` | Gauge | base + tag_* | Collection status. 1=ok, 0=error |
+| # | Metric | Type | Labels | Reset | Limit | Description |
+|---|--------|------|--------|-------|-------|-------------|
+| 1 | `aurora_dbinsights_db_load` | Gauge | base + tag_* | — | — | Total DB Load (Average Active Sessions) |
+| 2 | `aurora_dbinsights_db_load_cpu` | Gauge | base + tag_* | — | — | CPU-attributed DB Load |
+| 3 | `aurora_dbinsights_db_load_non_cpu` | Gauge | base + tag_* | — | — | Non-CPU DB Load (total - cpu) |
+| 4 | `aurora_dbinsights_vcpu` | Gauge | base + tag_* | — | — | vCPU count from instance class |
+| 5 | `aurora_dbinsights_up` | Gauge | base + tag_* | — | — | Collection status (1=ok, 0=error) |
+| 6 | `aurora_dbinsights_db_load_by_wait_event` | Gauge | base + tag_* + `wait_event`, `wait_event_type` | yes | 25 | DB Load by wait event |
+| 7 | `aurora_dbinsights_db_load_by_sql` | Gauge | base + tag_* + `sql_id` | yes | 10/inst | DB Load by top SQL |
+| 8 | `aurora_dbinsights_sql_info` | Gauge | base + tag_* + `sql_id`, `sql_text`, `sql_text_truncated` | yes | 10/inst | SQL text info (value=1) |
+| 9 | `aurora_dbinsights_db_load_by_user` | Gauge | base + tag_* + `db_user` | yes | — | DB Load by database user |
+| 10 | `aurora_dbinsights_db_load_by_host` | Gauge | base + tag_* + `client_host` | yes | 20/inst | DB Load by client host |
+| 11 | `aurora_dbinsights_scrape_duration_seconds` | Gauge | — | — | — | Collection cycle duration |
+| 12 | `aurora_dbinsights_discovery_instances_total` | Gauge | — | — | — | Discovered instance count |
+| 13 | `aurora_dbinsights_collection_errors_total` | Counter | `instance` | — | — | Cumulative PI API error count |
+| 14 | `aurora_dbinsights_discovery_duration_seconds` | Gauge | — | — | — | Discovery cycle duration |
 
-## Breakdown metrics
-
-Dynamic label metrics. **All previous time series are removed at the start of each cycle** before new values are set. This prevents stale time series from accumulating.
-
-### Wait event
-
-| Metric | Type | Labels | Limit |
-|--------|------|--------|-------|
-| `aurora_dbinsights_db_load_by_wait_event` | Gauge | base + tag_* + `wait_event`, `wait_event_type` | 25 |
-
-Grouped by PI API `db.wait_event` dimension. The sum of entries where `wait_event_type=CPU` equals `db_load_cpu`.
-
-### Top SQL
-
-| Metric | Type | Labels | Limit |
-|--------|------|--------|-------|
-| `aurora_dbinsights_db_load_by_sql` | Gauge | base + tag_* + `sql_id` | 10/instance |
-| `aurora_dbinsights_sql_info` | Gauge | base + tag_* + `sql_id`, `sql_text`, `sql_text_truncated` | 10/instance |
-
-`by_sql` carries only `sql_id` to minimize cardinality. SQL text is separated into the `sql_info` info metric (value always 1). Join on `sql_id` in Grafana to display the statement. `sql_text` is truncated at 200 characters. When truncated, `sql_text_truncated="true"`.
-
-### User
-
-| Metric | Type | Labels | Limit |
-|--------|------|--------|-------|
-| `aurora_dbinsights_db_load_by_user` | Gauge | base + tag_* + `db_user` | — |
-
-### Host
-
-| Metric | Type | Labels | Limit |
-|--------|------|--------|-------|
-| `aurora_dbinsights_db_load_by_host` | Gauge | base + tag_* + `client_host` | 20/instance |
-
-Capped by `top_host_limit` to prevent cardinality explosion from Kubernetes Pod IP churn during rolling deployments.
-
-## Exporter internal metrics
-
-Operational health of the exporter itself.
-
-| Metric | Type | Labels | Description |
-|--------|------|--------|-------------|
-| `aurora_dbinsights_scrape_duration_seconds` | Gauge | — | Time spent on the last collection cycle |
-| `aurora_dbinsights_discovery_instances_total` | Gauge | — | Number of currently discovered instances |
-| `aurora_dbinsights_collection_errors_total` | Counter | `instance` | Cumulative PI API error count |
-| `aurora_dbinsights_discovery_duration_seconds` | Gauge | — | Time spent on the last discovery cycle |
+Notes:
+- `sql_info` is an info metric (value always 1) that separates `sql_text` from `by_sql` to isolate cardinality. Join on `sql_id` in Grafana.
+- `sql_text` is truncated at 200 characters. When truncated, `sql_text_truncated="true"`.
+- `by_host` is capped by `top_host_limit` to prevent cardinality explosion from Kubernetes Pod IP churn.
 
 ## Cardinality estimate
 
@@ -92,7 +60,7 @@ Maximum time series with 10 instances.
 |----------|------------|-------------|
 | Instance-level (5) | 5 × 10 | 50 |
 | Wait event | 25 × 10 | 250 |
-| Top SQL (`by_sql` + `sql_info`) | 10 × 2 × 10 | 200 |
+| Top SQL (by_sql + sql_info) | 10 × 2 × 10 | 200 |
 | User | ~10 × 10 | 100 |
 | Host | 20 × 10 | 200 |
 | Error counter | 10 | 10 |

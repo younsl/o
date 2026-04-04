@@ -1,0 +1,19 @@
+{{- if .Values.prometheusRules.enabled }}
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: {{ template "aurora-database-insights-exporter.fullname" . }}
+{{- if .Values.prometheusRules.namespace }}
+  namespace: {{ .Values.prometheusRules.namespace }}
+{{- end }}
+  labels:
+    {{- include "aurora-database-insights-exporter.labels" . | nindent 4 }}
+    {{- with .Values.prometheusRules.labels }}
+      {{- toYaml . | nindent 4 }}
+    {{- end }}
+spec:
+  groups:
+  - name: {{ template "aurora-database-insights-exporter.fullname" . }}
+    rules:
+      {{- toYaml .Values.prometheusRules.rules | nindent 6 }}
+{{- end }}

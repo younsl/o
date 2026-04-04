@@ -26,6 +26,8 @@ serviceAccount:
   name: ""
   # -- (object) Annotations for the ServiceAccount (e.g., IRSA role ARN)
   annotations: {}
+  # -- (bool) Automount API credentials for the ServiceAccount
+  automountServiceAccountToken: true
 
 service:
   # -- (string) Service type
@@ -49,6 +51,31 @@ serviceMonitor:
     # - sourceLabels: [__name__]
     #   regex: "aurora_dbinsights_sql_info"
     #   action: drop
+
+prometheusRules:
+  # -- (bool) Enable PrometheusRule for Prometheus Operator
+  enabled: false
+  # -- (string) Namespace override for PrometheusRule
+  namespace: ""
+  # -- (object) Additional labels for PrometheusRule
+  labels: {}
+  # -- (list) Alerting rules
+  # @default -- See `values.yaml`
+  rules: []
+    # - alert: AuroraDBInsightsExporterDown
+    #   expr: aurora_dbinsights_up == 0
+    #   for: 5m
+    #   labels:
+    #     severity: warning
+    #   annotations:
+    #     summary: "Aurora Database Insights collection failed for {{ $labels.instance }}"
+    # - alert: AuroraDBLoadHigh
+    #   expr: aurora_dbinsights_db_load > aurora_dbinsights_vcpu * 2
+    #   for: 10m
+    #   labels:
+    #     severity: critical
+    #   annotations:
+    #     summary: "DB Load exceeds 2x vCPU on {{ $labels.instance }}"
 
 # -- (object) adie config (mounted as ConfigMap)
 config:
@@ -87,6 +114,9 @@ resources:
   limits:
     # -- (string) Memory limit
     memory: 128Mi
+
+# -- (string) Priority class name for the pod
+priorityClassName: ""
 
 # -- (object) Pod-level security context
 # @default -- See `values.yaml`
