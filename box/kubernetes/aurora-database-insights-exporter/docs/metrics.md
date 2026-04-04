@@ -1,6 +1,6 @@
 # Metrics
 
-14 Prometheus metrics exposed by aurora-database-insights-exporter.
+15 Prometheus metrics exposed by aurora-database-insights-exporter.
 
 ## Label structure
 
@@ -42,15 +42,19 @@ Dynamic label metrics (marked with Reset=yes) are cleared and re-populated every
 | 8 | `aurora_dbinsights_sql_info` | Gauge | base + tag_* + `sql_id`, `sql_text`, `sql_text_truncated` | yes | 10/inst | SQL text info (value=1) |
 | 9 | `aurora_dbinsights_db_load_by_user` | Gauge | base + tag_* + `db_user` | yes | — | DB Load by database user |
 | 10 | `aurora_dbinsights_db_load_by_host` | Gauge | base + tag_* + `client_host` | yes | 20/inst | DB Load by client host |
-| 11 | `aurora_dbinsights_scrape_duration_seconds` | Gauge | — | — | — | Collection cycle duration |
-| 12 | `aurora_dbinsights_discovery_instances_total` | Gauge | — | — | — | Discovered instance count |
-| 13 | `aurora_dbinsights_collection_errors_total` | Counter | `instance` | — | — | Cumulative PI API error count |
-| 14 | `aurora_dbinsights_discovery_duration_seconds` | Gauge | — | — | — | Discovery cycle duration |
+| 11 | `aurora_dbinsights_db_load_by_database` | Gauge | base + tag_* + `db_name` | yes | — | DB Load by database schema |
+| 12 | `aurora_dbinsights_scrape_duration_seconds` | Gauge | — | — | — | Collection cycle duration |
+| 13 | `aurora_dbinsights_discovery_instances_total` | Gauge | — | — | — | Discovered instance count |
+| 14 | `aurora_dbinsights_collection_errors_total` | Counter | `instance` | — | — | Cumulative PI API error count |
+| 15 | `aurora_dbinsights_discovery_duration_seconds` | Gauge | — | — | — | Discovery cycle duration |
 
 Notes:
 - `sql_info` is an info metric (value always 1) that separates `sql_text` from `by_sql` to isolate cardinality. Join on `sql_id` in Grafana.
 - `sql_text` is truncated at 200 characters. When truncated, `sql_text_truncated="true"`.
 - `by_host` is capped by `top_host_limit` to prevent cardinality explosion from Kubernetes Pod IP churn.
+- `by_database` uses PI API dimension group `db` (not `db.name`). The dimension key inside the response is `db.name`.
+- `collection_errors_total` is initialized to 0 per instance on first successful collection to prevent No Data in alerting.
+- `wait_event_type` contains the actual event type (`CPU`, `io`, `Lock`) resolved from the `db.wait_event.type` dimension key.
 
 ## Cardinality estimate
 
@@ -63,9 +67,10 @@ Maximum time series with 10 instances.
 | Top SQL (by_sql + sql_info) | 10 × 2 × 10 | 200 |
 | User | ~10 × 10 | 100 |
 | Host | 20 × 10 | 200 |
+| Database | ~5 × 10 | 50 |
 | Error counter | 10 | 10 |
 | Internal (3) | 3 | 3 |
-| **Total** | | **~813** |
+| **Total** | | **~863** |
 
 Cycle reset keeps the total bounded. Adding exported tags increases label count per series but does not increase the number of series.
 
@@ -125,7 +130,7 @@ open http://localhost:9090/targets
 
 ## PI API call mapping
 
-4 PI API calls per instance per cycle.
+5 PI API calls per instance per cycle.
 
 | # | API Call | Metrics Produced |
 |---|----------|-----------------|
@@ -133,3 +138,12 @@ open http://localhost:9090/targets
 | 2 | `pi:DescribeDimensionKeys` GroupBy `db.sql_tokenized` | `db_load_by_sql`, `sql_info` |
 | 3 | `pi:GetResourceMetrics` GroupBy `db.user` | `db_load_by_user` |
 | 4 | `pi:GetResourceMetrics` GroupBy `db.host` | `db_load_by_host` |
+| 5 | `pi:GetResourceMetrics` GroupBy `db` | `db_load_by_database` |
+
+## Reference
+
+- [Performance Insights API - DimensionGroup](https://docs.aws.amazon.com/performance-insights/latest/APIReference/API_DimensionGroup.html) — Supported dimension groups and dimensions per engine
+- [Performance Insights API - GetResourceMetrics](https://docs.aws.amazon.com/performance-insights/latest/APIReference/API_GetResourceMetrics.html) — Time-series metric retrieval
+- [Performance Insights API - DescribeDimensionKeys](https://docs.aws.amazon.com/performance-insights/latest/APIReference/API_DescribeDimensionKeys.html) — Top N dimension key retrieval
+- [Using the Performance Insights API](https://docs.aws.amazon.com/AmazonRDS/latest/AuroraUserGuide/USER_PerfInsights.API.html) — Aurora User Guide overview
+- [Prometheus Operator - ServiceMonitor](https://github.com/prometheus-operator/prometheus-operator/blob/main/Documentation/api-reference/api.md#monitoring.coreos.com/v1.ServiceMonitor) — ServiceMonitor CRD reference

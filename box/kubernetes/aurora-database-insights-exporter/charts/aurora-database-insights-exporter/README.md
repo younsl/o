@@ -96,10 +96,15 @@ The following table lists the configurable parameters and their default values.
 | prometheusRules.namespace | string | `""` | Namespace override for PrometheusRule |
 | prometheusRules.labels | object | `{}` | Additional labels for PrometheusRule |
 | prometheusRules.rules | list | See `values.yaml` | Alerting rules |
-| config | object | `{"aws":{"region":"ap-northeast-2"},"collection":{"intervalSeconds":60,"topHostLimit":20,"topSqlLimit":10},"discovery":{"exportedTags":[],"intervalSeconds":300}}` | adie config (mounted as ConfigMap) |
+| config | object | `{"aws":{"region":"ap-northeast-2"},"collection":{"intervalSeconds":60,"topHostLimit":20,"topSqlLimit":10},"discovery":{"engine":"aurora-mysql","exclude":{"identifiers":[]},"exportedTags":[],"include":{"identifiers":[],"tags":[]},"intervalSeconds":300,"requirePIEnabled":true}}` | adie config (mounted as ConfigMap) |
 | config.aws.region | string | `"ap-northeast-2"` | AWS region |
 | config.discovery.intervalSeconds | int | `300` | Discovery interval in seconds |
+| config.discovery.engine | string | `"aurora-mysql"` | Target RDS engine to discover |
+| config.discovery.requirePIEnabled | bool | `true` | Only discover instances with Performance Insights enabled |
 | config.discovery.exportedTags | list | `[]` | AWS tags to export as Prometheus labels (YACE-style exportedTags) |
+| config.discovery.include.identifiers | list | `[]` | Regex patterns for instance identifiers to include |
+| config.discovery.include.tags | list | `[]` | AWS tag filters (AND logic) |
+| config.discovery.exclude.identifiers | list | `[]` | Regex patterns for instance identifiers to exclude |
 | config.collection.intervalSeconds | int | `60` | Collection interval in seconds |
 | config.collection.topSqlLimit | int | `10` | Top SQL limit per instance |
 | config.collection.topHostLimit | int | `20` | Top host limit per instance |

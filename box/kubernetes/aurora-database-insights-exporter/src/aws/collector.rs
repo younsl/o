@@ -1,3 +1,4 @@
+use std::collections::HashMap;
 use std::sync::Arc;
 
 use aws_sdk_pi::Client as PiClient;
@@ -20,7 +21,7 @@ pub trait PiCollector: Send + Sync {
         group: &str,
         limit: Option<i32>,
         period: i32,
-    ) -> Result<Vec<(String, String, f64)>, String>;
+    ) -> Result<Vec<(HashMap<String, String>, f64)>, String>;
 
     async fn describe_dimension_keys(
         &self,
@@ -55,7 +56,7 @@ impl PiCollector for AwsPiCollector {
         group: &str,
         limit: Option<i32>,
         period: i32,
-    ) -> Result<Vec<(String, String, f64)>, String> {
+    ) -> Result<Vec<(HashMap<String, String>, f64)>, String> {
         let now = Utc::now();
         let start = now - chrono::Duration::seconds(i64::from(period) * 2);
 
@@ -91,17 +92,18 @@ impl PiCollector for AwsPiCollector {
             if let Some(key_map) = metric.key.as_ref()
                 && let Some(dimensions) = key_map.dimensions.as_ref()
             {
-                let dim_key = dimensions.keys().next().cloned().unwrap_or_default();
-                let dim_value = dimensions.values().next().cloned().unwrap_or_default();
+                let dims: HashMap<String, String> = dimensions
+                    .iter()
+                    .map(|(k, v)| (k.clone(), v.clone()))
+                    .collect();
 
-                // Get the latest datapoint value
                 let value = metric
                     .data_points()
                     .last()
                     .map(|dp| dp.value)
                     .unwrap_or(0.0);
 
-                results.push((dim_key, dim_value, value));
+                results.push((dims, value));
             }
         }
 
@@ -177,14 +179,17 @@ pub async fn collect_instance_metrics<P: PiCollector>(
     let mut db_load_total = 0.0;
     let mut wait_events = Vec::new();
 
-    for (wait_event_type, wait_event, value) in &wait_event_data {
+    for (dims, value) in &wait_event_data {
+        let wait_event_name = dims.get("db.wait_event.name").cloned().unwrap_or_default();
+        let wait_event_type = dims.get("db.wait_event.type").cloned().unwrap_or_default();
+
         db_load_total += value;
-        if wait_event_type.to_uppercase() == "CPU" || wait_event.to_uppercase().contains("CPU") {
+        if wait_event_type.to_uppercase() == "CPU" {
             db_load_cpu += value;
         }
         wait_events.push(WaitEventMetric {
-            wait_event: wait_event.clone(),
-            wait_event_type: wait_event_type.clone(),
+            wait_event: wait_event_name,
+            wait_event_type,
             value: *value,
         });
     }
@@ -192,67 +197,114 @@ pub async fn collect_instance_metrics<P: PiCollector>(
     let db_load_non_cpu = (db_load_total - db_load_cpu).max(0.0);
 
     // 2. Top SQL (DescribeDimensionKeys grouped by db.sql_tokenized)
-    let sql_data = pi
+    let top_sql: Vec<SqlMetric> = match pi
         .describe_dimension_keys(
             resource_id,
             "db.sql_tokenized",
             config.top_sql_limit,
             period,
         )
-        .await?;
-
-    let top_sql: Vec<SqlMetric> = sql_data
-        .iter()
-        .map(|dk| {
-            let sql_id = dk
-                .dimensions
-                .iter()
-                .find(|(k, _)| k.contains("id"))
-                .map(|(_, v)| v.clone())
-                .unwrap_or_default();
-            let raw_text = dk
-                .dimensions
-                .iter()
-                .find(|(k, _)| k.contains("statement"))
-                .map(|(_, v)| v.clone())
-                .unwrap_or_default();
-
-            let (sql_text, sql_text_truncated) = truncate_sql(&raw_text);
-
-            SqlMetric {
-                sql_id,
-                sql_text,
-                sql_text_truncated,
-                value: dk.value,
-            }
-        })
-        .collect();
+        .await
+    {
+        Ok(sql_data) => sql_data
+            .iter()
+            .map(|dk| {
+                let sql_id = dk
+                    .dimensions
+                    .iter()
+                    .find(|(k, _)| k.contains("id"))
+                    .map(|(_, v)| v.clone())
+                    .unwrap_or_default();
+                let raw_text = dk
+                    .dimensions
+                    .iter()
+                    .find(|(k, _)| k.contains("statement"))
+                    .map(|(_, v)| v.clone())
+                    .unwrap_or_default();
+                let (sql_text, sql_text_truncated) = truncate_sql(&raw_text);
+                SqlMetric {
+                    sql_id,
+                    sql_text,
+                    sql_text_truncated,
+                    value: dk.value,
+                }
+            })
+            .collect(),
+        Err(e) => {
+            tracing::debug!(
+                instance = %instance.db_instance_identifier,
+                error = %e,
+                "Failed to collect top SQL. Skipping"
+            );
+            vec![]
+        }
+    };
 
     // 3. Users (GetResourceMetrics grouped by db.user)
-    let user_data = pi
+    let users: Vec<UserMetric> = match pi
         .get_resource_metrics_grouped(resource_id, "db.user", None, period)
-        .await?;
-
-    let users: Vec<UserMetric> = user_data
-        .iter()
-        .map(|(_, user, value)| UserMetric {
-            db_user: user.clone(),
-            value: *value,
-        })
-        .collect();
+        .await
+    {
+        Ok(data) => data
+            .iter()
+            .map(|(dims, value)| UserMetric {
+                db_user: dims.get("db.user.name").cloned().unwrap_or_default(),
+                value: *value,
+            })
+            .collect(),
+        Err(e) => {
+            tracing::debug!(
+                instance = %instance.db_instance_identifier,
+                error = %e,
+                "Failed to collect user metrics. Skipping"
+            );
+            vec![]
+        }
+    };
 
     // 4. Hosts (GetResourceMetrics grouped by db.host)
-    let host_data = pi
+    let hosts: Vec<HostMetric> = match pi
         .get_resource_metrics_grouped(resource_id, "db.host", Some(config.top_host_limit), period)
-        .await?;
+        .await
+    {
+        Ok(data) => data
+            .iter()
+            .map(|(dims, value)| HostMetric {
+                client_host: dims.get("db.host.name").cloned().unwrap_or_default(),
+                value: *value,
+            })
+            .collect(),
+        Err(e) => {
+            tracing::debug!(
+                instance = %instance.db_instance_identifier,
+                error = %e,
+                "Failed to collect host metrics. Skipping"
+            );
+            vec![]
+        }
+    };
 
-    let hosts: Vec<HostMetric> = host_data
-        .iter()
-        .map(|(_, host, value)| HostMetric {
-            client_host: host.clone(),
-            value: *value,
-        })
-        .collect();
+    // 5. Databases (GetResourceMetrics grouped by db)
+    let databases: Vec<DatabaseMetric> = match pi
+        .get_resource_metrics_grouped(resource_id, "db", None, period)
+        .await
+    {
+        Ok(data) => data
+            .iter()
+            .map(|(dims, value)| DatabaseMetric {
+                db_name: dims.get("db.name").cloned().unwrap_or_default(),
+                value: *value,
+            })
+            .collect(),
+        Err(e) => {
+            tracing::debug!(
+                instance = %instance.db_instance_identifier,
+                error = %e,
+                "Failed to collect database metrics. Skipping"
+            );
+            vec![]
+        }
+    };
 
     Ok(MetricSnapshot {
         labels,
@@ -264,6 +316,7 @@ pub async fn collect_instance_metrics<P: PiCollector>(
         top_sql,
         users,
         hosts,
+        databases,
     })
 }
 
@@ -417,18 +470,34 @@ mod tests {
     }
 
     struct MockPiCollector {
-        wait_events: Vec<(String, String, f64)>,
+        wait_events: Vec<(HashMap<String, String>, f64)>,
         sql_keys: Vec<DimensionKeyResult>,
-        users: Vec<(String, String, f64)>,
-        hosts: Vec<(String, String, f64)>,
+        users: Vec<(HashMap<String, String>, f64)>,
+        hosts: Vec<(HashMap<String, String>, f64)>,
+        databases: Vec<(HashMap<String, String>, f64)>,
     }
 
     impl MockPiCollector {
         fn new() -> Self {
             Self {
                 wait_events: vec![
-                    ("CPU".to_string(), "cpu".to_string(), 1.5),
-                    ("IO".to_string(), "io/table/sql/handler".to_string(), 0.8),
+                    (
+                        HashMap::from([
+                            ("db.wait_event.name".to_string(), "CPU".to_string()),
+                            ("db.wait_event.type".to_string(), "CPU".to_string()),
+                        ]),
+                        1.5,
+                    ),
+                    (
+                        HashMap::from([
+                            (
+                                "db.wait_event.name".to_string(),
+                                "io/table/sql/handler".to_string(),
+                            ),
+                            ("db.wait_event.type".to_string(), "IO".to_string()),
+                        ]),
+                        0.8,
+                    ),
                 ],
                 sql_keys: vec![DimensionKeyResult {
                     dimensions: vec![
@@ -440,8 +509,18 @@ mod tests {
                     ],
                     value: 1.2,
                 }],
-                users: vec![("db.user".to_string(), "app_user".to_string(), 2.0)],
-                hosts: vec![("db.host".to_string(), "10.0.1.100".to_string(), 1.5)],
+                users: vec![(
+                    HashMap::from([("db.user.name".to_string(), "app_user".to_string())]),
+                    2.0,
+                )],
+                hosts: vec![(
+                    HashMap::from([("db.host.name".to_string(), "10.0.1.100".to_string())]),
+                    1.5,
+                )],
+                databases: vec![(
+                    HashMap::from([("db.name".to_string(), "orders_db".to_string())]),
+                    1.0,
+                )],
             }
         }
     }
@@ -453,11 +532,12 @@ mod tests {
             group: &str,
             _limit: Option<i32>,
             _period: i32,
-        ) -> Result<Vec<(String, String, f64)>, String> {
+        ) -> Result<Vec<(HashMap<String, String>, f64)>, String> {
             match group {
                 "db.wait_event" => Ok(self.wait_events.clone()),
                 "db.user" => Ok(self.users.clone()),
                 "db.host" => Ok(self.hosts.clone()),
+                "db" => Ok(self.databases.clone()),
                 _ => Ok(vec![]),
             }
         }
@@ -512,9 +592,27 @@ mod tests {
     async fn test_collect_instance_cpu_non_cpu_split() {
         let mut pi = MockPiCollector::new();
         pi.wait_events = vec![
-            ("CPU".to_string(), "cpu".to_string(), 3.0),
-            ("IO".to_string(), "io/read".to_string(), 1.0),
-            ("Lock".to_string(), "lock/row".to_string(), 0.5),
+            (
+                HashMap::from([
+                    ("db.wait_event.name".to_string(), "CPU".to_string()),
+                    ("db.wait_event.type".to_string(), "CPU".to_string()),
+                ]),
+                3.0,
+            ),
+            (
+                HashMap::from([
+                    ("db.wait_event.name".to_string(), "io/read".to_string()),
+                    ("db.wait_event.type".to_string(), "IO".to_string()),
+                ]),
+                1.0,
+            ),
+            (
+                HashMap::from([
+                    ("db.wait_event.name".to_string(), "lock/row".to_string()),
+                    ("db.wait_event.type".to_string(), "Lock".to_string()),
+                ]),
+                0.5,
+            ),
         ];
         let instance = test_instance();
         let config = CollectionConfig::default();
@@ -564,7 +662,7 @@ mod tests {
             _group: &str,
             _limit: Option<i32>,
             _period: i32,
-        ) -> Result<Vec<(String, String, f64)>, String> {
+        ) -> Result<Vec<(HashMap<String, String>, f64)>, String> {
             Err("ThrottlingException: Rate exceeded".to_string())
         }
 

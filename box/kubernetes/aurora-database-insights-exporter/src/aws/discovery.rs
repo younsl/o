@@ -119,13 +119,13 @@ pub fn filter_instances(
     let mut result = Vec::new();
 
     for inst in raw {
-        // Must be aurora-mysql
-        if inst.engine != "aurora-mysql" {
+        // Engine filter
+        if inst.engine != config.engine {
             continue;
         }
 
-        // Must have PI enabled
-        if !inst.performance_insights_enabled {
+        // Performance Insights filter
+        if config.require_pi_enabled && !inst.performance_insights_enabled {
             continue;
         }
 

@@ -30,6 +30,7 @@ Aurora MySQL → PI API → adie → /metrics → Prometheus → Grafana
 - [Configuration](docs/configuration.md) — Config file, CLI flags, IAM permissions
 - [Metrics](docs/metrics.md) — Metric list, label structure, cardinality estimate
 - [Helm](docs/helm.md) — Chart installation and OCI registry usage
+- [Comparison](docs/comparison.md) — Differences from mysqld_exporter
 
 ## Development
 

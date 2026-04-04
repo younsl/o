@@ -85,10 +85,27 @@ config:
   discovery:
     # -- (int) Discovery interval in seconds
     intervalSeconds: 300
+    # -- (string) Target RDS engine to discover
+    engine: aurora-mysql
+    # -- (bool) Only discover instances with Performance Insights enabled
+    requirePIEnabled: true
     # -- (list) AWS tags to export as Prometheus labels (YACE-style exportedTags)
     exportedTags: []
       # - Team
       # - Environment
+    include:
+      # -- (list) Regex patterns for instance identifiers to include
+      identifiers: []
+        # - "^prod-"
+      # -- (list) AWS tag filters (AND logic)
+      tags: []
+        # - key: Environment
+        #   value: production
+    exclude:
+      # -- (list) Regex patterns for instance identifiers to exclude
+      identifiers: []
+        # - "-test$"
+        # - "-dev-"
   collection:
     # -- (int) Collection interval in seconds
     intervalSeconds: 60

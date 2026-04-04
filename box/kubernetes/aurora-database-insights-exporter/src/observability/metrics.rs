@@ -33,6 +33,7 @@ pub struct Metrics {
     pub db_load_by_sql: GaugeVec,
     pub db_load_by_user: GaugeVec,
     pub db_load_by_host: GaugeVec,
+    pub db_load_by_database: GaugeVec,
     pub sql_info: GaugeVec,
 
     // Exporter internal
@@ -78,6 +79,13 @@ impl Metrics {
             v
         };
         let host_refs: Vec<&str> = host_labels.iter().map(|s| s.as_str()).collect();
+
+        let db_labels = {
+            let mut v = inst_labels.clone();
+            v.push("db_name".to_string());
+            v
+        };
+        let db_refs: Vec<&str> = db_labels.iter().map(|s| s.as_str()).collect();
 
         let sql_info_labels = {
             let mut v = inst_labels.clone();
@@ -159,6 +167,15 @@ impl Metrics {
         )
         .unwrap();
 
+        let db_load_by_database = GaugeVec::new(
+            Opts::new(
+                "aurora_dbinsights_db_load_by_database",
+                "DB Load by database schema",
+            ),
+            &db_refs,
+        )
+        .unwrap();
+
         let sql_info = GaugeVec::new(
             Opts::new(
                 "aurora_dbinsights_sql_info",
@@ -206,6 +223,7 @@ impl Metrics {
             Box::new(db_load_by_sql.clone()),
             Box::new(db_load_by_user.clone()),
             Box::new(db_load_by_host.clone()),
+            Box::new(db_load_by_database.clone()),
             Box::new(sql_info.clone()),
             Box::new(scrape_duration_seconds.clone()),
             Box::new(discovery_instances_total.clone()),
@@ -228,6 +246,7 @@ impl Metrics {
             db_load_by_sql,
             db_load_by_user,
             db_load_by_host,
+            db_load_by_database,
             sql_info,
             scrape_duration_seconds,
             discovery_instances_total,
@@ -242,6 +261,7 @@ impl Metrics {
         self.remove_matching_labels(&self.db_load_by_sql, labels);
         self.remove_matching_labels(&self.db_load_by_user, labels);
         self.remove_matching_labels(&self.db_load_by_host, labels);
+        self.remove_matching_labels(&self.db_load_by_database, labels);
         self.remove_matching_labels(&self.sql_info, labels);
     }
 
@@ -293,6 +313,11 @@ impl Metrics {
 
         // Reset dynamic labels first
         self.reset_dynamic_labels(&snapshot.labels);
+
+        // Touch error counter to ensure it exists with value 0 for this instance (prevents No Data in alerting)
+        let _ = self
+            .collection_errors_total
+            .with_label_values(&[&snapshot.labels.instance]);
 
         // Instance-level metrics
         self.db_load.with_label_values(&base).set(snapshot.db_load);
@@ -347,6 +372,13 @@ impl Metrics {
             let mut lv = base.clone();
             lv.push(&h.client_host);
             self.db_load_by_host.with_label_values(&lv).set(h.value);
+        }
+
+        // Databases
+        for d in &snapshot.databases {
+            let mut lv = base.clone();
+            lv.push(&d.db_name);
+            self.db_load_by_database.with_label_values(&lv).set(d.value);
         }
     }
 
@@ -428,6 +460,10 @@ mod tests {
             hosts: vec![HostMetric {
                 client_host: "10.0.1.100".to_string(),
                 value: 1.8,
+            }],
+            databases: vec![DatabaseMetric {
+                db_name: "orders_db".to_string(),
+                value: 2.0,
             }],
         }
     }

@@ -99,6 +99,7 @@ pub struct MetricSnapshot {
     pub top_sql: Vec<SqlMetric>,
     pub users: Vec<UserMetric>,
     pub hosts: Vec<HostMetric>,
+    pub databases: Vec<DatabaseMetric>,
 }
 
 #[derive(Debug, Clone)]
@@ -125,6 +126,12 @@ pub struct UserMetric {
 #[derive(Debug, Clone)]
 pub struct HostMetric {
     pub client_host: String,
+    pub value: f64,
+}
+
+#[derive(Debug, Clone)]
+pub struct DatabaseMetric {
+    pub db_name: String,
     pub value: f64,
 }
 

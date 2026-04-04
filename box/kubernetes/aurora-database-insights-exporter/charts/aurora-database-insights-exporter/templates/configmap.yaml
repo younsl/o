@@ -13,9 +13,29 @@ data:
       region: {{ .Values.config.aws.region | quote }}
     discovery:
       interval_seconds: {{ .Values.config.discovery.intervalSeconds }}
+      engine: {{ .Values.config.discovery.engine | quote }}
+      require_pi_enabled: {{ .Values.config.discovery.requirePIEnabled }}
       {{- with .Values.config.discovery.exportedTags }}
       exported_tags:
         {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.config.discovery.include }}
+      include:
+        {{- with .identifiers }}
+        identifier:
+          {{- toYaml . | nindent 10 }}
+        {{- end }}
+        {{- with .tags }}
+        tags:
+          {{- toYaml . | nindent 10 }}
+        {{- end }}
+      {{- end }}
+      {{- with .Values.config.discovery.exclude }}
+      exclude:
+        {{- with .identifiers }}
+        identifier:
+          {{- toYaml . | nindent 10 }}
+        {{- end }}
       {{- end }}
     collection:
       interval_seconds: {{ .Values.config.collection.intervalSeconds }}

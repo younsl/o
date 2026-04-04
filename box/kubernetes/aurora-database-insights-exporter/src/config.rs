@@ -62,10 +62,13 @@ pub struct AwsConfig {
 #[serde(default)]
 pub struct DiscoveryConfig {
     pub interval_seconds: u64,
+    /// Target RDS engine to discover.
+    pub engine: String,
+    /// Only discover instances with Performance Insights enabled.
+    pub require_pi_enabled: bool,
     pub include: FilterConfig,
     pub exclude: FilterConfig,
     /// AWS tags to export as additional Prometheus labels (YACE-style exported_tags).
-    /// e.g., ["Team", "Service", "Environment"] → labels: tag_team, tag_service, tag_environment
     pub exported_tags: Vec<String>,
 }
 
@@ -141,6 +144,8 @@ impl Default for DiscoveryConfig {
     fn default() -> Self {
         Self {
             interval_seconds: 300,
+            engine: "aurora-mysql".to_string(),
+            require_pi_enabled: true,
             include: FilterConfig::default(),
             exclude: FilterConfig::default(),
             exported_tags: Vec::new(),
@@ -226,6 +231,11 @@ impl Config {
     }
 
     fn validate(&self) -> Result<()> {
+        if self.discovery.engine.is_empty() {
+            return Err(Error::Config(
+                "discovery.engine must not be empty".to_string(),
+            ));
+        }
         if self.discovery.interval_seconds == 0 {
             return Err(Error::Config(
                 "discovery.interval_seconds must be > 0".to_string(),

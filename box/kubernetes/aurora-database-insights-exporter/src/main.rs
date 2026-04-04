@@ -46,6 +46,8 @@ async fn main() {
 
     tracing::info!(
         region = %config.aws.region,
+        engine = %config.discovery.engine,
+        require_pi_enabled = config.discovery.require_pi_enabled,
         discovery_interval_seconds = config.discovery.interval_seconds,
         collection_interval_seconds = config.collection.interval_seconds,
         top_sql_limit = config.collection.top_sql_limit,
