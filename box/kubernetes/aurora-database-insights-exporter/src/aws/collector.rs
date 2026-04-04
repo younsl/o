@@ -89,19 +89,20 @@ impl PiCollector for AwsPiCollector {
         let mut results = Vec::new();
         for metric in resp.metric_list() {
             if let Some(key_map) = metric.key.as_ref()
-                && let Some(dimensions) = key_map.dimensions.as_ref() {
-                    let dim_key = dimensions.keys().next().cloned().unwrap_or_default();
-                    let dim_value = dimensions.values().next().cloned().unwrap_or_default();
+                && let Some(dimensions) = key_map.dimensions.as_ref()
+            {
+                let dim_key = dimensions.keys().next().cloned().unwrap_or_default();
+                let dim_value = dimensions.values().next().cloned().unwrap_or_default();
 
-                    // Get the latest datapoint value
-                    let value = metric
-                        .data_points()
-                        .last()
-                        .map(|dp| dp.value)
-                        .unwrap_or(0.0);
+                // Get the latest datapoint value
+                let value = metric
+                    .data_points()
+                    .last()
+                    .map(|dp| dp.value)
+                    .unwrap_or(0.0);
 
-                    results.push((dim_key, dim_value, value));
-                }
+                results.push((dim_key, dim_value, value));
+            }
         }
 
         Ok(results)
@@ -192,7 +193,12 @@ pub async fn collect_instance_metrics<P: PiCollector>(
 
     // 2. Top SQL (DescribeDimensionKeys grouped by db.sql_tokenized)
     let sql_data = pi
-        .describe_dimension_keys(resource_id, "db.sql_tokenized", config.top_sql_limit, period)
+        .describe_dimension_keys(
+            resource_id,
+            "db.sql_tokenized",
+            config.top_sql_limit,
+            period,
+        )
         .await?;
 
     let top_sql: Vec<SqlMetric> = sql_data
@@ -237,12 +243,7 @@ pub async fn collect_instance_metrics<P: PiCollector>(
 
     // 4. Hosts (GetResourceMetrics grouped by db.host)
     let host_data = pi
-        .get_resource_metrics_grouped(
-            resource_id,
-            "db.host",
-            Some(config.top_host_limit),
-            period,
-        )
+        .get_resource_metrics_grouped(resource_id, "db.host", Some(config.top_host_limit), period)
         .await?;
 
     let hosts: Vec<HostMetric> = host_data
@@ -342,9 +343,7 @@ pub async fn collection_loop<P: PiCollector + 'static>(
     metrics: Arc<Metrics>,
     ready_flag: Arc<RwLock<bool>>,
 ) {
-    let semaphore = Arc::new(tokio::sync::Semaphore::new(
-        config.max_concurrent_api_calls,
-    ));
+    let semaphore = Arc::new(tokio::sync::Semaphore::new(config.max_concurrent_api_calls));
     let mut interval =
         tokio::time::interval(std::time::Duration::from_secs(config.interval_seconds));
     let mut cycle: u64 = 0;
@@ -359,16 +358,18 @@ pub async fn collection_loop<P: PiCollector + 'static>(
             continue;
         }
 
-        tracing::info!(cycle, instances = instances.len(), "Collection cycle started");
+        tracing::info!(
+            cycle,
+            instances = instances.len(),
+            "Collection cycle started"
+        );
         let start = std::time::Instant::now();
 
         let (collected, failed) =
             run_collection_cycle(&*pi, &instances, &region, &config, &metrics, &semaphore).await;
 
         let duration = start.elapsed();
-        metrics
-            .scrape_duration_seconds
-            .set(duration.as_secs_f64());
+        metrics.scrape_duration_seconds.set(duration.as_secs_f64());
 
         tracing::info!(
             cycle,
@@ -684,15 +685,8 @@ mod tests {
         let metrics = Arc::new(Metrics::new(&[]));
         let semaphore = Arc::new(tokio::sync::Semaphore::new(5));
 
-        let (collected, failed) = run_collection_cycle(
-            &pi,
-            &instances,
-            "us-east-1",
-            &config,
-            &metrics,
-            &semaphore,
-        )
-        .await;
+        let (collected, failed) =
+            run_collection_cycle(&pi, &instances, "us-east-1", &config, &metrics, &semaphore).await;
 
         assert_eq!(collected, 0);
         assert_eq!(failed, 1);
@@ -729,10 +723,7 @@ mod tests {
         pi.sql_keys = vec![DimensionKeyResult {
             dimensions: vec![
                 ("db.sql_tokenized.id".to_string(), "LONG1".to_string()),
-                (
-                    "db.sql_tokenized.statement".to_string(),
-                    long_sql,
-                ),
+                ("db.sql_tokenized.statement".to_string(), long_sql),
             ],
             value: 5.0,
         }];

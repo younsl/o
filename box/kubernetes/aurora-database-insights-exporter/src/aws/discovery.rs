@@ -73,17 +73,12 @@ impl RdsDiscoverer for AwsRdsDiscoverer {
                         .as_deref()
                         .unwrap_or_default()
                         .to_string(),
-                    performance_insights_enabled: db
-                        .performance_insights_enabled
-                        .unwrap_or(false),
+                    performance_insights_enabled: db.performance_insights_enabled.unwrap_or(false),
                     tags: db
                         .tag_list()
                         .iter()
                         .filter_map(|t: &aws_sdk_rds::types::Tag| {
-                            Some((
-                                t.key.as_ref()?.to_string(),
-                                t.value.as_ref()?.to_string(),
-                            ))
+                            Some((t.key.as_ref()?.to_string(), t.value.as_ref()?.to_string()))
                         })
                         .collect(),
                 };
@@ -223,10 +218,8 @@ pub async fn run_discovery_cycle<D: RdsDiscoverer>(
         .cloned()
         .collect();
 
-    let old_ids: std::collections::HashSet<_> = current
-        .iter()
-        .map(|i| i.dbi_resource_id.clone())
-        .collect();
+    let old_ids: std::collections::HashSet<_> =
+        current.iter().map(|i| i.dbi_resource_id.clone()).collect();
     let added = new_ids.difference(&old_ids).count();
     let total = new_instances.len();
 
@@ -271,8 +264,20 @@ mod tests {
     #[test]
     fn test_filter_aurora_mysql_only() {
         let raw = vec![
-            make_raw_instance("aurora-writer", "aurora-mysql", true, "db.r6g.large", vec![]),
-            make_raw_instance("pg-writer", "aurora-postgresql", true, "db.r6g.large", vec![]),
+            make_raw_instance(
+                "aurora-writer",
+                "aurora-mysql",
+                true,
+                "db.r6g.large",
+                vec![],
+            ),
+            make_raw_instance(
+                "pg-writer",
+                "aurora-postgresql",
+                true,
+                "db.r6g.large",
+                vec![],
+            ),
             make_raw_instance("mysql-rds", "mysql", true, "db.r6g.large", vec![]),
         ];
         let config = default_discovery_config();
@@ -310,7 +315,13 @@ mod tests {
     fn test_filter_exclude_pattern() {
         let raw = vec![
             make_raw_instance("prod-writer", "aurora-mysql", true, "db.r6g.large", vec![]),
-            make_raw_instance("prod-test-writer", "aurora-mysql", true, "db.r6g.large", vec![]),
+            make_raw_instance(
+                "prod-test-writer",
+                "aurora-mysql",
+                true,
+                "db.r6g.large",
+                vec![],
+            ),
         ];
         let mut config = default_discovery_config();
         config.exclude.identifier = vec!["-test-".to_string()];
@@ -442,7 +453,9 @@ mod tests {
         let config = default_discovery_config();
         let state = Arc::new(RwLock::new(Vec::new()));
 
-        let result = run_discovery_cycle(&discoverer, &config, &state).await.unwrap();
+        let result = run_discovery_cycle(&discoverer, &config, &state)
+            .await
+            .unwrap();
         assert_eq!(result.added, 2);
         assert_eq!(result.removed_instances.len(), 0);
         assert_eq!(state.read().await.len(), 2);
@@ -471,22 +484,30 @@ mod tests {
         };
         let config = default_discovery_config();
 
-        let result = run_discovery_cycle(&discoverer, &config, &state).await.unwrap();
+        let result = run_discovery_cycle(&discoverer, &config, &state)
+            .await
+            .unwrap();
         assert_eq!(result.added, 1);
         assert_eq!(result.removed_instances.len(), 1);
-        assert_eq!(result.removed_instances[0].db_instance_identifier, "old-writer");
-        assert_eq!(state.read().await.len(), 1);
         assert_eq!(
-            state.read().await[0].db_instance_identifier,
-            "new-writer"
+            result.removed_instances[0].db_instance_identifier,
+            "old-writer"
         );
+        assert_eq!(state.read().await.len(), 1);
+        assert_eq!(state.read().await[0].db_instance_identifier, "new-writer");
     }
 
     #[test]
     fn test_filter_include_and_exclude_combined() {
         let raw = vec![
             make_raw_instance("prod-writer", "aurora-mysql", true, "db.r6g.large", vec![]),
-            make_raw_instance("prod-test-writer", "aurora-mysql", true, "db.r6g.large", vec![]),
+            make_raw_instance(
+                "prod-test-writer",
+                "aurora-mysql",
+                true,
+                "db.r6g.large",
+                vec![],
+            ),
             make_raw_instance("dev-writer", "aurora-mysql", true, "db.r6g.large", vec![]),
         ];
         let mut config = default_discovery_config();
@@ -587,7 +608,9 @@ mod tests {
         };
         let config = default_discovery_config();
 
-        let result = run_discovery_cycle(&discoverer, &config, &state).await.unwrap();
+        let result = run_discovery_cycle(&discoverer, &config, &state)
+            .await
+            .unwrap();
         assert_eq!(result.added, 0);
         assert_eq!(result.removed_instances.len(), 0);
         assert_eq!(result.total, 1);

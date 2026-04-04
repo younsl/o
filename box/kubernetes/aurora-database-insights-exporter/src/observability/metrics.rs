@@ -1,6 +1,6 @@
-use prometheus::{core::Collector, CounterVec, Gauge, GaugeVec, Opts, Registry, TextEncoder};
+use prometheus::{CounterVec, Gauge, GaugeVec, Opts, Registry, TextEncoder, core::Collector};
 
-use crate::types::{tag_key_to_label, InstanceLabels, MetricSnapshot};
+use crate::types::{InstanceLabels, MetricSnapshot, tag_key_to_label};
 
 /// Build instance label names: 5 base + N exported tag labels.
 fn build_instance_label_names(exported_tags: &[String]) -> Vec<String> {

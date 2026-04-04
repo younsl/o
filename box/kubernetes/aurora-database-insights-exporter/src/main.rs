@@ -186,7 +186,10 @@ async fn discovery_loop(
         cycle += 1;
 
         if !*is_leader.read().await {
-            tracing::debug!(cycle, "Skipping discovery because this instance is not the leader");
+            tracing::debug!(
+                cycle,
+                "Skipping discovery because this instance is not the leader"
+            );
             continue;
         }
 
@@ -249,9 +252,7 @@ async fn collection_loop_with_leader(
     ready_flag: Arc<RwLock<bool>>,
     is_leader: Arc<RwLock<bool>>,
 ) {
-    let semaphore = Arc::new(tokio::sync::Semaphore::new(
-        config.max_concurrent_api_calls,
-    ));
+    let semaphore = Arc::new(tokio::sync::Semaphore::new(config.max_concurrent_api_calls));
     let mut interval =
         tokio::time::interval(std::time::Duration::from_secs(config.interval_seconds));
     let mut cycle: u64 = 0;
@@ -261,7 +262,10 @@ async fn collection_loop_with_leader(
         cycle += 1;
 
         if !*is_leader.read().await {
-            tracing::debug!(cycle, "Skipping collection because this instance is not the leader");
+            tracing::debug!(
+                cycle,
+                "Skipping collection because this instance is not the leader"
+            );
             continue;
         }
 
@@ -271,23 +275,20 @@ async fn collection_loop_with_leader(
             continue;
         }
 
-        tracing::info!(cycle, instances = instances.len(), "Collection cycle started");
+        tracing::info!(
+            cycle,
+            instances = instances.len(),
+            "Collection cycle started"
+        );
         let start = std::time::Instant::now();
 
         let (collected, failed) = aws::collector::run_collection_cycle(
-            &*pi,
-            &instances,
-            &region,
-            &config,
-            &metrics,
-            &semaphore,
+            &*pi, &instances, &region, &config, &metrics, &semaphore,
         )
         .await;
 
         let duration = start.elapsed();
-        metrics
-            .scrape_duration_seconds
-            .set(duration.as_secs_f64());
+        metrics.scrape_duration_seconds.set(duration.as_secs_f64());
 
         tracing::info!(
             cycle,

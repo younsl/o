@@ -2,8 +2,8 @@ use std::sync::Arc;
 
 use k8s_openapi::api::coordination::v1::{Lease, LeaseSpec};
 use k8s_openapi::apimachinery::pkg::apis::meta::v1::{MicroTime, ObjectMeta};
-use kube::api::{Api, Patch, PatchParams, PostParams};
 use kube::Client;
+use kube::api::{Api, Patch, PatchParams, PostParams};
 use tokio::sync::RwLock;
 
 use crate::config::LeaderElectionConfig;
@@ -141,9 +141,8 @@ impl LeaderElector {
                 let holder = spec
                     .and_then(|s| s.holder_identity.as_deref())
                     .unwrap_or("");
-                let duration_secs = spec
-                    .and_then(|s| s.lease_duration_seconds)
-                    .unwrap_or(15) as i64;
+                let duration_secs =
+                    spec.and_then(|s| s.lease_duration_seconds).unwrap_or(15) as i64;
 
                 if holder == self.identity {
                     self.renew_lease(lease_name).await?;

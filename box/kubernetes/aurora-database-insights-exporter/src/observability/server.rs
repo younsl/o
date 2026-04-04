@@ -108,7 +108,12 @@ mod tests {
         let resp = app.oneshot(req).await.unwrap();
         assert_eq!(resp.status(), StatusCode::OK);
 
-        let content_type = resp.headers().get("content-type").unwrap().to_str().unwrap();
+        let content_type = resp
+            .headers()
+            .get("content-type")
+            .unwrap()
+            .to_str()
+            .unwrap();
         assert!(content_type.contains("text/plain"));
     }
 
