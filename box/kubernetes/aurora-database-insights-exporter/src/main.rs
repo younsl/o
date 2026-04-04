@@ -20,6 +20,8 @@ use crate::observability::server::{AppState, create_router};
 use crate::types::AuroraInstance;
 
 const VERSION: &str = env!("CARGO_PKG_VERSION");
+const COMMIT: &str = env!("BUILD_COMMIT");
+const BUILD_DATE: &str = env!("BUILD_DATE");
 
 #[tokio::main]
 async fn main() {
@@ -40,6 +42,8 @@ async fn main() {
 
     tracing::info!(
         version = VERSION,
+        commit = COMMIT,
+        build_date = BUILD_DATE,
         config_path = %args.config.display(),
         "Starting aurora-database-insights-exporter"
     );

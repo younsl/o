@@ -2,7 +2,7 @@
 
 [![GitHub Container Registry](https://img.shields.io/badge/ghcr.io-aurora--database--insights--exporter-black?style=flat-square&logo=docker&logoColor=white)](https://github.com/younsl/o/pkgs/container/aurora-database-insights-exporter)
 [![Helm Chart](https://img.shields.io/badge/ghcr.io-charts%2Faurora--database--insights--exporter-black?style=flat-square&logo=helm&logoColor=white)](https://github.com/younsl/o/pkgs/container/charts%2Faurora-database-insights-exporter)
-[![Rust](https://img.shields.io/badge/rust-1.94-black?style=flat-square&logo=rust&logoColor=white)](https://www.rust-lang.org/)
+[![Rust](https://img.shields.io/badge/rust-1.94.1-black?style=flat-square&logo=rust&logoColor=white)](https://www.rust-lang.org/)
 [![GitHub license](https://img.shields.io/github/license/younsl/o?style=flat-square&color=black)](https://github.com/younsl/o/blob/main/LICENSE)
 
 Prometheus exporter for AWS Aurora MySQL [Database Insights](https://docs.aws.amazon.com/AmazonRDS/latest/AuroraUserGuide/USER_PerfInsights.html) (Performance Insights) metrics. Binary name: `adie`.
