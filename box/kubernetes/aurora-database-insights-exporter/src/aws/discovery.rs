@@ -615,4 +615,42 @@ mod tests {
         assert_eq!(result.removed_instances.len(), 0);
         assert_eq!(result.total, 1);
     }
+
+    #[test]
+    fn test_filter_custom_engine() {
+        let raw = vec![
+            make_raw_instance("aurora-pg", "aurora-postgresql", true, "db.r6g.large", vec![]),
+            make_raw_instance("aurora-my", "aurora-mysql", true, "db.r6g.large", vec![]),
+        ];
+        let mut config = default_discovery_config();
+        config.engine = "aurora-postgresql".to_string();
+        let result = filter_instances(&raw, &config).unwrap();
+        assert_eq!(result.len(), 1);
+        assert_eq!(result[0].db_instance_identifier, "aurora-pg");
+    }
+
+    #[test]
+    fn test_filter_require_pi_disabled() {
+        let raw = vec![
+            make_raw_instance("with-pi", "aurora-mysql", true, "db.r6g.large", vec![]),
+            make_raw_instance("no-pi", "aurora-mysql", false, "db.r6g.large", vec![]),
+        ];
+        let mut config = default_discovery_config();
+        config.require_pi_enabled = false;
+        let result = filter_instances(&raw, &config).unwrap();
+        assert_eq!(result.len(), 2);
+    }
+
+    #[test]
+    fn test_filter_require_pi_enabled_default() {
+        let raw = vec![
+            make_raw_instance("with-pi", "aurora-mysql", true, "db.r6g.large", vec![]),
+            make_raw_instance("no-pi", "aurora-mysql", false, "db.r6g.large", vec![]),
+        ];
+        let config = default_discovery_config();
+        assert!(config.require_pi_enabled);
+        let result = filter_instances(&raw, &config).unwrap();
+        assert_eq!(result.len(), 1);
+        assert_eq!(result[0].db_instance_identifier, "with-pi");
+    }
 }

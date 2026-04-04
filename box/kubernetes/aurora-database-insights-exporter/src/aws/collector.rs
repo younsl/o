@@ -837,4 +837,131 @@ mod tests {
         assert!(snapshot.top_sql[0].sql_text.ends_with("..."));
         assert_eq!(snapshot.top_sql[0].sql_id, "LONG1");
     }
+
+    /// Mock that fails only on specific dimension groups (simulates partial PI API failure).
+    struct PartialFailPiCollector;
+
+    impl PiCollector for PartialFailPiCollector {
+        async fn get_resource_metrics_grouped(
+            &self,
+            _resource_id: &str,
+            group: &str,
+            _limit: Option<i32>,
+            _period: i32,
+        ) -> Result<Vec<(HashMap<String, String>, f64)>, String> {
+            match group {
+                "db.wait_event" => Ok(vec![(
+                    HashMap::from([
+                        ("db.wait_event.name".to_string(), "CPU".to_string()),
+                        ("db.wait_event.type".to_string(), "CPU".to_string()),
+                    ]),
+                    1.0,
+                )]),
+                // user, host, db all fail
+                _ => Err("NotSupportedException".to_string()),
+            }
+        }
+
+        async fn describe_dimension_keys(
+            &self,
+            _resource_id: &str,
+            _group: &str,
+            _limit: i32,
+            _period: i32,
+        ) -> Result<Vec<DimensionKeyResult>, String> {
+            Err("NotSupportedException".to_string())
+        }
+    }
+
+    #[tokio::test]
+    async fn test_collect_instance_partial_failure_graceful() {
+        let pi = PartialFailPiCollector;
+        let instance = test_instance();
+        let config = CollectionConfig::default();
+
+        let snapshot = collect_instance_metrics(&pi, &instance, "us-east-1", &config)
+            .await
+            .unwrap();
+
+        // wait_event succeeds → db_load populated
+        assert_eq!(snapshot.db_load, 1.0);
+        assert_eq!(snapshot.db_load_cpu, 1.0);
+        assert_eq!(snapshot.wait_events.len(), 1);
+
+        // All others gracefully empty
+        assert!(snapshot.top_sql.is_empty());
+        assert!(snapshot.users.is_empty());
+        assert!(snapshot.hosts.is_empty());
+        assert!(snapshot.databases.is_empty());
+    }
+
+    #[tokio::test]
+    async fn test_collect_instance_wait_event_type_correct() {
+        let pi = MockPiCollector::new();
+        let instance = test_instance();
+        let config = CollectionConfig::default();
+
+        let snapshot = collect_instance_metrics(&pi, &instance, "ap-northeast-2", &config)
+            .await
+            .unwrap();
+
+        // First wait event: CPU
+        assert_eq!(snapshot.wait_events[0].wait_event, "CPU");
+        assert_eq!(snapshot.wait_events[0].wait_event_type, "CPU");
+
+        // Second wait event: IO
+        assert_eq!(snapshot.wait_events[1].wait_event, "io/table/sql/handler");
+        assert_eq!(snapshot.wait_events[1].wait_event_type, "IO");
+    }
+
+    #[tokio::test]
+    async fn test_collect_instance_database_metric() {
+        let pi = MockPiCollector::new();
+        let instance = test_instance();
+        let config = CollectionConfig::default();
+
+        let snapshot = collect_instance_metrics(&pi, &instance, "us-east-1", &config)
+            .await
+            .unwrap();
+
+        assert_eq!(snapshot.databases.len(), 1);
+        assert_eq!(snapshot.databases[0].db_name, "orders_db");
+        assert_eq!(snapshot.databases[0].value, 1.0);
+    }
+
+    #[tokio::test]
+    async fn test_collect_instance_user_host_correct_keys() {
+        let pi = MockPiCollector::new();
+        let instance = test_instance();
+        let config = CollectionConfig::default();
+
+        let snapshot = collect_instance_metrics(&pi, &instance, "us-east-1", &config)
+            .await
+            .unwrap();
+
+        assert_eq!(snapshot.users[0].db_user, "app_user");
+        assert_eq!(snapshot.hosts[0].client_host, "10.0.1.100");
+    }
+
+    #[tokio::test]
+    async fn test_run_collection_cycle_initializes_error_counter() {
+        let pi = MockPiCollector::new();
+        let instances = vec![test_instance()];
+        let config = CollectionConfig::default();
+        let metrics = Arc::new(Metrics::new(&[]));
+        let semaphore = Arc::new(tokio::sync::Semaphore::new(5));
+
+        run_collection_cycle(&pi, &instances, "us-east-1", &config, &metrics, &semaphore).await;
+
+        // Error counter should exist with value 0
+        let err = metrics
+            .collection_errors_total
+            .with_label_values(&["test-writer"])
+            .get();
+        assert_eq!(err, 0.0);
+
+        // Verify it appears in encoded output
+        let output = metrics.encode();
+        assert!(output.contains("aurora_dbinsights_collection_errors_total{instance=\"test-writer\"} 0"));
+    }
 }

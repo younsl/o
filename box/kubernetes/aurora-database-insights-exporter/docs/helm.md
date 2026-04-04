@@ -6,6 +6,8 @@ Helm chart is the recommended way to install aurora-database-insights-exporter o
 
 ```bash
 helm install aurora-database-insights-exporter charts/aurora-database-insights-exporter \
+  --namespace monitoring \
+  --create-namespace \
   --set config.aws.region=ap-northeast-2 \
   --set serviceAccount.annotations."eks\.amazonaws\.com/role-arn"=arn:aws:iam::123456789012:role/adie
 ```
@@ -22,6 +24,8 @@ Install directly from OCI registry:
 
 ```bash
 helm install aurora-database-insights-exporter oci://ghcr.io/younsl/charts/aurora-database-insights-exporter \
+  --namespace monitoring \
+  --create-namespace \
   --version 0.1.0 \
   --set config.aws.region=ap-northeast-2
 ```
@@ -33,13 +37,15 @@ helm pull oci://ghcr.io/younsl/charts/aurora-database-insights-exporter \
   --untar --version 0.1.0
 
 helm install aurora-database-insights-exporter ./aurora-database-insights-exporter \
+  --namespace monitoring \
+  --create-namespace \
   --set config.aws.region=ap-northeast-2
 ```
 
 ## Uninstall
 
 ```bash
-helm uninstall aurora-database-insights-exporter
+helm uninstall aurora-database-insights-exporter --namespace monitoring
 ```
 
 ## Values reference

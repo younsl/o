@@ -497,4 +497,30 @@ collection:
         config.collection.top_host_limit = 50;
         assert!(config.validate().is_ok());
     }
+
+    #[test]
+    fn test_validate_empty_engine() {
+        let mut config = Config::default();
+        config.discovery.engine = "".to_string();
+        assert!(config.validate().is_err());
+    }
+
+    #[test]
+    fn test_default_engine_and_pi() {
+        let config = Config::default();
+        assert_eq!(config.discovery.engine, "aurora-mysql");
+        assert!(config.discovery.require_pi_enabled);
+    }
+
+    #[test]
+    fn test_parse_yaml_with_engine() {
+        let yaml = r#"
+discovery:
+  engine: "aurora-postgresql"
+  require_pi_enabled: false
+"#;
+        let config: Config = serde_yaml::from_str(yaml).unwrap();
+        assert_eq!(config.discovery.engine, "aurora-postgresql");
+        assert!(!config.discovery.require_pi_enabled);
+    }
 }
