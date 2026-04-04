@@ -1,0 +1,60 @@
+[package]
+name = "aurora-database-insights-exporter"
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.94.0"
+authors = ["younsl <cysl@kakao.com>"]
+description = "Prometheus exporter for AWS Aurora MySQL Database Insights (Performance Insights) metrics"
+license = "MIT"
+repository = "https://github.com/younsl/o"
+
+[[bin]]
+name = "adie"
+path = "src/main.rs"
+
+[dependencies]
+# AWS SDK
+aws-config = { version = "1", features = ["behavior-version-latest"] }
+aws-sdk-rds = "1"
+aws-sdk-pi = "1"
+
+# Async runtime
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "signal", "sync", "time"] }
+
+# HTTP server
+axum = "0.8"
+
+# Prometheus
+prometheus = { version = "0.13", features = ["process"] }
+
+# CLI and config
+clap = { version = "4", features = ["derive", "env"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+serde_yaml = "0.9"
+
+# Logging
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["json", "env-filter"] }
+
+# Error handling
+thiserror = "2"
+
+# Kubernetes (leader election)
+kube = { version = "3.0", features = ["client"] }
+k8s-openapi = { version = "0.27", features = ["v1_31"] }
+
+# Utilities
+regex = "1"
+chrono = "0.4"
+
+[dev-dependencies]
+tokio = { version = "1", features = ["test-util"] }
+tower = { version = "0.5", features = ["util"] }
+http-body-util = "0.1"
+
+[profile.release]
+opt-level = "z"
+lto = true
+strip = true
+panic = "abort"

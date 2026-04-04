@@ -1,0 +1,109 @@
+# -- (int) Number of replicas
+replicaCount: 1
+
+image:
+  # -- (string) Container image repository
+  repository: ghcr.io/younsl/aurora-database-insights-exporter
+  # -- (string) Image tag (defaults to chart appVersion)
+  tag: ""
+  # -- (string) Image pull policy
+  pullPolicy: IfNotPresent
+
+# -- (list) Image pull secrets for private registries
+imagePullSecrets: []
+  # - name: regcred
+
+serviceAccount:
+  # -- (bool) Create a ServiceAccount
+  create: true
+  # -- (string) ServiceAccount name (defaults to fullname template)
+  name: ""
+  # -- (object) Annotations for the ServiceAccount (e.g., IRSA role ARN)
+  annotations: {}
+
+service:
+  # -- (string) Service type
+  type: ClusterIP
+  # -- (int) Service port
+  port: 9090
+  # -- (string) Traffic distribution policy
+  trafficDistribution: ""
+
+serviceMonitor:
+  # -- (bool) Enable ServiceMonitor for Prometheus Operator
+  enabled: true
+  # -- (string) Scrape interval
+  interval: 60s
+  # -- (string) Scrape timeout
+  scrapeTimeout: 30s
+  # -- (object) Additional labels for ServiceMonitor
+  labels: {}
+
+# -- (object) adie config (mounted as ConfigMap)
+config:
+  aws:
+    # -- (string) AWS region
+    region: ap-northeast-2
+  discovery:
+    # -- (int) Discovery interval in seconds
+    intervalSeconds: 300
+    # -- (list) AWS tags to export as Prometheus labels (YACE-style exportedTags)
+    exportedTags: []
+      # - Team
+      # - Environment
+  collection:
+    # -- (int) Collection interval in seconds
+    intervalSeconds: 60
+    # -- (int) Top SQL limit per instance
+    topSqlLimit: 10
+    # -- (int) Top host limit per instance
+    topHostLimit: 20
+
+resources:
+  requests:
+    # -- (string) CPU request
+    cpu: 30m
+    # -- (string) Memory request
+    memory: 64Mi
+  limits:
+    # -- (string) Memory limit
+    memory: 128Mi
+  # CPU limits omitted (burstable)
+
+leaderElection:
+  # -- (bool) Enable leader election via Kubernetes Lease
+  enabled: true
+  # -- (string) Lease resource name
+  leaseName: adie-leader
+  # -- (int) Lease duration in seconds
+  leaseDurationSeconds: 15
+  # -- (int) Renew deadline in seconds
+  renewDeadlineSeconds: 10
+  # -- (int) Retry period in seconds
+  retryPeriodSeconds: 2
+
+pdb:
+  # -- (bool) Enable PodDisruptionBudget
+  enabled: false
+  # -- (int) Maximum number of pods that can be unavailable during disruption
+  maxUnavailable: 1
+  # -- (string) Unhealthy pod eviction policy (IfReady or AlwaysAllow)
+  unhealthyPodEvictionPolicy: IfReady
+
+# -- (list) Container resize policy for in-place resource updates (requires InPlacePodVerticalScaling feature gate)
+resizePolicy: []
+
+# -- (object) Node selector
+nodeSelector: {}
+# -- (list) Tolerations
+tolerations: []
+# -- (object) Affinity rules
+affinity: {}
+# -- (list) Topology spread constraints
+topologySpreadConstraints: []
+# - maxSkew: 1
+#   topologyKey: topology.kubernetes.io/zone
+#   whenUnsatisfiable: ScheduleAnyway
+#   labelSelector:
+#     matchLabels:
+#       app.kubernetes.io/name: aurora-database-insights-exporter

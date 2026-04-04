@@ -1,0 +1,9 @@
+apiVersion: v2
+name: prometheus-aurora-database-insights-exporter
+description: Prometheus exporter for AWS Aurora MySQL Database Insights metrics
+type: application
+version: 0.1.0
+appVersion: "0.1.0"
+maintainers:
+  - name: younsl
+    email: cysl@kakao.com
