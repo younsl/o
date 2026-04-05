@@ -3,6 +3,7 @@ Note: EnvoyFilter custom resource requires Istio to be installed in the cluster.
 Without Istio, the EnvoyFilter resources created by this chart will not work properly.
 */ -}}
 
+{{- if (.Capabilities.APIVersions.Has "networking.istio.io/v1alpha3") }}
 {{- range $name, $filter := .Values.envoyFilters }}
 {{- if $filter.enabled }}
 ---
@@ -41,5 +42,6 @@ spec:
   configPatches:
     {{- toYaml $filter.configPatches | nindent 4 }}
   {{- end }}
+{{- end }}
 {{- end }}
 {{- end }}
