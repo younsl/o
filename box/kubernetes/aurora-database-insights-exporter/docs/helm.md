@@ -2,6 +2,10 @@
 
 Helm chart is the recommended way to install aurora-database-insights-exporter on Kubernetes. This document covers install, OCI registry usage, and values reference.
 
+## Prerequisites
+
+[OCI registry](https://helm.sh/docs/topics/registries/) support was introduced as experimental in Helm v3.8.0 and became GA in [v3.13.0](https://github.com/helm/helm/releases/tag/v3.13.0). Helm v3.8.0+ is required to use OCI-based chart installation.
+
 ## Install
 
 ```bash
