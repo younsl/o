@@ -25,6 +25,10 @@ const BUILD_DATE: &str = env!("BUILD_DATE");
 
 #[tokio::main]
 async fn main() {
+    rustls::crypto::aws_lc_rs::default_provider()
+        .install_default()
+        .expect("Failed to install default CryptoProvider");
+
     let init_start = std::time::Instant::now();
     let args = Args::parse();
 
