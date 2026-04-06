@@ -312,7 +312,10 @@ async fn collection_loop_with_leader(
 
         let instances = instances_state.read().await.clone();
         if instances.is_empty() {
-            tracing::debug!(cycle = cycle + 1, "No instances discovered. Skipping collection");
+            tracing::debug!(
+                cycle = cycle + 1,
+                "No instances discovered. Skipping collection"
+            );
             tokio::time::sleep(std::time::Duration::from_secs(5)).await;
             continue;
         }
