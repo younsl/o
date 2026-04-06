@@ -8,7 +8,7 @@ mod types;
 use std::sync::Arc;
 
 use clap::Parser;
-use tokio::sync::RwLock;
+use tokio::sync::{Notify, RwLock};
 use tracing_subscriber::EnvFilter;
 
 use crate::aws::collector::AwsPiCollector;
@@ -86,9 +86,11 @@ async fn main() {
     let metrics = Arc::new(Metrics::new(&config.discovery.exported_tags));
     let ready_flag = Arc::new(RwLock::new(false));
     let is_leader = Arc::new(RwLock::new(!config.leader_election.enabled)); // true if LE disabled
+    let leader_notify = Arc::new(Notify::new());
+    let discovery_notify = Arc::new(Notify::new());
 
     tracing::info!(
-        metrics_count = 14,
+        metrics_count = metrics.registry.gather().len(),
         exported_tag_labels = config.discovery.exported_tags.len(),
         "Registered Prometheus metrics"
     );
@@ -101,7 +103,13 @@ async fn main() {
             lease_duration_seconds = config.leader_election.lease_duration_seconds,
             "Initializing leader election"
         );
-        match LeaderElector::new(config.leader_election.clone(), is_leader.clone()).await {
+        match LeaderElector::new(
+            config.leader_election.clone(),
+            is_leader.clone(),
+            leader_notify.clone(),
+        )
+        .await
+        {
             Ok(le) => {
                 let le = Arc::new(le);
                 let le_run = le.clone();
@@ -125,6 +133,8 @@ async fn main() {
     let disc_metrics = metrics.clone();
     let disc_region = config.aws.region.clone();
     let disc_leader = is_leader.clone();
+    let disc_notify = discovery_notify.clone();
+    let disc_leader_notify = leader_notify.clone();
     tokio::spawn(async move {
         discovery_loop(
             discoverer,
@@ -133,6 +143,8 @@ async fn main() {
             disc_metrics,
             disc_region,
             disc_leader,
+            disc_notify,
+            disc_leader_notify,
         )
         .await;
     });
@@ -144,6 +156,8 @@ async fn main() {
     let coll_ready = ready_flag.clone();
     let coll_region = config.aws.region.clone();
     let coll_leader = is_leader.clone();
+    let coll_notify = discovery_notify.clone();
+    let coll_leader_notify = leader_notify.clone();
     tokio::spawn(async move {
         collection_loop_with_leader(
             pi_collector,
@@ -153,6 +167,8 @@ async fn main() {
             coll_metrics,
             coll_ready,
             coll_leader,
+            coll_notify,
+            coll_leader_notify,
         )
         .await;
     });
@@ -214,6 +230,7 @@ fn init_logging(config: &config::LoggingConfig) {
     }
 }
 
+#[allow(clippy::too_many_arguments)]
 async fn discovery_loop(
     discoverer: Arc<AwsRdsDiscoverer>,
     config: config::DiscoveryConfig,
@@ -221,6 +238,8 @@ async fn discovery_loop(
     metrics: Arc<Metrics>,
     region: String,
     is_leader: Arc<RwLock<bool>>,
+    discovery_notify: Arc<Notify>,
+    leader_notify: Arc<Notify>,
 ) {
     let mut cycle: u64 = 0;
 
@@ -228,9 +247,9 @@ async fn discovery_loop(
         if !*is_leader.read().await {
             tracing::debug!(
                 cycle = cycle + 1,
-                "Skipping discovery because this instance is not the leader"
+                "Skipping discovery because this instance is not the leader. Waiting for leader notification"
             );
-            tokio::time::sleep(std::time::Duration::from_secs(2)).await;
+            leader_notify.notified().await;
             continue;
         }
 
@@ -256,6 +275,11 @@ async fn discovery_loop(
                     duration_ms = duration.as_millis() as u64,
                     "Discovery cycle completed"
                 );
+
+                // Wake collection loop immediately when instances are available
+                if result.total > 0 {
+                    discovery_notify.notify_waiters();
+                }
 
                 // Clean stale metrics for removed instances
                 for removed_inst in &result.removed_instances {
@@ -288,6 +312,7 @@ async fn discovery_loop(
     }
 }
 
+#[allow(clippy::too_many_arguments)]
 async fn collection_loop_with_leader(
     pi: Arc<AwsPiCollector>,
     instances_state: Arc<RwLock<Vec<AuroraInstance>>>,
@@ -296,6 +321,8 @@ async fn collection_loop_with_leader(
     metrics: Arc<Metrics>,
     ready_flag: Arc<RwLock<bool>>,
     is_leader: Arc<RwLock<bool>>,
+    discovery_notify: Arc<Notify>,
+    leader_notify: Arc<Notify>,
 ) {
     let semaphore = Arc::new(tokio::sync::Semaphore::new(config.max_concurrent_api_calls));
     let mut cycle: u64 = 0;
@@ -304,9 +331,9 @@ async fn collection_loop_with_leader(
         if !*is_leader.read().await {
             tracing::debug!(
                 cycle = cycle + 1,
-                "Skipping collection because this instance is not the leader"
+                "Skipping collection because this instance is not the leader. Waiting for leader notification"
             );
-            tokio::time::sleep(std::time::Duration::from_secs(2)).await;
+            leader_notify.notified().await;
             continue;
         }
 
@@ -314,9 +341,9 @@ async fn collection_loop_with_leader(
         if instances.is_empty() {
             tracing::debug!(
                 cycle = cycle + 1,
-                "No instances discovered. Skipping collection"
+                "No instances discovered. Waiting for discovery notification"
             );
-            tokio::time::sleep(std::time::Duration::from_secs(5)).await;
+            discovery_notify.notified().await;
             continue;
         }
 
@@ -346,11 +373,13 @@ async fn collection_loop_with_leader(
         );
 
         // Enable readiness after first successful collection
-        let mut ready = ready_flag.write().await;
-        if !*ready && collected > 0 {
-            *ready = true;
-            tracing::info!("Readiness probe enabled after first successful collection");
-        }
+        {
+            let mut ready = ready_flag.write().await;
+            if !*ready && collected > 0 {
+                *ready = true;
+                tracing::info!("Readiness probe enabled after first successful collection");
+            }
+        } // write lock dropped before sleep
 
         tokio::time::sleep(std::time::Duration::from_secs(config.interval_seconds)).await;
     }

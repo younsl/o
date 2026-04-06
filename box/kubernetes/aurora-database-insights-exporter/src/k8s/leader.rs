@@ -4,7 +4,7 @@ use k8s_openapi::api::coordination::v1::{Lease, LeaseSpec};
 use k8s_openapi::apimachinery::pkg::apis::meta::v1::{MicroTime, ObjectMeta};
 use kube::Client;
 use kube::api::{Api, Patch, PatchParams, PostParams};
-use tokio::sync::RwLock;
+use tokio::sync::{Notify, RwLock};
 
 use crate::config::LeaderElectionConfig;
 
@@ -14,12 +14,14 @@ pub struct LeaderElector {
     config: LeaderElectionConfig,
     identity: String,
     is_leader: Arc<RwLock<bool>>,
+    leader_notify: Arc<Notify>,
 }
 
 impl LeaderElector {
     pub async fn new(
         config: LeaderElectionConfig,
         is_leader: Arc<RwLock<bool>>,
+        leader_notify: Arc<Notify>,
     ) -> Result<Self, String> {
         let client = Client::try_default().await.map_err(|e| e.to_string())?;
         let api: Api<Lease> = Api::namespaced(client, &config.lease_namespace);
@@ -41,6 +43,7 @@ impl LeaderElector {
             config,
             identity,
             is_leader,
+            leader_notify,
         })
     }
 
@@ -53,6 +56,7 @@ impl LeaderElector {
                     if !*leader {
                         *leader = true;
                         tracing::info!(identity = %self.identity, "Acquired leadership");
+                        self.leader_notify.notify_waiters();
                     }
                 }
                 Ok(false) => {
