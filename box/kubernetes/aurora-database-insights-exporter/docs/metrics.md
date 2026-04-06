@@ -1,6 +1,6 @@
 # Metrics
 
-15 Prometheus metrics exposed by aurora-database-insights-exporter.
+17 Prometheus metrics exposed by aurora-database-insights-exporter.
 
 ## Label structure
 
@@ -39,16 +39,19 @@ Dynamic label metrics (marked with Reset=yes) are cleared and re-populated every
 | 5 | `aurora_dbinsights_up` | Gauge | base + tag_* | — | — | Collection status (1=ok, 0=error) |
 | 6 | `aurora_dbinsights_db_load_by_wait_event` | Gauge | base + tag_* + `wait_event`, `wait_event_type` | yes | 25 | DB Load by wait event |
 | 7 | `aurora_dbinsights_db_load_by_sql` | Gauge | base + tag_* + `sql_id` | yes | 10/inst | DB Load by top SQL |
-| 8 | `aurora_dbinsights_sql_info` | Gauge | base + tag_* + `sql_id`, `sql_text`, `sql_text_truncated` | yes | 10/inst | SQL text info (value=1) |
-| 9 | `aurora_dbinsights_db_load_by_user` | Gauge | base + tag_* + `db_user` | yes | — | DB Load by database user |
-| 10 | `aurora_dbinsights_db_load_by_host` | Gauge | base + tag_* + `client_host` | yes | 20/inst | DB Load by client host |
-| 11 | `aurora_dbinsights_db_load_by_database` | Gauge | base + tag_* + `db_name` | yes | — | DB Load by database schema |
-| 12 | `aurora_dbinsights_scrape_duration_seconds` | Gauge | — | — | — | Collection cycle duration |
-| 13 | `aurora_dbinsights_discovery_instances_total` | Gauge | — | — | — | Discovered instance count |
-| 14 | `aurora_dbinsights_collection_errors_total` | Counter | `instance` | — | — | Cumulative PI API error count |
-| 15 | `aurora_dbinsights_discovery_duration_seconds` | Gauge | — | — | — | Discovery cycle duration |
+| 8 | `aurora_dbinsights_sql_calls_per_sec` | Gauge | base + tag_* + `sql_id` | yes | 10/inst | Calls per second by top SQL |
+| 9 | `aurora_dbinsights_sql_avg_latency_per_call` | Gauge | base + tag_* + `sql_id` | yes | 10/inst | Avg latency (ms) per call by top SQL |
+| 10 | `aurora_dbinsights_sql_info` | Gauge | base + tag_* + `sql_id`, `sql_text`, `sql_text_truncated` | yes | 10/inst | SQL text info (value=1) |
+| 11 | `aurora_dbinsights_db_load_by_user` | Gauge | base + tag_* + `db_user` | yes | — | DB Load by database user |
+| 12 | `aurora_dbinsights_db_load_by_host` | Gauge | base + tag_* + `client_host` | yes | 20/inst | DB Load by client host |
+| 13 | `aurora_dbinsights_db_load_by_database` | Gauge | base + tag_* + `db_name` | yes | — | DB Load by database schema |
+| 14 | `aurora_dbinsights_scrape_duration_seconds` | Gauge | — | — | — | Collection cycle duration |
+| 15 | `aurora_dbinsights_discovery_instances_total` | Gauge | — | — | — | Discovered instance count |
+| 16 | `aurora_dbinsights_collection_errors_total` | Counter | `instance` | — | — | Cumulative PI API error count |
+| 17 | `aurora_dbinsights_discovery_duration_seconds` | Gauge | — | — | — | Discovery cycle duration |
 
 Notes:
+- `sql_calls_per_sec` and `sql_avg_latency_per_call` are fetched via `AdditionalMetrics` parameter on the same `DescribeDimensionKeys` call — no extra API calls.
 - `sql_info` is an info metric (value always 1) that separates `sql_text` from `by_sql` to isolate cardinality. Join on `sql_id` in Grafana.
 - `sql_text` is truncated at 200 characters. When truncated, `sql_text_truncated="true"`.
 - `by_host` is capped by `top_host_limit` to prevent cardinality explosion from Kubernetes Pod IP churn.
@@ -64,13 +67,13 @@ Maximum time series with 10 instances.
 |----------|------------|-------------|
 | Instance-level (5) | 5 × 10 | 50 |
 | Wait event | 25 × 10 | 250 |
-| Top SQL (by_sql + sql_info) | 10 × 2 × 10 | 200 |
+| Top SQL (by_sql + calls + latency + sql_info) | 10 × 4 × 10 | 400 |
 | User | ~10 × 10 | 100 |
 | Host | 20 × 10 | 200 |
 | Database | ~5 × 10 | 50 |
 | Error counter | 10 | 10 |
 | Internal (3) | 3 | 3 |
-| **Total** | | **~863** |
+| **Total** | | **~1063** |
 
 Cycle reset keeps the total bounded. Adding exported tags increases label count per series but does not increase the number of series.
 
@@ -135,7 +138,7 @@ open http://localhost:9090/targets
 | # | API Call | Metrics Produced |
 |---|----------|-----------------|
 | 1 | `pi:GetResourceMetrics` GroupBy `db.wait_event` | `db_load`, `db_load_cpu`, `db_load_non_cpu`, `db_load_by_wait_event` |
-| 2 | `pi:DescribeDimensionKeys` GroupBy `db.sql_tokenized` | `db_load_by_sql`, `sql_info` |
+| 2 | `pi:DescribeDimensionKeys` GroupBy `db.sql_tokenized` | `db_load_by_sql`, `sql_calls_per_sec`, `sql_avg_latency_per_call`, `sql_info` |
 | 3 | `pi:GetResourceMetrics` GroupBy `db.user` | `db_load_by_user` |
 | 4 | `pi:GetResourceMetrics` GroupBy `db.host` | `db_load_by_host` |
 | 5 | `pi:GetResourceMetrics` GroupBy `db` | `db_load_by_database` |
