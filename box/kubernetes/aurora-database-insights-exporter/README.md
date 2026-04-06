@@ -5,19 +5,19 @@
 [![Rust](https://img.shields.io/badge/rust-1.94.1-black?style=flat-square&logo=rust&logoColor=white)](https://www.rust-lang.org/)
 [![GitHub license](https://img.shields.io/github/license/younsl/o?style=flat-square&color=black)](https://github.com/younsl/o/blob/main/LICENSE)
 
-Prometheus exporter for AWS Aurora MySQL [Database Insights](https://docs.aws.amazon.com/AmazonRDS/latest/AuroraUserGuide/USER_PerfInsights.html) (Performance Insights) metrics. Binary name: `adie`.
+Prometheus exporter for AWS Aurora MySQL/PostgreSQL [Database Insights](https://docs.aws.amazon.com/AmazonRDS/latest/AuroraUserGuide/USER_PerfInsights.html) (Performance Insights) metrics.
 
 ## Overview
 
-Collects DB Load metrics from the AWS Performance Insights API and exposes them as Prometheus metrics. Designed for Aurora MySQL with YACE-style auto-discovery.
+Focused on **DB Load analysis**: which wait events cause bottlenecks, which SQL statements consume the most active sessions, and how load distributes across users, hosts, and databases. Unlike generic PI exporters that collect all available OS/DB counters, this exporter is purpose-built for diagnosing Aurora performance issues through DB Load breakdown.
 
 ```
-Aurora MySQL → PI API → adie → /metrics → Prometheus → Grafana
+Aurora → PI API → exporter → /metrics → Prometheus → Grafana
 ```
 
 ## Features
 
-- **Auto-discovery**: Discovers Aurora MySQL instances via `rds:DescribeDBInstances`
+- **Auto-discovery**: Discovers Aurora instances via `rds:DescribeDBInstances`
 - **DB Load breakdown**: Wait events, Top SQL, per-user, per-host
 - **Exported tags**: AWS tags as Prometheus labels (YACE-style `exported_tags`)
 - **Background collection**: Cached metrics, no API calls during scrape
