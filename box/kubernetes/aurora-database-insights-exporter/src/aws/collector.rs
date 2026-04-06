@@ -342,32 +342,50 @@ pub async fn run_collection_cycle<P: PiCollector>(
     let mut collected = 0;
     let mut failed = 0;
 
+    let timeout_duration = std::time::Duration::from_secs(config.instance_timeout_seconds);
+
     for instance in instances {
         let labels = InstanceLabels::from_instance(instance, region);
         let mut last_error = None;
 
-        for attempt in 0..config.retry.max_attempts {
-            match collect_instance_metrics(pi, instance, region, config).await {
-                Ok(snapshot) => {
-                    metrics.apply_snapshot(&snapshot);
-                    collected += 1;
-                    last_error = None;
-                    break;
-                }
-                Err(e) => {
-                    last_error = Some(e.clone());
-                    if attempt + 1 < config.retry.max_attempts {
-                        let delay = config.retry.base_delay_ms * 2u64.pow(attempt);
-                        tracing::warn!(
-                            instance = %instance.db_instance_identifier,
-                            error = %e,
-                            retry_attempt = attempt + 1,
-                            next_retry_ms = delay,
-                            "PI API call failed. Retrying"
-                        );
-                        tokio::time::sleep(std::time::Duration::from_millis(delay)).await;
+        let result = tokio::time::timeout(timeout_duration, async {
+            for attempt in 0..config.retry.max_attempts {
+                match collect_instance_metrics(pi, instance, region, config).await {
+                    Ok(snapshot) => return Ok(snapshot),
+                    Err(e) => {
+                        if attempt + 1 < config.retry.max_attempts {
+                            let delay = config.retry.base_delay_ms * 2u64.pow(attempt);
+                            tracing::warn!(
+                                instance = %instance.db_instance_identifier,
+                                error = %e,
+                                retry_attempt = attempt + 1,
+                                next_retry_ms = delay,
+                                "PI API call failed. Retrying"
+                            );
+                            tokio::time::sleep(std::time::Duration::from_millis(delay)).await;
+                        } else {
+                            return Err(e);
+                        }
                     }
                 }
+            }
+            Err("max retries exhausted".to_string())
+        })
+        .await;
+
+        match result {
+            Ok(Ok(snapshot)) => {
+                metrics.apply_snapshot(&snapshot);
+                collected += 1;
+            }
+            Ok(Err(e)) => {
+                last_error = Some(e);
+            }
+            Err(_elapsed) => {
+                last_error = Some(format!(
+                    "instance collection timed out after {}s",
+                    config.instance_timeout_seconds
+                ));
             }
         }
 
@@ -375,8 +393,9 @@ pub async fn run_collection_cycle<P: PiCollector>(
             tracing::warn!(
                 instance = %instance.db_instance_identifier,
                 error = %e,
+                timeout_seconds = config.instance_timeout_seconds,
                 max_attempts = config.retry.max_attempts,
-                "Instance collection failed after all retries. Marking up=0"
+                "Instance collection failed. Marking up=0"
             );
             metrics.mark_instance_down(&labels);
             failed += 1;
@@ -933,6 +952,114 @@ mod tests {
 
         assert_eq!(snapshot.users[0].db_user, "app_user");
         assert_eq!(snapshot.hosts[0].client_host, "10.0.1.100");
+    }
+
+    /// Mock that sleeps longer than the timeout to simulate a hung PI API call.
+    struct SlowPiCollector {
+        delay: std::time::Duration,
+    }
+
+    impl PiCollector for SlowPiCollector {
+        async fn get_resource_metrics_grouped(
+            &self,
+            _resource_id: &str,
+            _group: &str,
+            _limit: Option<i32>,
+            _period: i32,
+        ) -> Result<Vec<(HashMap<String, String>, f64)>, String> {
+            tokio::time::sleep(self.delay).await;
+            Ok(vec![])
+        }
+
+        async fn describe_dimension_keys(
+            &self,
+            _resource_id: &str,
+            _group: &str,
+            _limit: i32,
+            _period: i32,
+        ) -> Result<Vec<DimensionKeyResult>, String> {
+            tokio::time::sleep(self.delay).await;
+            Ok(vec![])
+        }
+    }
+
+    #[tokio::test]
+    async fn test_run_collection_cycle_instance_timeout() {
+        let pi = SlowPiCollector {
+            delay: std::time::Duration::from_secs(5),
+        };
+        let instances = vec![test_instance()];
+        let mut config = CollectionConfig::default();
+        config.instance_timeout_seconds = 1; // 1s timeout, collector sleeps 5s
+        config.retry.max_attempts = 1;
+        let metrics = Arc::new(Metrics::new(&[]));
+        let semaphore = Arc::new(tokio::sync::Semaphore::new(5));
+
+        let start = std::time::Instant::now();
+        let (collected, failed) = run_collection_cycle(
+            &pi,
+            &instances,
+            "ap-northeast-2",
+            &config,
+            &metrics,
+            &semaphore,
+        )
+        .await;
+        let elapsed = start.elapsed();
+
+        assert_eq!(collected, 0);
+        assert_eq!(failed, 1);
+
+        // Should complete within ~1s, not 5s
+        assert!(elapsed < std::time::Duration::from_secs(3));
+
+        // up should be 0
+        let labels = InstanceLabels::from_instance(&instances[0], "ap-northeast-2");
+        let up_val = metrics.up.with_label_values(&labels.as_vec()).get();
+        assert_eq!(up_val, 0.0);
+    }
+
+    #[tokio::test]
+    async fn test_run_collection_cycle_timeout_does_not_block_other_instances() {
+        let pi = SlowPiCollector {
+            delay: std::time::Duration::from_secs(5),
+        };
+        let instances = vec![
+            test_instance(),
+            AuroraInstance {
+                dbi_resource_id: "db-TEST2".to_string(),
+                db_instance_identifier: "test-reader".to_string(),
+                engine: "aurora-mysql".to_string(),
+                db_cluster_identifier: "test-cluster".to_string(),
+                db_instance_class: "db.r6g.xlarge".to_string(),
+                vcpu: 4,
+                exported_tags: vec![],
+            },
+        ];
+        let mut config = CollectionConfig::default();
+        config.instance_timeout_seconds = 1;
+        config.retry.max_attempts = 1;
+        let metrics = Arc::new(Metrics::new(&[]));
+        let semaphore = Arc::new(tokio::sync::Semaphore::new(5));
+
+        let start = std::time::Instant::now();
+        let (collected, failed) = run_collection_cycle(
+            &pi,
+            &instances,
+            "ap-northeast-2",
+            &config,
+            &metrics,
+            &semaphore,
+        )
+        .await;
+        let elapsed = start.elapsed();
+
+        // Both instances should time out
+        assert_eq!(collected, 0);
+        assert_eq!(failed, 2);
+
+        // Should complete within ~2s (1s per instance), not 10s
+        assert!(elapsed < std::time::Duration::from_secs(4));
     }
 
     #[tokio::test]

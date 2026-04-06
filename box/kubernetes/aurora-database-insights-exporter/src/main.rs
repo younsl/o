@@ -61,6 +61,7 @@ async fn main() {
         top_sql_limit = config.collection.top_sql_limit,
         top_host_limit = config.collection.top_host_limit,
         max_concurrent_api_calls = config.collection.max_concurrent_api_calls,
+        instance_timeout_seconds = config.collection.instance_timeout_seconds,
         exported_tags = ?config.discovery.exported_tags,
         "Loaded configuration"
     );

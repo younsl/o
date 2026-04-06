@@ -113,6 +113,10 @@ config:
     topSqlLimit: 10
     # -- (int) Top host limit per instance
     topHostLimit: 20
+    # -- (int) Per-instance collection timeout in seconds.
+    # If a single instance's PI API metrics collection (including retries)
+    # exceeds this duration, it is aborted and marked as failed (up=0).
+    instanceTimeoutSeconds: 30
 
 # -- (list) Container resize policy for in-place resource updates (requires InPlacePodVerticalScaling feature gate)
 # @default -- See `values.yaml`

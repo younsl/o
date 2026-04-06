@@ -96,7 +96,7 @@ The following table lists the configurable parameters and their default values.
 | prometheusRules.namespace | string | `""` | Namespace override for PrometheusRule |
 | prometheusRules.labels | object | `{}` | Additional labels for PrometheusRule |
 | prometheusRules.rules | list | See `values.yaml` | Alerting rules |
-| config | object | `{"aws":{"region":"ap-northeast-2"},"collection":{"intervalSeconds":60,"topHostLimit":20,"topSqlLimit":10},"discovery":{"engine":"aurora-mysql","exclude":{"identifiers":[]},"exportedTags":[],"include":{"identifiers":[],"tags":[]},"intervalSeconds":300,"requirePIEnabled":true}}` | adie config (mounted as ConfigMap) |
+| config | object | `{"aws":{"region":"ap-northeast-2"},"collection":{"instanceTimeoutSeconds":30,"intervalSeconds":60,"topHostLimit":20,"topSqlLimit":10},"discovery":{"engine":"aurora-mysql","exclude":{"identifiers":[]},"exportedTags":[],"include":{"identifiers":[],"tags":[]},"intervalSeconds":300,"requirePIEnabled":true}}` | adie config (mounted as ConfigMap) |
 | config.aws.region | string | `"ap-northeast-2"` | AWS region |
 | config.discovery.intervalSeconds | int | `300` | Discovery interval in seconds |
 | config.discovery.engine | string | `"aurora-mysql"` | Target RDS engine to discover |
@@ -108,6 +108,7 @@ The following table lists the configurable parameters and their default values.
 | config.collection.intervalSeconds | int | `60` | Collection interval in seconds |
 | config.collection.topSqlLimit | int | `10` | Top SQL limit per instance |
 | config.collection.topHostLimit | int | `20` | Top host limit per instance |
+| config.collection.instanceTimeoutSeconds | int | `30` | Per-instance collection timeout in seconds. If a single instance's PI API metrics collection (including retries) exceeds this duration, it is aborted and marked as failed (up=0). |
 | resizePolicy | list | See `values.yaml` | Container resize policy for in-place resource updates (requires InPlacePodVerticalScaling feature gate) |
 | resources.requests.cpu | string | `"30m"` | CPU request |
 | resources.requests.memory | string | `"64Mi"` | Memory request |

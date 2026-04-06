@@ -93,6 +93,9 @@ pub struct CollectionConfig {
     pub top_sql_limit: i32,
     pub top_host_limit: i32,
     pub max_concurrent_api_calls: usize,
+    /// Per-instance timeout in seconds. If a single instance's metrics collection
+    /// exceeds this duration, it is aborted and marked as failed (up=0).
+    pub instance_timeout_seconds: u64,
     pub retry: RetryConfig,
 }
 
@@ -161,6 +164,7 @@ impl Default for CollectionConfig {
             top_sql_limit: 10,
             top_host_limit: 20,
             max_concurrent_api_calls: 5,
+            instance_timeout_seconds: 30,
             retry: RetryConfig::default(),
         }
     }
@@ -254,6 +258,11 @@ impl Config {
         if self.collection.top_host_limit < 1 || self.collection.top_host_limit > 50 {
             return Err(Error::Config(
                 "collection.top_host_limit must be 1..50".to_string(),
+            ));
+        }
+        if self.collection.instance_timeout_seconds == 0 {
+            return Err(Error::Config(
+                "collection.instance_timeout_seconds must be > 0".to_string(),
             ));
         }
         Ok(())
@@ -350,6 +359,13 @@ collection:
         assert!(config.validate().is_err());
 
         config.collection.top_host_limit = 51;
+        assert!(config.validate().is_err());
+    }
+
+    #[test]
+    fn test_validate_zero_instance_timeout() {
+        let mut config = Config::default();
+        config.collection.instance_timeout_seconds = 0;
         assert!(config.validate().is_err());
     }
 
