@@ -115,8 +115,6 @@ pub struct SqlMetric {
     pub sql_text: String,
     pub sql_text_truncated: bool,
     pub value: f64,
-    pub calls_per_sec: f64,
-    pub avg_latency_per_call: f64,
 }
 
 #[derive(Debug, Clone)]
@@ -238,8 +236,6 @@ mod tests {
             sql_text: "SELECT 1".to_string(),
             sql_text_truncated: false,
             value: 1.0,
-            calls_per_sec: 0.0,
-            avg_latency_per_call: 0.0,
         };
         assert!(!short.sql_text_truncated);
 
@@ -248,8 +244,6 @@ mod tests {
             sql_text: "x".repeat(200),
             sql_text_truncated: true,
             value: 2.0,
-            calls_per_sec: 0.0,
-            avg_latency_per_call: 0.0,
         };
         assert!(long.sql_text_truncated);
     }

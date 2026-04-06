@@ -84,13 +84,12 @@ async fn main() {
     // Shared state
     let instances_state: Arc<RwLock<Vec<AuroraInstance>>> = Arc::new(RwLock::new(Vec::new()));
     let metrics = Arc::new(Metrics::new(&config.discovery.exported_tags));
-    let ready_flag = Arc::new(RwLock::new(false));
     let is_leader = Arc::new(RwLock::new(!config.leader_election.enabled)); // true if LE disabled
     let leader_notify = Arc::new(Notify::new());
     let discovery_notify = Arc::new(Notify::new());
 
     tracing::info!(
-        metrics_count = metrics.registry.gather().len(),
+        metrics_count = metrics.registered_count,
         exported_tag_labels = config.discovery.exported_tags.len(),
         "Registered Prometheus metrics"
     );
@@ -153,7 +152,6 @@ async fn main() {
     let coll_state = instances_state.clone();
     let coll_config = config.collection.clone();
     let coll_metrics = metrics.clone();
-    let coll_ready = ready_flag.clone();
     let coll_region = config.aws.region.clone();
     let coll_leader = is_leader.clone();
     let coll_notify = discovery_notify.clone();
@@ -165,7 +163,6 @@ async fn main() {
             coll_region,
             coll_config,
             coll_metrics,
-            coll_ready,
             coll_leader,
             coll_notify,
             coll_leader_notify,
@@ -180,10 +177,7 @@ async fn main() {
     );
 
     // Start HTTP server
-    let state = AppState {
-        metrics,
-        ready: ready_flag,
-    };
+    let state = AppState { metrics };
     let app = create_router(state);
 
     let listener = tokio::net::TcpListener::bind(&config.server.listen_address)
@@ -319,7 +313,6 @@ async fn collection_loop_with_leader(
     region: String,
     config: config::CollectionConfig,
     metrics: Arc<Metrics>,
-    ready_flag: Arc<RwLock<bool>>,
     is_leader: Arc<RwLock<bool>>,
     discovery_notify: Arc<Notify>,
     leader_notify: Arc<Notify>,
@@ -371,15 +364,6 @@ async fn collection_loop_with_leader(
             total_duration_ms = duration.as_millis() as u64,
             "Collection cycle completed"
         );
-
-        // Enable readiness after first successful collection
-        {
-            let mut ready = ready_flag.write().await;
-            if !*ready && collected > 0 {
-                *ready = true;
-                tracing::info!("Readiness probe enabled after first successful collection");
-            }
-        } // write lock dropped before sleep
 
         tokio::time::sleep(std::time::Duration::from_secs(config.interval_seconds)).await;
     }

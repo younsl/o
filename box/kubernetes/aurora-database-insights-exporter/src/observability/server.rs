@@ -1,14 +1,12 @@
 use std::sync::Arc;
 
 use axum::{Router, extract::State, http::StatusCode, response::IntoResponse, routing::get};
-use tokio::sync::RwLock;
 
 use crate::observability::metrics::Metrics;
 
 #[derive(Clone)]
 pub struct AppState {
     pub metrics: Arc<Metrics>,
-    pub ready: Arc<RwLock<bool>>,
 }
 
 async fn metrics_handler(State(state): State<AppState>) -> impl IntoResponse {
@@ -24,13 +22,8 @@ async fn healthz_handler() -> impl IntoResponse {
     (StatusCode::OK, "ok")
 }
 
-async fn readyz_handler(State(state): State<AppState>) -> impl IntoResponse {
-    let ready = state.ready.read().await;
-    if *ready {
-        (StatusCode::OK, "ready")
-    } else {
-        (StatusCode::SERVICE_UNAVAILABLE, "not ready")
-    }
+async fn readyz_handler() -> impl IntoResponse {
+    (StatusCode::OK, "ready")
 }
 
 pub fn create_router(state: AppState) -> Router {
@@ -52,7 +45,6 @@ mod tests {
     fn test_state() -> AppState {
         AppState {
             metrics: Arc::new(Metrics::new(&[])),
-            ready: Arc::new(RwLock::new(false)),
         }
     }
 
@@ -71,21 +63,8 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_readyz_not_ready() {
+    async fn test_readyz_always_ready() {
         let app = create_router(test_state());
-        let req = Request::builder()
-            .uri("/readyz")
-            .body(Body::empty())
-            .unwrap();
-        let resp = app.oneshot(req).await.unwrap();
-        assert_eq!(resp.status(), StatusCode::SERVICE_UNAVAILABLE);
-    }
-
-    #[tokio::test]
-    async fn test_readyz_ready() {
-        let state = test_state();
-        *state.ready.write().await = true;
-        let app = create_router(state);
         let req = Request::builder()
             .uri("/readyz")
             .body(Body::empty())
