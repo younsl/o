@@ -222,21 +222,19 @@ async fn discovery_loop(
     region: String,
     is_leader: Arc<RwLock<bool>>,
 ) {
-    let mut interval =
-        tokio::time::interval(std::time::Duration::from_secs(config.interval_seconds));
     let mut cycle: u64 = 0;
 
     loop {
-        interval.tick().await;
-        cycle += 1;
-
         if !*is_leader.read().await {
             tracing::debug!(
-                cycle,
+                cycle = cycle + 1,
                 "Skipping discovery because this instance is not the leader"
             );
+            tokio::time::sleep(std::time::Duration::from_secs(2)).await;
             continue;
         }
+
+        cycle += 1;
 
         tracing::info!(cycle, "Discovery cycle started");
         let start = std::time::Instant::now();
@@ -285,6 +283,8 @@ async fn discovery_loop(
                 );
             }
         }
+
+        tokio::time::sleep(std::time::Duration::from_secs(config.interval_seconds)).await;
     }
 }
 
@@ -298,27 +298,26 @@ async fn collection_loop_with_leader(
     is_leader: Arc<RwLock<bool>>,
 ) {
     let semaphore = Arc::new(tokio::sync::Semaphore::new(config.max_concurrent_api_calls));
-    let mut interval =
-        tokio::time::interval(std::time::Duration::from_secs(config.interval_seconds));
     let mut cycle: u64 = 0;
 
     loop {
-        interval.tick().await;
-        cycle += 1;
-
         if !*is_leader.read().await {
             tracing::debug!(
-                cycle,
+                cycle = cycle + 1,
                 "Skipping collection because this instance is not the leader"
             );
+            tokio::time::sleep(std::time::Duration::from_secs(2)).await;
             continue;
         }
 
         let instances = instances_state.read().await.clone();
         if instances.is_empty() {
-            tracing::debug!(cycle, "No instances discovered. Skipping collection");
+            tracing::debug!(cycle = cycle + 1, "No instances discovered. Skipping collection");
+            tokio::time::sleep(std::time::Duration::from_secs(5)).await;
             continue;
         }
+
+        cycle += 1;
 
         tracing::info!(
             cycle,
@@ -349,6 +348,8 @@ async fn collection_loop_with_leader(
             *ready = true;
             tracing::info!("Readiness probe enabled after first successful collection");
         }
+
+        tokio::time::sleep(std::time::Duration::from_secs(config.interval_seconds)).await;
     }
 }
 
