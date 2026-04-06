@@ -31,6 +31,8 @@ pub struct Metrics {
     // Breakdown (dynamic, cycle reset)
     pub db_load_by_wait_event: GaugeVec,
     pub db_load_by_sql: GaugeVec,
+    pub sql_calls_per_sec: GaugeVec,
+    pub sql_avg_latency_per_call: GaugeVec,
     pub db_load_by_user: GaugeVec,
     pub db_load_by_host: GaugeVec,
     pub db_load_by_database: GaugeVec,
@@ -149,6 +151,24 @@ impl Metrics {
         )
         .unwrap();
 
+        let sql_calls_per_sec = GaugeVec::new(
+            Opts::new(
+                "aurora_dbinsights_sql_calls_per_sec",
+                "Calls per second by top SQL",
+            ),
+            &sql_refs,
+        )
+        .unwrap();
+
+        let sql_avg_latency_per_call = GaugeVec::new(
+            Opts::new(
+                "aurora_dbinsights_sql_avg_latency_per_call",
+                "Average latency in milliseconds per call by top SQL",
+            ),
+            &sql_refs,
+        )
+        .unwrap();
+
         let db_load_by_user = GaugeVec::new(
             Opts::new(
                 "aurora_dbinsights_db_load_by_user",
@@ -221,6 +241,8 @@ impl Metrics {
             Box::new(up.clone()),
             Box::new(db_load_by_wait_event.clone()),
             Box::new(db_load_by_sql.clone()),
+            Box::new(sql_calls_per_sec.clone()),
+            Box::new(sql_avg_latency_per_call.clone()),
             Box::new(db_load_by_user.clone()),
             Box::new(db_load_by_host.clone()),
             Box::new(db_load_by_database.clone()),
@@ -244,6 +266,8 @@ impl Metrics {
             up,
             db_load_by_wait_event,
             db_load_by_sql,
+            sql_calls_per_sec,
+            sql_avg_latency_per_call,
             db_load_by_user,
             db_load_by_host,
             db_load_by_database,
@@ -259,6 +283,8 @@ impl Metrics {
     pub fn reset_dynamic_labels(&self, labels: &InstanceLabels) {
         self.remove_matching_labels(&self.db_load_by_wait_event, labels);
         self.remove_matching_labels(&self.db_load_by_sql, labels);
+        self.remove_matching_labels(&self.sql_calls_per_sec, labels);
+        self.remove_matching_labels(&self.sql_avg_latency_per_call, labels);
         self.remove_matching_labels(&self.db_load_by_user, labels);
         self.remove_matching_labels(&self.db_load_by_host, labels);
         self.remove_matching_labels(&self.db_load_by_database, labels);
@@ -347,6 +373,12 @@ impl Metrics {
             let mut lv = base.clone();
             lv.push(&sql.sql_id);
             self.db_load_by_sql.with_label_values(&lv).set(sql.value);
+            self.sql_calls_per_sec
+                .with_label_values(&lv)
+                .set(sql.calls_per_sec);
+            self.sql_avg_latency_per_call
+                .with_label_values(&lv)
+                .set(sql.avg_latency_per_call);
 
             let truncated_str = if sql.sql_text_truncated {
                 "true"
@@ -452,6 +484,8 @@ mod tests {
                 sql_text: "SELECT * FROM orders WHERE user_id = ?".to_string(),
                 sql_text_truncated: false,
                 value: 1.5,
+                calls_per_sec: 42.5,
+                avg_latency_per_call: 3.14,
             }],
             users: vec![UserMetric {
                 db_user: "app_user".to_string(),
@@ -598,6 +632,8 @@ mod tests {
             sql_text: "x".repeat(200),
             sql_text_truncated: true,
             value: 3.0,
+            calls_per_sec: 0.0,
+            avg_latency_per_call: 0.0,
         }];
         m.apply_snapshot(&snap);
         assert!(m.encode().contains("sql_text_truncated=\"true\""));

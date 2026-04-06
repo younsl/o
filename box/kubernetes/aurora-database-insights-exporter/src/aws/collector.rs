@@ -36,6 +36,7 @@ pub trait PiCollector: Send + Sync {
 pub struct DimensionKeyResult {
     pub dimensions: Vec<(String, String)>,
     pub value: f64,
+    pub additional_metrics: HashMap<String, f64>,
 }
 
 /// Real AWS PI collector using the SDK.
@@ -135,6 +136,8 @@ impl PiCollector for AwsPiCollector {
             .identifier(resource_id)
             .metric("db.load.avg")
             .group_by(dim_group)
+            .additional_metrics("db.sql_tokenized.stats.calls_per_sec.avg")
+            .additional_metrics("db.sql_tokenized.stats.avg_latency_per_call.avg")
             .start_time(aws_sdk_pi::primitives::DateTime::from_secs(
                 start.timestamp(),
             ))
@@ -151,7 +154,13 @@ impl PiCollector for AwsPiCollector {
                 let dimensions: Vec<(String, String)> =
                     dims.iter().map(|(k, v)| (k.clone(), v.clone())).collect();
                 let value = key.total.unwrap_or(0.0);
-                results.push(DimensionKeyResult { dimensions, value });
+                let additional_metrics =
+                    key.additional_metrics.as_ref().cloned().unwrap_or_default();
+                results.push(DimensionKeyResult {
+                    dimensions,
+                    value,
+                    additional_metrics,
+                });
             }
         }
 
@@ -222,11 +231,23 @@ pub async fn collect_instance_metrics<P: PiCollector>(
                     .map(|(_, v)| v.clone())
                     .unwrap_or_default();
                 let (sql_text, sql_text_truncated) = truncate_sql(&raw_text);
+                let calls_per_sec = dk
+                    .additional_metrics
+                    .get("db.sql_tokenized.stats.calls_per_sec.avg")
+                    .copied()
+                    .unwrap_or(0.0);
+                let avg_latency_per_call = dk
+                    .additional_metrics
+                    .get("db.sql_tokenized.stats.avg_latency_per_call.avg")
+                    .copied()
+                    .unwrap_or(0.0);
                 SqlMetric {
                     sql_id,
                     sql_text,
                     sql_text_truncated,
                     value: dk.value,
+                    calls_per_sec,
+                    avg_latency_per_call,
                 }
             })
             .collect(),
@@ -508,6 +529,13 @@ mod tests {
                         ),
                     ],
                     value: 1.2,
+                    additional_metrics: HashMap::from([
+                        ("db.sql_tokenized.stats.calls_per_sec.avg".to_string(), 42.5),
+                        (
+                            "db.sql_tokenized.stats.avg_latency_per_call.avg".to_string(),
+                            3.14,
+                        ),
+                    ]),
                 }],
                 users: vec![(
                     HashMap::from([("db.user.name".to_string(), "app_user".to_string())]),
@@ -583,6 +611,8 @@ mod tests {
         assert_eq!(snapshot.top_sql.len(), 1);
         assert_eq!(snapshot.top_sql[0].sql_id, "SQL_ABC");
         assert!(!snapshot.top_sql[0].sql_text_truncated);
+        assert!((snapshot.top_sql[0].calls_per_sec - 42.5).abs() < 0.001);
+        assert!((snapshot.top_sql[0].avg_latency_per_call - 3.14).abs() < 0.001);
         assert_eq!(snapshot.users.len(), 1);
         assert_eq!(snapshot.hosts.len(), 1);
         assert_eq!(snapshot.labels.instance, "test-writer");
@@ -824,6 +854,7 @@ mod tests {
                 ("db.sql_tokenized.statement".to_string(), long_sql),
             ],
             value: 5.0,
+            additional_metrics: HashMap::new(),
         }];
         let instance = test_instance();
         let config = CollectionConfig::default();
