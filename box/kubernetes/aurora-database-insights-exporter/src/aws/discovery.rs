@@ -619,7 +619,13 @@ mod tests {
     #[test]
     fn test_filter_custom_engine() {
         let raw = vec![
-            make_raw_instance("aurora-pg", "aurora-postgresql", true, "db.r6g.large", vec![]),
+            make_raw_instance(
+                "aurora-pg",
+                "aurora-postgresql",
+                true,
+                "db.r6g.large",
+                vec![],
+            ),
             make_raw_instance("aurora-my", "aurora-mysql", true, "db.r6g.large", vec![]),
         ];
         let mut config = default_discovery_config();

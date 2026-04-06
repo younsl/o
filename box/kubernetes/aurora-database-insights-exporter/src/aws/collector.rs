@@ -962,6 +962,9 @@ mod tests {
 
         // Verify it appears in encoded output
         let output = metrics.encode();
-        assert!(output.contains("aurora_dbinsights_collection_errors_total{instance=\"test-writer\"} 0"));
+        assert!(
+            output
+                .contains("aurora_dbinsights_collection_errors_total{instance=\"test-writer\"} 0")
+        );
     }
 }
