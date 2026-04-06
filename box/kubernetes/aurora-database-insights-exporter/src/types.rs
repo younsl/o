@@ -96,6 +96,7 @@ pub struct MetricSnapshot {
     pub db_load_non_cpu: f64,
     pub vcpu: u32,
     pub wait_events: Vec<WaitEventMetric>,
+    pub top_sql_tokenized: Vec<SqlTokenizedMetric>,
     pub top_sql: Vec<SqlMetric>,
     pub users: Vec<UserMetric>,
     pub hosts: Vec<HostMetric>,
@@ -110,9 +111,18 @@ pub struct WaitEventMetric {
 }
 
 #[derive(Debug, Clone)]
+pub struct SqlTokenizedMetric {
+    pub sql_tokenized_id: String,
+    pub sql_tokenized_text: String,
+    pub sql_tokenized_text_truncated: bool,
+    pub value: f64,
+}
+
+#[derive(Debug, Clone)]
 pub struct SqlMetric {
     pub sql_id: String,
     pub sql_text: String,
+    pub sql_full_text: String,
     pub sql_text_truncated: bool,
     pub value: f64,
 }
@@ -234,6 +244,7 @@ mod tests {
         let short = SqlMetric {
             sql_id: "A".to_string(),
             sql_text: "SELECT 1".to_string(),
+            sql_full_text: "SELECT 1".to_string(),
             sql_text_truncated: false,
             value: 1.0,
         };
@@ -242,6 +253,7 @@ mod tests {
         let long = SqlMetric {
             sql_id: "B".to_string(),
             sql_text: "x".repeat(200),
+            sql_full_text: "x".repeat(300),
             sql_text_truncated: true,
             value: 2.0,
         };

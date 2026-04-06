@@ -9,7 +9,7 @@ fn build_instance_label_names(exported_tags: &[String]) -> Vec<String> {
         "resource_id".to_string(),
         "engine".to_string(),
         "region".to_string(),
-        "cluster".to_string(),
+        "db_cluster".to_string(),
     ];
     for tag_key in exported_tags {
         names.push(tag_key_to_label(tag_key));
@@ -31,11 +31,13 @@ pub struct Metrics {
 
     // Breakdown (dynamic, cycle reset)
     pub db_load_by_wait_event: GaugeVec,
+    pub db_load_by_sql_tokenized: GaugeVec,
+    pub sql_tokenized_info: GaugeVec,
     pub db_load_by_sql: GaugeVec,
+    pub sql_info: GaugeVec,
     pub db_load_by_user: GaugeVec,
     pub db_load_by_host: GaugeVec,
     pub db_load_by_database: GaugeVec,
-    pub sql_info: GaugeVec,
 
     // Exporter internal
     pub scrape_duration_seconds: Gauge,
@@ -59,6 +61,27 @@ impl Metrics {
             v
         };
         let we_refs: Vec<&str> = wait_event_labels.iter().map(|s| s.as_str()).collect();
+
+        let sql_tokenized_labels = {
+            let mut v = inst_labels.clone();
+            v.push("sql_tokenized_id".to_string());
+            v
+        };
+        let st_refs: Vec<&str> = sql_tokenized_labels.iter().map(|s| s.as_str()).collect();
+
+        let sql_tokenized_info_labels = {
+            let mut v = inst_labels.clone();
+            v.extend([
+                "sql_tokenized_id".to_string(),
+                "sql_tokenized_text".to_string(),
+                "sql_tokenized_text_truncated".to_string(),
+            ]);
+            v
+        };
+        let sti_refs: Vec<&str> = sql_tokenized_info_labels
+            .iter()
+            .map(|s| s.as_str())
+            .collect();
 
         let sql_labels = {
             let mut v = inst_labels.clone();
@@ -93,6 +116,7 @@ impl Metrics {
             v.extend([
                 "sql_id".to_string(),
                 "sql_text".to_string(),
+                "sql_full_text".to_string(),
                 "sql_text_truncated".to_string(),
             ]);
             v
@@ -144,8 +168,29 @@ impl Metrics {
         )
         .unwrap();
 
+        let db_load_by_sql_tokenized = GaugeVec::new(
+            Opts::new(
+                "aurora_dbinsights_db_load_by_sql_tokenized",
+                "DB Load by top tokenized SQL pattern",
+            ),
+            &st_refs,
+        )
+        .unwrap();
+
+        let sql_tokenized_info = GaugeVec::new(
+            Opts::new(
+                "aurora_dbinsights_sql_tokenized_info",
+                "Tokenized SQL text info metric (value always 1)",
+            ),
+            &sti_refs,
+        )
+        .unwrap();
+
         let db_load_by_sql = GaugeVec::new(
-            Opts::new("aurora_dbinsights_db_load_by_sql", "DB Load by top SQL"),
+            Opts::new(
+                "aurora_dbinsights_db_load_by_sql",
+                "DB Load by top SQL (actual statements)",
+            ),
             &sql_refs,
         )
         .unwrap();
@@ -221,11 +266,13 @@ impl Metrics {
             Box::new(vcpu.clone()),
             Box::new(up.clone()),
             Box::new(db_load_by_wait_event.clone()),
+            Box::new(db_load_by_sql_tokenized.clone()),
+            Box::new(sql_tokenized_info.clone()),
             Box::new(db_load_by_sql.clone()),
+            Box::new(sql_info.clone()),
             Box::new(db_load_by_user.clone()),
             Box::new(db_load_by_host.clone()),
             Box::new(db_load_by_database.clone()),
-            Box::new(sql_info.clone()),
             Box::new(scrape_duration_seconds.clone()),
             Box::new(discovery_instances_total.clone()),
             Box::new(collection_errors_total.clone()),
@@ -246,11 +293,13 @@ impl Metrics {
             vcpu,
             up,
             db_load_by_wait_event,
+            db_load_by_sql_tokenized,
+            sql_tokenized_info,
             db_load_by_sql,
+            sql_info,
             db_load_by_user,
             db_load_by_host,
             db_load_by_database,
-            sql_info,
             scrape_duration_seconds,
             discovery_instances_total,
             collection_errors_total,
@@ -261,11 +310,13 @@ impl Metrics {
     /// Reset all dynamic label metrics for a given instance before re-populating.
     pub fn reset_dynamic_labels(&self, labels: &InstanceLabels) {
         self.remove_matching_labels(&self.db_load_by_wait_event, labels);
+        self.remove_matching_labels(&self.db_load_by_sql_tokenized, labels);
+        self.remove_matching_labels(&self.sql_tokenized_info, labels);
         self.remove_matching_labels(&self.db_load_by_sql, labels);
+        self.remove_matching_labels(&self.sql_info, labels);
         self.remove_matching_labels(&self.db_load_by_user, labels);
         self.remove_matching_labels(&self.db_load_by_host, labels);
         self.remove_matching_labels(&self.db_load_by_database, labels);
-        self.remove_matching_labels(&self.sql_info, labels);
     }
 
     /// Remove all label combinations from a GaugeVec that match the given instance labels.
@@ -345,7 +396,27 @@ impl Metrics {
                 .set(we.value);
         }
 
-        // Top SQL
+        // Top SQL Tokenized
+        for st in &snapshot.top_sql_tokenized {
+            let mut lv = base.clone();
+            lv.push(&st.sql_tokenized_id);
+            self.db_load_by_sql_tokenized
+                .with_label_values(&lv)
+                .set(st.value);
+
+            let truncated_str = if st.sql_tokenized_text_truncated {
+                "true"
+            } else {
+                "false"
+            };
+            let mut sti_lv = base.clone();
+            sti_lv.push(&st.sql_tokenized_id);
+            sti_lv.push(&st.sql_tokenized_text);
+            sti_lv.push(truncated_str);
+            self.sql_tokenized_info.with_label_values(&sti_lv).set(1.0);
+        }
+
+        // Top SQL (actual statements)
         for sql in &snapshot.top_sql {
             let mut lv = base.clone();
             lv.push(&sql.sql_id);
@@ -359,6 +430,7 @@ impl Metrics {
             let mut si_lv = base.clone();
             si_lv.push(&sql.sql_id);
             si_lv.push(&sql.sql_text);
+            si_lv.push(&sql.sql_full_text);
             si_lv.push(truncated_str);
             self.sql_info.with_label_values(&si_lv).set(1.0);
         }
@@ -450,9 +522,16 @@ mod tests {
                     value: 0.8,
                 },
             ],
+            top_sql_tokenized: vec![SqlTokenizedMetric {
+                sql_tokenized_id: "SQLTOK123".to_string(),
+                sql_tokenized_text: "SELECT * FROM orders WHERE user_id = ?".to_string(),
+                sql_tokenized_text_truncated: false,
+                value: 1.5,
+            }],
             top_sql: vec![SqlMetric {
                 sql_id: "SQL123".to_string(),
-                sql_text: "SELECT * FROM orders WHERE user_id = ?".to_string(),
+                sql_text: "SELECT * FROM orders WHERE user_id = 42".to_string(),
+                sql_full_text: "SELECT * FROM orders WHERE user_id = 42".to_string(),
                 sql_text_truncated: false,
                 value: 1.5,
             }],
@@ -506,6 +585,8 @@ mod tests {
         assert!(output.contains("aurora_dbinsights_vcpu{"));
         assert!(output.contains("aurora_dbinsights_up{"));
         assert!(output.contains("aurora_dbinsights_db_load_by_wait_event{"));
+        assert!(output.contains("aurora_dbinsights_db_load_by_sql_tokenized{"));
+        assert!(output.contains("aurora_dbinsights_sql_tokenized_info{"));
         assert!(output.contains("aurora_dbinsights_db_load_by_sql{"));
         assert!(output.contains("aurora_dbinsights_sql_info{"));
         assert!(output.contains("aurora_dbinsights_db_load_by_user{"));
@@ -599,6 +680,7 @@ mod tests {
         snap.top_sql = vec![SqlMetric {
             sql_id: "TRUNC1".to_string(),
             sql_text: "x".repeat(200),
+            sql_full_text: "x".repeat(300),
             sql_text_truncated: true,
             value: 3.0,
         }];

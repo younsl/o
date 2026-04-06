@@ -30,6 +30,13 @@ pub trait PiCollector: Send + Sync {
         limit: i32,
         period: i32,
     ) -> Result<Vec<DimensionKeyResult>, String>;
+
+    async fn get_dimension_key_details(
+        &self,
+        resource_id: &str,
+        group: &str,
+        group_identifier: &str,
+    ) -> Result<Option<String>, String>;
 }
 
 #[derive(Debug, Clone)]
@@ -122,8 +129,8 @@ impl PiCollector for AwsPiCollector {
 
         let dim_group = DimensionGroup::builder()
             .group(group)
-            .dimensions("db.sql_tokenized.id")
-            .dimensions("db.sql_tokenized.statement")
+            .dimensions(format!("{group}.id"))
+            .dimensions(format!("{group}.statement"))
             .limit(limit)
             .build()
             .map_err(|e| e.to_string())?;
@@ -156,6 +163,32 @@ impl PiCollector for AwsPiCollector {
         }
 
         Ok(results)
+    }
+
+    async fn get_dimension_key_details(
+        &self,
+        resource_id: &str,
+        group: &str,
+        group_identifier: &str,
+    ) -> Result<Option<String>, String> {
+        let resp = self
+            .client
+            .get_dimension_key_details()
+            .service_type(aws_sdk_pi::types::ServiceType::Rds)
+            .identifier(resource_id)
+            .group(group)
+            .group_identifier(group_identifier)
+            .requested_dimensions("statement")
+            .send()
+            .await
+            .map_err(|e| format!("{e:?}"))?;
+
+        for dim in resp.dimensions() {
+            if let Some(value) = dim.value.as_deref() {
+                return Ok(Some(value.to_string()));
+            }
+        }
+        Ok(None)
     }
 }
 
@@ -196,8 +229,8 @@ pub async fn collect_instance_metrics<P: PiCollector>(
 
     let db_load_non_cpu = (db_load_total - db_load_cpu).max(0.0);
 
-    // 2. Top SQL (DescribeDimensionKeys grouped by db.sql_tokenized)
-    let top_sql: Vec<SqlMetric> = match pi
+    // 2. Top SQL Tokenized (DescribeDimensionKeys grouped by db.sql_tokenized)
+    let top_sql_tokenized: Vec<SqlTokenizedMetric> = match pi
         .describe_dimension_keys(
             resource_id,
             "db.sql_tokenized",
@@ -209,6 +242,45 @@ pub async fn collect_instance_metrics<P: PiCollector>(
         Ok(sql_data) => sql_data
             .iter()
             .map(|dk| {
+                let sql_tokenized_id = dk
+                    .dimensions
+                    .iter()
+                    .find(|(k, _)| k.contains("id"))
+                    .map(|(_, v)| v.clone())
+                    .unwrap_or_default();
+                let raw_text = dk
+                    .dimensions
+                    .iter()
+                    .find(|(k, _)| k.contains("statement"))
+                    .map(|(_, v)| v.clone())
+                    .unwrap_or_default();
+                let (sql_tokenized_text, sql_tokenized_text_truncated) = truncate_sql(&raw_text);
+                SqlTokenizedMetric {
+                    sql_tokenized_id,
+                    sql_tokenized_text,
+                    sql_tokenized_text_truncated,
+                    value: dk.value,
+                }
+            })
+            .collect(),
+        Err(e) => {
+            tracing::warn!(
+                instance = %instance.db_instance_identifier,
+                error = ?e,
+                "Failed to collect top SQL tokenized. Skipping"
+            );
+            vec![]
+        }
+    };
+
+    // 3. Top SQL (DescribeDimensionKeys grouped by db.sql, then GetDimensionKeyDetails for full text)
+    let top_sql: Vec<SqlMetric> = match pi
+        .describe_dimension_keys(resource_id, "db.sql", config.top_sql_limit, period)
+        .await
+    {
+        Ok(sql_data) => {
+            let mut sql_metrics = Vec::new();
+            for dk in &sql_data {
                 let sql_id = dk
                     .dimensions
                     .iter()
@@ -221,15 +293,40 @@ pub async fn collect_instance_metrics<P: PiCollector>(
                     .find(|(k, _)| k.contains("statement"))
                     .map(|(_, v)| v.clone())
                     .unwrap_or_default();
-                let (sql_text, sql_text_truncated) = truncate_sql(&raw_text);
-                SqlMetric {
+
+                // Fetch full SQL text via GetDimensionKeyDetails
+                let sql_full_text = if !sql_id.is_empty() {
+                    match pi
+                        .get_dimension_key_details(resource_id, "db.sql", &sql_id)
+                        .await
+                    {
+                        Ok(Some(full_text)) => full_text,
+                        Ok(None) => raw_text.clone(),
+                        Err(e) => {
+                            tracing::debug!(
+                                instance = %instance.db_instance_identifier,
+                                sql_id = %sql_id,
+                                error = %e,
+                                "Failed to get SQL full text via GetDimensionKeyDetails. Using describe text"
+                            );
+                            raw_text.clone()
+                        }
+                    }
+                } else {
+                    raw_text.clone()
+                };
+
+                let (sql_text, sql_text_truncated) = truncate_sql(&sql_full_text);
+                sql_metrics.push(SqlMetric {
                     sql_id,
                     sql_text,
+                    sql_full_text,
                     sql_text_truncated,
                     value: dk.value,
-                }
-            })
-            .collect(),
+                });
+            }
+            sql_metrics
+        }
         Err(e) => {
             tracing::warn!(
                 instance = %instance.db_instance_identifier,
@@ -240,7 +337,7 @@ pub async fn collect_instance_metrics<P: PiCollector>(
         }
     };
 
-    // 3. Users (GetResourceMetrics grouped by db.user)
+    // 4. Users (GetResourceMetrics grouped by db.user)
     let users: Vec<UserMetric> = match pi
         .get_resource_metrics_grouped(resource_id, "db.user", None, period)
         .await
@@ -262,7 +359,7 @@ pub async fn collect_instance_metrics<P: PiCollector>(
         }
     };
 
-    // 4. Hosts (GetResourceMetrics grouped by db.host)
+    // 5. Hosts (GetResourceMetrics grouped by db.host)
     let hosts: Vec<HostMetric> = match pi
         .get_resource_metrics_grouped(resource_id, "db.host", Some(config.top_host_limit), period)
         .await
@@ -284,7 +381,7 @@ pub async fn collect_instance_metrics<P: PiCollector>(
         }
     };
 
-    // 5. Databases (GetResourceMetrics grouped by db)
+    // 6. Databases (GetResourceMetrics grouped by db)
     let databases: Vec<DatabaseMetric> = match pi
         .get_resource_metrics_grouped(resource_id, "db", None, period)
         .await
@@ -313,6 +410,7 @@ pub async fn collect_instance_metrics<P: PiCollector>(
         db_load_non_cpu,
         vcpu: instance.vcpu,
         wait_events,
+        top_sql_tokenized,
         top_sql,
         users,
         hosts,
@@ -483,6 +581,7 @@ mod tests {
     struct MockPiCollector {
         wait_events: Vec<(HashMap<String, String>, f64)>,
         sql_keys: Vec<DimensionKeyResult>,
+        sql_full_texts: HashMap<String, String>,
         users: Vec<(HashMap<String, String>, f64)>,
         hosts: Vec<(HashMap<String, String>, f64)>,
         databases: Vec<(HashMap<String, String>, f64)>,
@@ -512,14 +611,18 @@ mod tests {
                 ],
                 sql_keys: vec![DimensionKeyResult {
                     dimensions: vec![
-                        ("db.sql_tokenized.id".to_string(), "SQL_ABC".to_string()),
+                        ("db.sql.id".to_string(), "SQL_ABC".to_string()),
                         (
-                            "db.sql_tokenized.statement".to_string(),
+                            "db.sql.statement".to_string(),
                             "SELECT * FROM orders WHERE id = ?".to_string(),
                         ),
                     ],
                     value: 1.2,
                 }],
+                sql_full_texts: HashMap::from([(
+                    "SQL_ABC".to_string(),
+                    "SELECT * FROM orders WHERE id = 12345".to_string(),
+                )]),
                 users: vec![(
                     HashMap::from([("db.user.name".to_string(), "app_user".to_string())]),
                     2.0,
@@ -562,6 +665,15 @@ mod tests {
         ) -> Result<Vec<DimensionKeyResult>, String> {
             Ok(self.sql_keys.clone())
         }
+
+        async fn get_dimension_key_details(
+            &self,
+            _resource_id: &str,
+            _group: &str,
+            group_identifier: &str,
+        ) -> Result<Option<String>, String> {
+            Ok(self.sql_full_texts.get(group_identifier).cloned())
+        }
     }
 
     fn test_instance() -> AuroraInstance {
@@ -594,6 +706,10 @@ mod tests {
         assert_eq!(snapshot.top_sql.len(), 1);
         assert_eq!(snapshot.top_sql[0].sql_id, "SQL_ABC");
         assert!(!snapshot.top_sql[0].sql_text_truncated);
+        assert_eq!(
+            snapshot.top_sql[0].sql_full_text,
+            "SELECT * FROM orders WHERE id = 12345"
+        );
         assert_eq!(snapshot.users.len(), 1);
         assert_eq!(snapshot.hosts.len(), 1);
         assert_eq!(snapshot.labels.instance, "test-writer");
@@ -684,6 +800,15 @@ mod tests {
             _limit: i32,
             _period: i32,
         ) -> Result<Vec<DimensionKeyResult>, String> {
+            Err("ThrottlingException".to_string())
+        }
+
+        async fn get_dimension_key_details(
+            &self,
+            _resource_id: &str,
+            _group: &str,
+            _group_identifier: &str,
+        ) -> Result<Option<String>, String> {
             Err("ThrottlingException".to_string())
         }
     }
@@ -831,11 +956,12 @@ mod tests {
         let mut pi = MockPiCollector::new();
         pi.sql_keys = vec![DimensionKeyResult {
             dimensions: vec![
-                ("db.sql_tokenized.id".to_string(), "LONG1".to_string()),
-                ("db.sql_tokenized.statement".to_string(), long_sql),
+                ("db.sql.id".to_string(), "LONG1".to_string()),
+                ("db.sql.statement".to_string(), long_sql.clone()),
             ],
             value: 5.0,
         }];
+        pi.sql_full_texts = HashMap::from([("LONG1".to_string(), long_sql.clone())]);
         let instance = test_instance();
         let config = CollectionConfig::default();
 
@@ -847,6 +973,7 @@ mod tests {
         assert!(snapshot.top_sql[0].sql_text_truncated);
         assert!(snapshot.top_sql[0].sql_text.ends_with("..."));
         assert_eq!(snapshot.top_sql[0].sql_id, "LONG1");
+        assert_eq!(snapshot.top_sql[0].sql_full_text, long_sql);
     }
 
     /// Mock that fails only on specific dimension groups (simulates partial PI API failure).
@@ -880,6 +1007,15 @@ mod tests {
             _limit: i32,
             _period: i32,
         ) -> Result<Vec<DimensionKeyResult>, String> {
+            Err("NotSupportedException".to_string())
+        }
+
+        async fn get_dimension_key_details(
+            &self,
+            _resource_id: &str,
+            _group: &str,
+            _group_identifier: &str,
+        ) -> Result<Option<String>, String> {
             Err("NotSupportedException".to_string())
         }
     }
@@ -980,6 +1116,16 @@ mod tests {
         ) -> Result<Vec<DimensionKeyResult>, String> {
             tokio::time::sleep(self.delay).await;
             Ok(vec![])
+        }
+
+        async fn get_dimension_key_details(
+            &self,
+            _resource_id: &str,
+            _group: &str,
+            _group_identifier: &str,
+        ) -> Result<Option<String>, String> {
+            tokio::time::sleep(self.delay).await;
+            Ok(None)
         }
     }
 
