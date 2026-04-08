@@ -11,9 +11,7 @@ Prometheus exporter for AWS Aurora MySQL/PostgreSQL [Database Insights](https://
 
 Focused on **DB Load analysis**: which wait events cause bottlenecks, which SQL statements consume the most active sessions, and how load distributes across users, hosts, and databases. Unlike generic PI exporters that collect all available OS/DB counters, this exporter is purpose-built for diagnosing Aurora performance issues through DB Load breakdown.
 
-```
-Aurora → PI API → exporter → /metrics → Prometheus → Grafana
-```
+![Architecture](docs/assets/1.png)
 
 ## Features
 
