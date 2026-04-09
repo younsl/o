@@ -1,4 +1,5 @@
 use std::collections::HashMap;
+use std::future::Future;
 use std::sync::Arc;
 
 use aws_sdk_pi::Client as PiClient;
@@ -12,31 +13,33 @@ use crate::types::*;
 
 const SQL_TEXT_MAX_LEN: usize = 200;
 
+/// Grouped metric result: dimension key-value pairs and the metric value.
+type GroupedMetricResult = Vec<(HashMap<String, String>, f64)>;
+
 /// Trait for PI API calls (enables testing with mocks).
-#[allow(async_fn_in_trait)]
 pub trait PiCollector: Send + Sync {
-    async fn get_resource_metrics_grouped(
+    fn get_resource_metrics_grouped(
         &self,
         resource_id: &str,
         group: &str,
         limit: Option<i32>,
         period: i32,
-    ) -> Result<Vec<(HashMap<String, String>, f64)>, String>;
+    ) -> impl Future<Output = Result<GroupedMetricResult, String>> + Send;
 
-    async fn describe_dimension_keys(
+    fn describe_dimension_keys(
         &self,
         resource_id: &str,
         group: &str,
         limit: i32,
         period: i32,
-    ) -> Result<Vec<DimensionKeyResult>, String>;
+    ) -> impl Future<Output = Result<Vec<DimensionKeyResult>, String>> + Send;
 
-    async fn get_dimension_key_details(
+    fn get_dimension_key_details(
         &self,
         resource_id: &str,
         group: &str,
         group_identifier: &str,
-    ) -> Result<Option<String>, String>;
+    ) -> impl Future<Output = Result<Option<String>, String>> + Send;
 }
 
 #[derive(Debug, Clone)]
@@ -63,7 +66,7 @@ impl PiCollector for AwsPiCollector {
         group: &str,
         limit: Option<i32>,
         period: i32,
-    ) -> Result<Vec<(HashMap<String, String>, f64)>, String> {
+    ) -> Result<GroupedMetricResult, String> {
         let now = Utc::now();
         let start = now - chrono::Duration::seconds(i64::from(period) * 2);
 
@@ -428,75 +431,98 @@ pub fn truncate_sql(raw: &str) -> (String, bool) {
     }
 }
 
-/// Run one collection cycle for all instances.
-pub async fn run_collection_cycle<P: PiCollector>(
-    pi: &P,
+/// Run one collection cycle for all instances concurrently.
+///
+/// Instances are collected in parallel using `tokio::task::JoinSet`, bounded by
+/// the semaphore to limit concurrent PI API calls (configured via `max_concurrent_instances`).
+pub async fn run_collection_cycle<P: PiCollector + Send + Sync + 'static>(
+    pi: &Arc<P>,
     instances: &[AuroraInstance],
     region: &str,
     config: &CollectionConfig,
     metrics: &Arc<Metrics>,
-    _semaphore: &Arc<tokio::sync::Semaphore>,
+    semaphore: &Arc<tokio::sync::Semaphore>,
 ) -> (usize, usize) {
-    let mut collected = 0;
-    let mut failed = 0;
-
     let timeout_duration = std::time::Duration::from_secs(config.instance_timeout_seconds);
+    let mut join_set = tokio::task::JoinSet::new();
 
     for instance in instances {
-        let labels = InstanceLabels::from_instance(instance, region);
-        let mut last_error = None;
+        let pi = pi.clone();
+        let instance = instance.clone();
+        let region = region.to_string();
+        let config = config.clone();
+        let metrics = metrics.clone();
+        let semaphore = semaphore.clone();
 
-        let result = tokio::time::timeout(timeout_duration, async {
-            for attempt in 0..config.retry.max_attempts {
-                match collect_instance_metrics(pi, instance, region, config).await {
-                    Ok(snapshot) => return Ok(snapshot),
-                    Err(e) => {
-                        if attempt + 1 < config.retry.max_attempts {
-                            let delay = config.retry.base_delay_ms * 2u64.pow(attempt);
-                            tracing::warn!(
-                                instance = %instance.db_instance_identifier,
-                                error = %e,
-                                retry_attempt = attempt + 1,
-                                next_retry_ms = delay,
-                                "PI API call failed. Retrying"
-                            );
-                            tokio::time::sleep(std::time::Duration::from_millis(delay)).await;
-                        } else {
-                            return Err(e);
+        join_set.spawn(async move {
+            let _permit = semaphore.acquire().await.expect("semaphore closed");
+            let labels = InstanceLabels::from_instance(&instance, &region);
+
+            let result = tokio::time::timeout(timeout_duration, async {
+                for attempt in 0..config.retry.max_attempts {
+                    match collect_instance_metrics(&*pi, &instance, &region, &config).await {
+                        Ok(snapshot) => return Ok(snapshot),
+                        Err(e) => {
+                            if attempt + 1 < config.retry.max_attempts {
+                                let delay = config.retry.base_delay_ms * 2u64.pow(attempt);
+                                tracing::warn!(
+                                    instance = %instance.db_instance_identifier,
+                                    error = %e,
+                                    retry_attempt = attempt + 1,
+                                    next_retry_ms = delay,
+                                    "PI API call failed. Retrying"
+                                );
+                                tokio::time::sleep(std::time::Duration::from_millis(delay)).await;
+                            } else {
+                                return Err(e);
+                            }
                         }
                     }
                 }
-            }
-            Err("max retries exhausted".to_string())
-        })
-        .await;
+                Err("max retries exhausted".to_string())
+            })
+            .await;
 
-        match result {
-            Ok(Ok(snapshot)) => {
-                metrics.apply_snapshot(&snapshot);
-                collected += 1;
+            match result {
+                Ok(Ok(snapshot)) => {
+                    metrics.apply_snapshot(&snapshot);
+                    true
+                }
+                Ok(Err(e)) => {
+                    tracing::warn!(
+                        instance = %instance.db_instance_identifier,
+                        error = %e,
+                        timeout_seconds = config.instance_timeout_seconds,
+                        max_attempts = config.retry.max_attempts,
+                        "Instance collection failed. Marking up=0"
+                    );
+                    metrics.mark_instance_down(&labels);
+                    false
+                }
+                Err(_elapsed) => {
+                    tracing::warn!(
+                        instance = %instance.db_instance_identifier,
+                        timeout_seconds = config.instance_timeout_seconds,
+                        "Instance collection timed out. Marking up=0"
+                    );
+                    metrics.mark_instance_down(&labels);
+                    false
+                }
             }
-            Ok(Err(e)) => {
-                last_error = Some(e);
-            }
-            Err(_elapsed) => {
-                last_error = Some(format!(
-                    "instance collection timed out after {}s",
-                    config.instance_timeout_seconds
-                ));
-            }
-        }
+        });
+    }
 
-        if let Some(e) = last_error {
-            tracing::warn!(
-                instance = %instance.db_instance_identifier,
-                error = %e,
-                timeout_seconds = config.instance_timeout_seconds,
-                max_attempts = config.retry.max_attempts,
-                "Instance collection failed. Marking up=0"
-            );
-            metrics.mark_instance_down(&labels);
-            failed += 1;
+    let mut collected = 0;
+    let mut failed = 0;
+
+    while let Some(task_result) = join_set.join_next().await {
+        match task_result {
+            Ok(true) => collected += 1,
+            Ok(false) => failed += 1,
+            Err(join_err) => {
+                tracing::error!(error = %join_err, "Task panicked during collection");
+                failed += 1;
+            }
         }
     }
 
@@ -505,14 +531,14 @@ pub async fn run_collection_cycle<P: PiCollector>(
 
 /// Run the collection loop as a background task (without leader election).
 #[allow(dead_code)]
-pub async fn collection_loop<P: PiCollector + 'static>(
+pub async fn collection_loop<P: PiCollector + Send + Sync + 'static>(
     pi: Arc<P>,
     instances_state: Arc<RwLock<Vec<AuroraInstance>>>,
     region: String,
     config: CollectionConfig,
     metrics: Arc<Metrics>,
 ) {
-    let semaphore = Arc::new(tokio::sync::Semaphore::new(config.max_concurrent_api_calls));
+    let semaphore = Arc::new(tokio::sync::Semaphore::new(config.max_concurrent_instances));
     let mut interval =
         tokio::time::interval(std::time::Duration::from_secs(config.interval_seconds));
     let mut cycle: u64 = 0;
@@ -535,7 +561,7 @@ pub async fn collection_loop<P: PiCollector + 'static>(
         let start = std::time::Instant::now();
 
         let (collected, failed) =
-            run_collection_cycle(&*pi, &instances, &region, &config, &metrics, &semaphore).await;
+            run_collection_cycle(&pi, &instances, &region, &config, &metrics, &semaphore).await;
 
         let duration = start.elapsed();
         metrics.scrape_duration_seconds.set(duration.as_secs_f64());
@@ -579,12 +605,12 @@ mod tests {
     }
 
     struct MockPiCollector {
-        wait_events: Vec<(HashMap<String, String>, f64)>,
+        wait_events: GroupedMetricResult,
         sql_keys: Vec<DimensionKeyResult>,
         sql_full_texts: HashMap<String, String>,
-        users: Vec<(HashMap<String, String>, f64)>,
-        hosts: Vec<(HashMap<String, String>, f64)>,
-        databases: Vec<(HashMap<String, String>, f64)>,
+        users: GroupedMetricResult,
+        hosts: GroupedMetricResult,
+        databases: GroupedMetricResult,
     }
 
     impl MockPiCollector {
@@ -646,7 +672,7 @@ mod tests {
             group: &str,
             _limit: Option<i32>,
             _period: i32,
-        ) -> Result<Vec<(HashMap<String, String>, f64)>, String> {
+        ) -> Result<GroupedMetricResult, String> {
             match group {
                 "db.wait_event" => Ok(self.wait_events.clone()),
                 "db.user" => Ok(self.users.clone()),
@@ -755,10 +781,10 @@ mod tests {
 
     #[tokio::test]
     async fn test_run_collection_cycle_success() {
-        let pi = MockPiCollector::new();
+        let pi = Arc::new(MockPiCollector::new());
         let instances = vec![test_instance()];
         let config = CollectionConfig::default();
-        let metrics = Arc::new(Metrics::new(&[]));
+        let metrics = Arc::new(Metrics::new(&[]).unwrap());
         let semaphore = Arc::new(tokio::sync::Semaphore::new(5));
 
         let (collected, failed) = run_collection_cycle(
@@ -789,7 +815,7 @@ mod tests {
             _group: &str,
             _limit: Option<i32>,
             _period: i32,
-        ) -> Result<Vec<(HashMap<String, String>, f64)>, String> {
+        ) -> Result<GroupedMetricResult, String> {
             Err("ThrottlingException: Rate exceeded".to_string())
         }
 
@@ -815,12 +841,12 @@ mod tests {
 
     #[tokio::test]
     async fn test_run_collection_cycle_failure() {
-        let pi = FailingPiCollector;
+        let pi = Arc::new(FailingPiCollector);
         let instances = vec![test_instance()];
         let mut config = CollectionConfig::default();
         config.retry.max_attempts = 1; // Fast failure
         config.retry.base_delay_ms = 1;
-        let metrics = Arc::new(Metrics::new(&[]));
+        let metrics = Arc::new(Metrics::new(&[]).unwrap());
         let semaphore = Arc::new(tokio::sync::Semaphore::new(5));
 
         let (collected, failed) = run_collection_cycle(
@@ -852,10 +878,10 @@ mod tests {
 
     #[tokio::test]
     async fn test_run_collection_cycle_empty_instances() {
-        let pi = MockPiCollector::new();
+        let pi = Arc::new(MockPiCollector::new());
         let instances: Vec<AuroraInstance> = vec![];
         let config = CollectionConfig::default();
-        let metrics = Arc::new(Metrics::new(&[]));
+        let metrics = Arc::new(Metrics::new(&[]).unwrap());
         let semaphore = Arc::new(tokio::sync::Semaphore::new(5));
 
         let (collected, failed) = run_collection_cycle(
@@ -874,7 +900,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_run_collection_cycle_multiple_instances() {
-        let pi = MockPiCollector::new();
+        let pi = Arc::new(MockPiCollector::new());
         let instances = vec![
             test_instance(),
             AuroraInstance {
@@ -888,7 +914,7 @@ mod tests {
             },
         ];
         let config = CollectionConfig::default();
-        let metrics = Arc::new(Metrics::new(&[]));
+        let metrics = Arc::new(Metrics::new(&[]).unwrap());
         let semaphore = Arc::new(tokio::sync::Semaphore::new(5));
 
         let (collected, failed) = run_collection_cycle(
@@ -911,12 +937,12 @@ mod tests {
 
     #[tokio::test]
     async fn test_run_collection_cycle_retry_then_fail() {
-        let pi = FailingPiCollector;
+        let pi = Arc::new(FailingPiCollector);
         let instances = vec![test_instance()];
         let mut config = CollectionConfig::default();
         config.retry.max_attempts = 2;
         config.retry.base_delay_ms = 1;
-        let metrics = Arc::new(Metrics::new(&[]));
+        let metrics = Arc::new(Metrics::new(&[]).unwrap());
         let semaphore = Arc::new(tokio::sync::Semaphore::new(5));
 
         let (collected, failed) =
@@ -986,7 +1012,7 @@ mod tests {
             group: &str,
             _limit: Option<i32>,
             _period: i32,
-        ) -> Result<Vec<(HashMap<String, String>, f64)>, String> {
+        ) -> Result<GroupedMetricResult, String> {
             match group {
                 "db.wait_event" => Ok(vec![(
                     HashMap::from([
@@ -1102,7 +1128,7 @@ mod tests {
             _group: &str,
             _limit: Option<i32>,
             _period: i32,
-        ) -> Result<Vec<(HashMap<String, String>, f64)>, String> {
+        ) -> Result<GroupedMetricResult, String> {
             tokio::time::sleep(self.delay).await;
             Ok(vec![])
         }
@@ -1131,14 +1157,14 @@ mod tests {
 
     #[tokio::test]
     async fn test_run_collection_cycle_instance_timeout() {
-        let pi = SlowPiCollector {
+        let pi = Arc::new(SlowPiCollector {
             delay: std::time::Duration::from_secs(5),
-        };
+        });
         let instances = vec![test_instance()];
         let mut config = CollectionConfig::default();
         config.instance_timeout_seconds = 1; // 1s timeout, collector sleeps 5s
         config.retry.max_attempts = 1;
-        let metrics = Arc::new(Metrics::new(&[]));
+        let metrics = Arc::new(Metrics::new(&[]).unwrap());
         let semaphore = Arc::new(tokio::sync::Semaphore::new(5));
 
         let start = std::time::Instant::now();
@@ -1167,9 +1193,9 @@ mod tests {
 
     #[tokio::test]
     async fn test_run_collection_cycle_timeout_does_not_block_other_instances() {
-        let pi = SlowPiCollector {
+        let pi = Arc::new(SlowPiCollector {
             delay: std::time::Duration::from_secs(5),
-        };
+        });
         let instances = vec![
             test_instance(),
             AuroraInstance {
@@ -1185,7 +1211,7 @@ mod tests {
         let mut config = CollectionConfig::default();
         config.instance_timeout_seconds = 1;
         config.retry.max_attempts = 1;
-        let metrics = Arc::new(Metrics::new(&[]));
+        let metrics = Arc::new(Metrics::new(&[]).unwrap());
         let semaphore = Arc::new(tokio::sync::Semaphore::new(5));
 
         let start = std::time::Instant::now();
@@ -1210,10 +1236,10 @@ mod tests {
 
     #[tokio::test]
     async fn test_run_collection_cycle_initializes_error_counter() {
-        let pi = MockPiCollector::new();
+        let pi = Arc::new(MockPiCollector::new());
         let instances = vec![test_instance()];
         let config = CollectionConfig::default();
-        let metrics = Arc::new(Metrics::new(&[]));
+        let metrics = Arc::new(Metrics::new(&[]).unwrap());
         let semaphore = Arc::new(tokio::sync::Semaphore::new(5));
 
         run_collection_cycle(&pi, &instances, "us-east-1", &config, &metrics, &semaphore).await;

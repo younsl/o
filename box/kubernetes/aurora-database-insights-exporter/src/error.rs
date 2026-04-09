@@ -20,6 +20,9 @@ pub enum Error {
 
     #[error("Regex error: {0}")]
     Regex(#[from] regex::Error),
+
+    #[error("Prometheus error: {0}")]
+    Prometheus(#[from] prometheus::Error),
 }
 
 pub type Result<T> = std::result::Result<T, Error>;

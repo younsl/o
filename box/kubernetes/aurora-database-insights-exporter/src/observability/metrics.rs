@@ -1,5 +1,6 @@
 use prometheus::{CounterVec, Gauge, GaugeVec, Opts, Registry, TextEncoder, core::Collector};
 
+use crate::error::Result;
 use crate::types::{InstanceLabels, MetricSnapshot, tag_key_to_label};
 
 /// Build instance label names: 5 base + N exported tag labels.
@@ -47,7 +48,7 @@ pub struct Metrics {
 }
 
 impl Metrics {
-    pub fn new(exported_tags: &[String]) -> Self {
+    pub fn new(exported_tags: &[String]) -> Result<Self> {
         let registry = Registry::new();
 
         let inst_labels = build_instance_label_names(exported_tags);
@@ -129,26 +130,22 @@ impl Metrics {
                 "DB Load (Average Active Sessions)",
             ),
             &inst_label_refs,
-        )
-        .unwrap();
+        )?;
 
         let db_load_cpu = GaugeVec::new(
             Opts::new("aurora_dbinsights_db_load_cpu", "CPU-attributed DB Load"),
             &inst_label_refs,
-        )
-        .unwrap();
+        )?;
 
         let db_load_non_cpu = GaugeVec::new(
             Opts::new("aurora_dbinsights_db_load_non_cpu", "Non-CPU DB Load"),
             &inst_label_refs,
-        )
-        .unwrap();
+        )?;
 
         let vcpu = GaugeVec::new(
             Opts::new("aurora_dbinsights_vcpu", "Number of vCPUs"),
             &inst_label_refs,
-        )
-        .unwrap();
+        )?;
 
         let up = GaugeVec::new(
             Opts::new(
@@ -156,8 +153,7 @@ impl Metrics {
                 "Whether metrics collection succeeded (1=ok, 0=error)",
             ),
             &inst_label_refs,
-        )
-        .unwrap();
+        )?;
 
         let db_load_by_wait_event = GaugeVec::new(
             Opts::new(
@@ -165,8 +161,7 @@ impl Metrics {
                 "DB Load by wait event",
             ),
             &we_refs,
-        )
-        .unwrap();
+        )?;
 
         let db_load_by_sql_tokenized = GaugeVec::new(
             Opts::new(
@@ -174,8 +169,7 @@ impl Metrics {
                 "DB Load by top tokenized SQL pattern",
             ),
             &st_refs,
-        )
-        .unwrap();
+        )?;
 
         let sql_tokenized_info = GaugeVec::new(
             Opts::new(
@@ -183,8 +177,7 @@ impl Metrics {
                 "Tokenized SQL text info metric (value always 1)",
             ),
             &sti_refs,
-        )
-        .unwrap();
+        )?;
 
         let db_load_by_sql = GaugeVec::new(
             Opts::new(
@@ -192,8 +185,7 @@ impl Metrics {
                 "DB Load by top SQL (actual statements)",
             ),
             &sql_refs,
-        )
-        .unwrap();
+        )?;
 
         let db_load_by_user = GaugeVec::new(
             Opts::new(
@@ -201,8 +193,7 @@ impl Metrics {
                 "DB Load by database user",
             ),
             &user_refs,
-        )
-        .unwrap();
+        )?;
 
         let db_load_by_host = GaugeVec::new(
             Opts::new(
@@ -210,8 +201,7 @@ impl Metrics {
                 "DB Load by client host",
             ),
             &host_refs,
-        )
-        .unwrap();
+        )?;
 
         let db_load_by_database = GaugeVec::new(
             Opts::new(
@@ -219,8 +209,7 @@ impl Metrics {
                 "DB Load by database schema",
             ),
             &db_refs,
-        )
-        .unwrap();
+        )?;
 
         let sql_info = GaugeVec::new(
             Opts::new(
@@ -228,20 +217,17 @@ impl Metrics {
                 "SQL text info metric (value always 1)",
             ),
             &si_refs,
-        )
-        .unwrap();
+        )?;
 
         let scrape_duration_seconds = Gauge::new(
             "aurora_dbinsights_scrape_duration_seconds",
             "Duration of the last collection cycle in seconds",
-        )
-        .unwrap();
+        )?;
 
         let discovery_instances_total = Gauge::new(
             "aurora_dbinsights_discovery_instances_total",
             "Number of currently discovered Aurora instances",
-        )
-        .unwrap();
+        )?;
 
         let collection_errors_total = CounterVec::new(
             Opts::new(
@@ -249,14 +235,12 @@ impl Metrics {
                 "Total number of PI API collection errors",
             ),
             &["instance"],
-        )
-        .unwrap();
+        )?;
 
         let discovery_duration_seconds = Gauge::new(
             "aurora_dbinsights_discovery_duration_seconds",
             "Duration of the last discovery cycle in seconds",
-        )
-        .unwrap();
+        )?;
 
         // Register all metrics
         let collectors: Vec<Box<dyn Collector>> = vec![
@@ -281,10 +265,10 @@ impl Metrics {
 
         let registered_count = collectors.len();
         for c in collectors {
-            registry.register(c).unwrap();
+            registry.register(c)?;
         }
 
-        Self {
+        Ok(Self {
             registered_count,
             registry,
             db_load,
@@ -304,7 +288,7 @@ impl Metrics {
             discovery_instances_total,
             collection_errors_total,
             discovery_duration_seconds,
-        }
+        })
     }
 
     /// Reset all dynamic label metrics for a given instance before re-populating.
@@ -552,7 +536,7 @@ mod tests {
 
     #[test]
     fn test_metrics_new_no_tags() {
-        let m = Metrics::new(&[]);
+        let m = Metrics::new(&[]).unwrap();
         let output = m.encode();
         assert!(output.is_empty() || !output.contains("aurora_dbinsights_db_load{"));
     }
@@ -560,7 +544,7 @@ mod tests {
     #[test]
     fn test_metrics_new_with_exported_tags() {
         let tags = vec!["Team".to_string(), "Environment".to_string()];
-        let m = Metrics::new(&tags);
+        let m = Metrics::new(&tags).unwrap();
         // GaugeVec should be created with tag_team, tag_environment labels
         let descs = m.db_load.desc();
         let label_names: Vec<&str> = descs[0]
@@ -574,7 +558,7 @@ mod tests {
 
     #[test]
     fn test_apply_snapshot() {
-        let m = Metrics::new(&[]);
+        let m = Metrics::new(&[]).unwrap();
         let snap = test_snapshot();
         m.apply_snapshot(&snap);
 
@@ -595,7 +579,7 @@ mod tests {
 
     #[test]
     fn test_apply_snapshot_values() {
-        let m = Metrics::new(&[]);
+        let m = Metrics::new(&[]).unwrap();
         let snap = test_snapshot();
         m.apply_snapshot(&snap);
 
@@ -610,7 +594,7 @@ mod tests {
     #[test]
     fn test_apply_snapshot_with_exported_tags() {
         let tags = vec!["Team".to_string()];
-        let m = Metrics::new(&tags);
+        let m = Metrics::new(&tags).unwrap();
 
         let mut snap = test_snapshot();
         snap.labels.tag_values = vec!["platform".to_string()];
@@ -622,7 +606,7 @@ mod tests {
 
     #[test]
     fn test_mark_instance_down() {
-        let m = Metrics::new(&[]);
+        let m = Metrics::new(&[]).unwrap();
         let labels = test_labels();
 
         m.up.with_label_values(&labels.as_vec()).set(1.0);
@@ -638,7 +622,7 @@ mod tests {
 
     #[test]
     fn test_remove_instance() {
-        let m = Metrics::new(&[]);
+        let m = Metrics::new(&[]).unwrap();
         let snap = test_snapshot();
         m.apply_snapshot(&snap);
 
@@ -652,7 +636,7 @@ mod tests {
 
     #[test]
     fn test_cycle_reset_removes_old_dynamic_labels() {
-        let m = Metrics::new(&[]);
+        let m = Metrics::new(&[]).unwrap();
 
         let mut snap = test_snapshot();
         snap.hosts = vec![HostMetric {
@@ -675,7 +659,7 @@ mod tests {
 
     #[test]
     fn test_sql_info_truncated_label() {
-        let m = Metrics::new(&[]);
+        let m = Metrics::new(&[]).unwrap();
         let mut snap = test_snapshot();
         snap.top_sql = vec![SqlMetric {
             sql_id: "TRUNC1".to_string(),
@@ -690,7 +674,7 @@ mod tests {
 
     #[test]
     fn test_internal_metrics() {
-        let m = Metrics::new(&[]);
+        let m = Metrics::new(&[]).unwrap();
         m.scrape_duration_seconds.set(1.5);
         m.discovery_instances_total.set(3.0);
         m.discovery_duration_seconds.set(0.7);

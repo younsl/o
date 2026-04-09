@@ -41,6 +41,7 @@ data:
       interval_seconds: {{ .Values.config.collection.intervalSeconds }}
       top_sql_limit: {{ .Values.config.collection.topSqlLimit }}
       top_host_limit: {{ .Values.config.collection.topHostLimit }}
+      max_concurrent_instances: {{ .Values.config.collection.maxConcurrentInstances }}
       instance_timeout_seconds: {{ .Values.config.collection.instanceTimeoutSeconds }}
     logging:
       level: "info"

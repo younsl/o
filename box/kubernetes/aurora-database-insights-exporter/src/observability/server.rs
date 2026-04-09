@@ -44,7 +44,7 @@ mod tests {
 
     fn test_state() -> AppState {
         AppState {
-            metrics: Arc::new(Metrics::new(&[])),
+            metrics: Arc::new(Metrics::new(&[]).unwrap()),
         }
     }
 

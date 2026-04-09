@@ -113,6 +113,9 @@ config:
     topSqlLimit: 10
     # -- (int) Top host limit per instance
     topHostLimit: 20
+    # -- (int) Maximum number of instances collected in parallel.
+    # Controls concurrency via semaphore.
+    maxConcurrentInstances: 10
     # -- (int) Per-instance collection timeout in seconds.
     # If a single instance's PI API metrics collection (including retries)
     # exceeds this duration, it is aborted and marked as failed (up=0).

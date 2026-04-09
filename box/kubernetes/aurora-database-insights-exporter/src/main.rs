@@ -25,9 +25,10 @@ const BUILD_DATE: &str = env!("BUILD_DATE");
 
 #[tokio::main]
 async fn main() {
-    rustls::crypto::aws_lc_rs::default_provider()
-        .install_default()
-        .expect("Failed to install default CryptoProvider");
+    if let Err(e) = rustls::crypto::aws_lc_rs::default_provider().install_default() {
+        eprintln!("Failed to install default CryptoProvider: {e:?}");
+        std::process::exit(1);
+    }
 
     let init_start = std::time::Instant::now();
     let args = Args::parse();
@@ -60,7 +61,7 @@ async fn main() {
         collection_interval_seconds = config.collection.interval_seconds,
         top_sql_limit = config.collection.top_sql_limit,
         top_host_limit = config.collection.top_host_limit,
-        max_concurrent_api_calls = config.collection.max_concurrent_api_calls,
+        max_concurrent_instances = config.collection.max_concurrent_instances,
         instance_timeout_seconds = config.collection.instance_timeout_seconds,
         exported_tags = ?config.discovery.exported_tags,
         "Loaded configuration"
@@ -84,7 +85,13 @@ async fn main() {
 
     // Shared state
     let instances_state: Arc<RwLock<Vec<AuroraInstance>>> = Arc::new(RwLock::new(Vec::new()));
-    let metrics = Arc::new(Metrics::new(&config.discovery.exported_tags));
+    let metrics = match Metrics::new(&config.discovery.exported_tags) {
+        Ok(m) => Arc::new(m),
+        Err(e) => {
+            tracing::error!(error = %e, "Failed to initialize Prometheus metrics");
+            std::process::exit(1);
+        }
+    };
     let is_leader = Arc::new(RwLock::new(!config.leader_election.enabled)); // true if LE disabled
     let leader_notify = Arc::new(Notify::new());
     let discovery_notify = Arc::new(Notify::new());
@@ -181,9 +188,17 @@ async fn main() {
     let state = AppState { metrics };
     let app = create_router(state);
 
-    let listener = tokio::net::TcpListener::bind(&config.server.listen_address)
-        .await
-        .expect("Failed to bind TCP listener");
+    let listener = match tokio::net::TcpListener::bind(&config.server.listen_address).await {
+        Ok(l) => l,
+        Err(e) => {
+            tracing::error!(
+                error = %e,
+                address = %config.server.listen_address,
+                "Failed to bind TCP listener"
+            );
+            std::process::exit(1);
+        }
+    };
 
     tracing::info!(
         address = %config.server.listen_address,
@@ -197,10 +212,13 @@ async fn main() {
     );
 
     // Graceful shutdown on SIGTERM
-    axum::serve(listener, app)
+    if let Err(e) = axum::serve(listener, app)
         .with_graceful_shutdown(shutdown_signal())
         .await
-        .expect("HTTP server error");
+    {
+        tracing::error!(error = %e, "HTTP server error");
+        std::process::exit(1);
+    }
 
     // Release lease on shutdown
     if let Some(le) = &leader_elector {
@@ -318,7 +336,7 @@ async fn collection_loop_with_leader(
     discovery_notify: Arc<Notify>,
     leader_notify: Arc<Notify>,
 ) {
-    let semaphore = Arc::new(tokio::sync::Semaphore::new(config.max_concurrent_api_calls));
+    let semaphore = Arc::new(tokio::sync::Semaphore::new(config.max_concurrent_instances));
     let mut cycle: u64 = 0;
 
     loop {
@@ -351,7 +369,7 @@ async fn collection_loop_with_leader(
         let start = std::time::Instant::now();
 
         let (collected, failed) = aws::collector::run_collection_cycle(
-            &*pi, &instances, &region, &config, &metrics, &semaphore,
+            &pi, &instances, &region, &config, &metrics, &semaphore,
         )
         .await;
 
@@ -372,17 +390,21 @@ async fn collection_loop_with_leader(
 
 async fn shutdown_signal() {
     let ctrl_c = async {
-        tokio::signal::ctrl_c()
-            .await
-            .expect("Failed to install CTRL+C handler");
+        if let Err(e) = tokio::signal::ctrl_c().await {
+            tracing::error!(error = %e, "Failed to install CTRL+C handler");
+        }
     };
 
     #[cfg(unix)]
     let terminate = async {
-        tokio::signal::unix::signal(tokio::signal::unix::SignalKind::terminate())
-            .expect("Failed to install SIGTERM handler")
-            .recv()
-            .await;
+        match tokio::signal::unix::signal(tokio::signal::unix::SignalKind::terminate()) {
+            Ok(mut signal) => {
+                signal.recv().await;
+            }
+            Err(e) => {
+                tracing::error!(error = %e, "Failed to install SIGTERM handler");
+            }
+        }
     };
 
     #[cfg(not(unix))]

@@ -92,7 +92,7 @@ pub struct CollectionConfig {
     pub pi_period_seconds: i32,
     pub top_sql_limit: i32,
     pub top_host_limit: i32,
-    pub max_concurrent_api_calls: usize,
+    pub max_concurrent_instances: usize,
     /// Per-instance timeout in seconds. If a single instance's metrics collection
     /// exceeds this duration, it is aborted and marked as failed (up=0).
     pub instance_timeout_seconds: u64,
@@ -163,7 +163,7 @@ impl Default for CollectionConfig {
             pi_period_seconds: 60,
             top_sql_limit: 10,
             top_host_limit: 20,
-            max_concurrent_api_calls: 5,
+            max_concurrent_instances: 10,
             instance_timeout_seconds: 30,
             retry: RetryConfig::default(),
         }
@@ -293,7 +293,7 @@ mod tests {
         assert_eq!(config.collection.interval_seconds, 60);
         assert_eq!(config.collection.top_sql_limit, 10);
         assert_eq!(config.collection.top_host_limit, 20);
-        assert_eq!(config.collection.max_concurrent_api_calls, 5);
+        assert_eq!(config.collection.max_concurrent_instances, 10);
         assert_eq!(config.collection.retry.max_attempts, 3);
         assert_eq!(config.logging.level, "info");
         assert_eq!(config.logging.format, "json");
