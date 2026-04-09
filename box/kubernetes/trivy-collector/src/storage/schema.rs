@@ -1,21 +1,20 @@
 //! Database schema initialization and migrations
 
 use anyhow::{Context, Result};
-use rusqlite::Connection;
+use sqlx::SqlitePool;
 use tracing::{debug, info};
 
 /// Initialize the database schema
-pub fn init_schema(conn: &Connection) -> Result<()> {
+pub async fn init_schema(pool: &SqlitePool) -> Result<()> {
     debug!("Initializing database schema");
 
     // Check if reports table exists (to determine if this is a fresh DB)
-    let table_exists: bool = conn
-        .query_row(
-            "SELECT COUNT(*) > 0 FROM sqlite_master WHERE type='table' AND name='reports'",
-            [],
-            |row| row.get(0),
-        )
-        .unwrap_or(false);
+    let (table_exists,): (bool,) = sqlx::query_as(
+        "SELECT COUNT(*) > 0 FROM sqlite_master WHERE type='table' AND name='reports'",
+    )
+    .fetch_one(pool)
+    .await
+    .unwrap_or((false,));
 
     if table_exists {
         debug!("Reports table already exists, checking schema");
@@ -23,7 +22,7 @@ pub fn init_schema(conn: &Connection) -> Result<()> {
         info!("Creating new database schema");
     }
 
-    conn.execute_batch(
+    sqlx::raw_sql(
         r#"
         -- Reports table
         CREATE TABLE IF NOT EXISTS reports (
@@ -112,19 +111,20 @@ pub fn init_schema(conn: &Connection) -> Result<()> {
         GROUP BY cluster;
         "#,
     )
+    .execute(pool)
+    .await
     .context("Failed to initialize database schema")?;
 
     // Run migrations
-    run_migrations(conn)?;
+    run_migrations(pool).await?;
 
     // Log schema details
-    let index_count: i64 = conn
-        .query_row(
-            "SELECT COUNT(*) FROM sqlite_master WHERE type='index' AND tbl_name='reports'",
-            [],
-            |row| row.get(0),
-        )
-        .unwrap_or(0);
+    let (index_count,): (i64,) = sqlx::query_as(
+        "SELECT COUNT(*) FROM sqlite_master WHERE type='index' AND tbl_name='reports'",
+    )
+    .fetch_one(pool)
+    .await
+    .unwrap_or((0,));
 
     debug!(
         table = "reports",
@@ -137,32 +137,38 @@ pub fn init_schema(conn: &Connection) -> Result<()> {
 }
 
 /// Run database migrations for existing databases
-fn run_migrations(conn: &Connection) -> Result<()> {
+async fn run_migrations(pool: &SqlitePool) -> Result<()> {
     // Migration: Add notes column if it doesn't exist
-    if !column_exists(conn, "notes")? {
+    if !column_exists(pool, "reports", "notes").await? {
         info!("Migrating database: adding notes column");
-        conn.execute("ALTER TABLE reports ADD COLUMN notes TEXT DEFAULT ''", [])
+        sqlx::query("ALTER TABLE reports ADD COLUMN notes TEXT DEFAULT ''")
+            .execute(pool)
+            .await
             .context("Failed to add notes column")?;
     }
 
     // Migration: Add notes_created_at column if it doesn't exist
-    if !column_exists(conn, "notes_created_at")? {
+    if !column_exists(pool, "reports", "notes_created_at").await? {
         info!("Migrating database: adding notes_created_at column");
-        conn.execute("ALTER TABLE reports ADD COLUMN notes_created_at TEXT", [])
+        sqlx::query("ALTER TABLE reports ADD COLUMN notes_created_at TEXT")
+            .execute(pool)
+            .await
             .context("Failed to add notes_created_at column")?;
     }
 
     // Migration: Add notes_updated_at column if it doesn't exist
-    if !column_exists(conn, "notes_updated_at")? {
+    if !column_exists(pool, "reports", "notes_updated_at").await? {
         info!("Migrating database: adding notes_updated_at column");
-        conn.execute("ALTER TABLE reports ADD COLUMN notes_updated_at TEXT", [])
+        sqlx::query("ALTER TABLE reports ADD COLUMN notes_updated_at TEXT")
+            .execute(pool)
+            .await
             .context("Failed to add notes_updated_at column")?;
     }
 
     // Migration: Create api_tokens table if it doesn't exist
-    if !table_exists_check(conn, "api_tokens")? {
+    if !table_exists_check(pool, "api_tokens").await? {
         info!("Migrating database: creating api_tokens table");
-        conn.execute_batch(
+        sqlx::raw_sql(
             r#"
             CREATE TABLE IF NOT EXISTS api_tokens (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -180,25 +186,26 @@ fn run_migrations(conn: &Connection) -> Result<()> {
             CREATE INDEX IF NOT EXISTS idx_api_tokens_hash ON api_tokens(token_hash);
             "#,
         )
+        .execute(pool)
+        .await
         .context("Failed to create api_tokens table")?;
     }
 
     // Migration: Add description column to api_tokens if it doesn't exist
-    if table_exists_check(conn, "api_tokens")?
-        && !column_exists_in(conn, "api_tokens", "description")?
+    if table_exists_check(pool, "api_tokens").await?
+        && !column_exists(pool, "api_tokens", "description").await?
     {
         info!("Migrating database: adding description column to api_tokens");
-        conn.execute(
-            "ALTER TABLE api_tokens ADD COLUMN description TEXT DEFAULT ''",
-            [],
-        )
-        .context("Failed to add description column to api_tokens")?;
+        sqlx::query("ALTER TABLE api_tokens ADD COLUMN description TEXT DEFAULT ''")
+            .execute(pool)
+            .await
+            .context("Failed to add description column to api_tokens")?;
     }
 
     // Migration: Create cleanup_history table if it doesn't exist
-    if !table_exists_check(conn, "cleanup_history")? {
+    if !table_exists_check(pool, "cleanup_history").await? {
         info!("Migrating database: creating cleanup_history table");
-        conn.execute_batch(
+        sqlx::raw_sql(
             r#"
             CREATE TABLE IF NOT EXISTS cleanup_history (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -210,13 +217,15 @@ fn run_migrations(conn: &Connection) -> Result<()> {
             CREATE INDEX IF NOT EXISTS idx_cleanup_history_cleaned_at ON cleanup_history(cleaned_at);
             "#,
         )
+        .execute(pool)
+        .await
         .context("Failed to create cleanup_history table")?;
     }
 
     // Migration: Create api_logs table if it doesn't exist
-    if !table_exists_check(conn, "api_logs")? {
+    if !table_exists_check(pool, "api_logs").await? {
         info!("Migrating database: creating api_logs table");
-        conn.execute_batch(
+        sqlx::raw_sql(
             r#"
             CREATE TABLE IF NOT EXISTS api_logs (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -235,6 +244,8 @@ fn run_migrations(conn: &Connection) -> Result<()> {
             CREATE INDEX IF NOT EXISTS idx_api_logs_status_code ON api_logs(status_code);
             "#,
         )
+        .execute(pool)
+        .await
         .context("Failed to create api_logs table")?;
     }
 
@@ -242,91 +253,120 @@ fn run_migrations(conn: &Connection) -> Result<()> {
 }
 
 /// Check if a table exists in the database
-fn table_exists_check(conn: &Connection, table_name: &str) -> Result<bool> {
-    let exists: bool = conn
-        .query_row(
-            "SELECT COUNT(*) > 0 FROM sqlite_master WHERE type='table' AND name=?1",
-            [table_name],
-            |row| row.get(0),
-        )
-        .unwrap_or(false);
+async fn table_exists_check(pool: &SqlitePool, table_name: &str) -> Result<bool> {
+    let (exists,): (bool,) =
+        sqlx::query_as("SELECT COUNT(*) > 0 FROM sqlite_master WHERE type='table' AND name=$1")
+            .bind(table_name)
+            .fetch_one(pool)
+            .await
+            .unwrap_or((false,));
     Ok(exists)
 }
 
-/// Check if a column exists in the reports table
-fn column_exists(conn: &Connection, column_name: &str) -> Result<bool> {
-    column_exists_in(conn, "reports", column_name)
-}
-
 /// Check if a column exists in the given table
-fn column_exists_in(conn: &Connection, table_name: &str, column_name: &str) -> Result<bool> {
+async fn column_exists(pool: &SqlitePool, table_name: &str, column_name: &str) -> Result<bool> {
     let query = format!(
-        "SELECT COUNT(*) > 0 FROM pragma_table_info('{}') WHERE name=?1",
+        "SELECT COUNT(*) > 0 FROM pragma_table_info('{}') WHERE name=$1",
         table_name
     );
-    let exists: bool = conn
-        .query_row(&query, [column_name], |row| row.get(0))
-        .unwrap_or(false);
+    let (exists,): (bool,) = sqlx::query_as(&query)
+        .bind(column_name)
+        .fetch_one(pool)
+        .await
+        .unwrap_or((false,));
     Ok(exists)
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use sqlx::sqlite::SqlitePoolOptions;
 
-    #[test]
-    fn test_init_schema_fresh_db() {
-        let conn = Connection::open_in_memory().unwrap();
-        init_schema(&conn).unwrap();
+    async fn test_pool() -> SqlitePool {
+        SqlitePoolOptions::new()
+            .max_connections(1)
+            .connect("sqlite::memory:")
+            .await
+            .unwrap()
+    }
+
+    #[tokio::test]
+    async fn test_init_schema_fresh_db() {
+        let pool = test_pool().await;
+        init_schema(&pool).await.unwrap();
 
         // Verify tables exist
-        assert!(table_exists_check(&conn, "reports").unwrap());
-        assert!(table_exists_check(&conn, "api_tokens").unwrap());
-        assert!(table_exists_check(&conn, "api_logs").unwrap());
-        assert!(table_exists_check(&conn, "cleanup_history").unwrap());
+        assert!(table_exists_check(&pool, "reports").await.unwrap());
+        assert!(table_exists_check(&pool, "api_tokens").await.unwrap());
+        assert!(table_exists_check(&pool, "api_logs").await.unwrap());
+        assert!(table_exists_check(&pool, "cleanup_history").await.unwrap());
     }
 
-    #[test]
-    fn test_init_schema_idempotent() {
-        let conn = Connection::open_in_memory().unwrap();
-        init_schema(&conn).unwrap();
+    #[tokio::test]
+    async fn test_init_schema_idempotent() {
+        let pool = test_pool().await;
+        init_schema(&pool).await.unwrap();
         // Running again should not fail
-        init_schema(&conn).unwrap();
+        init_schema(&pool).await.unwrap();
     }
 
-    #[test]
-    fn test_table_exists_check() {
-        let conn = Connection::open_in_memory().unwrap();
-        assert!(!table_exists_check(&conn, "reports").unwrap());
-        init_schema(&conn).unwrap();
-        assert!(table_exists_check(&conn, "reports").unwrap());
-        assert!(!table_exists_check(&conn, "nonexistent").unwrap());
+    #[tokio::test]
+    async fn test_table_exists_check() {
+        let pool = test_pool().await;
+        assert!(!table_exists_check(&pool, "reports").await.unwrap());
+        init_schema(&pool).await.unwrap();
+        assert!(table_exists_check(&pool, "reports").await.unwrap());
+        assert!(!table_exists_check(&pool, "nonexistent").await.unwrap());
     }
 
-    #[test]
-    fn test_column_exists() {
-        let conn = Connection::open_in_memory().unwrap();
-        init_schema(&conn).unwrap();
-        assert!(column_exists(&conn, "notes").unwrap());
-        assert!(column_exists(&conn, "notes_created_at").unwrap());
-        assert!(column_exists(&conn, "notes_updated_at").unwrap());
-        assert!(!column_exists(&conn, "nonexistent_col").unwrap());
+    #[tokio::test]
+    async fn test_column_exists() {
+        let pool = test_pool().await;
+        init_schema(&pool).await.unwrap();
+        assert!(column_exists(&pool, "reports", "notes").await.unwrap());
+        assert!(
+            column_exists(&pool, "reports", "notes_created_at")
+                .await
+                .unwrap()
+        );
+        assert!(
+            column_exists(&pool, "reports", "notes_updated_at")
+                .await
+                .unwrap()
+        );
+        assert!(
+            !column_exists(&pool, "reports", "nonexistent_col")
+                .await
+                .unwrap()
+        );
     }
 
-    #[test]
-    fn test_column_exists_in() {
-        let conn = Connection::open_in_memory().unwrap();
-        init_schema(&conn).unwrap();
-        assert!(column_exists_in(&conn, "api_tokens", "description").unwrap());
-        assert!(column_exists_in(&conn, "api_tokens", "user_sub").unwrap());
-        assert!(!column_exists_in(&conn, "api_tokens", "nonexistent").unwrap());
+    #[tokio::test]
+    async fn test_column_exists_in() {
+        let pool = test_pool().await;
+        init_schema(&pool).await.unwrap();
+        assert!(
+            column_exists(&pool, "api_tokens", "description")
+                .await
+                .unwrap()
+        );
+        assert!(
+            column_exists(&pool, "api_tokens", "user_sub")
+                .await
+                .unwrap()
+        );
+        assert!(
+            !column_exists(&pool, "api_tokens", "nonexistent")
+                .await
+                .unwrap()
+        );
     }
 
-    #[test]
-    fn test_migrations_on_existing_db() {
-        let conn = Connection::open_in_memory().unwrap();
+    #[tokio::test]
+    async fn test_migrations_on_existing_db() {
+        let pool = test_pool().await;
         // Create only the reports table (simulating old schema without notes)
-        conn.execute_batch(
+        sqlx::raw_sql(
             r#"
             CREATE TABLE reports (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -350,33 +390,45 @@ mod tests {
             );
             "#,
         )
+        .execute(&pool)
+        .await
         .unwrap();
 
         // Run migrations should add missing columns and tables
-        run_migrations(&conn).unwrap();
+        run_migrations(&pool).await.unwrap();
 
         // Verify migrations applied
-        assert!(column_exists(&conn, "notes").unwrap());
-        assert!(column_exists(&conn, "notes_created_at").unwrap());
-        assert!(column_exists(&conn, "notes_updated_at").unwrap());
-        assert!(table_exists_check(&conn, "api_tokens").unwrap());
-        assert!(table_exists_check(&conn, "api_logs").unwrap());
-        assert!(table_exists_check(&conn, "cleanup_history").unwrap());
-        assert!(column_exists_in(&conn, "api_tokens", "description").unwrap());
+        assert!(column_exists(&pool, "reports", "notes").await.unwrap());
+        assert!(
+            column_exists(&pool, "reports", "notes_created_at")
+                .await
+                .unwrap()
+        );
+        assert!(
+            column_exists(&pool, "reports", "notes_updated_at")
+                .await
+                .unwrap()
+        );
+        assert!(table_exists_check(&pool, "api_tokens").await.unwrap());
+        assert!(table_exists_check(&pool, "api_logs").await.unwrap());
+        assert!(table_exists_check(&pool, "cleanup_history").await.unwrap());
+        assert!(
+            column_exists(&pool, "api_tokens", "description")
+                .await
+                .unwrap()
+        );
     }
 
-    #[test]
-    fn test_indexes_created() {
-        let conn = Connection::open_in_memory().unwrap();
-        init_schema(&conn).unwrap();
+    #[tokio::test]
+    async fn test_indexes_created() {
+        let pool = test_pool().await;
+        init_schema(&pool).await.unwrap();
 
-        let index_count: i64 = conn
-            .query_row(
-                "SELECT COUNT(*) FROM sqlite_master WHERE type='index'",
-                [],
-                |row| row.get(0),
-            )
-            .unwrap();
+        let (index_count,): (i64,) =
+            sqlx::query_as("SELECT COUNT(*) FROM sqlite_master WHERE type='index'")
+                .fetch_one(&pool)
+                .await
+                .unwrap();
         // Should have at least the report indexes
         assert!(index_count > 0);
     }

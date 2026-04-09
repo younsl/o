@@ -2,6 +2,7 @@
 
 use anyhow::{Context, Result};
 use sha2::{Digest, Sha256};
+use sqlx::Row;
 use tracing::debug;
 
 use super::database::Database;
@@ -11,7 +12,7 @@ impl Database {
     /// Create a new API token for the given user.
     /// `expires_days` must be one of 1, 7, 30, 90, 180, 365.
     /// Returns (plaintext_token, TokenInfo).
-    pub fn create_token(
+    pub async fn create_token(
         &self,
         user_sub: &str,
         name: &str,
@@ -29,14 +30,21 @@ impl Database {
             .unwrap_or(now)
             .to_rfc3339();
 
-        let conn = self.conn.lock().unwrap();
-        conn.execute(
-            "INSERT INTO api_tokens (user_sub, name, description, token_hash, token_prefix, created_at, expires_at) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
-            rusqlite::params![user_sub, name, description, token_hash, &token_prefix, created_at, expires_at],
+        let result = sqlx::query(
+            "INSERT INTO api_tokens (user_sub, name, description, token_hash, token_prefix, created_at, expires_at) VALUES ($1, $2, $3, $4, $5, $6, $7)",
         )
+        .bind(user_sub)
+        .bind(name)
+        .bind(description)
+        .bind(&token_hash)
+        .bind(&token_prefix)
+        .bind(&created_at)
+        .bind(&expires_at)
+        .execute(&self.pool)
+        .await
         .context("Failed to insert API token")?;
 
-        let id = conn.last_insert_rowid();
+        let id = result.last_insert_rowid();
 
         debug!(token_id = id, user_sub = %user_sub, name = %name, expires_days = expires_days, "API token created");
 
@@ -55,43 +63,42 @@ impl Database {
     }
 
     /// List all tokens for the given user (hashes are not included).
-    pub fn list_tokens(&self, user_sub: &str) -> Result<Vec<TokenInfo>> {
-        let conn = self.conn.lock().unwrap();
-        let mut stmt = conn
-            .prepare(
-                "SELECT id, name, description, token_prefix, created_at, expires_at, last_used_at FROM api_tokens WHERE user_sub = ?1 ORDER BY created_at DESC",
-            )
-            .context("Failed to prepare list_tokens query")?;
+    pub async fn list_tokens(&self, user_sub: &str) -> Result<Vec<TokenInfo>> {
+        let rows = sqlx::query(
+            "SELECT id, name, description, token_prefix, created_at, expires_at, last_used_at FROM api_tokens WHERE user_sub = $1 ORDER BY created_at DESC",
+        )
+        .bind(user_sub)
+        .fetch_all(&self.pool)
+        .await
+        .context("Failed to execute list_tokens query")?;
 
-        let tokens = stmt
-            .query_map([user_sub], |row| {
-                Ok(TokenInfo {
-                    id: row.get(0)?,
-                    name: row.get(1)?,
-                    description: row.get(2)?,
-                    token_prefix: row.get(3)?,
-                    created_at: row.get(4)?,
-                    expires_at: row.get(5)?,
-                    last_used_at: row.get(6)?,
-                })
+        let tokens = rows
+            .iter()
+            .map(|row| TokenInfo {
+                id: row.get::<i64, _>(0),
+                name: row.get::<String, _>(1),
+                description: row.get::<String, _>(2),
+                token_prefix: row.get::<String, _>(3),
+                created_at: row.get::<String, _>(4),
+                expires_at: row.get::<String, _>(5),
+                last_used_at: row.get::<Option<String>, _>(6),
             })
-            .context("Failed to execute list_tokens query")?
-            .collect::<Result<Vec<_>, _>>()
-            .context("Failed to collect token rows")?;
+            .collect();
 
         Ok(tokens)
     }
 
     /// Delete a token by ID, only if it belongs to the given user.
     /// Returns true if a row was deleted.
-    pub fn delete_token(&self, user_sub: &str, token_id: i64) -> Result<bool> {
-        let conn = self.conn.lock().unwrap();
-        let rows = conn
-            .execute(
-                "DELETE FROM api_tokens WHERE id = ?1 AND user_sub = ?2",
-                rusqlite::params![token_id, user_sub],
-            )
+    pub async fn delete_token(&self, user_sub: &str, token_id: i64) -> Result<bool> {
+        let result = sqlx::query("DELETE FROM api_tokens WHERE id = $1 AND user_sub = $2")
+            .bind(token_id)
+            .bind(user_sub)
+            .execute(&self.pool)
+            .await
             .context("Failed to delete API token")?;
+
+        let rows = result.rows_affected();
 
         if rows > 0 {
             debug!(token_id = token_id, user_sub = %user_sub, "API token deleted");
@@ -102,17 +109,21 @@ impl Database {
 
     /// Validate a plaintext token. Returns the user_sub if valid (and not expired),
     /// and updates last_used_at.
-    pub fn validate_token(&self, token_plaintext: &str) -> Result<Option<String>> {
+    pub async fn validate_token(&self, token_plaintext: &str) -> Result<Option<String>> {
         let token_hash = hash_token(token_plaintext);
 
-        let conn = self.conn.lock().unwrap();
-        let result: Option<(i64, String, String)> = conn
-            .query_row(
-                "SELECT id, user_sub, expires_at FROM api_tokens WHERE token_hash = ?1",
-                [&token_hash],
-                |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)),
-            )
-            .ok();
+        let result: Option<(i64, String, String)> =
+            sqlx::query("SELECT id, user_sub, expires_at FROM api_tokens WHERE token_hash = $1")
+                .bind(&token_hash)
+                .fetch_optional(&self.pool)
+                .await?
+                .map(|row| {
+                    (
+                        row.get::<i64, _>(0),
+                        row.get::<String, _>(1),
+                        row.get::<String, _>(2),
+                    )
+                });
 
         if let Some((id, user_sub, expires_at)) = result {
             // Check expiration
@@ -124,10 +135,11 @@ impl Database {
             }
 
             let now = chrono::Utc::now().to_rfc3339();
-            let _ = conn.execute(
-                "UPDATE api_tokens SET last_used_at = ?1 WHERE id = ?2",
-                rusqlite::params![now, id],
-            );
+            let _ = sqlx::query("UPDATE api_tokens SET last_used_at = $1 WHERE id = $2")
+                .bind(&now)
+                .bind(id)
+                .execute(&self.pool)
+                .await;
             debug!(token_id = id, user_sub = %user_sub, "API token validated");
             Ok(Some(user_sub))
         } else {
@@ -177,12 +189,15 @@ mod tests {
         assert_ne!(hash1, hash2);
     }
 
-    #[test]
-    fn test_create_and_list_tokens() {
-        let db = Database::new(":memory:").expect("Failed to create database");
+    #[tokio::test]
+    async fn test_create_and_list_tokens() {
+        let db = Database::new(":memory:")
+            .await
+            .expect("Failed to create database");
 
         let (plaintext, info) = db
             .create_token("user-1", "my-token", "", 30)
+            .await
             .expect("Failed to create token");
 
         assert!(plaintext.starts_with("tc_"));
@@ -190,77 +205,106 @@ mod tests {
         assert!(plaintext.starts_with(&info.token_prefix));
         assert!(!info.expires_at.is_empty());
 
-        let tokens = db.list_tokens("user-1").expect("Failed to list tokens");
+        let tokens = db
+            .list_tokens("user-1")
+            .await
+            .expect("Failed to list tokens");
         assert_eq!(tokens.len(), 1);
         assert_eq!(tokens[0].name, "my-token");
         assert!(!tokens[0].expires_at.is_empty());
     }
 
-    #[test]
-    fn test_validate_token() {
-        let db = Database::new(":memory:").expect("Failed to create database");
+    #[tokio::test]
+    async fn test_validate_token() {
+        let db = Database::new(":memory:")
+            .await
+            .expect("Failed to create database");
 
         let (plaintext, _) = db
             .create_token("user-1", "my-token", "test desc", 365)
+            .await
             .expect("Failed to create token");
 
         let result = db
             .validate_token(&plaintext)
+            .await
             .expect("Failed to validate token");
         assert_eq!(result, Some("user-1".to_string()));
 
         let result = db
             .validate_token("tc_invalidtoken")
+            .await
             .expect("Failed to validate token");
         assert_eq!(result, None);
     }
 
-    #[test]
-    fn test_delete_token() {
-        let db = Database::new(":memory:").expect("Failed to create database");
+    #[tokio::test]
+    async fn test_delete_token() {
+        let db = Database::new(":memory:")
+            .await
+            .expect("Failed to create database");
 
         let (_, info) = db
             .create_token("user-1", "my-token", "", 7)
+            .await
             .expect("Failed to create token");
 
         // Wrong user cannot delete
         let deleted = db
             .delete_token("user-2", info.id)
+            .await
             .expect("Failed to delete token");
         assert!(!deleted);
 
         // Correct user can delete
         let deleted = db
             .delete_token("user-1", info.id)
+            .await
             .expect("Failed to delete token");
         assert!(deleted);
 
-        let tokens = db.list_tokens("user-1").expect("Failed to list tokens");
+        let tokens = db
+            .list_tokens("user-1")
+            .await
+            .expect("Failed to list tokens");
         assert!(tokens.is_empty());
     }
 
-    #[test]
-    fn test_duplicate_token_name_fails() {
-        let db = Database::new(":memory:").expect("Failed to create database");
+    #[tokio::test]
+    async fn test_duplicate_token_name_fails() {
+        let db = Database::new(":memory:")
+            .await
+            .expect("Failed to create database");
 
         db.create_token("user-1", "my-token", "", 30)
+            .await
             .expect("Failed to create token");
 
-        let result = db.create_token("user-1", "my-token", "", 90);
+        let result = db.create_token("user-1", "my-token", "", 90).await;
         assert!(result.is_err());
     }
 
-    #[test]
-    fn test_same_name_different_users() {
-        let db = Database::new(":memory:").expect("Failed to create database");
+    #[tokio::test]
+    async fn test_same_name_different_users() {
+        let db = Database::new(":memory:")
+            .await
+            .expect("Failed to create database");
 
         db.create_token("user-1", "ci-token", "", 30)
+            .await
             .expect("Failed to create token");
         db.create_token("user-2", "ci-token", "", 30)
+            .await
             .expect("Failed to create token");
 
-        let tokens1 = db.list_tokens("user-1").expect("Failed to list tokens");
-        let tokens2 = db.list_tokens("user-2").expect("Failed to list tokens");
+        let tokens1 = db
+            .list_tokens("user-1")
+            .await
+            .expect("Failed to list tokens");
+        let tokens2 = db
+            .list_tokens("user-2")
+            .await
+            .expect("Failed to list tokens");
         assert_eq!(tokens1.len(), 1);
         assert_eq!(tokens2.len(), 1);
     }

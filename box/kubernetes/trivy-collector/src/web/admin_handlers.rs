@@ -58,7 +58,7 @@ pub async fn list_api_logs(
         offset: query.offset.unwrap_or(0),
     };
 
-    match state.db.list_api_logs(&params) {
+    match state.db.list_api_logs(&params).await {
         Ok((items, total)) => Json(serde_json::json!({
             "items": items,
             "total": total,
@@ -86,7 +86,7 @@ pub async fn list_api_logs(
     )
 )]
 pub async fn get_api_log_stats(State(state): State<AppState>) -> impl IntoResponse {
-    match state.db.get_api_log_stats() {
+    match state.db.get_api_log_stats().await {
         Ok(stats) => Json(serde_json::json!(stats)).into_response(),
         Err(e) => {
             error!(error = %e, "Failed to get API log stats");
@@ -137,7 +137,11 @@ pub async fn cleanup_api_logs(
         })
         .unwrap_or_else(|| "anonymous".to_string());
 
-    match state.db.cleanup_old_api_logs(retention_days, &triggered_by) {
+    match state
+        .db
+        .cleanup_old_api_logs(retention_days, &triggered_by)
+        .await
+    {
         Ok(deleted) => {
             info!(
                 deleted = deleted,
@@ -176,6 +180,7 @@ pub async fn admin_info(State(state): State<AppState>) -> impl IntoResponse {
     let log_count: i64 = state
         .db
         .get_api_log_stats()
+        .await
         .map(|s| s.total_requests)
         .unwrap_or(0);
 
@@ -201,8 +206,12 @@ mod tests {
     use crate::storage::Database;
     use crate::web::state::{AppState, ConfigInfo, RuntimeInfo, WatcherStatus};
 
-    fn create_test_state() -> AppState {
-        let db = Arc::new(Database::new(":memory:").expect("Failed to create test database"));
+    async fn create_test_state() -> AppState {
+        let db = Arc::new(
+            Database::new(":memory:")
+                .await
+                .expect("Failed to create test database"),
+        );
         let mut registry = prometheus_client::registry::Registry::default();
         let metrics = crate::metrics::Metrics::new(&mut registry, crate::config::Mode::Server);
 
@@ -234,7 +243,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_admin_info() {
-        let state = create_test_state();
+        let state = create_test_state().await;
         let app = Router::new()
             .route("/api/v1/admin/info", get(admin_info))
             .with_state(state);
@@ -258,7 +267,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_list_api_logs_handler() {
-        let state = create_test_state();
+        let state = create_test_state().await;
         // Insert test data
         state
             .db
@@ -274,6 +283,7 @@ mod tests {
                 user_agent: String::new(),
                 created_at: chrono::Utc::now().format("%Y-%m-%dT%H:%M:%SZ").to_string(),
             })
+            .await
             .unwrap();
 
         let app = Router::new()
@@ -298,7 +308,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_get_api_log_stats_handler() {
-        let state = create_test_state();
+        let state = create_test_state().await;
         let app = Router::new()
             .route("/api/v1/admin/logs/stats", get(get_api_log_stats))
             .with_state(state);

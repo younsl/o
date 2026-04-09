@@ -128,6 +128,7 @@ pub struct ApiDoc;
 use anyhow::Result;
 use axum::{
     Router,
+    extract::DefaultBodyLimit,
     http::{Method, StatusCode, header},
     middleware as axum_middleware,
     response::{Html, IntoResponse},
@@ -164,7 +165,7 @@ pub async fn run(
     );
 
     // Initialize database
-    let db = Arc::new(Database::new(&config.get_db_path())?);
+    let db = Arc::new(Database::new(&config.get_db_path()).await?);
 
     // Initialize watcher status
     let watcher_status = Arc::new(WatcherStatus::new());
@@ -305,7 +306,10 @@ pub async fn run(
         .allow_headers([header::CONTENT_TYPE, header::AUTHORIZATION]);
 
     // Build router based on auth mode
-    let app = build_router(state, auth_mode).layer(cors);
+    // Request body limit: 10MB to accommodate large Trivy reports
+    let app = build_router(state, auth_mode)
+        .layer(DefaultBodyLimit::max(10 * 1024 * 1024))
+        .layer(cors);
 
     let addr = SocketAddr::from(([0, 0, 0, 0], config.server_port));
     let listener = tokio::net::TcpListener::bind(addr).await?;
@@ -324,7 +328,7 @@ pub async fn run(
         loop {
             tokio::select! {
                 _ = interval.tick() => {
-                    match db_cleanup.cleanup_old_api_logs(7, "system") {
+                    match db_cleanup.cleanup_old_api_logs(7, "system").await {
                         Ok(deleted) => {
                             if let Some(ref runs) = metrics_cleanup.api_logs_cleanup_runs_total {
                                 runs.get_or_create(&CleanupResultLabels {
@@ -372,12 +376,12 @@ pub async fn run(
                     }
                     // Update report count gauges
                     if let Some(ref family) = metrics_refresh.db_reports_total {
-                        if let Ok(count) = db_metrics_refresh.count_reports("vulnerabilityreport") {
+                        if let Ok(count) = db_metrics_refresh.count_reports("vulnerabilityreport").await {
                             family.get_or_create(&ReportTypeLabels {
                                 report_type: "vulnerabilityreport".to_string(),
                             }).set(count);
                         }
-                        if let Ok(count) = db_metrics_refresh.count_reports("sbomreport") {
+                        if let Ok(count) = db_metrics_refresh.count_reports("sbomreport").await {
                             family.get_or_create(&ReportTypeLabels {
                                 report_type: "sbomreport".to_string(),
                             }).set(count);
@@ -385,7 +389,7 @@ pub async fn run(
                     }
                     // Update API logs count gauge
                     if let Some(ref gauge) = metrics_refresh.api_logs_total
-                        && let Ok(count) = db_metrics_refresh.count_api_logs() {
+                        && let Ok(count) = db_metrics_refresh.count_api_logs().await {
                             gauge.set(count);
                     }
                 }
@@ -589,8 +593,8 @@ mod tests {
     use http_body_util::BodyExt;
     use tower::ServiceExt;
 
-    fn create_test_app_state() -> AppState {
-        let db = Arc::new(crate::storage::Database::new(":memory:").unwrap());
+    async fn create_test_app_state() -> AppState {
+        let db = Arc::new(crate::storage::Database::new(":memory:").await.unwrap());
         let mut registry = prometheus_client::registry::Registry::default();
         let metrics = crate::metrics::Metrics::new(&mut registry, crate::config::Mode::Server);
 
@@ -624,14 +628,14 @@ mod tests {
         }
     }
 
-    fn create_router_no_auth() -> Router {
-        let state = create_test_app_state();
+    async fn create_router_no_auth() -> Router {
+        let state = create_test_app_state().await;
         build_router(state, auth::AuthMode::None)
     }
 
     #[tokio::test]
     async fn test_build_router_version() {
-        let app = create_router_no_auth();
+        let app = create_router_no_auth().await;
         let resp = app
             .oneshot(
                 axum::http::Request::builder()
@@ -649,7 +653,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_build_router_status() {
-        let app = create_router_no_auth();
+        let app = create_router_no_auth().await;
         let resp = app
             .oneshot(
                 axum::http::Request::builder()
@@ -664,7 +668,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_build_router_config() {
-        let app = create_router_no_auth();
+        let app = create_router_no_auth().await;
         let resp = app
             .oneshot(
                 axum::http::Request::builder()
@@ -679,7 +683,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_build_router_stats() {
-        let app = create_router_no_auth();
+        let app = create_router_no_auth().await;
         let resp = app
             .oneshot(
                 axum::http::Request::builder()
@@ -694,7 +698,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_build_router_clusters() {
-        let app = create_router_no_auth();
+        let app = create_router_no_auth().await;
         let resp = app
             .oneshot(
                 axum::http::Request::builder()
@@ -709,7 +713,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_build_router_watcher_status() {
-        let app = create_router_no_auth();
+        let app = create_router_no_auth().await;
         let resp = app
             .oneshot(
                 axum::http::Request::builder()
@@ -724,7 +728,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_build_router_vuln_reports() {
-        let app = create_router_no_auth();
+        let app = create_router_no_auth().await;
         let resp = app
             .oneshot(
                 axum::http::Request::builder()
@@ -739,7 +743,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_build_router_sbom_reports() {
-        let app = create_router_no_auth();
+        let app = create_router_no_auth().await;
         let resp = app
             .oneshot(
                 axum::http::Request::builder()
@@ -754,7 +758,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_build_router_admin_info() {
-        let app = create_router_no_auth();
+        let app = create_router_no_auth().await;
         let resp = app
             .oneshot(
                 axum::http::Request::builder()
@@ -769,7 +773,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_build_router_admin_logs() {
-        let app = create_router_no_auth();
+        let app = create_router_no_auth().await;
         let resp = app
             .oneshot(
                 axum::http::Request::builder()
@@ -784,7 +788,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_build_router_admin_log_stats() {
-        let app = create_router_no_auth();
+        let app = create_router_no_auth().await;
         let resp = app
             .oneshot(
                 axum::http::Request::builder()
@@ -799,7 +803,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_build_router_dashboard_trends() {
-        let app = create_router_no_auth();
+        let app = create_router_no_auth().await;
         let resp = app
             .oneshot(
                 axum::http::Request::builder()
@@ -814,7 +818,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_build_router_receive_report() {
-        let app = create_router_no_auth();
+        let app = create_router_no_auth().await;
         let body = serde_json::json!({
             "event_type": "Apply",
             "payload": {
@@ -842,7 +846,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_build_router_auth_me() {
-        let app = create_router_no_auth();
+        let app = create_router_no_auth().await;
         let resp = app
             .oneshot(
                 axum::http::Request::builder()
@@ -858,7 +862,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_build_router_namespaces() {
-        let app = create_router_no_auth();
+        let app = create_router_no_auth().await;
         let resp = app
             .oneshot(
                 axum::http::Request::builder()
@@ -873,7 +877,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_build_router_static_not_found() {
-        let app = create_router_no_auth();
+        let app = create_router_no_auth().await;
         let resp = app
             .oneshot(
                 axum::http::Request::builder()
@@ -888,7 +892,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_build_router_asset_not_found() {
-        let app = create_router_no_auth();
+        let app = create_router_no_auth().await;
         let resp = app
             .oneshot(
                 axum::http::Request::builder()
@@ -903,7 +907,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_build_router_vuln_search() {
-        let app = create_router_no_auth();
+        let app = create_router_no_auth().await;
         let resp = app
             .oneshot(
                 axum::http::Request::builder()
@@ -918,7 +922,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_build_router_vuln_suggest() {
-        let app = create_router_no_auth();
+        let app = create_router_no_auth().await;
         let resp = app
             .oneshot(
                 axum::http::Request::builder()
@@ -933,7 +937,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_build_router_sbom_search() {
-        let app = create_router_no_auth();
+        let app = create_router_no_auth().await;
         let resp = app
             .oneshot(
                 axum::http::Request::builder()
@@ -948,7 +952,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_build_router_sbom_suggest() {
-        let app = create_router_no_auth();
+        let app = create_router_no_auth().await;
         let resp = app
             .oneshot(
                 axum::http::Request::builder()
@@ -963,7 +967,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_build_router_auth_tokens_list() {
-        let app = create_router_no_auth();
+        let app = create_router_no_auth().await;
         let resp = app
             .oneshot(
                 axum::http::Request::builder()
@@ -979,7 +983,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_build_router_fallback_index() {
-        let app = create_router_no_auth();
+        let app = create_router_no_auth().await;
         let resp = app
             .oneshot(
                 axum::http::Request::builder()
@@ -996,7 +1000,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_build_router_root() {
-        let app = create_router_no_auth();
+        let app = create_router_no_auth().await;
         let resp = app
             .oneshot(
                 axum::http::Request::builder()
@@ -1012,7 +1016,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_build_router_swagger_ui() {
-        let app = create_router_no_auth();
+        let app = create_router_no_auth().await;
         let resp = app
             .oneshot(
                 axum::http::Request::builder()
@@ -1028,7 +1032,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_build_router_auth_login() {
-        let app = create_router_no_auth();
+        let app = create_router_no_auth().await;
         let resp = app
             .oneshot(
                 axum::http::Request::builder()
@@ -1044,7 +1048,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_build_router_auth_callback() {
-        let app = create_router_no_auth();
+        let app = create_router_no_auth().await;
         let resp = app
             .oneshot(
                 axum::http::Request::builder()
@@ -1059,7 +1063,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_build_router_auth_logout() {
-        let app = create_router_no_auth();
+        let app = create_router_no_auth().await;
         let resp = app
             .oneshot(
                 axum::http::Request::builder()

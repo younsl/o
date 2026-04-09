@@ -374,7 +374,7 @@ pub async fn list_tokens(
         }
     };
 
-    match state.db.list_tokens(&user_sub) {
+    match state.db.list_tokens(&user_sub).await {
         Ok(tokens) => axum::Json(serde_json::json!({ "tokens": tokens })).into_response(),
         Err(e) => {
             error!(error = %e, "Failed to list tokens");
@@ -429,7 +429,7 @@ pub async fn create_token(
             .into_response();
     }
 
-    if let Ok(existing) = state.db.list_tokens(&user_sub)
+    if let Ok(existing) = state.db.list_tokens(&user_sub).await
         && existing.len() >= 5
     {
         return (
@@ -456,6 +456,7 @@ pub async fn create_token(
     match state
         .db
         .create_token(&user_sub, name, description, body.expires_days)
+        .await
     {
         Ok((plaintext, info)) => {
             info!(user_sub = %user_sub, token_name = %name, "API token created");
@@ -517,7 +518,7 @@ pub async fn delete_token(
         }
     };
 
-    match state.db.delete_token(&user_sub, token_id) {
+    match state.db.delete_token(&user_sub, token_id).await {
         Ok(true) => {
             info!(user_sub = %user_sub, token_id = token_id, "API token deleted");
             StatusCode::NO_CONTENT.into_response()

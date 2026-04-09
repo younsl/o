@@ -52,7 +52,7 @@ pub async fn require_auth(
     {
         if token.starts_with("tc_") {
             // trivy-collector self-issued API token
-            match state.db.validate_token(token) {
+            match state.db.validate_token(token).await {
                 Ok(Some(user_sub)) => {
                     debug!(user_sub = %user_sub, "Authenticated via API token");
                     // Create a minimal session for RBAC

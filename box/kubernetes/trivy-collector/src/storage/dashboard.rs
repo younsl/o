@@ -2,6 +2,7 @@
 
 use anyhow::Result;
 use serde::{Deserialize, Serialize};
+use sqlx::Row;
 use utoipa::ToSchema;
 
 use super::database::Database;
@@ -45,53 +46,46 @@ pub struct TrendResponse {
 
 impl Database {
     /// Get the date range of stored data from reports table
-    pub fn get_reports_data_range(&self) -> Result<(Option<String>, Option<String>)> {
-        let conn = self.conn.lock().unwrap();
-
-        let result: (Option<String>, Option<String>) = conn.query_row(
+    pub async fn get_reports_data_range(&self) -> Result<(Option<String>, Option<String>)> {
+        let row = sqlx::query(
             "SELECT MIN(date(received_at)), MAX(date(received_at)) FROM reports WHERE received_at IS NOT NULL",
-            [],
-            |row| Ok((row.get(0)?, row.get(1)?)),
-        )?;
+        )
+        .fetch_one(&self.pool)
+        .await?;
 
-        Ok(result)
+        let min_date: Option<String> = row.get(0);
+        let max_date: Option<String> = row.get(1);
+
+        Ok((min_date, max_date))
     }
 
     /// Get current live statistics (directly from reports table)
-    pub fn get_live_trends(
+    pub async fn get_live_trends(
         &self,
         start_date: &str,
         end_date: &str,
         cluster: Option<&str>,
         granularity: &str,
     ) -> Result<TrendResponse> {
-        let conn = self.conn.lock().unwrap();
-
         // Get list of clusters
         let clusters: Vec<String> = if let Some(c) = cluster {
             vec![c.to_string()]
         } else {
-            let mut stmt = conn.prepare("SELECT DISTINCT cluster FROM reports ORDER BY cluster")?;
-            let rows = stmt.query_map([], |row| row.get::<_, String>(0))?;
-            rows.filter_map(|r| r.ok()).collect()
+            sqlx::query_scalar::<_, String>("SELECT DISTINCT cluster FROM reports ORDER BY cluster")
+                .fetch_all(&self.pool)
+                .await?
         };
 
         // Generate all time slots (hourly: 24 hours from now, daily: all days in range)
         // For cumulative totals: calculate totals up to each time point
-        let (sql, sql_params): (String, Vec<Box<dyn rusqlite::ToSql>>) = if granularity == "hourly"
-        {
+        let series = if granularity == "hourly" {
             // Optimized hourly query using window functions (single table scan)
-            // Before: 216 correlated subqueries (24 hours × 9 metrics)
+            // Before: 216 correlated subqueries (24 hours x 9 metrics)
             // After: 1 scan with GROUP BY + window functions for cumulative sums
             let cluster_filter = if cluster.is_some() {
-                " AND cluster = ?1"
+                " AND cluster = $1"
             } else {
                 ""
-            };
-            let params: Vec<Box<dyn rusqlite::ToSql>> = if let Some(c) = cluster {
-                vec![Box::new(c.to_string())]
-            } else {
-                vec![]
             };
             let sql = format!(
                 r#"
@@ -155,24 +149,38 @@ impl Database {
                 "#,
                 cluster_filter, cluster_filter
             );
-            (sql, params)
+
+            let mut query = sqlx::query(&sql);
+            if let Some(c) = cluster {
+                query = query.bind(c.to_string());
+            }
+
+            let rows = query.fetch_all(&self.pool).await?;
+
+            rows.iter()
+                .map(|row| TrendDataPoint {
+                    date: row.get::<String, _>(0),
+                    clusters_count: row.get::<i64, _>(1),
+                    vuln_reports: row.get::<i64, _>(2),
+                    sbom_reports: row.get::<i64, _>(3),
+                    critical: row.get::<i64, _>(4),
+                    high: row.get::<i64, _>(5),
+                    medium: row.get::<i64, _>(6),
+                    low: row.get::<i64, _>(7),
+                    unknown: row.get::<i64, _>(8),
+                    components: row.get::<i64, _>(9),
+                })
+                .collect()
         } else {
             // Daily: uses date parameters
             // Optimized query using window functions (single table scan)
-            // Before: 270 correlated subqueries (30 days × 9 metrics)
+            // Before: 270 correlated subqueries (30 days x 9 metrics)
             // After: 1 scan with GROUP BY + window functions for cumulative sums
             let cluster_filter = if cluster.is_some() {
-                " AND cluster = ?3"
+                " AND cluster = $3"
             } else {
                 ""
             };
-            let mut params: Vec<Box<dyn rusqlite::ToSql>> = vec![
-                Box::new(start_date.to_string()),
-                Box::new(end_date.to_string()),
-            ];
-            if let Some(c) = cluster {
-                params.push(Box::new(c.to_string()));
-            }
             let sql = format!(
                 r#"
                 WITH baseline AS (
@@ -187,7 +195,7 @@ impl Database {
                         SUM(CASE WHEN report_type = 'vulnerabilityreport' THEN unknown_count ELSE 0 END) as unknown,
                         SUM(COALESCE(components_count, 0)) as components
                     FROM reports
-                    WHERE date(received_at, 'localtime') < date(?1){}
+                    WHERE date(received_at, 'localtime') < date($1){}
                 ),
                 daily_agg AS (
                     -- Step 2: Aggregate increments within the date range
@@ -204,17 +212,17 @@ impl Database {
                         SUM(CASE WHEN report_type = 'vulnerabilityreport' THEN unknown_count ELSE 0 END) as unknown,
                         SUM(COALESCE(components_count, 0)) as components
                     FROM reports
-                    WHERE date(received_at, 'localtime') >= date(?1)
-                      AND date(received_at, 'localtime') <= date(?2){}
+                    WHERE date(received_at, 'localtime') >= date($1)
+                      AND date(received_at, 'localtime') <= date($2){}
                     GROUP BY date(received_at, 'localtime')
                 ),
                 all_days AS (
                     -- Step 3: Generate all date slots using RECURSIVE CTE
-                    SELECT date(?1) as day
+                    SELECT date($1) as day
                     UNION ALL
                     SELECT date(day, '+1 day')
                     FROM all_days
-                    WHERE day < date(?2)
+                    WHERE day < date($2)
                 )
                 -- Step 4: cumulative values for each day
                 SELECT
@@ -234,29 +242,31 @@ impl Database {
                 "#,
                 cluster_filter, cluster_filter
             );
-            (sql, params)
+
+            let mut query = sqlx::query(&sql);
+            query = query.bind(start_date.to_string());
+            query = query.bind(end_date.to_string());
+            if let Some(c) = cluster {
+                query = query.bind(c.to_string());
+            }
+
+            let rows = query.fetch_all(&self.pool).await?;
+
+            rows.iter()
+                .map(|row| TrendDataPoint {
+                    date: row.get::<String, _>(0),
+                    clusters_count: row.get::<i64, _>(1),
+                    vuln_reports: row.get::<i64, _>(2),
+                    sbom_reports: row.get::<i64, _>(3),
+                    critical: row.get::<i64, _>(4),
+                    high: row.get::<i64, _>(5),
+                    medium: row.get::<i64, _>(6),
+                    low: row.get::<i64, _>(7),
+                    unknown: row.get::<i64, _>(8),
+                    components: row.get::<i64, _>(9),
+                })
+                .collect()
         };
-
-        let params_refs: Vec<&dyn rusqlite::ToSql> =
-            sql_params.iter().map(|p| p.as_ref()).collect();
-
-        let mut stmt = conn.prepare(&sql)?;
-        let rows = stmt.query_map(params_refs.as_slice(), |row| {
-            Ok(TrendDataPoint {
-                date: row.get(0)?,
-                clusters_count: row.get(1)?,
-                vuln_reports: row.get(2)?,
-                sbom_reports: row.get(3)?,
-                critical: row.get(4)?,
-                high: row.get(5)?,
-                medium: row.get(6)?,
-                low: row.get(7)?,
-                unknown: row.get(8)?,
-                components: row.get(9)?,
-            })
-        })?;
-
-        let series: Vec<TrendDataPoint> = rows.filter_map(|r| r.ok()).collect();
 
         Ok(TrendResponse {
             meta: TrendMeta {
@@ -318,9 +328,11 @@ mod tests {
         }
     }
 
-    #[test]
-    fn test_get_live_trends() {
-        let db = Database::new(":memory:").expect("Failed to create database");
+    #[tokio::test]
+    async fn test_get_live_trends() {
+        let db = Database::new(":memory:")
+            .await
+            .expect("Failed to create database");
 
         // Insert test reports
         db.upsert_report(&create_test_payload(
@@ -329,20 +341,24 @@ mod tests {
             "app1",
             "vulnerabilityreport",
         ))
+        .await
         .unwrap();
 
         let today = chrono::Utc::now().format("%Y-%m-%d").to_string();
         let trends = db
             .get_live_trends(&today, &today, None, "daily")
+            .await
             .expect("Failed to get live trends");
 
         // Should have at least one data point for today
         assert!(!trends.series.is_empty() || trends.meta.clusters.contains(&"prod".to_string()));
     }
 
-    #[test]
-    fn test_get_live_trends_hourly() {
-        let db = Database::new(":memory:").expect("Failed to create database");
+    #[tokio::test]
+    async fn test_get_live_trends_hourly() {
+        let db = Database::new(":memory:")
+            .await
+            .expect("Failed to create database");
 
         // Insert test reports
         db.upsert_report(&create_test_payload(
@@ -351,11 +367,13 @@ mod tests {
             "app1",
             "vulnerabilityreport",
         ))
+        .await
         .unwrap();
 
         let today = chrono::Utc::now().format("%Y-%m-%d").to_string();
         let trends = db
             .get_live_trends(&today, &today, None, "hourly")
+            .await
             .expect("Failed to get live trends (hourly)");
 
         // Should have hourly granularity

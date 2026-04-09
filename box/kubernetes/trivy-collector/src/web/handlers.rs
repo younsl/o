@@ -96,7 +96,7 @@ pub async fn receive_report(
     }
 
     match event.event_type {
-        ReportEventType::Apply => match state.db.upsert_report(&event.payload) {
+        ReportEventType::Apply => match state.db.upsert_report(&event.payload).await {
             Ok(()) => {
                 info!(
                     cluster = %event.payload.cluster,
@@ -116,12 +116,16 @@ pub async fn receive_report(
             }
         },
         ReportEventType::Delete => {
-            match state.db.delete_report(
-                &event.payload.cluster,
-                &event.payload.namespace,
-                &event.payload.name,
-                &event.payload.report_type,
-            ) {
+            match state
+                .db
+                .delete_report(
+                    &event.payload.cluster,
+                    &event.payload.namespace,
+                    &event.payload.name,
+                    &event.payload.report_type,
+                )
+                .await
+            {
                 Ok(deleted) => {
                     info!(
                         cluster = %event.payload.cluster,
@@ -165,7 +169,7 @@ pub async fn list_vulnerability_reports(
 ) -> impl IntoResponse {
     let params = query.to_query_params();
 
-    match state.db.query_reports("vulnerabilityreport", &params) {
+    match state.db.query_reports("vulnerabilityreport", &params).await {
         Ok((reports, total)) => (
             StatusCode::OK,
             Json(ListResponse {
@@ -209,6 +213,7 @@ pub async fn get_vulnerability_report(
     match state
         .db
         .get_report(&cluster, &namespace, &name, "vulnerabilityreport")
+        .await
     {
         Ok(Some(report)) => match serde_json::to_value(report) {
             Ok(json) => (StatusCode::OK, Json(json)),
@@ -261,7 +266,7 @@ pub async fn search_vulnerabilities(
     let limit = query.limit.unwrap_or(500);
     let offset = query.offset.unwrap_or(0);
 
-    match state.db.search_vulnerabilities(q, limit, offset) {
+    match state.db.search_vulnerabilities(q, limit, offset).await {
         Ok((results, total)) => (
             StatusCode::OK,
             Json(serde_json::json!({
@@ -301,7 +306,7 @@ pub async fn suggest_vulnerabilities(
 
     let limit = query.limit.unwrap_or(20);
 
-    match state.db.suggest_vulnerability_ids(q, limit) {
+    match state.db.suggest_vulnerability_ids(q, limit).await {
         Ok(names) => (StatusCode::OK, Json(serde_json::json!(names))),
         Err(e) => {
             error!(error = %e, "Failed to suggest vulnerability IDs");
@@ -330,7 +335,7 @@ pub async fn list_sbom_reports(
 ) -> impl IntoResponse {
     let params = query.to_query_params();
 
-    match state.db.query_reports("sbomreport", &params) {
+    match state.db.query_reports("sbomreport", &params).await {
         Ok((reports, total)) => (
             StatusCode::OK,
             Json(ListResponse {
@@ -378,7 +383,11 @@ pub async fn search_sbom_components(
     let limit = query.limit.unwrap_or(500);
     let offset = query.offset.unwrap_or(0);
 
-    match state.db.search_sbom_components(component, limit, offset) {
+    match state
+        .db
+        .search_sbom_components(component, limit, offset)
+        .await
+    {
         Ok((results, total)) => (
             StatusCode::OK,
             Json(serde_json::json!({
@@ -419,7 +428,7 @@ pub async fn suggest_sbom_components(
 
     let limit = query.limit.unwrap_or(20);
 
-    match state.db.suggest_component_names(q, limit) {
+    match state.db.suggest_component_names(q, limit).await {
         Ok(names) => (StatusCode::OK, Json(serde_json::json!(names))),
         Err(e) => {
             error!(error = %e, "Failed to suggest component names");
@@ -454,6 +463,7 @@ pub async fn get_sbom_report(
     match state
         .db
         .get_report(&cluster, &namespace, &name, "sbomreport")
+        .await
     {
         Ok(Some(report)) => match serde_json::to_value(report) {
             Ok(json) => (StatusCode::OK, Json(json)),
@@ -490,7 +500,7 @@ pub async fn get_sbom_report(
     )
 )]
 pub async fn list_clusters(State(state): State<AppState>) -> impl IntoResponse {
-    match state.db.list_clusters() {
+    match state.db.list_clusters().await {
         Ok(clusters) => {
             let total = clusters.len();
             (
@@ -525,7 +535,7 @@ pub async fn list_clusters(State(state): State<AppState>) -> impl IntoResponse {
     )
 )]
 pub async fn get_stats(State(state): State<AppState>) -> impl IntoResponse {
-    match state.db.get_stats() {
+    match state.db.get_stats().await {
         Ok(stats) => (StatusCode::OK, Json(stats)),
         Err(e) => {
             error!(error = %e, "Failed to get stats");
@@ -566,7 +576,7 @@ pub async fn list_namespaces(
     State(state): State<AppState>,
     Query(query): Query<ListQuery>,
 ) -> impl IntoResponse {
-    match state.db.list_namespaces(query.cluster.as_deref()) {
+    match state.db.list_namespaces(query.cluster.as_deref()).await {
         Ok(namespaces) => {
             let total = namespaces.len();
             (
@@ -614,6 +624,7 @@ pub async fn delete_report(
     match state
         .db
         .delete_report(&cluster, &namespace, &name, &report_type)
+        .await
     {
         Ok(deleted) => {
             if deleted {
@@ -664,6 +675,7 @@ pub async fn update_notes(
     match state
         .db
         .update_notes(&cluster, &namespace, &name, &report_type, &request.notes)
+        .await
     {
         Ok(updated) => {
             if updated {
@@ -767,6 +779,7 @@ pub async fn get_status(State(state): State<AppState>) -> impl IntoResponse {
     let collectors = state
         .db
         .list_clusters()
+        .await
         .map(|c| c.len() as i64)
         .unwrap_or(0);
 
@@ -840,7 +853,11 @@ pub async fn get_dashboard_trends(
     let granularity = query.get_granularity();
 
     // Get data range for metadata from reports table (matches live trends data source)
-    let (actual_from, actual_to) = state.db.get_reports_data_range().unwrap_or((None, None));
+    let (actual_from, actual_to) = state
+        .db
+        .get_reports_data_range()
+        .await
+        .unwrap_or((None, None));
 
     debug!(
         start = %start_date,
@@ -852,12 +869,16 @@ pub async fn get_dashboard_trends(
 
     // Always use live trends for consistent point-in-time (cumulative) values
     debug!("Using live trends for {} granularity", granularity);
-    match state.db.get_live_trends(
-        &start_date,
-        &end_date,
-        query.cluster.as_deref(),
-        granularity,
-    ) {
+    match state
+        .db
+        .get_live_trends(
+            &start_date,
+            &end_date,
+            query.cluster.as_deref(),
+            granularity,
+        )
+        .await
+    {
         Ok(mut live_trends) => {
             live_trends.meta.data_from = actual_from;
             live_trends.meta.data_to = actual_to;
@@ -896,8 +917,12 @@ mod tests {
     use crate::storage::Database;
     use crate::web::state::{ConfigInfo, RuntimeInfo, WatcherStatus};
 
-    fn create_test_state() -> AppState {
-        let db = Arc::new(Database::new(":memory:").expect("Failed to create test database"));
+    async fn create_test_state() -> AppState {
+        let db = Arc::new(
+            Database::new(":memory:")
+                .await
+                .expect("Failed to create test database"),
+        );
         let watcher_status = Arc::new(WatcherStatus::new());
         let config = Arc::new(ConfigInfo {
             mode: "server".to_string(),
@@ -1011,7 +1036,7 @@ mod tests {
     }
 
     /// Seed 3 vulnerability reports + 1 SBOM report across 2 clusters
-    fn seed_test_data(state: &AppState) {
+    async fn seed_test_data(state: &AppState) {
         state
             .db
             .upsert_report(&create_test_payload(
@@ -1020,6 +1045,7 @@ mod tests {
                 "nginx-vuln",
                 "vulnerabilityreport",
             ))
+            .await
             .unwrap();
         state
             .db
@@ -1029,6 +1055,7 @@ mod tests {
                 "coredns-vuln",
                 "vulnerabilityreport",
             ))
+            .await
             .unwrap();
         state
             .db
@@ -1038,6 +1065,7 @@ mod tests {
                 "redis-vuln",
                 "vulnerabilityreport",
             ))
+            .await
             .unwrap();
         state
             .db
@@ -1047,6 +1075,7 @@ mod tests {
                 "nginx-sbom",
                 "sbomreport",
             ))
+            .await
             .unwrap();
     }
 
@@ -1059,7 +1088,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_receive_report_apply() {
-        let state = create_test_state();
+        let state = create_test_state().await;
         let app = create_test_router(state.clone());
 
         let event = ReportEvent {
@@ -1088,13 +1117,14 @@ mod tests {
         let report = state
             .db
             .get_report("prod", "default", "app1", "vulnerabilityreport")
+            .await
             .unwrap();
         assert!(report.is_some());
     }
 
     #[tokio::test]
     async fn test_receive_report_delete() {
-        let state = create_test_state();
+        let state = create_test_state().await;
         state
             .db
             .upsert_report(&create_test_payload(
@@ -1103,6 +1133,7 @@ mod tests {
                 "app1",
                 "vulnerabilityreport",
             ))
+            .await
             .unwrap();
         let app = create_test_router(state);
 
@@ -1132,7 +1163,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_receive_report_delete_nonexistent() {
-        let state = create_test_state();
+        let state = create_test_state().await;
         let app = create_test_router(state);
 
         let event = ReportEvent {
@@ -1163,7 +1194,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_list_vulnerability_reports_empty() {
-        let state = create_test_state();
+        let state = create_test_state().await;
         let app = create_test_router(state);
 
         let response = app
@@ -1184,8 +1215,8 @@ mod tests {
 
     #[tokio::test]
     async fn test_list_vulnerability_reports_with_data() {
-        let state = create_test_state();
-        seed_test_data(&state);
+        let state = create_test_state().await;
+        seed_test_data(&state).await;
         let app = create_test_router(state);
 
         let response = app
@@ -1205,8 +1236,8 @@ mod tests {
 
     #[tokio::test]
     async fn test_list_vulnerability_reports_with_cluster_filter() {
-        let state = create_test_state();
-        seed_test_data(&state);
+        let state = create_test_state().await;
+        seed_test_data(&state).await;
         let app = create_test_router(state);
 
         let response = app
@@ -1228,8 +1259,8 @@ mod tests {
 
     #[tokio::test]
     async fn test_get_vulnerability_report_found() {
-        let state = create_test_state();
-        seed_test_data(&state);
+        let state = create_test_state().await;
+        seed_test_data(&state).await;
         let app = create_test_router(state);
 
         let response = app
@@ -1251,7 +1282,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_get_vulnerability_report_not_found() {
-        let state = create_test_state();
+        let state = create_test_state().await;
         let app = create_test_router(state);
 
         let response = app
@@ -1271,7 +1302,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_list_sbom_reports_empty() {
-        let state = create_test_state();
+        let state = create_test_state().await;
         let app = create_test_router(state);
 
         let response = app
@@ -1291,8 +1322,8 @@ mod tests {
 
     #[tokio::test]
     async fn test_list_sbom_reports_with_data() {
-        let state = create_test_state();
-        seed_test_data(&state);
+        let state = create_test_state().await;
+        seed_test_data(&state).await;
         let app = create_test_router(state);
 
         let response = app
@@ -1314,8 +1345,8 @@ mod tests {
 
     #[tokio::test]
     async fn test_get_sbom_report_found() {
-        let state = create_test_state();
-        seed_test_data(&state);
+        let state = create_test_state().await;
+        seed_test_data(&state).await;
         let app = create_test_router(state);
 
         let response = app
@@ -1336,7 +1367,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_get_sbom_report_not_found() {
-        let state = create_test_state();
+        let state = create_test_state().await;
         let app = create_test_router(state);
 
         let response = app
@@ -1356,7 +1387,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_list_clusters_empty() {
-        let state = create_test_state();
+        let state = create_test_state().await;
         let app = create_test_router(state);
 
         let response = app
@@ -1376,8 +1407,8 @@ mod tests {
 
     #[tokio::test]
     async fn test_list_clusters_with_data() {
-        let state = create_test_state();
-        seed_test_data(&state);
+        let state = create_test_state().await;
+        seed_test_data(&state).await;
         let app = create_test_router(state);
 
         let response = app
@@ -1399,7 +1430,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_get_stats_empty() {
-        let state = create_test_state();
+        let state = create_test_state().await;
         let app = create_test_router(state);
 
         let response = app
@@ -1422,8 +1453,8 @@ mod tests {
 
     #[tokio::test]
     async fn test_get_stats_with_data() {
-        let state = create_test_state();
-        seed_test_data(&state);
+        let state = create_test_state().await;
+        seed_test_data(&state).await;
         let app = create_test_router(state);
 
         let response = app
@@ -1449,8 +1480,8 @@ mod tests {
 
     #[tokio::test]
     async fn test_list_namespaces_all() {
-        let state = create_test_state();
-        seed_test_data(&state);
+        let state = create_test_state().await;
+        seed_test_data(&state).await;
         let app = create_test_router(state);
 
         let response = app
@@ -1470,8 +1501,8 @@ mod tests {
 
     #[tokio::test]
     async fn test_list_namespaces_with_cluster_filter() {
-        let state = create_test_state();
-        seed_test_data(&state);
+        let state = create_test_state().await;
+        seed_test_data(&state).await;
         let app = create_test_router(state);
 
         let response = app
@@ -1493,8 +1524,8 @@ mod tests {
 
     #[tokio::test]
     async fn test_delete_report_found() {
-        let state = create_test_state();
-        seed_test_data(&state);
+        let state = create_test_state().await;
+        seed_test_data(&state).await;
         let app = create_test_router(state);
 
         let response = app
@@ -1515,7 +1546,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_delete_report_not_found() {
-        let state = create_test_state();
+        let state = create_test_state().await;
         let app = create_test_router(state);
 
         let response = app
@@ -1536,8 +1567,8 @@ mod tests {
 
     #[tokio::test]
     async fn test_update_notes_success() {
-        let state = create_test_state();
-        seed_test_data(&state);
+        let state = create_test_state().await;
+        seed_test_data(&state).await;
         let app = create_test_router(state);
 
         let body = serde_json::json!({"notes": "Reviewed, patch scheduled"});
@@ -1563,7 +1594,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_update_notes_not_found() {
-        let state = create_test_state();
+        let state = create_test_state().await;
         let app = create_test_router(state);
 
         let body = serde_json::json!({"notes": "test"});
@@ -1589,7 +1620,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_get_watcher_status_default() {
-        let state = create_test_state();
+        let state = create_test_state().await;
         let app = create_test_router(state);
 
         let response = app
@@ -1612,7 +1643,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_get_watcher_status_running() {
-        let state = create_test_state();
+        let state = create_test_state().await;
         state.watcher_status.set_vuln_running(true);
         state.watcher_status.set_sbom_sync_done(true);
         let app = create_test_router(state);
@@ -1637,7 +1668,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_get_version() {
-        let state = create_test_state();
+        let state = create_test_state().await;
         let app = create_test_router(state);
 
         let response = app
@@ -1661,7 +1692,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_get_status() {
-        let state = create_test_state();
+        let state = create_test_state().await;
         let app = create_test_router(state);
 
         let response = app
@@ -1684,7 +1715,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_get_config() {
-        let state = create_test_state();
+        let state = create_test_state().await;
         let app = create_test_router(state);
 
         let response = app
@@ -1711,7 +1742,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_get_dashboard_trends_empty() {
-        let state = create_test_state();
+        let state = create_test_state().await;
         let app = create_test_router(state);
 
         let response = app

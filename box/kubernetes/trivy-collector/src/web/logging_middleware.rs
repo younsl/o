@@ -91,7 +91,7 @@ pub async fn api_request_logger(
         };
 
         tokio::spawn(async move {
-            if let Err(e) = db.insert_api_log(&entry) {
+            if let Err(e) = db.insert_api_log(&entry).await {
                 warn!(error = %e, "Failed to log API request");
             }
         });

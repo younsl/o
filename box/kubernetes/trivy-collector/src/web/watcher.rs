@@ -260,7 +260,7 @@ async fn handle_vuln_event(
                 received_at: chrono::Utc::now(),
             };
 
-            db.upsert_report(&payload)?;
+            db.upsert_report(&payload).await?;
 
             info!(
                 cluster = %cluster_name,
@@ -281,7 +281,8 @@ async fn handle_vuln_event(
                 return Ok(());
             }
 
-            db.delete_report(cluster_name, namespace, name, "vulnerabilityreport")?;
+            db.delete_report(cluster_name, namespace, name, "vulnerabilityreport")
+                .await?;
 
             info!(
                 cluster = %cluster_name,
@@ -336,7 +337,7 @@ async fn handle_sbom_event(
                 received_at: chrono::Utc::now(),
             };
 
-            db.upsert_report(&payload)?;
+            db.upsert_report(&payload).await?;
 
             info!(
                 cluster = %cluster_name,
@@ -356,7 +357,8 @@ async fn handle_sbom_event(
                 return Ok(());
             }
 
-            db.delete_report(cluster_name, namespace, name, "sbomreport")?;
+            db.delete_report(cluster_name, namespace, name, "sbomreport")
+                .await?;
 
             info!(
                 cluster = %cluster_name,
