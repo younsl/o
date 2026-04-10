@@ -122,4 +122,4 @@ Target EC2 instances need IAM role with `AmazonSSMManagedInstanceCore` policy.
 - AWS CLI v2
 - Session Manager plugin (`session-manager-plugin`)
 - Configured AWS credentials
-- Rust 1.94+
+- Rust 1.94.1+

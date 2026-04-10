@@ -1,7 +1,7 @@
 # ij
 
 [![GitHub release](https://img.shields.io/github/v/release/younsl/o?filter=ij*&style=flat-square&color=black)](https://github.com/younsl/o/releases?q=ij&expanded=true)
-[![Rust](https://img.shields.io/badge/rust-1.94-black?style=flat-square&logo=rust&logoColor=white)](https://www.rust-lang.org/)
+[![Rust](https://img.shields.io/badge/rust-1.94.1-black?style=flat-square&logo=rust&logoColor=white)](https://www.rust-lang.org/)
 [![GitHub license](https://img.shields.io/github/license/younsl/o?style=flat-square&color=black)](https://github.com/younsl/o/blob/main/LICENSE)
 
 **I**nfra **J**anitor - EC2 operations CLI for SSM connect and AMI cleanup. Scans AWS regions in parallel with fuzzy search. Inspired by [gossm](https://github.com/gjbae1212/gossm).

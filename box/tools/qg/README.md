@@ -1,6 +1,6 @@
 # qg
 
-[![Rust Version](https://img.shields.io/badge/rust-1.93-black?style=flat-square&logo=rust&logoColor=white)](https://www.rust-lang.org/)
+[![Rust Version](https://img.shields.io/badge/rust-1.94.1-black?style=flat-square&logo=rust&logoColor=white)](https://www.rust-lang.org/)
 [![License](https://img.shields.io/badge/License-MIT-blue.svg?style=flat-square&color=black)](https://opensource.org/licenses/MIT)
 
 A simple QR code generator that creates a QR code from a given URL. Written in Rust for performance and reliability.

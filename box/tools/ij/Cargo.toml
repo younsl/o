@@ -2,7 +2,7 @@
 name = "ij"
 version = "0.3.0"
 edition = "2024"
-rust-version = "1.94"
+rust-version = "1.94.1"
 authors = ["Younsung Lee <cysl@kakao.com>"]
 license = "MIT"
 description = "EC2 operations CLI for SSM connect and AMI cleanup"
