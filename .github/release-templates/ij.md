@@ -1,6 +1,6 @@
 # ${PROJECT_NAME} ${VERSION}
 
-**[ij](https://github.com/${REPOSITORY}/tree/main/box/tools/ij)** (Infra Janitor) - Interactive EC2 Session Manager connection tool with fuzzy search and port forwarding.
+**[ij](https://github.com/${REPOSITORY}/tree/main/box/tools/ij)** (Infra Janitor) - EC2 operations CLI for SSM connect and AMI cleanup with fuzzy search and port forwarding.
 
 Inspired by [gossm](https://github.com/gjbae1212/gossm).
 

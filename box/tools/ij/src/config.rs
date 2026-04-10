@@ -20,7 +20,7 @@ pub enum Command {
 /// CLI arguments.
 #[derive(Parser, Debug, Clone)]
 #[command(name = "ij")]
-#[command(about = "Interactive EC2 Session Manager connection tool")]
+#[command(about = "EC2 operations CLI for SSM connect and AMI cleanup")]
 #[command(version = const_format::formatcp!(
     "{} (commit: {}, build date: {})",
     VERSION, COMMIT, BUILD_DATE
