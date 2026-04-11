@@ -116,6 +116,12 @@ pub struct SqlTokenizedMetric {
     pub sql_tokenized_text: String,
     pub sql_tokenized_text_truncated: bool,
     pub value: f64,
+    /// Calls per second (Aurora PostgreSQL only, from pg_stat_statements)
+    pub calls_per_sec: Option<f64>,
+    /// Average latency per call in ms (Aurora PostgreSQL only, from pg_stat_statements)
+    pub avg_latency_per_call: Option<f64>,
+    /// Average rows per call (Aurora PostgreSQL only, from pg_stat_statements)
+    pub rows_per_call: Option<f64>,
 }
 
 #[derive(Debug, Clone)]

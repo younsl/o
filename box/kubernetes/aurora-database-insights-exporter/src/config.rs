@@ -62,8 +62,8 @@ pub struct AwsConfig {
 #[serde(default)]
 pub struct DiscoveryConfig {
     pub interval_seconds: u64,
-    /// Target RDS engine to discover.
-    pub engine: String,
+    /// Target RDS engines to discover (e.g., aurora-mysql, aurora-postgresql).
+    pub engines: Vec<String>,
     /// Only discover instances with Performance Insights enabled.
     pub require_pi_enabled: bool,
     pub include: FilterConfig,
@@ -147,7 +147,7 @@ impl Default for DiscoveryConfig {
     fn default() -> Self {
         Self {
             interval_seconds: 300,
-            engine: "aurora-mysql".to_string(),
+            engines: vec!["aurora-mysql".to_string()],
             require_pi_enabled: true,
             include: FilterConfig::default(),
             exclude: FilterConfig::default(),
@@ -235,9 +235,9 @@ impl Config {
     }
 
     fn validate(&self) -> Result<()> {
-        if self.discovery.engine.is_empty() {
+        if self.discovery.engines.is_empty() {
             return Err(Error::Config(
-                "discovery.engine must not be empty".to_string(),
+                "discovery.engines must not be empty".to_string(),
             ));
         }
         if self.discovery.interval_seconds == 0 {
@@ -515,28 +515,53 @@ collection:
     }
 
     #[test]
-    fn test_validate_empty_engine() {
+    fn test_validate_empty_engines() {
         let mut config = Config::default();
-        config.discovery.engine = "".to_string();
+        config.discovery.engines = vec![];
         assert!(config.validate().is_err());
     }
 
     #[test]
-    fn test_default_engine_and_pi() {
+    fn test_default_engines_and_pi() {
         let config = Config::default();
-        assert_eq!(config.discovery.engine, "aurora-mysql");
+        assert_eq!(config.discovery.engines, vec!["aurora-mysql"]);
         assert!(config.discovery.require_pi_enabled);
     }
 
     #[test]
-    fn test_parse_yaml_with_engine() {
+    fn test_parse_yaml_with_engines() {
         let yaml = r#"
 discovery:
-  engine: "aurora-postgresql"
+  engines:
+    - "aurora-postgresql"
   require_pi_enabled: false
 "#;
         let config: Config = serde_yaml::from_str(yaml).unwrap();
-        assert_eq!(config.discovery.engine, "aurora-postgresql");
+        assert_eq!(config.discovery.engines, vec!["aurora-postgresql"]);
         assert!(!config.discovery.require_pi_enabled);
+    }
+
+    #[test]
+    fn test_parse_yaml_with_multiple_engines() {
+        let yaml = r#"
+discovery:
+  engines:
+    - "aurora-mysql"
+    - "aurora-postgresql"
+"#;
+        let config: Config = serde_yaml::from_str(yaml).unwrap();
+        assert_eq!(config.discovery.engines.len(), 2);
+        assert!(
+            config
+                .discovery
+                .engines
+                .contains(&"aurora-mysql".to_string())
+        );
+        assert!(
+            config
+                .discovery
+                .engines
+                .contains(&"aurora-postgresql".to_string())
+        );
     }
 }

@@ -80,13 +80,15 @@ prometheusRules:
 # -- (object) adie config (mounted as ConfigMap)
 config:
   aws:
-    # -- (string) AWS region
+    # -- (string) AWS region for RDS instance discovery and PI API calls (single region only)
     region: ap-northeast-2
   discovery:
     # -- (int) Discovery interval in seconds
     intervalSeconds: 300
-    # -- (string) Target RDS engine to discover
-    engine: aurora-mysql
+    # -- (list) Target RDS engines to discover
+    engines:
+      - aurora-mysql
+      - aurora-postgresql
     # -- (bool) Only discover instances with Performance Insights enabled
     requirePIEnabled: true
     # -- (list) AWS tags to export as Prometheus labels (YACE-style exportedTags)

@@ -13,7 +13,10 @@ data:
       region: {{ .Values.config.aws.region | quote }}
     discovery:
       interval_seconds: {{ .Values.config.discovery.intervalSeconds }}
-      engine: {{ .Values.config.discovery.engine | quote }}
+      {{- with .Values.config.discovery.engines }}
+      engines:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
       require_pi_enabled: {{ .Values.config.discovery.requirePIEnabled }}
       {{- with .Values.config.discovery.exportedTags }}
       exported_tags:

@@ -120,7 +120,7 @@ pub fn filter_instances(
 
     for inst in raw {
         // Engine filter
-        if inst.engine != config.engine {
+        if !config.engines.contains(&inst.engine) {
             continue;
         }
 
@@ -629,7 +629,7 @@ mod tests {
             make_raw_instance("aurora-my", "aurora-mysql", true, "db.r6g.large", vec![]),
         ];
         let mut config = default_discovery_config();
-        config.engine = "aurora-postgresql".to_string();
+        config.engines = vec!["aurora-postgresql".to_string()];
         let result = filter_instances(&raw, &config).unwrap();
         assert_eq!(result.len(), 1);
         assert_eq!(result[0].db_instance_identifier, "aurora-pg");

@@ -32,6 +32,7 @@ pub trait PiCollector: Send + Sync {
         group: &str,
         limit: i32,
         period: i32,
+        engine: &str,
     ) -> impl Future<Output = Result<Vec<DimensionKeyResult>, String>> + Send;
 
     fn get_dimension_key_details(
@@ -46,6 +47,7 @@ pub trait PiCollector: Send + Sync {
 pub struct DimensionKeyResult {
     pub dimensions: Vec<(String, String)>,
     pub value: f64,
+    pub additional_metrics: HashMap<String, f64>,
 }
 
 /// Real AWS PI collector using the SDK.
@@ -126,6 +128,7 @@ impl PiCollector for AwsPiCollector {
         group: &str,
         limit: i32,
         period: i32,
+        engine: &str,
     ) -> Result<Vec<DimensionKeyResult>, String> {
         let now = Utc::now();
         let start = now - chrono::Duration::seconds(i64::from(period) * 2);
@@ -138,7 +141,7 @@ impl PiCollector for AwsPiCollector {
             .build()
             .map_err(|e| e.to_string())?;
 
-        let resp = self
+        let mut request = self
             .client
             .describe_dimension_keys()
             .service_type(aws_sdk_pi::types::ServiceType::Rds)
@@ -150,10 +153,16 @@ impl PiCollector for AwsPiCollector {
             ))
             .end_time(aws_sdk_pi::primitives::DateTime::from_secs(now.timestamp()))
             .period_in_seconds(period)
-            .max_results(limit)
-            .send()
-            .await
-            .map_err(|e| format!("{e:?}"))?;
+            .max_results(limit);
+
+        if engine == "aurora-postgresql" && group == "db.sql_tokenized" {
+            request = request
+                .additional_metrics("db.sql_tokenized.stats.calls_per_sec.avg")
+                .additional_metrics("db.sql_tokenized.stats.avg_latency_per_call.avg")
+                .additional_metrics("db.sql_tokenized.stats.rows_per_call.avg");
+        }
+
+        let resp = request.send().await.map_err(|e| format!("{e:?}"))?;
 
         let mut results = Vec::new();
         for key in resp.keys() {
@@ -161,7 +170,20 @@ impl PiCollector for AwsPiCollector {
                 let dimensions: Vec<(String, String)> =
                     dims.iter().map(|(k, v)| (k.clone(), v.clone())).collect();
                 let value = key.total.unwrap_or(0.0);
-                results.push(DimensionKeyResult { dimensions, value });
+                let additional_metrics = key
+                    .additional_metrics
+                    .as_ref()
+                    .map(|m| {
+                        m.iter()
+                            .map(|(k, v)| (k.clone(), *v))
+                            .collect::<HashMap<String, f64>>()
+                    })
+                    .unwrap_or_default();
+                results.push(DimensionKeyResult {
+                    dimensions,
+                    value,
+                    additional_metrics,
+                });
             }
         }
 
@@ -239,6 +261,7 @@ pub async fn collect_instance_metrics<P: PiCollector>(
             "db.sql_tokenized",
             config.top_sql_limit,
             period,
+            &instance.engine,
         )
         .await
     {
@@ -263,6 +286,18 @@ pub async fn collect_instance_metrics<P: PiCollector>(
                     sql_tokenized_text,
                     sql_tokenized_text_truncated,
                     value: dk.value,
+                    calls_per_sec: dk
+                        .additional_metrics
+                        .get("db.sql_tokenized.stats.calls_per_sec.avg")
+                        .copied(),
+                    avg_latency_per_call: dk
+                        .additional_metrics
+                        .get("db.sql_tokenized.stats.avg_latency_per_call.avg")
+                        .copied(),
+                    rows_per_call: dk
+                        .additional_metrics
+                        .get("db.sql_tokenized.stats.rows_per_call.avg")
+                        .copied(),
                 }
             })
             .collect(),
@@ -278,7 +313,13 @@ pub async fn collect_instance_metrics<P: PiCollector>(
 
     // 3. Top SQL (DescribeDimensionKeys grouped by db.sql, then GetDimensionKeyDetails for full text)
     let top_sql: Vec<SqlMetric> = match pi
-        .describe_dimension_keys(resource_id, "db.sql", config.top_sql_limit, period)
+        .describe_dimension_keys(
+            resource_id,
+            "db.sql",
+            config.top_sql_limit,
+            period,
+            &instance.engine,
+        )
         .await
     {
         Ok(sql_data) => {
@@ -644,6 +685,7 @@ mod tests {
                         ),
                     ],
                     value: 1.2,
+                    additional_metrics: HashMap::new(),
                 }],
                 sql_full_texts: HashMap::from([(
                     "SQL_ABC".to_string(),
@@ -688,6 +730,7 @@ mod tests {
             _group: &str,
             _limit: i32,
             _period: i32,
+            _engine: &str,
         ) -> Result<Vec<DimensionKeyResult>, String> {
             Ok(self.sql_keys.clone())
         }
@@ -825,6 +868,7 @@ mod tests {
             _group: &str,
             _limit: i32,
             _period: i32,
+            _engine: &str,
         ) -> Result<Vec<DimensionKeyResult>, String> {
             Err("ThrottlingException".to_string())
         }
@@ -986,6 +1030,7 @@ mod tests {
                 ("db.sql.statement".to_string(), long_sql.clone()),
             ],
             value: 5.0,
+            additional_metrics: HashMap::new(),
         }];
         pi.sql_full_texts = HashMap::from([("LONG1".to_string(), long_sql.clone())]);
         let instance = test_instance();
@@ -1000,6 +1045,74 @@ mod tests {
         assert!(snapshot.top_sql[0].sql_text.ends_with("..."));
         assert_eq!(snapshot.top_sql[0].sql_id, "LONG1");
         assert_eq!(snapshot.top_sql[0].sql_full_text, long_sql);
+    }
+
+    fn test_instance_pg() -> AuroraInstance {
+        AuroraInstance {
+            dbi_resource_id: "db-PGTEST".to_string(),
+            db_instance_identifier: "pg-writer".to_string(),
+            engine: "aurora-postgresql".to_string(),
+            db_cluster_identifier: "pg-cluster".to_string(),
+            db_instance_class: "db.r6g.large".to_string(),
+            vcpu: 2,
+            exported_tags: vec![],
+        }
+    }
+
+    #[tokio::test]
+    async fn test_collect_instance_metrics_postgresql_additional_metrics() {
+        let mut pi = MockPiCollector::new();
+        pi.sql_keys = vec![DimensionKeyResult {
+            dimensions: vec![
+                ("db.sql_tokenized.id".to_string(), "PGSQL_TOK1".to_string()),
+                (
+                    "db.sql_tokenized.statement".to_string(),
+                    "SELECT * FROM users WHERE id = ?".to_string(),
+                ),
+            ],
+            value: 2.0,
+            additional_metrics: HashMap::from([
+                (
+                    "db.sql_tokenized.stats.calls_per_sec.avg".to_string(),
+                    142.5,
+                ),
+                (
+                    "db.sql_tokenized.stats.avg_latency_per_call.avg".to_string(),
+                    1.05,
+                ),
+                ("db.sql_tokenized.stats.rows_per_call.avg".to_string(), 12.3),
+            ]),
+        }];
+        let instance = test_instance_pg();
+        let config = CollectionConfig::default();
+
+        let snapshot = collect_instance_metrics(&pi, &instance, "us-east-1", &config)
+            .await
+            .unwrap();
+
+        assert_eq!(snapshot.top_sql_tokenized.len(), 1);
+        let st = &snapshot.top_sql_tokenized[0];
+        assert_eq!(st.sql_tokenized_id, "PGSQL_TOK1");
+        assert_eq!(st.calls_per_sec, Some(142.5));
+        assert_eq!(st.avg_latency_per_call, Some(1.05));
+        assert_eq!(st.rows_per_call, Some(12.3));
+    }
+
+    #[tokio::test]
+    async fn test_collect_instance_metrics_mysql_no_additional_metrics() {
+        let pi = MockPiCollector::new();
+        let instance = test_instance();
+        let config = CollectionConfig::default();
+
+        let snapshot = collect_instance_metrics(&pi, &instance, "us-east-1", &config)
+            .await
+            .unwrap();
+
+        for st in &snapshot.top_sql_tokenized {
+            assert_eq!(st.calls_per_sec, None);
+            assert_eq!(st.avg_latency_per_call, None);
+            assert_eq!(st.rows_per_call, None);
+        }
     }
 
     /// Mock that fails only on specific dimension groups (simulates partial PI API failure).
@@ -1032,6 +1145,7 @@ mod tests {
             _group: &str,
             _limit: i32,
             _period: i32,
+            _engine: &str,
         ) -> Result<Vec<DimensionKeyResult>, String> {
             Err("NotSupportedException".to_string())
         }
@@ -1139,6 +1253,7 @@ mod tests {
             _group: &str,
             _limit: i32,
             _period: i32,
+            _engine: &str,
         ) -> Result<Vec<DimensionKeyResult>, String> {
             tokio::time::sleep(self.delay).await;
             Ok(vec![])

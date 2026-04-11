@@ -1,6 +1,6 @@
 # Metrics
 
-17 Prometheus metrics exposed by aurora-database-insights-exporter.
+20 Prometheus metrics exposed by aurora-database-insights-exporter.
 
 ## Label structure
 
@@ -30,27 +30,31 @@ AWS tags listed in `discovery.exported_tags` become dynamic labels. Keys are nor
 
 Dynamic label metrics (marked with Reset=yes) are cleared and re-populated every collection cycle to prevent stale time series.
 
-| # | Metric | Type | Labels | Reset | Limit | Description |
-|---|--------|------|--------|-------|-------|-------------|
-| 1 | `aurora_dbinsights_db_load` | Gauge | base + tag_* | — | — | Total DB Load (Average Active Sessions) |
-| 2 | `aurora_dbinsights_db_load_cpu` | Gauge | base + tag_* | — | — | CPU-attributed DB Load |
-| 3 | `aurora_dbinsights_db_load_non_cpu` | Gauge | base + tag_* | — | — | Non-CPU DB Load (total - cpu) |
-| 4 | `aurora_dbinsights_vcpu` | Gauge | base + tag_* | — | — | vCPU count from instance class |
-| 5 | `aurora_dbinsights_up` | Gauge | base + tag_* | — | — | Collection status (1=ok, 0=error) |
-| 6 | `aurora_dbinsights_db_load_by_wait_event` | Gauge | base + tag_* + `wait_event`, `wait_event_type` | yes | 25 | DB Load by wait event |
-| 7 | `aurora_dbinsights_db_load_by_sql_tokenized` | Gauge | base + tag_* + `sql_tokenized_id` | yes | 10/inst | DB Load by tokenized SQL pattern |
-| 8 | `aurora_dbinsights_sql_tokenized_info` | Gauge | base + tag_* + `sql_tokenized_id`, `sql_tokenized_text`, `sql_tokenized_text_truncated` | yes | 10/inst | Tokenized SQL text info (value=1) |
-| 9 | `aurora_dbinsights_db_load_by_sql` | Gauge | base + tag_* + `sql_id` | yes | 10/inst | DB Load by actual SQL statement |
-| 10 | `aurora_dbinsights_sql_info` | Gauge | base + tag_* + `sql_id`, `sql_text`, `sql_full_text`, `sql_text_truncated` | yes | 10/inst | SQL text info with full statement (value=1) |
-| 11 | `aurora_dbinsights_db_load_by_user` | Gauge | base + tag_* + `db_user` | yes | — | DB Load by database user |
-| 12 | `aurora_dbinsights_db_load_by_host` | Gauge | base + tag_* + `client_host` | yes | 20/inst | DB Load by client host |
-| 13 | `aurora_dbinsights_db_load_by_database` | Gauge | base + tag_* + `db_name` | yes | — | DB Load by database schema |
-| 14 | `aurora_dbinsights_scrape_duration_seconds` | Gauge | — | — | — | Collection cycle duration |
-| 15 | `aurora_dbinsights_discovery_instances_total` | Gauge | — | — | — | Discovered instance count |
-| 16 | `aurora_dbinsights_collection_errors_total` | Counter | `instance` | — | — | Cumulative PI API error count |
-| 17 | `aurora_dbinsights_discovery_duration_seconds` | Gauge | — | — | — | Discovery cycle duration |
+| # | Metric | Type | Labels | Reset | Limit | Engine | Description |
+|---|--------|------|--------|-------|-------|--------|-------------|
+| 1 | `aurora_dbinsights_db_load` | Gauge | base + tag_* | — | — | All | Total DB Load (Average Active Sessions) |
+| 2 | `aurora_dbinsights_db_load_cpu` | Gauge | base + tag_* | — | — | All | CPU-attributed DB Load |
+| 3 | `aurora_dbinsights_db_load_non_cpu` | Gauge | base + tag_* | — | — | All | Non-CPU DB Load (total - cpu) |
+| 4 | `aurora_dbinsights_vcpu` | Gauge | base + tag_* | — | — | All | vCPU count from instance class |
+| 5 | `aurora_dbinsights_up` | Gauge | base + tag_* | — | — | All | Collection status (1=ok, 0=error) |
+| 6 | `aurora_dbinsights_db_load_by_wait_event` | Gauge | base + tag_* + `wait_event`, `wait_event_type` | yes | 25 | All | DB Load by wait event |
+| 7 | `aurora_dbinsights_db_load_by_sql_tokenized` | Gauge | base + tag_* + `sql_tokenized_id` | yes | 10/inst | All | DB Load by tokenized SQL pattern |
+| 8 | `aurora_dbinsights_sql_tokenized_info` | Gauge | base + tag_* + `sql_tokenized_id`, `sql_tokenized_text`, `sql_tokenized_text_truncated` | yes | 10/inst | All | Tokenized SQL text info (value=1) |
+| 9 | `aurora_dbinsights_sql_tokenized_calls_per_sec` | Gauge | base + tag_* + `sql_tokenized_id` | yes | 10/inst | PostgreSQL | Calls/sec per tokenized SQL |
+| 10 | `aurora_dbinsights_sql_tokenized_avg_latency_per_call` | Gauge | base + tag_* + `sql_tokenized_id` | yes | 10/inst | PostgreSQL | Avg latency per call (ms) |
+| 11 | `aurora_dbinsights_sql_tokenized_rows_per_call` | Gauge | base + tag_* + `sql_tokenized_id` | yes | 10/inst | PostgreSQL | Avg rows per call |
+| 12 | `aurora_dbinsights_db_load_by_sql` | Gauge | base + tag_* + `sql_id` | yes | 10/inst | All | DB Load by actual SQL statement |
+| 13 | `aurora_dbinsights_sql_info` | Gauge | base + tag_* + `sql_id`, `sql_text`, `sql_full_text`, `sql_text_truncated` | yes | 10/inst | All | SQL text info with full statement (value=1) |
+| 14 | `aurora_dbinsights_db_load_by_user` | Gauge | base + tag_* + `db_user` | yes | — | All | DB Load by database user |
+| 15 | `aurora_dbinsights_db_load_by_host` | Gauge | base + tag_* + `client_host` | yes | 20/inst | All | DB Load by client host |
+| 16 | `aurora_dbinsights_db_load_by_database` | Gauge | base + tag_* + `db_name` | yes | — | All | DB Load by database schema |
+| 17 | `aurora_dbinsights_scrape_duration_seconds` | Gauge | — | — | — | All | Collection cycle duration |
+| 18 | `aurora_dbinsights_discovery_instances_total` | Gauge | — | — | — | All | Discovered instance count |
+| 19 | `aurora_dbinsights_collection_errors_total` | Counter | `instance` | — | — | All | Cumulative PI API error count |
+| 20 | `aurora_dbinsights_discovery_duration_seconds` | Gauge | — | — | — | All | Discovery cycle duration |
 
 Notes:
+- **Engine column**: `All` means the metric is available for both Aurora MySQL and Aurora PostgreSQL. `PostgreSQL` means the metric is only populated for Aurora PostgreSQL instances (sourced from `pg_stat_statements` via the PI API `AdditionalMetrics` parameter). Aurora MySQL does not support `AdditionalMetrics` — see [limitation.md](limitation.md) for details.
 - Two levels of SQL metrics are collected: `db.sql_tokenized` (parameterized pattern, e.g. `WHERE id = ?`) and `db.sql` (actual statement with bind values, e.g. `WHERE id = 12345`).
 - `sql_tokenized_info` is an info metric (value always 1) that separates tokenized SQL text from `by_sql_tokenized` to isolate cardinality. Join on `sql_tokenized_id` in Grafana.
 - `sql_info` is an info metric (value always 1) for actual SQL statements. `sql_full_text` contains the full SQL from `GetDimensionKeyDetails` API. `sql_text` is truncated at 200 characters. Join on `sql_id` in Grafana.
@@ -69,13 +73,14 @@ Maximum time series with 10 instances.
 | Instance-level (5) | 5 × 10 | 50 |
 | Wait event | 25 × 10 | 250 |
 | Top SQL tokenized (by_sql_tokenized + sql_tokenized_info) | 10 × 2 × 10 | 200 |
+| SQL tokenized additional (PostgreSQL only) | 10 × 3 × 10 | 300 |
 | Top SQL actual (by_sql + sql_info) | 10 × 2 × 10 | 200 |
 | User | ~10 × 10 | 100 |
 | Host | 20 × 10 | 200 |
 | Database | ~5 × 10 | 50 |
 | Error counter | 10 | 10 |
 | Internal (3) | 3 | 3 |
-| **Total** | | **~1063** |
+| **Total** | | **~1363** |
 
 Cycle reset keeps the total bounded. Adding exported tags increases label count per series but does not increase the number of series.
 
@@ -140,7 +145,7 @@ open http://localhost:9090/targets
 | # | API Call | Metrics Produced |
 |---|----------|-----------------|
 | 1 | `pi:GetResourceMetrics` GroupBy `db.wait_event` | `db_load`, `db_load_cpu`, `db_load_non_cpu`, `db_load_by_wait_event` |
-| 2 | `pi:DescribeDimensionKeys` GroupBy `db.sql_tokenized` | `db_load_by_sql_tokenized`, `sql_tokenized_info` |
+| 2 | `pi:DescribeDimensionKeys` GroupBy `db.sql_tokenized` (+ `AdditionalMetrics` for PostgreSQL) | `db_load_by_sql_tokenized`, `sql_tokenized_info`, `sql_tokenized_calls_per_sec`*, `sql_tokenized_avg_latency_per_call`*, `sql_tokenized_rows_per_call`* |
 | 3 | `pi:DescribeDimensionKeys` GroupBy `db.sql` | `db_load_by_sql` |
 | 3+N | `pi:GetDimensionKeyDetails` Group `db.sql` per sql_id | `sql_info` (`sql_full_text`) |
 | 4 | `pi:GetResourceMetrics` GroupBy `db.user` | `db_load_by_user` |

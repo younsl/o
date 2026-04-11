@@ -55,7 +55,7 @@ async fn main() {
 
     tracing::info!(
         region = %config.aws.region,
-        engine = %config.discovery.engine,
+        engines = ?config.discovery.engines,
         require_pi_enabled = config.discovery.require_pi_enabled,
         discovery_interval_seconds = config.discovery.interval_seconds,
         collection_interval_seconds = config.collection.interval_seconds,
@@ -260,7 +260,8 @@ async fn discovery_loop(
         if !*is_leader.read().await {
             tracing::debug!(
                 cycle = cycle + 1,
-                "Skipping discovery because this instance is not the leader. Waiting for leader notification"
+                region = %region,
+                "Skipping discovery because this instance is not the leader, waiting for leader notification"
             );
             leader_notify.notified().await;
             continue;
@@ -268,7 +269,7 @@ async fn discovery_loop(
 
         cycle += 1;
 
-        tracing::info!(cycle, "Discovery cycle started");
+        tracing::info!(cycle, region = %region, "Discovery cycle started");
         let start = std::time::Instant::now();
 
         match aws::discovery::run_discovery_cycle(&*discoverer, &config, &state).await {
@@ -282,6 +283,7 @@ async fn discovery_loop(
 
                 tracing::info!(
                     cycle,
+                    region = %region,
                     instances_found = result.total,
                     instances_added = result.added,
                     instances_removed = result.removed_instances.len(),
@@ -299,6 +301,7 @@ async fn discovery_loop(
                     let labels = types::InstanceLabels::from_instance(removed_inst, &region);
                     metrics.remove_instance(&labels);
                     tracing::info!(
+                        region = %region,
                         instance = %removed_inst.db_instance_identifier,
                         resource_id = %removed_inst.dbi_resource_id,
                         "Removed instance and cleaned stale metrics"
@@ -314,9 +317,10 @@ async fn discovery_loop(
                 let count = state.read().await.len();
                 tracing::warn!(
                     cycle,
+                    region = %region,
                     error = %e,
                     previous_instance_count = count,
-                    "Discovery cycle failed. Retaining previous instance list"
+                    "Discovery cycle failed, retaining previous instance list"
                 );
             }
         }

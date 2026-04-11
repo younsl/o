@@ -96,10 +96,10 @@ The following table lists the configurable parameters and their default values.
 | prometheusRules.namespace | string | `""` | Namespace override for PrometheusRule |
 | prometheusRules.labels | object | `{}` | Additional labels for PrometheusRule |
 | prometheusRules.rules | list | See `values.yaml` | Alerting rules |
-| config | object | `{"aws":{"region":"ap-northeast-2"},"collection":{"instanceTimeoutSeconds":30,"intervalSeconds":60,"maxConcurrentInstances":10,"topHostLimit":20,"topSqlLimit":10},"discovery":{"engine":"aurora-mysql","exclude":{"identifiers":[]},"exportedTags":[],"include":{"identifiers":[],"tags":[]},"intervalSeconds":300,"requirePIEnabled":true}}` | adie config (mounted as ConfigMap) |
-| config.aws.region | string | `"ap-northeast-2"` | AWS region |
+| config | object | `{"aws":{"region":"ap-northeast-2"},"collection":{"instanceTimeoutSeconds":30,"intervalSeconds":60,"maxConcurrentInstances":10,"topHostLimit":20,"topSqlLimit":10},"discovery":{"engines":["aurora-mysql","aurora-postgresql"],"exclude":{"identifiers":[]},"exportedTags":[],"include":{"identifiers":[],"tags":[]},"intervalSeconds":300,"requirePIEnabled":true}}` | adie config (mounted as ConfigMap) |
+| config.aws.region | string | `"ap-northeast-2"` | AWS region for RDS instance discovery and PI API calls (single region only) |
 | config.discovery.intervalSeconds | int | `300` | Discovery interval in seconds |
-| config.discovery.engine | string | `"aurora-mysql"` | Target RDS engine to discover |
+| config.discovery.engines | list | `["aurora-mysql","aurora-postgresql"]` | Target RDS engines to discover |
 | config.discovery.requirePIEnabled | bool | `true` | Only discover instances with Performance Insights enabled |
 | config.discovery.exportedTags | list | `[]` | AWS tags to export as Prometheus labels (YACE-style exportedTags) |
 | config.discovery.include.identifiers | list | `[]` | Regex patterns for instance identifiers to include |

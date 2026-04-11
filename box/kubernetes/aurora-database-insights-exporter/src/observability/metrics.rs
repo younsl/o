@@ -34,6 +34,9 @@ pub struct Metrics {
     pub db_load_by_wait_event: GaugeVec,
     pub db_load_by_sql_tokenized: GaugeVec,
     pub sql_tokenized_info: GaugeVec,
+    pub sql_tokenized_calls_per_sec: GaugeVec,
+    pub sql_tokenized_avg_latency_per_call: GaugeVec,
+    pub sql_tokenized_rows_per_call: GaugeVec,
     pub db_load_by_sql: GaugeVec,
     pub sql_info: GaugeVec,
     pub db_load_by_user: GaugeVec,
@@ -179,6 +182,30 @@ impl Metrics {
             &sti_refs,
         )?;
 
+        let sql_tokenized_calls_per_sec = GaugeVec::new(
+            Opts::new(
+                "aurora_dbinsights_sql_tokenized_calls_per_sec",
+                "Calls per second for top tokenized SQL (Aurora PostgreSQL only, from pg_stat_statements)",
+            ),
+            &st_refs,
+        )?;
+
+        let sql_tokenized_avg_latency_per_call = GaugeVec::new(
+            Opts::new(
+                "aurora_dbinsights_sql_tokenized_avg_latency_per_call",
+                "Average latency per call in ms for top tokenized SQL (Aurora PostgreSQL only, from pg_stat_statements)",
+            ),
+            &st_refs,
+        )?;
+
+        let sql_tokenized_rows_per_call = GaugeVec::new(
+            Opts::new(
+                "aurora_dbinsights_sql_tokenized_rows_per_call",
+                "Average rows per call for top tokenized SQL (Aurora PostgreSQL only, from pg_stat_statements)",
+            ),
+            &st_refs,
+        )?;
+
         let db_load_by_sql = GaugeVec::new(
             Opts::new(
                 "aurora_dbinsights_db_load_by_sql",
@@ -252,6 +279,9 @@ impl Metrics {
             Box::new(db_load_by_wait_event.clone()),
             Box::new(db_load_by_sql_tokenized.clone()),
             Box::new(sql_tokenized_info.clone()),
+            Box::new(sql_tokenized_calls_per_sec.clone()),
+            Box::new(sql_tokenized_avg_latency_per_call.clone()),
+            Box::new(sql_tokenized_rows_per_call.clone()),
             Box::new(db_load_by_sql.clone()),
             Box::new(sql_info.clone()),
             Box::new(db_load_by_user.clone()),
@@ -279,6 +309,9 @@ impl Metrics {
             db_load_by_wait_event,
             db_load_by_sql_tokenized,
             sql_tokenized_info,
+            sql_tokenized_calls_per_sec,
+            sql_tokenized_avg_latency_per_call,
+            sql_tokenized_rows_per_call,
             db_load_by_sql,
             sql_info,
             db_load_by_user,
@@ -296,6 +329,9 @@ impl Metrics {
         self.remove_matching_labels(&self.db_load_by_wait_event, labels);
         self.remove_matching_labels(&self.db_load_by_sql_tokenized, labels);
         self.remove_matching_labels(&self.sql_tokenized_info, labels);
+        self.remove_matching_labels(&self.sql_tokenized_calls_per_sec, labels);
+        self.remove_matching_labels(&self.sql_tokenized_avg_latency_per_call, labels);
+        self.remove_matching_labels(&self.sql_tokenized_rows_per_call, labels);
         self.remove_matching_labels(&self.db_load_by_sql, labels);
         self.remove_matching_labels(&self.sql_info, labels);
         self.remove_matching_labels(&self.db_load_by_user, labels);
@@ -398,6 +434,23 @@ impl Metrics {
             sti_lv.push(&st.sql_tokenized_text);
             sti_lv.push(truncated_str);
             self.sql_tokenized_info.with_label_values(&sti_lv).set(1.0);
+
+            // AdditionalMetrics (Aurora PostgreSQL only)
+            if let Some(v) = st.calls_per_sec {
+                self.sql_tokenized_calls_per_sec
+                    .with_label_values(&lv)
+                    .set(v);
+            }
+            if let Some(v) = st.avg_latency_per_call {
+                self.sql_tokenized_avg_latency_per_call
+                    .with_label_values(&lv)
+                    .set(v);
+            }
+            if let Some(v) = st.rows_per_call {
+                self.sql_tokenized_rows_per_call
+                    .with_label_values(&lv)
+                    .set(v);
+            }
         }
 
         // Top SQL (actual statements)
@@ -511,6 +564,9 @@ mod tests {
                 sql_tokenized_text: "SELECT * FROM orders WHERE user_id = ?".to_string(),
                 sql_tokenized_text_truncated: false,
                 value: 1.5,
+                calls_per_sec: None,
+                avg_latency_per_call: None,
+                rows_per_call: None,
             }],
             top_sql: vec![SqlMetric {
                 sql_id: "SQL123".to_string(),
@@ -670,6 +726,39 @@ mod tests {
         }];
         m.apply_snapshot(&snap);
         assert!(m.encode().contains("sql_text_truncated=\"true\""));
+    }
+
+    #[test]
+    fn test_apply_snapshot_postgresql_additional_metrics() {
+        let m = Metrics::new(&[]).unwrap();
+        let mut snap = test_snapshot();
+        snap.top_sql_tokenized = vec![SqlTokenizedMetric {
+            sql_tokenized_id: "PGTOK1".to_string(),
+            sql_tokenized_text: "SELECT 1".to_string(),
+            sql_tokenized_text_truncated: false,
+            value: 1.0,
+            calls_per_sec: Some(100.5),
+            avg_latency_per_call: Some(2.3),
+            rows_per_call: Some(5.0),
+        }];
+        m.apply_snapshot(&snap);
+
+        let output = m.encode();
+        assert!(output.contains("aurora_dbinsights_sql_tokenized_calls_per_sec"));
+        assert!(output.contains("aurora_dbinsights_sql_tokenized_avg_latency_per_call"));
+        assert!(output.contains("aurora_dbinsights_sql_tokenized_rows_per_call"));
+    }
+
+    #[test]
+    fn test_apply_snapshot_mysql_no_additional_metrics() {
+        let m = Metrics::new(&[]).unwrap();
+        let snap = test_snapshot();
+        m.apply_snapshot(&snap);
+
+        let output = m.encode();
+        assert!(!output.contains("aurora_dbinsights_sql_tokenized_calls_per_sec{"));
+        assert!(!output.contains("aurora_dbinsights_sql_tokenized_avg_latency_per_call{"));
+        assert!(!output.contains("aurora_dbinsights_sql_tokenized_rows_per_call{"));
     }
 
     #[test]
