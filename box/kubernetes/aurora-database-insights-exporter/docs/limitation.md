@@ -1,10 +1,12 @@
 # Limitation
 
-## Per-SQL statistics not available for Aurora MySQL
+Known limitations of the AWS Performance Insights API that affect aurora-database-insights-exporter. This document covers engine-specific restrictions, unsupported metric types, and available workarounds.
 
-The AWS PI console displays Calls/sec and Avg latency(ms)/call for Top SQL, but the public PI API does not expose these metrics for Aurora MySQL.
+## Per-SQL statistics not available for Aurora MySQL via PI API
 
-The `AdditionalMetrics` parameter on `DescribeDimensionKeys` is PostgreSQL-only (`pg_stat_statements`). All metric name variants return `InvalidArgumentException` on Aurora MySQL.
+The AWS PI console displays Calls/sec and Avg latency(ms)/call for Top SQL, but the `AdditionalMetrics` parameter on `DescribeDimensionKeys` returns `InvalidArgumentException` on Aurora MySQL. Aurora PostgreSQL supports this parameter via `pg_stat_statements`.
+
+Despite [AWS documentation listing 45 per-SQL metrics](https://docs.aws.amazon.com/AmazonRDS/latest/AuroraUserGuide/USER_PerfInsights.UsingDashboard.AnalyzeDBLoad.AdditionalMetrics.MySQL.html) sourced from `performance_schema.events_statements_summary_by_digest` for Aurora MySQL, the PI API does not accept them as `AdditionalMetrics` input.
 
 ### API response example
 
@@ -57,11 +59,28 @@ Failed call with `AdditionalMetrics` on Aurora MySQL:
 | Calls/sec | `AdditionalMetrics` not supported for MySQL engine |
 | Avg latency(ms)/call | `AdditionalMetrics` not supported for MySQL engine |
 
-### Alternative
+### Aurora PostgreSQL supports AdditionalMetrics
+
+Aurora PostgreSQL returns per-SQL statistics via the `AdditionalMetrics` parameter, sourced from [`pg_stat_statements`](https://www.postgresql.org/docs/current/pgstatstatements.html). Key metrics include:
+
+| Metric | Description |
+|--------|-------------|
+| `db.sql_tokenized.stats.calls_per_sec.avg` | SQL executions per second |
+| `db.sql_tokenized.stats.avg_latency_per_call.avg` | Average latency per execution (ms) |
+| `db.sql_tokenized.stats.rows_per_call.avg` | Rows returned per execution |
+| `db.sql_tokenized.stats.shared_blks_hit_per_call.avg` | Shared buffer hits per execution |
+| `db.sql_tokenized.stats.shared_blks_read_per_call.avg` | Disk reads per execution |
+
+Full list of 43 metrics available in [Aurora PostgreSQL SQL statistics documentation](https://docs.aws.amazon.com/AmazonRDS/latest/AuroraUserGuide/USER_PerfInsights.UsingDashboard.AnalyzeDBLoad.AdditionalMetrics.PostgreSQL.html).
+
+### Alternative for Aurora MySQL
 
 Query `performance_schema.events_statements_summary_by_digest` directly via MySQL connection. In the Prometheus ecosystem, [mysqld_exporter](https://github.com/prometheus/mysqld_exporter) serves this purpose.
 
 ### Reference
 
-- [DescribeDimensionKeys API](https://docs.aws.amazon.com/performance-insights/latest/APIReference/API_DescribeDimensionKeys.html)
-- Verified on Aurora MySQL, ap-northeast-2, 2026-04-06
+- [DescribeDimensionKeys API](https://docs.aws.amazon.com/performance-insights/latest/APIReference/API_DescribeDimensionKeys.html) — `AdditionalMetrics` parameter specification
+- [Aurora MySQL SQL statistics](https://docs.aws.amazon.com/AmazonRDS/latest/AuroraUserGuide/USER_PerfInsights.UsingDashboard.AnalyzeDBLoad.AdditionalMetrics.MySQL.html) — 45 metrics documented but not available via API
+- [Aurora PostgreSQL SQL statistics](https://docs.aws.amazon.com/AmazonRDS/latest/AuroraUserGuide/USER_PerfInsights.UsingDashboard.AnalyzeDBLoad.AdditionalMetrics.PostgreSQL.html) — 43 metrics available via `AdditionalMetrics`
+- [pg_stat_statements](https://www.postgresql.org/docs/current/pgstatstatements.html) — Source of PostgreSQL per-SQL statistics
+- Verified on Aurora MySQL 3.x, ap-northeast-2, 2026-04-06
