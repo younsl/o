@@ -1,0 +1,393 @@
+name: Release Rust CLI
+run-name: "\U0001F4E6 Release ${{ github.ref_name }}"
+
+on:
+  push:
+    tags:
+      - 'ij/[0-9]+.[0-9]+.[0-9]+'
+      - 'karc/[0-9]+.[0-9]+.[0-9]+'
+  workflow_dispatch:
+    inputs:
+      project:
+        description: "Project to release"
+        required: true
+        type: choice
+        options:
+          - ij
+          - karc
+      version:
+        description: "Semantic version to release (e.g. 1.0.0)"
+        required: true
+        default: "x.y.z"
+
+jobs:
+  extract-info:
+    runs-on: ubuntu-24.04
+    permissions: {}
+    outputs:
+      project_name: ${{ steps.info.outputs.project_name }}
+      version: ${{ steps.info.outputs.version }}
+      project_base_dir: ${{ steps.info.outputs.project_base_dir }}
+      macos_runner: ${{ steps.info.outputs.macos_runner }}
+    steps:
+      - name: Extract project info from tag or input
+        id: info
+        run: |
+          if [ "${{ github.event_name }}" = "push" ]; then
+            TAG="${GITHUB_REF#refs/tags/}"
+            PROJECT_NAME="${TAG%%/*}"
+            VERSION="${TAG#*/}"
+          else
+            PROJECT_NAME="${{ inputs.project }}"
+            VERSION="${{ inputs.version }}"
+          fi
+
+          case "${PROJECT_NAME}" in
+            ij)
+              PROJECT_BASE_DIR="box/tools/ij"
+              MACOS_RUNNER="macos-latest"
+              ;;
+            karc)
+              PROJECT_BASE_DIR="box/kubernetes/karc"
+              MACOS_RUNNER="macos-26"
+              ;;
+            *)
+              echo "Error: Unknown project '${PROJECT_NAME}'"
+              exit 1
+              ;;
+          esac
+
+          echo "project_name=${PROJECT_NAME}" >> $GITHUB_OUTPUT
+          echo "version=${VERSION}" >> $GITHUB_OUTPUT
+          echo "project_base_dir=${PROJECT_BASE_DIR}" >> $GITHUB_OUTPUT
+          echo "macos_runner=${MACOS_RUNNER}" >> $GITHUB_OUTPUT
+
+          echo "Project: ${PROJECT_NAME}"
+          echo "Version: ${VERSION}"
+          echo "Base dir: ${PROJECT_BASE_DIR}"
+          echo "macOS runner: ${MACOS_RUNNER}"
+
+  test:
+    needs: [extract-info]
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+    env:
+      PROJECT_BASE_DIR: ${{ needs.extract-info.outputs.project_base_dir }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache cargo registry
+        uses: actions/cache@v5
+        with:
+          path: ~/.cargo/registry
+          key: ${{ runner.os }}-cargo-registry-${{ hashFiles('**/Cargo.lock') }}
+
+      - name: Cache cargo build
+        uses: actions/cache@v5
+        with:
+          path: ${{ env.PROJECT_BASE_DIR }}/target
+          key: ${{ runner.os }}-cargo-build-test-${{ hashFiles('**/Cargo.lock') }}
+
+      - name: Check formatting
+        working-directory: ${{ env.PROJECT_BASE_DIR }}
+        run: cargo fmt --check
+
+      - name: Run clippy
+        working-directory: ${{ env.PROJECT_BASE_DIR }}
+        run: cargo clippy -- -D warnings
+
+      - name: Run tests
+        working-directory: ${{ env.PROJECT_BASE_DIR }}
+        run: |
+          cargo test --verbose
+          cargo test --release --verbose
+
+      - name: Install cargo-llvm-cov
+        uses: taiki-e/install-action@v2.69.4
+        with:
+          tool: cargo-llvm-cov
+
+      - name: Check test coverage (minimum 70%)
+        working-directory: ${{ env.PROJECT_BASE_DIR }}
+        run: cargo llvm-cov --fail-under-lines 70
+
+  build-binaries:
+    needs: [extract-info, test]
+    runs-on: ${{ matrix.os }}
+    permissions:
+      contents: read
+    env:
+      PROJECT_NAME: ${{ needs.extract-info.outputs.project_name }}
+      PROJECT_BASE_DIR: ${{ needs.extract-info.outputs.project_base_dir }}
+      VERSION: ${{ needs.extract-info.outputs.version }}
+    strategy:
+      matrix:
+        include:
+          - os: ubuntu-24.04
+            target: x86_64-unknown-linux-gnu
+            platform: linux
+            arch: amd64
+          - os: ubuntu-24.04
+            target: aarch64-unknown-linux-gnu
+            platform: linux
+            arch: arm64
+          - os: ${{ needs.extract-info.outputs.macos_runner }}
+            target: x86_64-apple-darwin
+            platform: darwin
+            arch: amd64
+          - os: ${{ needs.extract-info.outputs.macos_runner }}
+            target: aarch64-apple-darwin
+            platform: darwin
+            arch: arm64
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+
+      - name: Install cross-compilation tools (Linux ARM64)
+        if: matrix.target == 'aarch64-unknown-linux-gnu'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            gcc-aarch64-linux-gnu \
+            g++-aarch64-linux-gnu
+        env:
+          DEBIAN_FRONTEND: noninteractive
+
+      - name: Configure cross-compilation (Linux ARM64)
+        if: matrix.target == 'aarch64-unknown-linux-gnu'
+        run: |
+          echo "CARGO_TARGET_AARCH64_UNKNOWN_LINUX_GNU_LINKER=aarch64-linux-gnu-gcc" >> $GITHUB_ENV
+          echo "CC_aarch64_unknown_linux_gnu=aarch64-linux-gnu-gcc" >> $GITHUB_ENV
+          echo "CXX_aarch64_unknown_linux_gnu=aarch64-linux-gnu-g++" >> $GITHUB_ENV
+
+      - name: Cache cargo registry
+        uses: actions/cache@v5
+        with:
+          path: ~/.cargo/registry
+          key: ${{ runner.os }}-cargo-registry-${{ hashFiles('**/Cargo.lock') }}
+
+      - name: Cache cargo index
+        uses: actions/cache@v5
+        with:
+          path: ~/.cargo/git
+          key: ${{ runner.os }}-cargo-index-${{ hashFiles('**/Cargo.lock') }}
+
+      - name: Cache cargo build
+        uses: actions/cache@v5
+        with:
+          path: ${{ env.PROJECT_BASE_DIR }}/target
+          key: ${{ runner.os }}-cargo-build-target-${{ hashFiles('**/Cargo.lock') }}
+
+      - name: Build binary
+        working-directory: ${{ env.PROJECT_BASE_DIR }}
+        run: |
+          echo "================================="
+          echo "Building ${PROJECT_NAME}"
+          echo "Target: ${{ matrix.target }}"
+          echo "Platform: ${{ matrix.platform }}"
+          echo "Architecture: ${{ matrix.arch }}"
+          echo "Version: ${VERSION}"
+          echo "================================="
+
+          cargo build --release --target ${{ matrix.target }} --verbose
+
+          BINARY_NAME="${PROJECT_NAME}-${{ matrix.platform }}-${{ matrix.arch }}"
+          SOURCE_BINARY="target/${{ matrix.target }}/release/${PROJECT_NAME}"
+
+          if [ ! -f "${SOURCE_BINARY}" ]; then
+            echo "Error: Binary not found at ${SOURCE_BINARY}"
+            ls -la "target/${{ matrix.target }}/release/" || echo "Directory not found"
+            exit 1
+          fi
+
+          cp "${SOURCE_BINARY}" "${BINARY_NAME}"
+          chmod +x "${BINARY_NAME}"
+
+          echo "Binary created: ${BINARY_NAME}"
+          ls -lh "${BINARY_NAME}"
+
+          echo "Running smoke test..."
+          ./"${BINARY_NAME}" --version || echo "Warning: Version check failed (may not work on this platform)"
+
+      - name: Create archive
+        working-directory: ${{ env.PROJECT_BASE_DIR }}
+        run: |
+          BINARY_NAME="${PROJECT_NAME}-${{ matrix.platform }}-${{ matrix.arch }}"
+          tar -czf "${BINARY_NAME}.tar.gz" "${BINARY_NAME}"
+          echo "Created: ${BINARY_NAME}.tar.gz"
+          ls -lh "${BINARY_NAME}.tar.gz"
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v6
+        with:
+          name: ${{ env.PROJECT_NAME }}-${{ matrix.platform }}-${{ matrix.arch }}
+          path: ${{ env.PROJECT_BASE_DIR }}/${{ env.PROJECT_NAME }}-${{ matrix.platform }}-${{ matrix.arch }}.tar.gz
+
+  release:
+    runs-on: ubuntu-24.04
+    needs: [extract-info, build-binaries, test]
+    permissions:
+      contents: write
+    env:
+      PROJECT_NAME: ${{ needs.extract-info.outputs.project_name }}
+      PROJECT_BASE_DIR: ${{ needs.extract-info.outputs.project_base_dir }}
+      VERSION: ${{ needs.extract-info.outputs.version }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      - name: Download binary artifacts
+        uses: actions/download-artifact@v7
+        with:
+          path: artifacts
+          pattern: ${{ env.PROJECT_NAME }}-*
+
+      - name: Prepare release assets
+        run: |
+          mkdir -p release-assets
+          find artifacts -name "*.tar.gz" -exec cp {} release-assets/ \;
+          echo "Release assets:"
+          ls -lh release-assets/
+
+      - name: Generate checksums table
+        working-directory: release-assets
+        run: |
+          {
+            echo "| Platform | Architecture | Binary | SHA256 Checksum |"
+            echo "|----------|--------------|--------|-----------------|"
+
+            if [ -f "${PROJECT_NAME}-linux-amd64.tar.gz" ]; then
+              checksum=$(sha256sum "${PROJECT_NAME}-linux-amd64.tar.gz" | awk '{print $1}')
+              echo "| Linux | amd64 | \`${PROJECT_NAME}-linux-amd64.tar.gz\` | \`$checksum\` |"
+            fi
+
+            if [ -f "${PROJECT_NAME}-linux-arm64.tar.gz" ]; then
+              checksum=$(sha256sum "${PROJECT_NAME}-linux-arm64.tar.gz" | awk '{print $1}')
+              echo "| Linux | arm64 | \`${PROJECT_NAME}-linux-arm64.tar.gz\` | \`$checksum\` |"
+            fi
+
+            if [ -f "${PROJECT_NAME}-darwin-amd64.tar.gz" ]; then
+              checksum=$(sha256sum "${PROJECT_NAME}-darwin-amd64.tar.gz" | awk '{print $1}')
+              echo "| macOS | amd64 (Intel) | \`${PROJECT_NAME}-darwin-amd64.tar.gz\` | \`$checksum\` |"
+            fi
+
+            if [ -f "${PROJECT_NAME}-darwin-arm64.tar.gz" ]; then
+              checksum=$(sha256sum "${PROJECT_NAME}-darwin-arm64.tar.gz" | awk '{print $1}')
+              echo "| macOS | arm64 (Apple Silicon) | \`${PROJECT_NAME}-darwin-arm64.tar.gz\` | \`$checksum\` |"
+            fi
+          } > checksums_table.txt
+
+          {
+            echo "CHECKSUMS_TABLE<<EOF"
+            cat checksums_table.txt
+            echo "EOF"
+          } >> $GITHUB_ENV
+
+          echo "Generated checksums table:"
+          cat checksums_table.txt
+
+      - name: Generate release body from template
+        env:
+          REPOSITORY: ${{ github.repository }}
+        run: |
+          TEMPLATE=".github/release-templates/${PROJECT_NAME}.md"
+
+          if [ ! -f "${TEMPLATE}" ]; then
+            echo "Error: Release template not found at ${TEMPLATE}"
+            exit 1
+          fi
+
+          envsubst '${PROJECT_NAME} ${VERSION} ${REPOSITORY} ${CHECKSUMS_TABLE}' < "${TEMPLATE}" > release-body.md
+
+          echo "Generated release body:"
+          cat release-body.md
+
+      - name: Create Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: release-assets/*
+          name: ${{ env.PROJECT_NAME }} ${{ env.VERSION }}
+          body_path: release-body.md
+          generate_release_notes: true
+          draft: false
+          prerelease: false
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+  update-homebrew:
+    runs-on: ubuntu-24.04
+    needs: [extract-info, release]
+    permissions:
+      contents: read
+    env:
+      PROJECT_NAME: ${{ needs.extract-info.outputs.project_name }}
+      VERSION: ${{ needs.extract-info.outputs.version }}
+      HOMEBREW_TAP_REPO: younsl/homebrew-tap
+    steps:
+      - name: Download release assets and compute SHA256
+        id: sha
+        run: |
+          BASE_URL="https://github.com/${{ github.repository }}/releases/download/${PROJECT_NAME}/${VERSION}"
+
+          for PLATFORM_ARCH in darwin-amd64 darwin-arm64 linux-amd64 linux-arm64; do
+            FILE="${PROJECT_NAME}-${PLATFORM_ARCH}.tar.gz"
+            curl -sL -o "${FILE}" "${BASE_URL}/${FILE}"
+            SHA=$(sha256sum "${FILE}" | awk '{print $1}')
+            KEY=$(echo "${PLATFORM_ARCH}" | tr '-' '_')
+            echo "sha256_${KEY}=${SHA}" >> "$GITHUB_OUTPUT"
+            echo "${PLATFORM_ARCH}: ${SHA}"
+          done
+
+      - name: Checkout homebrew-tap
+        uses: actions/checkout@v6
+        with:
+          repository: ${{ env.HOMEBREW_TAP_REPO }}
+          token: ${{ secrets.HOMEBREW_TAP_TOKEN }}
+
+      - name: Update formula
+        env:
+          SHA_DARWIN_AMD64: ${{ steps.sha.outputs.sha256_darwin_amd64 }}
+          SHA_DARWIN_ARM64: ${{ steps.sha.outputs.sha256_darwin_arm64 }}
+          SHA_LINUX_AMD64: ${{ steps.sha.outputs.sha256_linux_amd64 }}
+          SHA_LINUX_ARM64: ${{ steps.sha.outputs.sha256_linux_arm64 }}
+        run: |
+          FORMULA="Formula/${PROJECT_NAME}.rb"
+
+          if [ ! -f "${FORMULA}" ]; then
+            echo "Error: Formula not found at ${FORMULA}"
+            ls -la Formula/ 2>/dev/null || echo "Formula directory not found"
+            exit 1
+          fi
+
+          sed -i "s|version \".*\"|version \"${VERSION}\"|" "${FORMULA}"
+
+          sed -i "/darwin.*amd64\|darwin.*intel\|darwin.*x86_64/,/sha256/{s|sha256 \"[a-f0-9]\{64\}\"|sha256 \"${SHA_DARWIN_AMD64}\"|}" "${FORMULA}"
+          sed -i "/darwin.*arm64\|darwin.*arm\b/,/sha256/{s|sha256 \"[a-f0-9]\{64\}\"|sha256 \"${SHA_DARWIN_ARM64}\"|}" "${FORMULA}"
+          sed -i "/linux.*amd64\|linux.*intel\|linux.*x86_64/,/sha256/{s|sha256 \"[a-f0-9]\{64\}\"|sha256 \"${SHA_LINUX_AMD64}\"|}" "${FORMULA}"
+          sed -i "/linux.*arm64\|linux.*arm\b/,/sha256/{s|sha256 \"[a-f0-9]\{64\}\"|sha256 \"${SHA_LINUX_ARM64}\"|}" "${FORMULA}"
+
+          echo "Updated formula:"
+          cat "${FORMULA}"
+
+      - name: Commit and push
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add "Formula/${PROJECT_NAME}.rb"
+          git diff --cached --quiet && echo "No changes to commit" && exit 0
+          RELEASE_URL="https://github.com/${{ github.repository }}/releases/tag/${PROJECT_NAME}/${VERSION}"
+          git commit \
+            -m "bump(${PROJECT_NAME}): ${VERSION} formula version and SHA" \
+            -m "Release: ${RELEASE_URL}"
+          git push

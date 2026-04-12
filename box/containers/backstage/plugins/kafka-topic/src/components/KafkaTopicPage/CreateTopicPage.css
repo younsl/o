@@ -1,0 +1,100 @@
+/* Stepper */
+.kafka-stepper {
+  display: flex;
+  align-items: flex-start;
+}
+
+.kafka-step {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  min-width: 72px;
+}
+
+.kafka-step-clickable {
+  cursor: pointer;
+}
+
+.kafka-step-circle {
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 13px;
+  font-weight: 700;
+  transition: all 0.2s;
+}
+
+.kafka-step-active {
+  background-color: #4f8ff7;
+  color: #fff;
+}
+
+.kafka-step-completed {
+  background-color: #4f8ff7;
+  color: #fff;
+}
+
+.kafka-step-upcoming {
+  background-color: transparent;
+  border: 2px solid rgba(128, 128, 128, 0.3);
+  color: rgba(255, 255, 255, 0.4);
+}
+
+.kafka-step-line {
+  flex: 1;
+  height: 2px;
+  margin-top: 15px;
+  background-color: rgba(128, 128, 128, 0.2);
+  transition: background-color 0.2s;
+}
+
+.kafka-step-line-active {
+  background-color: #4f8ff7;
+}
+
+/* Topics collapsible */
+.kafka-topics-details {
+  border: 1px solid rgba(128, 128, 128, 0.12);
+  border-radius: 8px;
+  background: rgba(128, 128, 128, 0.04);
+}
+
+.kafka-topics-summary {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: var(--bui-space-3) var(--bui-space-4);
+  cursor: pointer;
+  user-select: none;
+  list-style: none;
+}
+
+.kafka-topics-summary::-webkit-details-marker {
+  display: none;
+}
+
+.kafka-topics-summary::before {
+  content: '▶';
+  font-size: 10px;
+  color: rgba(255, 255, 255, 0.4);
+  transition: transform 0.15s;
+}
+
+.kafka-topics-details[open] > .kafka-topics-summary::before {
+  transform: rotate(90deg);
+}
+
+.kafka-topics-content {
+  padding: 0 var(--bui-space-4) var(--bui-space-4);
+}
+
+/* Default hint */
+.kafka-review-default-hint {
+  font-weight: 400;
+  font-size: 11px;
+  color: rgba(255, 255, 255, 0.4);
+}

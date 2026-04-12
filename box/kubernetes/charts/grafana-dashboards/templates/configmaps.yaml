@@ -1,0 +1,27 @@
+{{- range $name, $dashboard := .Values.dashboards }}
+{{- if $dashboard.enabled }}
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "grafana-dashboards.fullname" $ }}-{{ $name }}
+  labels:
+    {{- include "grafana-dashboards.labels" $ | nindent 4 }}
+    {{- toYaml $.Values.sidecar.labels | nindent 4 }}
+    {{- with $dashboard.labels }}
+    {{- toYaml . | nindent 4 }}
+    {{- end }}
+  {{- if or $dashboard.folder $dashboard.annotations }}
+  annotations:
+    {{- if $dashboard.folder }}
+    {{ $.Values.sidecar.folderAnnotation }}: {{ $dashboard.folder | quote }}
+    {{- end }}
+    {{- with $dashboard.annotations }}
+    {{- toYaml . | nindent 4 }}
+    {{- end }}
+  {{- end }}
+data:
+  {{ $name }}.json: |-
+{{ $.Files.Get (printf "dashboards/%s" $dashboard.file) | indent 4 }}
+{{- end }}
+{{- end }}
