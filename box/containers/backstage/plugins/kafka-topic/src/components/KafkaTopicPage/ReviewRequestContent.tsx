@@ -42,6 +42,15 @@ export const ReviewRequestContent = ({
     [api, request.cluster],
   );
 
+  // Load batch siblings if this is part of a batch
+  const { value: batchRequests } = useAsyncRetry(async () => {
+    if (!request.batchId) return null;
+    return api.getBatchRequests(request.batchId);
+  }, [api, request.batchId]);
+
+  const isBatch = !!request.batchId && batchRequests && batchRequests.length > 1;
+  const batchTopicNames = batchRequests?.map(r => r.topicName) ?? [request.topicName];
+
   const [actionLoading, setActionLoading] = useState(false);
   const [actionResult, setActionResult] = useState<{ status: 'success' | 'danger'; message: string } | null>(null);
   const [reason, setReason] = useState('');
@@ -54,12 +63,24 @@ export const ReviewRequestContent = ({
     setActionLoading(true);
     setActionResult(null);
     try {
-      if (action === 'approve') {
-        await onApprove(request.id, reason.trim());
-        setActionResult({ status: 'success', message: `Topic "${request.topicName}" approved and created.` });
+      if (isBatch && request.batchId) {
+        // Batch approve/reject
+        if (action === 'approve') {
+          await api.approveBatch(request.batchId, reason.trim());
+          setActionResult({ status: 'success', message: `Batch approved: ${batchTopicNames.length} topics created.` });
+        } else {
+          await api.rejectBatch(request.batchId, reason.trim());
+          setActionResult({ status: 'danger', message: `Batch rejected: ${batchTopicNames.length} topics.` });
+        }
       } else {
-        await onReject(request.id, reason.trim());
-        setActionResult({ status: 'danger', message: `Topic "${request.topicName}" rejected.` });
+        // Single approve/reject
+        if (action === 'approve') {
+          await onApprove(request.id, reason.trim());
+          setActionResult({ status: 'success', message: `Topic "${request.topicName}" approved and created.` });
+        } else {
+          await onReject(request.id, reason.trim());
+          setActionResult({ status: 'danger', message: `Topic "${request.topicName}" rejected.` });
+        }
       }
     } catch (e: any) {
       const msg = e.body?.error ?? e.message ?? `Failed to ${action}`;
@@ -67,12 +88,13 @@ export const ReviewRequestContent = ({
     } finally {
       setActionLoading(false);
     }
-  }, [request, reason, onApprove, onReject]);
+  }, [request, reason, onApprove, onReject, api, isBatch, batchTopicNames.length]);
 
   const isr = request.configEntries?.['min.insync.replicas'] ?? '-';
   const retention = request.configEntries?.['retention.ms'];
   const retentionLabel = retention ? `${Math.round(Number(retention) / 86400000)}d (${Number(retention).toLocaleString()}ms)` : '-';
   const isPending = request.status === 'pending';
+  const batchAllPending = batchRequests?.every(r => r.status === 'pending') ?? isPending;
 
   return (
     <Flex direction="column" gap="4">
@@ -81,7 +103,12 @@ export const ReviewRequestContent = ({
         <CardBody>
           <Flex direction="column" gap="3">
             <Flex justify="between" align="center">
-              <Text variant="body-small" weight="bold">Request Details</Text>
+              <Text variant="body-small" weight="bold">
+                Request Details
+                {isBatch && (
+                  <span className="kafka-review-default-hint"> — Batch ({batchTopicNames.length} topics)</span>
+                )}
+              </Text>
               <span className={`kafka-results-badge kafka-results-badge-${request.status}`}>
                 {statusLabel(request.status)}
               </span>
@@ -100,10 +127,23 @@ export const ReviewRequestContent = ({
                   )}
                 </Text>
               </div>
-              <div className="kafka-review-item">
-                <Text variant="body-x-small" color="secondary">Topic Name</Text>
-                <Text variant="body-small" weight="bold">{request.topicName}</Text>
-              </div>
+              {isBatch ? (
+                <div className="kafka-review-item" style={{ gridColumn: '1 / -1' }}>
+                  <Text variant="body-x-small" color="secondary">Topic Names ({batchTopicNames.length} {batchTopicNames.length > 1 ? 'topics' : 'topic'})</Text>
+                  <Flex direction="column" gap="1">
+                    {batchTopicNames.map(name => (
+                      <Text key={name} variant="body-small" weight="bold" style={{ fontFamily: 'var(--bui-font-family-mono, monospace)' }}>
+                        {name}
+                      </Text>
+                    ))}
+                  </Flex>
+                </div>
+              ) : (
+                <div className="kafka-review-item">
+                  <Text variant="body-x-small" color="secondary">Topic Name</Text>
+                  <Text variant="body-small" weight="bold">{request.topicName}</Text>
+                </div>
+              )}
               <div className="kafka-review-item">
                 <Text variant="body-x-small" color="secondary">Requester</Text>
                 <Text variant="body-small" weight="bold">{request.requester}</Text>
@@ -195,7 +235,7 @@ export const ReviewRequestContent = ({
         <Alert status={actionResult.status} title={actionResult.message} />
       )}
 
-      {isPending && isAdmin && !actionResult ? (
+      {batchAllPending && isAdmin && !actionResult ? (
         <Flex direction="column" gap="3">
           <TextField
             label="Reason"
@@ -207,10 +247,10 @@ export const ReviewRequestContent = ({
           />
           <Flex gap="2">
             <Button variant="primary" size="small" loading={actionLoading} onPress={() => handleAction('approve')}>
-              Approve
+              {isBatch ? `Approve ${batchTopicNames.length} Topics` : 'Approve'}
             </Button>
             <Button variant="secondary" size="small" loading={actionLoading} onPress={() => handleAction('reject')}>
-              Reject
+              {isBatch ? `Reject ${batchTopicNames.length} Topics` : 'Reject'}
             </Button>
           </Flex>
         </Flex>

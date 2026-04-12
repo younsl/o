@@ -3,6 +3,7 @@ import express from 'express';
 import { HttpAuthService, LoggerService } from '@backstage/backend-plugin-api';
 import { Config } from '@backstage/config';
 import { Kafka, SASLOptions, ConfigResourceTypes, logLevel as KafkaLogLevel } from 'kafkajs';
+import { randomUUID } from 'crypto';
 import { TopicRequestStore } from './TopicRequestStore';
 
 export interface RouterOptions {
@@ -401,6 +402,7 @@ export async function createRouter(options: RouterOptions): Promise<Router> {
         reviewer: null,
         reason: null,
         status: 'pending',
+        batchId: null,
       });
 
       logger.info(`Topic request '${topicName}' in ${clusterName} queued for approval by ${requester} (id: ${request.id})`);
@@ -431,6 +433,7 @@ export async function createRouter(options: RouterOptions): Promise<Router> {
         reviewer: null,
         reason: null,
         status: 'created',
+        batchId: null,
       });
 
       logger.info(`Created topic '${topicName}' in ${clusterName} by ${requester} (id: ${request.id})`);
@@ -449,6 +452,315 @@ export async function createRouter(options: RouterOptions): Promise<Router> {
         error: error instanceof Error ? error.message : 'Unknown error',
       });
     }
+  });
+
+  // Batch topic creation
+  const BATCH_MAX_TOPICS = 20;
+  const TOPIC_NAME_PATTERN = /^[a-zA-Z0-9._-]+$/;
+
+  router.post('/topics/:cluster/batch', async (req, res) => {
+    const { cluster: clusterName } = req.params;
+    const { topicNames: rawNames, trafficLevel, cleanupPolicy } = req.body ?? {};
+
+    if (!Array.isArray(rawNames) || rawNames.length === 0) {
+      res.status(400).json({ error: 'topicNames array is required and must not be empty' });
+      return;
+    }
+    if (rawNames.length > BATCH_MAX_TOPICS) {
+      res.status(400).json({ error: `Maximum ${BATCH_MAX_TOPICS} topics per batch` });
+      return;
+    }
+
+    const topicNames: string[] = [];
+    for (const [i, raw] of rawNames.entries()) {
+      if (!raw || typeof raw !== 'string' || raw.trim() === '') {
+        res.status(400).json({ error: `topicNames[${i}] is required` });
+        return;
+      }
+      topicNames.push(raw.trim());
+    }
+
+    const cluster = getClusters().find(c => c.name === clusterName);
+    if (!cluster) {
+      res.status(404).json({ error: `Cluster '${clusterName}' not found` });
+      return;
+    }
+
+    // Validate topic name characters
+    for (const [i, name] of topicNames.entries()) {
+      if (!TOPIC_NAME_PATTERN.test(name)) {
+        res.status(400).json({ error: `Invalid topic name '${name}' at index ${i}` });
+        return;
+      }
+    }
+
+    // Check for duplicates within the batch
+    const seen = new Set<string>();
+    for (const name of topicNames) {
+      if (seen.has(name)) {
+        res.status(400).json({ error: `Duplicate topic name '${name}' in batch` });
+        return;
+      }
+      seen.add(name);
+    }
+
+    // Resolve topic config
+    const topicConfigKeys = Object.keys(cluster.topicConfig);
+    const configKey = trafficLevel && cluster.topicConfig[trafficLevel]
+      ? trafficLevel
+      : topicConfigKeys[0];
+    const rawTc = cluster.topicConfig[configKey];
+    if (!rawTc) {
+      res.status(400).json({ error: `No topic config found for '${configKey}'` });
+      return;
+    }
+    const tc = applyBestPractices(rawTc);
+
+    const finalCleanupPolicy = (typeof cleanupPolicy === 'string' && cleanupPolicy.trim() !== '')
+      ? cleanupPolicy.trim()
+      : 'delete';
+
+    const requester = await tryGetUserRef(req) ?? 'unknown';
+
+    type ResultItem = { topicName: string; status: 'created' | 'pending' | 'failed'; error?: string };
+    const results: ResultItem[] = [];
+
+    try {
+      const kafka = createKafkaClient(cluster, logger);
+      const admin = kafka.admin();
+      await admin.connect();
+
+      try {
+        // Check existing topics
+        const existingTopics = await admin.listTopics();
+        const existingSet = new Set(existingTopics);
+
+        const validTopicNames: string[] = [];
+        for (const name of topicNames) {
+          if (existingSet.has(name)) {
+            results.push({ topicName: name, status: 'failed', error: `Topic '${name}' already exists` });
+          } else {
+            validTopicNames.push(name);
+          }
+        }
+
+        if (validTopicNames.length === 0) {
+          res.status(409).json({
+            batchId: null,
+            results,
+            partitions: tc.numPartitions,
+            replicationFactor: tc.replicationFactor,
+          });
+          return;
+        }
+
+        const finalConfigEntries = { ...tc.configEntries, 'cleanup.policy': finalCleanupPolicy };
+
+        if (cluster.requiresApproval) {
+          // Store as pending requests with batchId
+          const batchId = randomUUID();
+
+          for (const name of validTopicNames) {
+            await store.addRequest({
+              cluster: clusterName,
+              topicName: name,
+              numPartitions: tc.numPartitions,
+              replicationFactor: tc.replicationFactor,
+              cleanupPolicy: finalCleanupPolicy,
+              trafficLevel: configKey,
+              configEntries: finalConfigEntries,
+              requester,
+              reviewer: null,
+              reason: null,
+              status: 'pending',
+              batchId,
+            });
+            results.push({ topicName: name, status: 'pending' });
+          }
+
+          logger.info(`Batch ${batchId}: ${validTopicNames.length} topics queued for approval in ${clusterName} by ${requester}`);
+
+          res.status(202).json({
+            batchId,
+            results,
+            partitions: tc.numPartitions,
+            replicationFactor: tc.replicationFactor,
+          });
+        } else {
+          // Direct creation
+          await admin.createTopics({
+            topics: validTopicNames.map(name => ({
+              topic: name,
+              numPartitions: tc.numPartitions,
+              replicationFactor: tc.replicationFactor,
+              configEntries: Object.entries(finalConfigEntries).map(
+                ([n, v]) => ({ name: n, value: v }),
+              ),
+            })),
+          });
+
+          const createdBatchId = validTopicNames.length > 1 ? randomUUID() : null;
+
+          for (const name of validTopicNames) {
+            await store.addRequest({
+              cluster: clusterName,
+              topicName: name,
+              numPartitions: tc.numPartitions,
+              replicationFactor: tc.replicationFactor,
+              cleanupPolicy: finalCleanupPolicy,
+              trafficLevel: configKey,
+              configEntries: finalConfigEntries,
+              requester,
+              reviewer: null,
+              reason: null,
+              status: 'created',
+              batchId: createdBatchId,
+            });
+            results.push({ topicName: name, status: 'created' });
+          }
+
+          logger.info(`Batch created ${validTopicNames.length} topics in ${clusterName} by ${requester}`);
+
+          res.status(201).json({
+            batchId: createdBatchId,
+            results,
+            partitions: tc.numPartitions,
+            replicationFactor: tc.replicationFactor,
+          });
+        }
+      } finally {
+        await admin.disconnect();
+      }
+    } catch (error: any) {
+      const statusCode = error.statusCode ?? 500;
+      logger.error(`Failed batch topic creation in ${clusterName}: ${error}`);
+      res.status(statusCode).json({
+        error: error instanceof Error ? error.message : 'Unknown error',
+      });
+    }
+  });
+
+  // Batch request endpoints
+  router.get('/requests/batch/:batchId', async (req, res) => {
+    const requests = await store.listByBatchId(req.params.batchId);
+    if (requests.length === 0) {
+      res.status(404).json({ error: 'Batch not found' });
+      return;
+    }
+    res.json(requests);
+  });
+
+  router.post('/requests/batch/:batchId/approve', async (req, res) => {
+    const userRef = await tryGetUserRef(req);
+    if (!userRef || !admins.includes(userRef)) {
+      res.status(403).json({ error: 'Only admins can approve requests' });
+      return;
+    }
+
+    const { reason } = req.body ?? {};
+    if (!reason || typeof reason !== 'string' || reason.trim() === '') {
+      res.status(400).json({ error: 'reason is required' });
+      return;
+    }
+
+    const requests = await store.listByBatchId(req.params.batchId);
+    const pendingRequests = requests.filter(r => r.status === 'pending');
+    if (pendingRequests.length === 0) {
+      res.status(400).json({ error: 'No pending requests in this batch' });
+      return;
+    }
+
+    const clusterName = pendingRequests[0].cluster;
+    const cluster = getClusters().find(c => c.name === clusterName);
+    if (!cluster) {
+      res.status(404).json({ error: `Cluster '${clusterName}' not found` });
+      return;
+    }
+
+    try {
+      const kafka = createKafkaClient(cluster, logger);
+      const admin = kafka.admin();
+      await admin.connect();
+
+      try {
+        const topicNames = pendingRequests.map(r => r.topicName);
+
+        // Check for already existing topics
+        const existingTopics = await admin.listTopics();
+        const existingSet = new Set(existingTopics);
+        const toCreate = pendingRequests.filter(r => !existingSet.has(r.topicName));
+        const alreadyExist = pendingRequests.filter(r => existingSet.has(r.topicName));
+
+        if (toCreate.length > 0) {
+          const firstReq = toCreate[0];
+          const configEntries = { ...firstReq.configEntries };
+          delete configEntries['cleanup.policy'];
+
+          await admin.createTopics({
+            topics: toCreate.map(r => ({
+              topic: r.topicName,
+              numPartitions: r.numPartitions,
+              replicationFactor: r.replicationFactor,
+              configEntries: Object.entries({ ...configEntries, 'cleanup.policy': r.cleanupPolicy }).map(
+                ([name, value]) => ({ name, value }),
+              ),
+            })),
+          });
+        }
+
+        // Update all pending to approved
+        for (const r of pendingRequests) {
+          await store.updateStatus(r.id, 'approved', {
+            reviewer: userRef,
+            reason: reason.trim(),
+          });
+        }
+
+        logger.info(`Approved batch ${req.params.batchId}: ${topicNames.length} topics in ${clusterName} by ${userRef}`);
+        const updated = await store.listByBatchId(req.params.batchId);
+        res.json(updated);
+      } finally {
+        await admin.disconnect();
+      }
+    } catch (error: any) {
+      const statusCode = error.statusCode ?? 500;
+      logger.error(`Failed to approve batch ${req.params.batchId}: ${error}`);
+      res.status(statusCode).json({
+        error: error instanceof Error ? error.message : 'Unknown error',
+      });
+    }
+  });
+
+  router.post('/requests/batch/:batchId/reject', async (req, res) => {
+    const userRef = await tryGetUserRef(req);
+    if (!userRef || !admins.includes(userRef)) {
+      res.status(403).json({ error: 'Only admins can reject requests' });
+      return;
+    }
+
+    const { reason } = req.body ?? {};
+    if (!reason || typeof reason !== 'string' || reason.trim() === '') {
+      res.status(400).json({ error: 'reason is required' });
+      return;
+    }
+
+    const requests = await store.listByBatchId(req.params.batchId);
+    const pendingRequests = requests.filter(r => r.status === 'pending');
+    if (pendingRequests.length === 0) {
+      res.status(400).json({ error: 'No pending requests in this batch' });
+      return;
+    }
+
+    for (const r of pendingRequests) {
+      await store.updateStatus(r.id, 'rejected', {
+        reviewer: userRef,
+        reason: reason.trim(),
+      });
+    }
+
+    logger.info(`Rejected batch ${req.params.batchId}: ${pendingRequests.length} topics by ${userRef}`);
+    const updated = await store.listByBatchId(req.params.batchId);
+    res.json(updated);
   });
 
   router.get('/requests', async (_, res) => {

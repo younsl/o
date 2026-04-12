@@ -47,8 +47,28 @@ export interface TopicRequest {
   reviewer: string | null;
   reason: string | null;
   status: 'pending' | 'approved' | 'rejected' | 'created';
+  batchId: string | null;
   createdAt: string;
   updatedAt: string;
+}
+
+export interface BatchCreateTopicRequest {
+  topicNames: string[];
+  trafficLevel?: string;
+  cleanupPolicy?: string;
+}
+
+export interface BatchCreateTopicResultItem {
+  topicName: string;
+  status: 'created' | 'pending' | 'failed';
+  error?: string;
+}
+
+export interface BatchCreateTopicResponse {
+  batchId: string | null;
+  results: BatchCreateTopicResultItem[];
+  partitions: number;
+  replicationFactor: number;
 }
 
 export interface BrokerStatus {

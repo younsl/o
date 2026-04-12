@@ -12,9 +12,9 @@ import {
   TextField,
 } from '@backstage/ui';
 import { useApi, identityApiRef } from '@backstage/core-plugin-api';
-import { useAsyncRetry } from 'react-use';
+import { useAsyncRetry, useDebounce } from 'react-use';
 import { kafkaTopicApiRef } from '../../api/KafkaTopicApi';
-import { CreateTopicResponse } from '../../api/types';
+import { BatchCreateTopicResponse } from '../../api/types';
 import { ClusterInfo } from './ClusterInfo';
 import { TopicTable } from './TopicTable';
 import { PartitionDistribution } from './PartitionDistribution';
@@ -22,12 +22,22 @@ import './CreateTopicPage.css';
 
 const TOPIC_NAME_PATTERN = /^[a-zA-Z0-9._-]*$/;
 const hasInvalidChars = (value: string) => value !== '' && !TOPIC_NAME_PATTERN.test(value);
+const MAX_TOPICS = 20;
+
+interface TopicEntryState {
+  id: string;
+  topicName: string;
+}
+
+function generateId(): string {
+  return Math.random().toString(36).slice(2, 10);
+}
 
 const STEPS = [
   { key: 'cluster', label: 'Cluster Info', title: 'Select Cluster', description: 'Choose a Kafka cluster and review its broker architecture.' },
   { key: 'topics', label: 'Topics', title: 'Review Existing Topics', description: 'Check the current topics in this cluster to avoid duplicates.' },
-  { key: 'config', label: 'Config', title: 'Configure Topic', description: 'Set the topic name, config preset, and cleanup policy.' },
-  { key: 'create', label: 'Simulate & Create', title: 'Simulate & Create', description: 'Review partition distribution, simulate broker failures, and create the topic.' },
+  { key: 'config', label: 'Config', title: 'Configure Topics', description: 'Set the topic names, config preset, and cleanup policy.' },
+  { key: 'create', label: 'Simulate & Create', title: 'Simulate & Create', description: 'Review partition distribution, simulate broker failures, and create the topics.' },
 ];
 
 export const CreateTopicContent = ({ onBack }: { onBack: () => void }) => {
@@ -61,9 +71,10 @@ export const CreateTopicContent = ({ onBack }: { onBack: () => void }) => {
     return api.listTopics(currentClusterName);
   }, [api, currentClusterName]);
 
-  const [appName, setAppName] = useState('');
-  const [eventName, setEventName] = useState('');
-  const [action, setAction] = useState('');
+  const [topicEntries, setTopicEntries] = useState<TopicEntryState[]>([
+    { id: generateId(), topicName: '' },
+  ]);
+
   const configKeys = useMemo(
     () => Object.keys(currentCluster?.topicConfig ?? {}),
     [currentCluster],
@@ -72,29 +83,38 @@ export const CreateTopicContent = ({ onBack }: { onBack: () => void }) => {
   const [cleanupPolicy, setCleanupPolicy] = useState('delete');
 
   const [isCreating, setIsCreating] = useState(false);
-  const [result, setResult] = useState<CreateTopicResponse | null>(null);
+  const [batchResult, setBatchResult] = useState<BatchCreateTopicResponse | null>(null);
   const [error, setError] = useState<string | null>(null);
 
-  const hasInvalidInput = hasInvalidChars(appName) || hasInvalidChars(eventName) || hasInvalidChars(action);
   const selectedConfig = currentCluster?.topicConfig?.[trafficLevel];
-  const topicPreview = useMemo(() => {
-    const parts = [appName.trim(), eventName.trim()].filter(Boolean);
-    if (action.trim()) parts.push(action.trim());
-    return parts.length >= 2 ? parts.join('-') : '';
-  }, [appName, eventName, action]);
-  const isDuplicate = topicPreview !== '' && (topics?.some(t => t.name === topicPreview) ?? false);
-  const isCompleted = result !== null;
+  const isCompleted = batchResult !== null;
+
+  // Debounced entries for duplicate checking
+  const [debouncedEntries, setDebouncedEntries] = useState(topicEntries);
+  useDebounce(() => setDebouncedEntries(topicEntries), 300, [topicEntries]);
+
+  const topicPreviews = useMemo(() =>
+    debouncedEntries.map(entry => entry.topicName.trim()),
+  [debouncedEntries]);
+
+  const duplicateChecks = useMemo(() =>
+    topicPreviews.map((name, idx) => ({
+      existsInCluster: name !== '' && (topics?.some(t => t.name === name) ?? false),
+      existsInBatch: name !== '' && topicPreviews.some((n, i) => i !== idx && n === name),
+    })),
+  [topicPreviews, topics]);
+
+  const hasAnyInvalidInput = topicEntries.some(e => hasInvalidChars(e.topicName));
+  const hasAnyDuplicate = duplicateChecks.some(d => d.existsInCluster || d.existsInBatch);
 
   useEffect(() => {
     const keys = Object.keys(
       clusters?.find(c => c.name === currentClusterName)?.topicConfig ?? {},
     );
     setTrafficLevel(keys[0] ?? 'default');
-    setAppName('');
-    setEventName('');
-    setAction('');
+    setTopicEntries([{ id: generateId(), topicName: '' }]);
     setCleanupPolicy('delete');
-    setResult(null);
+    setBatchResult(null);
     setError(null);
   }, [currentClusterName, clusters]);
 
@@ -102,41 +122,56 @@ export const CreateTopicContent = ({ onBack }: { onBack: () => void }) => {
     switch (step) {
       case 0: return !!currentClusterName;
       case 1: return true;
-      case 2: return appName.trim() !== '' && eventName.trim() !== '' && !isDuplicate && !hasInvalidInput;
+      case 2:
+        return topicEntries.length > 0 &&
+          topicEntries.every(e => e.topicName.trim() !== '') &&
+          !hasAnyDuplicate && !hasAnyInvalidInput;
       default: return false;
     }
-  }, [step, currentClusterName, appName, eventName, isDuplicate, hasInvalidInput]);
+  }, [step, currentClusterName, topicEntries, hasAnyDuplicate, hasAnyInvalidInput]);
+
+  const updateEntry = useCallback((id: string, value: string) => {
+    setTopicEntries(prev => prev.map(e => e.id === id ? { ...e, topicName: value } : e));
+  }, []);
+
+  const addEntry = useCallback(() => {
+    setTopicEntries(prev => [...prev, { id: generateId(), topicName: '' }]);
+  }, []);
+
+  const removeEntry = useCallback((id: string) => {
+    setTopicEntries(prev => prev.filter(e => e.id !== id));
+  }, []);
 
   const handleCreate = useCallback(async () => {
     setIsCreating(true);
     setError(null);
-    setResult(null);
+    setBatchResult(null);
     try {
-      const response = await api.createTopic(currentClusterName!, {
-        appName: appName.trim(),
-        eventName: eventName.trim(),
-        action: action.trim() || undefined,
+      const response = await api.createTopicsBatch(currentClusterName!, {
+        topicNames: topicEntries.map(e => e.topicName.trim()),
         trafficLevel: configKeys.length > 0 ? trafficLevel : undefined,
         cleanupPolicy,
       });
-      setResult(response);
+      setBatchResult(response);
     } catch (e: any) {
-      const msg = e.body?.error ?? e.message ?? 'Failed to create topic';
+      const msg = e.body?.error ?? e.message ?? 'Failed to create topics';
       setError(typeof msg === 'string' ? msg : String(msg.message ?? msg));
     } finally {
       setIsCreating(false);
     }
-  }, [api, currentClusterName, appName, eventName, action, trafficLevel, configKeys, cleanupPolicy]);
+  }, [api, currentClusterName, topicEntries, trafficLevel, configKeys, cleanupPolicy]);
 
   const handleCreateAnother = useCallback(() => {
     setStep(0);
-    setAppName('');
-    setEventName('');
-    setAction('');
+    setTopicEntries([{ id: generateId(), topicName: '' }]);
     setCleanupPolicy('delete');
-    setResult(null);
+    setBatchResult(null);
     setError(null);
   }, []);
+
+  const liveTopicNames = useMemo(() =>
+    topicEntries.map(entry => entry.topicName.trim()),
+  [topicEntries]);
 
   if (loading) {
     return (
@@ -235,38 +270,7 @@ export const CreateTopicContent = ({ onBack }: { onBack: () => void }) => {
 
           {step === 2 && (
             <Flex direction="column" gap="3">
-              <Flex direction={{ initial: 'column', sm: 'row' }} gap="3">
-                <Box style={{ flex: 1 }}>
-                  <TextField
-                    label="App Name"
-                    placeholder="e.g. money"
-                    value={appName}
-                    onChange={setAppName}
-                    isRequired
-                    isInvalid={hasInvalidChars(appName)}
-                  />
-                </Box>
-                <Box style={{ flex: 1 }}>
-                  <TextField
-                    label="Event Name"
-                    placeholder="e.g. charge"
-                    value={eventName}
-                    onChange={setEventName}
-                    isRequired
-                    isInvalid={hasInvalidChars(eventName)}
-                  />
-                </Box>
-                <Box style={{ flex: 1 }}>
-                  <TextField
-                    label="Action (optional)"
-                    placeholder="e.g. approval"
-                    value={action}
-                    onChange={setAction}
-                    isInvalid={hasInvalidChars(action)}
-                  />
-                </Box>
-              </Flex>
-
+              {/* Common settings */}
               <Flex gap="3" style={{ flexWrap: 'wrap' }}>
                 {configKeys.length > 0 && (
                   <Box style={{ minWidth: 160 }}>
@@ -329,32 +333,64 @@ export const CreateTopicContent = ({ onBack }: { onBack: () => void }) => {
                 </Card>
               )}
 
-              {topicPreview && (
-                <Flex direction="column" gap="1">
-                  <Text variant="body-small" color="secondary">Topic name preview</Text>
-                  <Flex gap="2" align="center">
-                    <Text variant="body-medium" weight="bold" color={isDuplicate || hasInvalidInput ? 'danger' : undefined}>
-                      {topicPreview}
-                    </Text>
-                    {hasInvalidInput && (
-                      <Text variant="body-small" color="danger">
-                        — Topic name only allows letters, digits, periods, hyphens, and underscores
-                      </Text>
-                    )}
-                  </Flex>
-                  {isDuplicate && (
-                    <Text variant="body-small" color="danger">
-                      This topic already exists in {currentClusterName}.
-                    </Text>
-                  )}
-                </Flex>
-              )}
+              {/* Topic entries */}
+              <Flex direction="column" gap="2">
+                <Text variant="body-small" weight="bold">
+                  Topics ({topicEntries.length}/{MAX_TOPICS})
+                </Text>
+                {topicEntries.map((entry, idx) => {
+                  const dupCheck = duplicateChecks[idx];
+                  const entryHasInvalid = hasInvalidChars(entry.topicName);
+                  const isDup = dupCheck?.existsInCluster || dupCheck?.existsInBatch;
+
+                  return (
+                    <div key={entry.id} className="kafka-topic-entry-row">
+                      <Flex gap="2" align="center">
+                        <span className="kafka-topic-entry-index">{idx + 1}</span>
+                        <Box style={{ width: 280 }}>
+                          <TextField
+                            placeholder="e.g. money-charge"
+                            value={entry.topicName}
+                            onChange={v => updateEntry(entry.id, v)}
+                            isRequired
+                            isInvalid={entryHasInvalid || isDup}
+                            size="small"
+                          />
+                        </Box>
+                        <button
+                          type="button"
+                          className="kafka-topic-remove-btn"
+                          disabled={topicEntries.length <= 1}
+                          onClick={() => removeEntry(entry.id)}
+                          aria-label="Remove topic"
+                        >
+                          ✕
+                        </button>
+                        {(isDup || entryHasInvalid) && (
+                          <Text variant="body-x-small" color="danger">
+                            {entryHasInvalid
+                              ? 'Only letters, digits, periods, hyphens, and underscores'
+                              : dupCheck?.existsInCluster
+                                ? `"${entry.topicName.trim()}" already exists in ${currentClusterName}`
+                                : `"${entry.topicName.trim()}" is duplicated in this batch`}
+                          </Text>
+                        )}
+                      </Flex>
+                    </div>
+                  );
+                })}
+                {topicEntries.length < MAX_TOPICS && (
+                  <Button variant="secondary" size="small" onPress={addEntry}>
+                    + Add Topic
+                  </Button>
+                )}
+              </Flex>
             </Flex>
           )}
 
           {step === 3 && (
             <Flex direction="column" gap="3">
-              {!result ? (
+              {!batchResult ? (
                 <>
                   <Card>
                     <CardBody>
@@ -364,10 +400,6 @@ export const CreateTopicContent = ({ onBack }: { onBack: () => void }) => {
                           <Flex direction="column" gap="1">
                             <Text variant="body-x-small" color="secondary">Cluster</Text>
                             <Text variant="body-small" weight="bold">{currentClusterName}</Text>
-                          </Flex>
-                          <Flex direction="column" gap="1">
-                            <Text variant="body-x-small" color="secondary">Topic Name</Text>
-                            <Text variant="body-small" weight="bold">{topicPreview}</Text>
                           </Flex>
                           {selectedConfig && (
                             <>
@@ -423,6 +455,29 @@ export const CreateTopicContent = ({ onBack }: { onBack: () => void }) => {
                       </Flex>
                     </CardBody>
                   </Card>
+
+                  {/* Topic list */}
+                  <Card>
+                    <CardBody>
+                      <Flex direction="column" gap="2">
+                        <Flex justify="between" align="center">
+                          <Text variant="body-small" weight="bold">Topic Names</Text>
+                          <Text variant="body-x-small" color="secondary">{topicEntries.length} topics</Text>
+                        </Flex>
+                        <Flex direction="column" gap="1">
+                          {liveTopicNames.map((name, i) => (
+                            <Flex key={topicEntries[i].id} gap="2" align="center">
+                              <span className="kafka-topic-entry-index">{i + 1}</span>
+                              <Text variant="body-small" style={{ fontFamily: 'var(--bui-font-family-mono, monospace)' }}>
+                                {name}
+                              </Text>
+                            </Flex>
+                          ))}
+                        </Flex>
+                      </Flex>
+                    </CardBody>
+                  </Card>
+
                   {selectedConfig && (
                     <PartitionDistribution
                       numPartitions={selectedConfig.numPartitions}
@@ -431,20 +486,57 @@ export const CreateTopicContent = ({ onBack }: { onBack: () => void }) => {
                     />
                   )}
                   <Button variant="primary" size="small" loading={isCreating} onPress={handleCreate}>
-                    {currentCluster?.requiresApproval ? 'Submit for Approval' : 'Create Topic'}
+                    {currentCluster?.requiresApproval
+                      ? `Submit ${topicEntries.length} Topic${topicEntries.length > 1 ? 's' : ''} for Approval`
+                      : `Create ${topicEntries.length} Topic${topicEntries.length > 1 ? 's' : ''}`}
                   </Button>
                   {error && <Alert status="danger" title={error} />}
                 </>
               ) : (
                 <>
-                  <Alert
-                    status={result.status === 'pending' ? 'info' : 'success'}
-                    title={
-                      result.status === 'pending'
-                        ? `Topic "${result.topicName}" submitted for approval (Partitions: ${result.partitions}, RF: ${result.replicationFactor})`
-                        : `Topic "${result.topicName}" created (Partitions: ${result.partitions}, RF: ${result.replicationFactor})`
-                    }
-                  />
+                  {/* Batch result */}
+                  {batchResult.results.every(r => r.status === 'pending') ? (
+                    <Alert
+                      status="info"
+                      title={`${batchResult.results.length} topic${batchResult.results.length > 1 ? 's' : ''} submitted for approval in ${currentClusterName}`}
+                    />
+                  ) : batchResult.results.every(r => r.status === 'created') ? (
+                    <Alert
+                      status="success"
+                      title={`${batchResult.results.length} topic${batchResult.results.length > 1 ? 's' : ''} created successfully in ${currentClusterName}`}
+                    />
+                  ) : (
+                    <Alert
+                      status="danger"
+                      title={`${batchResult.results.filter(r => r.status !== 'failed').length} succeeded, ${batchResult.results.filter(r => r.status === 'failed').length} failed in ${currentClusterName}`}
+                    />
+                  )}
+
+                  <div className="kafka-batch-results">
+                    <table className="kafka-batch-results-table">
+                      <thead>
+                        <tr>
+                          <th>Topic Name</th>
+                          <th>Status</th>
+                          <th>Error</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {batchResult.results.map(r => (
+                          <tr key={r.topicName}>
+                            <td style={{ fontFamily: 'var(--bui-font-family-mono, monospace)', fontWeight: 600 }}>{r.topicName}</td>
+                            <td>
+                              <span className={`kafka-results-badge kafka-results-badge-${r.status === 'pending' ? 'pending' : r.status === 'created' ? 'created' : 'rejected'}`}>
+                                {r.status === 'created' ? 'Created' : r.status === 'pending' ? 'Pending' : 'Failed'}
+                              </span>
+                            </td>
+                            <td style={{ color: 'rgba(255,255,255,0.5)', fontSize: 12 }}>{r.error ?? '-'}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+
                   <Flex gap="2">
                     <Button variant="secondary" size="small" onPress={() => onBack()}>
                       Back to Requests
@@ -458,7 +550,7 @@ export const CreateTopicContent = ({ onBack }: { onBack: () => void }) => {
             </Flex>
           )}
 
-          {!(step === 3 && result) && (
+          {!(step === 3 && batchResult) && (
             <Flex gap="2">
               <Button
                 variant="secondary"

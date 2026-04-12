@@ -5,6 +5,8 @@ import {
   KafkaTopic,
   CreateTopicRequest,
   CreateTopicResponse,
+  BatchCreateTopicRequest,
+  BatchCreateTopicResponse,
   TopicRequest,
 } from './types';
 
@@ -20,6 +22,13 @@ export interface KafkaTopicApi {
   getRequest(id: string): Promise<TopicRequest>;
   approveRequest(id: string, reason: string): Promise<void>;
   rejectRequest(id: string, reason: string): Promise<void>;
+  createTopicsBatch(
+    cluster: string,
+    request: BatchCreateTopicRequest,
+  ): Promise<BatchCreateTopicResponse>;
+  getBatchRequests(batchId: string): Promise<TopicRequest[]>;
+  approveBatch(batchId: string, reason: string): Promise<void>;
+  rejectBatch(batchId: string, reason: string): Promise<void>;
   getUserRole(): Promise<{ isAdmin: boolean; admins: string[] }>;
 }
 

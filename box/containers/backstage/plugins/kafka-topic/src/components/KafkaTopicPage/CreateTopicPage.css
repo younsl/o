@@ -98,3 +98,90 @@
   font-size: 11px;
   color: rgba(255, 255, 255, 0.4);
 }
+
+/* Multi-topic entry rows */
+.kafka-topic-entry-row {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 4px 0;
+}
+
+.kafka-topic-entry-index {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  background: rgba(128, 128, 128, 0.12);
+  color: rgba(255, 255, 255, 0.5);
+  font-size: 11px;
+  font-weight: 700;
+  flex-shrink: 0;
+}
+
+.kafka-topic-remove-btn {
+  background: none;
+  border: 1px solid rgba(128, 128, 128, 0.2);
+  border-radius: 4px;
+  color: rgba(255, 255, 255, 0.5);
+  cursor: pointer;
+  font-size: 12px;
+  width: 28px;
+  height: 28px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  transition: all 0.15s;
+}
+
+.kafka-topic-remove-btn:hover:not(:disabled) {
+  color: #f44336;
+  border-color: #f44336;
+  background: rgba(244, 67, 54, 0.08);
+}
+
+.kafka-topic-remove-btn:disabled {
+  opacity: 0.3;
+  cursor: not-allowed;
+}
+
+/* Batch results table */
+.kafka-batch-results {
+  border: 1px solid rgba(128, 128, 128, 0.12);
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+.kafka-batch-results-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+}
+
+.kafka-batch-results-table thead {
+  background: rgba(128, 128, 128, 0.06);
+}
+
+.kafka-batch-results-table th {
+  padding: 8px 16px;
+  text-align: left;
+  font-weight: 600;
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  color: rgba(255, 255, 255, 0.5);
+  border-bottom: 1px solid rgba(128, 128, 128, 0.12);
+}
+
+.kafka-batch-results-table td {
+  padding: 8px 16px;
+  border-bottom: 1px solid rgba(128, 128, 128, 0.08);
+  color: rgba(255, 255, 255, 0.85);
+}
+
+.kafka-batch-results-table tbody tr:last-child td {
+  border-bottom: none;
+}

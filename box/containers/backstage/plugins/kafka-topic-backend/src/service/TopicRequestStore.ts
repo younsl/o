@@ -16,6 +16,7 @@ export interface TopicRequest {
   reviewer: string | null;
   reason: string | null;
   status: 'pending' | 'approved' | 'rejected' | 'created';
+  batchId: string | null;
   createdAt: string;
   updatedAt: string;
 }
@@ -55,9 +56,17 @@ export class TopicRequestStore {
         table.string('reviewer');
         table.text('reason');
         table.string('status').notNullable();
+        table.string('batch_id').nullable();
         table.timestamp('created_at').notNullable();
         table.timestamp('updated_at').notNullable();
       });
+    } else {
+      const hasBatchId = await this.db.schema.hasColumn(TABLE_NAME, 'batch_id');
+      if (!hasBatchId) {
+        await this.db.schema.alterTable(TABLE_NAME, table => {
+          table.string('batch_id').nullable();
+        });
+      }
     }
   }
 
@@ -78,6 +87,7 @@ export class TopicRequestStore {
       reviewer: input.reviewer,
       reason: input.reason,
       status: input.status,
+      batch_id: input.batchId ?? null,
       created_at: now,
       updated_at: now,
     });
@@ -97,6 +107,13 @@ export class TopicRequestStore {
 
   async listRequests(): Promise<TopicRequest[]> {
     const rows = await this.db(TABLE_NAME).orderBy('created_at', 'desc');
+    return rows.map(row => this.rowToRequest(row));
+  }
+
+  async listByBatchId(batchId: string): Promise<TopicRequest[]> {
+    const rows = await this.db(TABLE_NAME)
+      .where({ batch_id: batchId })
+      .orderBy('created_at', 'asc');
     return rows.map(row => this.rowToRequest(row));
   }
 
@@ -138,6 +155,7 @@ export class TopicRequestStore {
       reviewer: (row.reviewer as string) ?? null,
       reason: (row.reason as string) ?? null,
       status: row.status as TopicRequest['status'],
+      batchId: (row.batch_id as string) ?? null,
       createdAt: row.created_at as string,
       updatedAt: row.updated_at as string,
     };

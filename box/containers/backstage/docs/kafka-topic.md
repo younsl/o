@@ -11,12 +11,16 @@ Custom plugin for self-service Kafka topic creation with in-app approval workflo
 ## Features
 
 - 4-step creation wizard (Cluster Info → Topics → Config → Simulate & Create)
+- Batch topic creation (up to 20 topics with shared configuration)
 - Per-cluster approval workflow (`requiresApproval` config)
+- Batch approval/rejection for multi-topic requests
 - Admin review detail page with mandatory reason for approve/reject
 - Deep linking for request detail pages (`/kafka-topic/requests/:id`)
 - Approval pipeline visualization with person icons and status colors
 - Partition distribution simulator with broker failure simulation
 - Topic list with search highlighting, partition/RF/warning filters
+- Batch grouping in request list with tooltip showing all topic names
+- Client-side pagination (20 rows per page)
 - Cluster version display from broker metadata
 
 ## Configuration
@@ -111,11 +115,20 @@ app:
 
 ## Topic Naming Convention
 
-Topics are named using the pattern: `{appName}-{eventName}-{action(optional)}`
+Topic names are entered directly in the creation wizard. Allowed characters: letters, digits, periods, hyphens, and underscores.
 
 Examples:
 - `order-service-payment-completed`
 - `order-service-payment`
+
+## Batch Topic Creation
+
+Multiple topics (up to 20) can be created in a single request with shared configuration (cluster, topic config preset, cleanup policy). Each topic name is entered as a separate row in the creation wizard.
+
+- Duplicate detection runs with 300ms debounce against both existing cluster topics and other topics in the same batch
+- All duplicates must be resolved before proceeding (Block mode)
+- Batch-created topics are grouped as a single row in the request list with a `+N more` badge
+- For approval-required clusters, the entire batch can be approved or rejected at once
 
 ## Approval Workflow
 
@@ -123,26 +136,29 @@ Examples:
 Developer                          Admin
     │                                │
     ├─ Create topic request ────────►│
+    │  (single or batch)             │
     │  (status: pending)             │
     │                                ├─ Review detail page
     │                                ├─ Enter reason (required)
-    │                                ├─ Approve or Reject
+    │                                ├─ Approve or Reject (batch: all at once)
     │                                │
-    │◄── Approved ──────────────────┤  → Topic created via kafkajs
-    │◄── Rejected ──────────────────┤  → Request marked as rejected
+    │◄── Approved ───────────────────┤  → Topic(s) created via kafkajs
+    │◄── Rejected ───────────────────┤  → Request(s) marked as rejected
 ```
 
-- **requiresApproval: false** — topic is created immediately on submit
+- **requiresApproval: false** — topic(s) created immediately on submit
 - **requiresApproval: true** — request is queued for admin review
 
 ## Access Control
 
+Admins defined in `permission.admins` can approve or reject topic requests. All other authenticated users can create and view requests but cannot approve or reject.
+
 | Action | User | Admin |
 |--------|:----:|:-----:|
-| Create topic request | O | O |
+| Create topic request (single/batch) | O | O |
 | View request list | O | O |
 | View request detail page | O | O |
-| Approve/Reject request | X | O |
+| Approve/Reject request (single/batch) | X | O |
 
 ## API Endpoints
 
