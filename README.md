@@ -1,6 +1,6 @@
 # o
 
-A collection of observability and Kubernetes cluster operation addons.
+A collection of [observability](https://opentelemetry.io/docs/concepts/observability-primer/) and [Kubernetes](https://github.com/kubernetes/kubernetes) cluster operation addons.
 
 Built with [Rust](https://github.com/rust-lang/rust) [1.94+](https://github.com/rust-lang/rust/releases/tag/1.94.0), these tools deliver operational advantages: minimal container sizes, low memory footprint, static binaries with no runtime dependencies, memory safety, and compile-time guarantees for production stability.
 
