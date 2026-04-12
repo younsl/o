@@ -189,132 +189,139 @@ jobs:
           yarn workspace @internal/plugin-openapi-registry-backend test --no-cache --ci
 
   # ---------------------------------------------------------------------------
-  # Release: filesystem-cleaner (multi-arch)
+  # Release: unified build and push (matrix)
   # ---------------------------------------------------------------------------
-  release-filesystem-cleaner:
-    needs: [detect, test-filesystem-cleaner]
-    if: needs.detect.outputs.filesystem_cleaner_release == 'true'
+  release:
+    needs: [detect, test-filesystem-cleaner, test-backstage]
+    if: always() && !cancelled()
     runs-on: ubuntu-24.04
     permissions:
       contents: read
       packages: write
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: filesystem-cleaner
+            release_flag: filesystem_cleaner_release
+            version_key: filesystem_cleaner_version
+            context: box/containers/filesystem-cleaner
+            platforms: linux/amd64,linux/arm64
+            push_latest: true
+          - name: backstage
+            release_flag: backstage_release
+            version_key: backstage_version
+            context: box/containers/backstage
+            platforms: linux/amd64
+            push_latest: true
+          - name: logstash-with-opensearch-plugin
+            release_flag: logstash_with_opensearch_plugin_release
+            version_key: logstash_with_opensearch_plugin_version
+            context: box/containers/logstash-with-opensearch-plugin
+            platforms: linux/amd64
+            push_latest: false
     env:
       REGISTRY: ghcr.io
-      IMAGE_NAME: younsl/filesystem-cleaner
-      VERSION: ${{ needs.detect.outputs.filesystem_cleaner_version }}
+      IMAGE_NAME: younsl/${{ matrix.name }}
     steps:
+      - name: Check release eligibility
+        id: check
+        env:
+          RELEASE_FLAG: ${{ needs.detect.outputs[matrix.release_flag] }}
+          VERSION: ${{ needs.detect.outputs[matrix.version_key] }}
+          FC_TEST: ${{ needs.test-filesystem-cleaner.result }}
+          BS_TEST: ${{ needs.test-backstage.result }}
+        run: |
+          SHOULD_RELEASE="false"
+          if [[ "${RELEASE_FLAG}" == "true" ]]; then
+            case "${{ matrix.name }}" in
+              filesystem-cleaner)
+                [[ "${FC_TEST}" == "success" ]] && SHOULD_RELEASE="true"
+                ;;
+              backstage)
+                [[ "${BS_TEST}" == "success" ]] && SHOULD_RELEASE="true"
+                ;;
+              *)
+                SHOULD_RELEASE="true"
+                ;;
+            esac
+          fi
+          echo "should_release=${SHOULD_RELEASE}" >> "$GITHUB_OUTPUT"
+          echo "version=${VERSION}" >> "$GITHUB_OUTPUT"
+
       - name: Checkout
+        if: steps.check.outputs.should_release == 'true'
         uses: actions/checkout@v6
 
       - name: Set up QEMU
+        if: steps.check.outputs.should_release == 'true'
         uses: docker/setup-qemu-action@v4
 
       - name: Set up Docker Buildx
+        if: steps.check.outputs.should_release == 'true'
         uses: docker/setup-buildx-action@v4
 
       - name: Login to Container Registry
+        if: steps.check.outputs.should_release == 'true'
         uses: docker/login-action@v4
         with:
           registry: ${{ env.REGISTRY }}
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
+      - name: Prepare build args
+        if: steps.check.outputs.should_release == 'true'
+        id: build-args
+        run: |
+          case "${{ matrix.name }}" in
+            filesystem-cleaner)
+              {
+                echo "args<<EOF"
+                echo "VERSION=${{ steps.check.outputs.version }}"
+                echo "GIT_COMMIT=${{ github.sha }}"
+                echo "BUILD_DATE=${{ github.event.head_commit.timestamp }}"
+                echo "EOF"
+              } >> "$GITHUB_OUTPUT"
+              ;;
+            backstage)
+              {
+                echo "args<<EOF"
+                echo "COMMIT_SHA=${{ github.sha }}"
+                echo "EOF"
+              } >> "$GITHUB_OUTPUT"
+              ;;
+            *)
+              echo "args=" >> "$GITHUB_OUTPUT"
+              ;;
+          esac
+
       - name: Extract metadata
+        if: steps.check.outputs.should_release == 'true'
         id: meta
         uses: docker/metadata-action@v6
         with:
           images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
           tags: |
-            type=raw,value=${{ env.VERSION }}
-            type=raw,value=latest
+            type=raw,value=${{ steps.check.outputs.version }}
+            ${{ matrix.push_latest == true && 'type=raw,value=latest' || '' }}
 
       - name: Build and push Docker image
+        if: steps.check.outputs.should_release == 'true'
         uses: docker/build-push-action@v7
         with:
-          context: box/containers/filesystem-cleaner
-          platforms: linux/amd64,linux/arm64
+          context: ${{ matrix.context }}
+          platforms: ${{ matrix.platforms }}
           push: true
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
-          build-args: |
-            VERSION=${{ env.VERSION }}
-            GIT_COMMIT=${{ github.sha }}
-            BUILD_DATE=${{ github.event.head_commit.timestamp }}
+          build-args: ${{ steps.build-args.outputs.args }}
           provenance: false
           sbom: false
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
-  # ---------------------------------------------------------------------------
-  # Release: backstage (amd64)
-  # ---------------------------------------------------------------------------
-  release-backstage:
-    needs: [detect, test-backstage]
-    if: needs.detect.outputs.backstage_release == 'true'
-    runs-on: ubuntu-24.04
-    permissions:
-      contents: read
-      packages: write
-    env:
-      REGISTRY: ghcr.io
-      IMAGE_NAME: younsl/backstage
-      VERSION: ${{ needs.detect.outputs.backstage_version }}
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v6
-
-      - name: Login to GitHub Container Registry
+      - name: Summary (backstage)
+        if: steps.check.outputs.should_release == 'true' && matrix.name == 'backstage'
         run: |
-          echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u ${{ github.actor }} --password-stdin
-
-      - name: Build image
-        run: |
-          docker build \
-            --platform linux/amd64 \
-            --build-arg COMMIT_SHA=${{ github.sha }} \
-            --label "org.opencontainers.image.version=${VERSION}" \
-            --label "org.opencontainers.image.revision=${{ github.sha }}" \
-            -t "ghcr.io/${IMAGE_NAME}:${VERSION}" \
-            -t "ghcr.io/${IMAGE_NAME}:latest" \
-            box/containers/backstage
-
-      - name: Push image
-        run: |
-          docker push "ghcr.io/${IMAGE_NAME}:${VERSION}"
-          docker push "ghcr.io/${IMAGE_NAME}:latest"
-
-      - name: Summary
-        run: .github/scripts/summary-backstage.sh "ghcr.io/${IMAGE_NAME}:${VERSION}" "${VERSION}" "${{ github.sha }}"
-
-  # ---------------------------------------------------------------------------
-  # Release: logstash-with-opensearch-plugin (amd64, no tests)
-  # ---------------------------------------------------------------------------
-  release-logstash:
-    needs: detect
-    if: needs.detect.outputs.logstash_with_opensearch_plugin_release == 'true'
-    runs-on: ubuntu-24.04
-    permissions:
-      contents: read
-      packages: write
-    env:
-      REGISTRY: ghcr.io
-      IMAGE_NAME: younsl/logstash-with-opensearch-plugin
-      VERSION: ${{ needs.detect.outputs.logstash_with_opensearch_plugin_version }}
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v6
-
-      - name: Login to GitHub Container Registry
-        run: |
-          echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u ${{ github.actor }} --password-stdin
-
-      - name: Build image
-        run: |
-          docker build \
-            --platform linux/amd64 \
-            -t "ghcr.io/${IMAGE_NAME}:${VERSION}" \
-            box/containers/logstash-with-opensearch-plugin
-
-      - name: Push image
-        run: |
-          docker push "ghcr.io/${IMAGE_NAME}:${VERSION}"
+          docker pull "${REGISTRY}/${IMAGE_NAME}:${{ steps.check.outputs.version }}"
+          .github/scripts/summary-backstage.sh "${REGISTRY}/${IMAGE_NAME}:${{ steps.check.outputs.version }}" "${{ steps.check.outputs.version }}" "${{ github.sha }}"
