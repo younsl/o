@@ -4,7 +4,6 @@ run-name: "📦 Release ${{ github.ref_name }}"
 on:
   push:
     tags:
-      - 'filesystem-cleaner/[0-9]+.[0-9]+.[0-9]+'
       - 'elasticache-backup/[0-9]+.[0-9]+.[0-9]+'
       - 'redis-console/[0-9]+.[0-9]+.[0-9]+'
       - 'gss/[0-9]+.[0-9]+.[0-9]+'
@@ -15,7 +14,6 @@ on:
         required: true
         type: choice
         options:
-          - filesystem-cleaner
           - elasticache-backup
           - redis-console
           - gss
@@ -46,10 +44,7 @@ jobs:
             VERSION="${{ inputs.version }}"
           fi
 
-          case "${PROJECT_NAME}" in
-            filesystem-cleaner) PROJECT_BASE_DIR="box/containers/${PROJECT_NAME}" ;;
-            *)                  PROJECT_BASE_DIR="box/kubernetes/${PROJECT_NAME}" ;;
-          esac
+          PROJECT_BASE_DIR="box/kubernetes/${PROJECT_NAME}"
 
           IMAGE_NAME="younsl/${PROJECT_NAME}"
 

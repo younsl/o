@@ -685,22 +685,36 @@ helm install grafana-dashboards oci://ghcr.io/younsl/charts/grafana-dashboards
 
 ## Release Workflow
 
-GitHub Actions automatically builds and releases on tag push:
+### Container images under `box/containers/`
+
+Triggered automatically when the `org.opencontainers.image.version` label in a Dockerfile changes on push to `main`:
+
+```bash
+# To release a new version, bump the version label in the Dockerfile:
+#   LABEL org.opencontainers.image.version="1.2.3"
+# Then push to main. The release-containers.yml workflow detects the change
+# and builds/pushes the image if the version doesn't already exist on GHCR.
+
+# Supported containers:
+# - filesystem-cleaner     (Rust, multi-arch: amd64/arm64)
+# - backstage              (Node.js, amd64)
+# - logstash-with-opensearch-plugin (JVM, amd64)
+```
+
+### Other releases (tag-based)
 
 ```bash
 # CLI tool releases (pattern: {tool}/x.y.z)
 git tag ij/1.0.0 && git push --tags
 git tag karc/1.0.0 && git push --tags
 git tag kuo/1.0.0 && git push --tags
-# Container image releases (pattern: {container}/x.y.z)
-git tag filesystem-cleaner/1.0.0 && git push --tags
+
+# Kubernetes container image releases (pattern: {container}/x.y.z)
 git tag elasticache-backup/1.0.0 && git push --tags
 git tag redis-console/1.0.0 && git push --tags
 git tag gss/1.0.0 && git push --tags
 git tag kuo/1.0.0 && git push --tags
 git tag trivy-collector/1.0.0 && git push --tags
-git tag logstash-with-opensearch-plugin/8.17.0 && git push --tags
-git tag backstage/1.0.0 && git push --tags
 
 # Helm chart releases (pattern: {chart}/charts/x.y.z)
 git tag elasticache-backup/charts/1.0.0 && git push --tags
@@ -711,13 +725,12 @@ git tag gss/charts/1.0.0 && git push --tags
 git tag grafana-dashboards/charts/1.0.0 && git push --tags
 
 # Available workflows:
+# - release-containers.yml                   (Unified containers release: filesystem-cleaner, backstage, logstash — version annotation trigger)
 # - release-rust-cli.yml                     (Unified Rust CLI release: ij, karc)
 # - release-kuo.yml                          (Rust container + operator)
-# - release-rust-containers.yml              (Unified Rust container release: filesystem-cleaner, elasticache-backup, redis-console, gss)
+# - _release-rust-containers.yml             (Unified Rust container release: elasticache-backup, redis-console, gss)
 # - release-trivy-collector.yml              (Rust container)
 # - release-helm-chart.yml                   (Unified Helm chart release to OCI registry)
-# - release-logstash-with-opensearch-plugin.yml (Container image)
-# - release-backstage.yml                    (Container image)
 # - clean-workflow-runs.yml                  (Maintenance: cleanup old workflow runs)
 
 # Rust tools without automated releases (manual release required):

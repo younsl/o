@@ -8,10 +8,10 @@
 FROM docker.elastic.co/logstash/logstash:9.3.0
 
 LABEL maintainer="Younsung Lee <cysl@kakao.com>" \
-      version="8.17.0" \
+      org.opencontainers.image.version="8.17.0" \
       description="Logstash with OpenSearch output plugin and Asia/Seoul timezone" \
       repository="https://github.com/younsl/o" \
-      base-image="docker.elastic.co/logstash/logstash:8.17.0" \
+      base-image="docker.elastic.co/logstash/logstash:9.3.0" \
       org.opencontainers.image.deprecated="false"
 
 USER root

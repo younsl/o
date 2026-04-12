@@ -37,6 +37,7 @@ RUN strip /app/target/release/filesystem-cleaner && \
 FROM alpine:3.23 AS runtime
 
 LABEL org.opencontainers.image.title="filesystem-cleaner" \
+      org.opencontainers.image.version="0.3.0" \
       org.opencontainers.image.source="https://github.com/younsl/o" \
       org.opencontainers.image.deprecated="false"
 

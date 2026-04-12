@@ -1,0 +1,320 @@
+name: Release Containers
+run-name: "📦 Release containers (version annotation change)"
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'box/containers/*/Dockerfile'
+  workflow_dispatch:
+    inputs:
+      container:
+        description: "Container to release"
+        required: true
+        type: choice
+        options:
+          - filesystem-cleaner
+          - backstage
+          - logstash-with-opensearch-plugin
+
+jobs:
+  # ---------------------------------------------------------------------------
+  # Detect: extract version from Dockerfile label, check GHCR for duplicates
+  # ---------------------------------------------------------------------------
+  detect:
+    runs-on: ubuntu-24.04
+    permissions:
+      packages: read
+    outputs:
+      filesystem_cleaner_release: ${{ steps.check.outputs.filesystem_cleaner_release }}
+      filesystem_cleaner_version: ${{ steps.check.outputs.filesystem_cleaner_version }}
+      backstage_release: ${{ steps.check.outputs.backstage_release }}
+      backstage_version: ${{ steps.check.outputs.backstage_version }}
+      logstash_with_opensearch_plugin_release: ${{ steps.check.outputs.logstash_with_opensearch_plugin_release }}
+      logstash_with_opensearch_plugin_version: ${{ steps.check.outputs.logstash_with_opensearch_plugin_version }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Extract versions and check GHCR
+        id: check
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          SELECTED: ${{ inputs.container }}
+        run: |
+          extract_version() {
+            grep -oP 'org\.opencontainers\.image\.version="\K[^"]+' "$1" || echo ""
+          }
+
+          check_ghcr() {
+            local image="$1" version="$2"
+            local token
+            token=$(echo -n "${GH_TOKEN}" | base64)
+            local tags
+            tags=$(curl -sf -H "Authorization: Bearer ${token}" \
+              "https://ghcr.io/v2/${image}/tags/list" 2>/dev/null || echo '{"tags":[]}')
+            if echo "${tags}" | jq -e --arg v "${version}" '.tags // [] | index($v)' > /dev/null 2>&1; then
+              echo "exists"
+            else
+              echo "new"
+            fi
+          }
+
+          CONTAINERS=("filesystem-cleaner" "backstage" "logstash-with-opensearch-plugin")
+
+          for container in "${CONTAINERS[@]}"; do
+            var=$(echo "${container}" | tr '-' '_')
+            dockerfile="box/containers/${container}/Dockerfile"
+
+            ## Skip non-selected containers on manual dispatch
+            if [[ -n "${SELECTED}" && "${SELECTED}" != "${container}" ]]; then
+              echo "${var}_release=false" >> "$GITHUB_OUTPUT"
+              echo "${var}_version=" >> "$GITHUB_OUTPUT"
+              continue
+            fi
+
+            if [[ ! -f "${dockerfile}" ]]; then
+              echo "::warning::${dockerfile} not found, skipping"
+              echo "${var}_release=false" >> "$GITHUB_OUTPUT"
+              echo "${var}_version=" >> "$GITHUB_OUTPUT"
+              continue
+            fi
+
+            version=$(extract_version "${dockerfile}")
+            if [[ -z "${version}" ]]; then
+              echo "::error::org.opencontainers.image.version not found in ${dockerfile}"
+              echo "${var}_release=false" >> "$GITHUB_OUTPUT"
+              echo "${var}_version=" >> "$GITHUB_OUTPUT"
+              continue
+            fi
+
+            status=$(check_ghcr "younsl/${container}" "${version}")
+            if [[ "${status}" == "exists" ]]; then
+              echo "✅ ${container}:${version} already exists on GHCR — skip"
+              echo "${var}_release=false" >> "$GITHUB_OUTPUT"
+            else
+              echo "🆕 ${container}:${version} not found on GHCR — will release"
+              echo "${var}_release=true" >> "$GITHUB_OUTPUT"
+            fi
+            echo "${var}_version=${version}" >> "$GITHUB_OUTPUT"
+          done
+
+  # ---------------------------------------------------------------------------
+  # Test: filesystem-cleaner (Rust)
+  # ---------------------------------------------------------------------------
+  test-filesystem-cleaner:
+    needs: detect
+    if: needs.detect.outputs.filesystem_cleaner_release == 'true'
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+    defaults:
+      run:
+        working-directory: box/containers/filesystem-cleaner
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache cargo registry
+        uses: actions/cache@v5
+        with:
+          path: ~/.cargo/registry
+          key: ${{ runner.os }}-cargo-registry-${{ hashFiles('**/Cargo.lock') }}
+
+      - name: Cache cargo build
+        uses: actions/cache@v5
+        with:
+          path: box/containers/filesystem-cleaner/target
+          key: ${{ runner.os }}-cargo-build-test-${{ hashFiles('**/Cargo.lock') }}
+
+      - name: Check formatting
+        run: cargo fmt --check
+
+      - name: Run clippy
+        run: cargo clippy -- -D warnings
+
+      - name: Run tests
+        run: |
+          cargo test --verbose
+          cargo test --release --verbose
+
+      - name: Install cargo-llvm-cov
+        uses: taiki-e/install-action@v2.69.4
+        with:
+          tool: cargo-llvm-cov
+
+      - name: Check test coverage (minimum 70%)
+        run: cargo llvm-cov --fail-under-lines 70
+
+  # ---------------------------------------------------------------------------
+  # Test: backstage (Node.js)
+  # ---------------------------------------------------------------------------
+  test-backstage:
+    needs: detect
+    if: needs.detect.outputs.backstage_release == 'true'
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+    defaults:
+      run:
+        working-directory: box/containers/backstage
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v6.3.0
+        with:
+          node-version: '24'
+
+      - name: Enable Corepack
+        run: corepack enable
+
+      - name: Install dependencies
+        run: yarn install --immutable
+
+      - name: Generate build info
+        run: node scripts/generate-build-info.js
+
+      - name: Type check
+        run: yarn tsc
+
+      - name: Run tests
+        run: |
+          yarn workspace @internal/plugin-argocd-appset-backend test --no-cache --ci
+          yarn workspace @internal/plugin-iam-user-audit-backend test --no-cache --ci
+          yarn workspace @internal/plugin-openapi-registry-backend test --no-cache --ci
+
+  # ---------------------------------------------------------------------------
+  # Release: filesystem-cleaner (multi-arch)
+  # ---------------------------------------------------------------------------
+  release-filesystem-cleaner:
+    needs: [detect, test-filesystem-cleaner]
+    if: needs.detect.outputs.filesystem_cleaner_release == 'true'
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+      packages: write
+    env:
+      REGISTRY: ghcr.io
+      IMAGE_NAME: younsl/filesystem-cleaner
+      VERSION: ${{ needs.detect.outputs.filesystem_cleaner_version }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v4
+
+      - name: Login to Container Registry
+        uses: docker/login-action@v4
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Extract metadata
+        id: meta
+        uses: docker/metadata-action@v6
+        with:
+          images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
+          tags: |
+            type=raw,value=${{ env.VERSION }}
+            type=raw,value=latest
+
+      - name: Build and push Docker image
+        uses: docker/build-push-action@v7
+        with:
+          context: box/containers/filesystem-cleaner
+          platforms: linux/amd64,linux/arm64
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          build-args: |
+            VERSION=${{ env.VERSION }}
+            GIT_COMMIT=${{ github.sha }}
+            BUILD_DATE=${{ github.event.head_commit.timestamp }}
+          provenance: false
+          sbom: false
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+  # ---------------------------------------------------------------------------
+  # Release: backstage (amd64)
+  # ---------------------------------------------------------------------------
+  release-backstage:
+    needs: [detect, test-backstage]
+    if: needs.detect.outputs.backstage_release == 'true'
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+      packages: write
+    env:
+      REGISTRY: ghcr.io
+      IMAGE_NAME: younsl/backstage
+      VERSION: ${{ needs.detect.outputs.backstage_version }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Login to GitHub Container Registry
+        run: |
+          echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u ${{ github.actor }} --password-stdin
+
+      - name: Build image
+        run: |
+          docker build \
+            --platform linux/amd64 \
+            --build-arg COMMIT_SHA=${{ github.sha }} \
+            --label "org.opencontainers.image.version=${VERSION}" \
+            --label "org.opencontainers.image.revision=${{ github.sha }}" \
+            -t "ghcr.io/${IMAGE_NAME}:${VERSION}" \
+            -t "ghcr.io/${IMAGE_NAME}:latest" \
+            box/containers/backstage
+
+      - name: Push image
+        run: |
+          docker push "ghcr.io/${IMAGE_NAME}:${VERSION}"
+          docker push "ghcr.io/${IMAGE_NAME}:latest"
+
+      - name: Summary
+        run: .github/scripts/summary-backstage.sh "ghcr.io/${IMAGE_NAME}:${VERSION}" "${VERSION}" "${{ github.sha }}"
+
+  # ---------------------------------------------------------------------------
+  # Release: logstash-with-opensearch-plugin (amd64, no tests)
+  # ---------------------------------------------------------------------------
+  release-logstash:
+    needs: detect
+    if: needs.detect.outputs.logstash_with_opensearch_plugin_release == 'true'
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+      packages: write
+    env:
+      REGISTRY: ghcr.io
+      IMAGE_NAME: younsl/logstash-with-opensearch-plugin
+      VERSION: ${{ needs.detect.outputs.logstash_with_opensearch_plugin_version }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Login to GitHub Container Registry
+        run: |
+          echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u ${{ github.actor }} --password-stdin
+
+      - name: Build image
+        run: |
+          docker build \
+            --platform linux/amd64 \
+            -t "ghcr.io/${IMAGE_NAME}:${VERSION}" \
+            box/containers/logstash-with-opensearch-plugin
+
+      - name: Push image
+        run: |
+          docker push "ghcr.io/${IMAGE_NAME}:${VERSION}"
