@@ -1,5 +1,11 @@
 # snowflake-exporter
 
+[![GitHub Container Registry](https://img.shields.io/badge/ghcr.io-snowflake--exporter-black?style=flat-square&logo=docker&logoColor=white)](https://github.com/younsl/o/pkgs/container/snowflake-exporter)
+[![Helm Chart](https://img.shields.io/badge/ghcr.io-charts%2Fsnowflake--exporter-black?style=flat-square&logo=helm&logoColor=white)](https://github.com/younsl/o/pkgs/container/charts%2Fsnowflake-exporter)
+[![Rust](https://img.shields.io/badge/rust-1.95.0-black?style=flat-square&logo=rust&logoColor=white)](https://www.rust-lang.org/)
+[![Snowflake](https://img.shields.io/badge/snowflake-SQL%20API%20v2-black?style=flat-square&logo=snowflake&logoColor=white)](https://docs.snowflake.com/en/developer-guide/sql-api/reference)
+[![GitHub license](https://img.shields.io/github/license/younsl/o?style=flat-square&color=black)](https://github.com/younsl/o/blob/main/LICENSE)
+
 Prometheus exporter for Snowflake account usage metrics. Periodically runs
 `ACCOUNT_USAGE` queries via the Snowflake SQL API v2 and exposes the results
 on a `/metrics` endpoint.
