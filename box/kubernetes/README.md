@@ -14,6 +14,7 @@ Addons and [operators](https://kubernetes.io/docs/concepts/extend-kubernetes/ope
 - [kuo](./kubernetes-upgrade-operator/) — Declarative EKS cluster upgrade operator
 - [logstash-with-opensearch-plugin](./logstash-with-opensearch-plugin/) — Logstash with OpenSearch output plugin for ECK (JVM)
 - [redis-console](./redis-console/) — Interactive multi-cluster Redis management CLI
+- [snowflake-exporter](./snowflake-exporter/) — Prometheus exporter for Snowflake account usage metrics (PAT auth)
 - [trivy-collector](./trivy-collector/) — Multi-cluster Trivy report collector with Web UI
 
 ## Implementation Details
