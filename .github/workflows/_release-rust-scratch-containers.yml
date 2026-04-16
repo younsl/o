@@ -10,6 +10,7 @@ on:
       - 'box/kubernetes/gss/Dockerfile'
       - 'box/kubernetes/trivy-collector/Dockerfile'
       - 'box/kubernetes/kubernetes-upgrade-operator/Dockerfile'
+      - 'box/kubernetes/snowflake-exporter/Dockerfile'
   workflow_dispatch:
     inputs:
       project:
@@ -22,6 +23,7 @@ on:
           - gss
           - trivy-collector
           - kuo
+          - snowflake-exporter
 
 jobs:
   # ---------------------------------------------------------------------------
@@ -73,6 +75,7 @@ jobs:
             "gss:gss:ghes-schedule-scanner:false"
             "trivy-collector:trivy-collector:trivy-collector:true"
             "kuo:kubernetes-upgrade-operator:kuo:false"
+            "snowflake-exporter:snowflake-exporter:snowflake-exporter:false"
           )
 
           TEST_JSON="[]"
