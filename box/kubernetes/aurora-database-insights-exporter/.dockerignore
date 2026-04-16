@@ -1,0 +1,10 @@
+target/
+.git/
+.gitignore
+*.md
+charts/
+tests/
+.github/
+Makefile
+config.example.yaml
+iam-policy.json

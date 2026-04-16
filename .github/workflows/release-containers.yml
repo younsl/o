@@ -1,0 +1,256 @@
+name: Release Containers
+run-name: "📦 Release containers (version annotation change)"
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'box/kubernetes/backstage/Dockerfile'
+      - 'box/kubernetes/logstash-with-opensearch-plugin/Dockerfile'
+  workflow_dispatch:
+    inputs:
+      container:
+        description: "Container to release"
+        required: true
+        type: choice
+        options:
+          - backstage
+          - logstash-with-opensearch-plugin
+
+jobs:
+  # ---------------------------------------------------------------------------
+  # Detect: extract version from Dockerfile label, check GHCR for duplicates
+  # ---------------------------------------------------------------------------
+  detect:
+    runs-on: ubuntu-24.04
+    permissions:
+      packages: read
+    outputs:
+      backstage_release: ${{ steps.check.outputs.backstage_release }}
+      backstage_version: ${{ steps.check.outputs.backstage_version }}
+      logstash_with_opensearch_plugin_release: ${{ steps.check.outputs.logstash_with_opensearch_plugin_release }}
+      logstash_with_opensearch_plugin_version: ${{ steps.check.outputs.logstash_with_opensearch_plugin_version }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Extract versions and check GHCR
+        id: check
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          SELECTED: ${{ inputs.container }}
+        run: |
+          extract_version() {
+            grep -oP 'org\.opencontainers\.image\.version="\K[^"]+' "$1" || echo ""
+          }
+
+          check_ghcr() {
+            local image="$1" version="$2"
+            local token
+            token=$(echo -n "${GH_TOKEN}" | base64)
+            local tags
+            tags=$(curl -sf -H "Authorization: Bearer ${token}" \
+              "https://ghcr.io/v2/${image}/tags/list" 2>/dev/null || echo '{"tags":[]}')
+            if echo "${tags}" | jq -e --arg v "${version}" '.tags // [] | index($v)' > /dev/null 2>&1; then
+              echo "exists"
+            else
+              echo "new"
+            fi
+          }
+
+          CONTAINERS=("backstage" "logstash-with-opensearch-plugin")
+
+          for container in "${CONTAINERS[@]}"; do
+            var=$(echo "${container}" | tr '-' '_')
+            dockerfile="box/kubernetes/${container}/Dockerfile"
+
+            ## Skip non-selected containers on manual dispatch
+            if [[ -n "${SELECTED}" && "${SELECTED}" != "${container}" ]]; then
+              echo "${var}_release=false" >> "$GITHUB_OUTPUT"
+              echo "${var}_version=" >> "$GITHUB_OUTPUT"
+              continue
+            fi
+
+            if [[ ! -f "${dockerfile}" ]]; then
+              echo "::warning::${dockerfile} not found, skipping"
+              echo "${var}_release=false" >> "$GITHUB_OUTPUT"
+              echo "${var}_version=" >> "$GITHUB_OUTPUT"
+              continue
+            fi
+
+            version=$(extract_version "${dockerfile}")
+            if [[ -z "${version}" ]]; then
+              echo "::error::org.opencontainers.image.version not found in ${dockerfile}"
+              echo "${var}_release=false" >> "$GITHUB_OUTPUT"
+              echo "${var}_version=" >> "$GITHUB_OUTPUT"
+              continue
+            fi
+
+            status=$(check_ghcr "younsl/${container}" "${version}")
+            if [[ "${status}" == "exists" ]]; then
+              echo "✅ ${container}:${version} already exists on GHCR — skip"
+              echo "${var}_release=false" >> "$GITHUB_OUTPUT"
+            else
+              echo "🆕 ${container}:${version} not found on GHCR — will release"
+              echo "${var}_release=true" >> "$GITHUB_OUTPUT"
+            fi
+            echo "${var}_version=${version}" >> "$GITHUB_OUTPUT"
+          done
+
+  # ---------------------------------------------------------------------------
+  # Test: backstage (Node.js)
+  # ---------------------------------------------------------------------------
+  test-backstage:
+    needs: detect
+    if: needs.detect.outputs.backstage_release == 'true'
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+    defaults:
+      run:
+        working-directory: box/kubernetes/backstage
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v6.3.0
+        with:
+          node-version: '24'
+
+      - name: Enable Corepack
+        run: corepack enable
+
+      - name: Install dependencies
+        run: yarn install --immutable
+
+      - name: Generate build info
+        run: node scripts/generate-build-info.js
+
+      - name: Type check
+        run: yarn tsc
+
+      - name: Run tests
+        run: |
+          yarn workspace @internal/plugin-argocd-appset-backend test --no-cache --ci
+          yarn workspace @internal/plugin-iam-user-audit-backend test --no-cache --ci
+          yarn workspace @internal/plugin-openapi-registry-backend test --no-cache --ci
+
+  # ---------------------------------------------------------------------------
+  # Release: unified build and push (matrix)
+  # ---------------------------------------------------------------------------
+  release:
+    needs: [detect, test-backstage]
+    if: always() && !cancelled()
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+      packages: write
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: backstage
+            release_flag: backstage_release
+            version_key: backstage_version
+            context: box/kubernetes/backstage
+            platforms: linux/amd64
+            push_latest: true
+          - name: logstash-with-opensearch-plugin
+            release_flag: logstash_with_opensearch_plugin_release
+            version_key: logstash_with_opensearch_plugin_version
+            context: box/kubernetes/logstash-with-opensearch-plugin
+            platforms: linux/amd64
+            push_latest: false
+    env:
+      REGISTRY: ghcr.io
+      IMAGE_NAME: younsl/${{ matrix.name }}
+    steps:
+      - name: Check release eligibility
+        id: check
+        env:
+          RELEASE_FLAG: ${{ needs.detect.outputs[matrix.release_flag] }}
+          VERSION: ${{ needs.detect.outputs[matrix.version_key] }}
+          BS_TEST: ${{ needs.test-backstage.result }}
+        run: |
+          SHOULD_RELEASE="false"
+          if [[ "${RELEASE_FLAG}" == "true" ]]; then
+            case "${{ matrix.name }}" in
+              backstage)
+                [[ "${BS_TEST}" == "success" ]] && SHOULD_RELEASE="true"
+                ;;
+              *)
+                SHOULD_RELEASE="true"
+                ;;
+            esac
+          fi
+          echo "should_release=${SHOULD_RELEASE}" >> "$GITHUB_OUTPUT"
+          echo "version=${VERSION}" >> "$GITHUB_OUTPUT"
+
+      - name: Checkout
+        if: steps.check.outputs.should_release == 'true'
+        uses: actions/checkout@v6
+
+      - name: Set up QEMU
+        if: steps.check.outputs.should_release == 'true'
+        uses: docker/setup-qemu-action@v4
+
+      - name: Set up Docker Buildx
+        if: steps.check.outputs.should_release == 'true'
+        uses: docker/setup-buildx-action@v4
+
+      - name: Login to Container Registry
+        if: steps.check.outputs.should_release == 'true'
+        uses: docker/login-action@v4
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Prepare build args
+        if: steps.check.outputs.should_release == 'true'
+        id: build-args
+        run: |
+          case "${{ matrix.name }}" in
+            backstage)
+              {
+                echo "args<<EOF"
+                echo "COMMIT_SHA=${{ github.sha }}"
+                echo "EOF"
+              } >> "$GITHUB_OUTPUT"
+              ;;
+            *)
+              echo "args=" >> "$GITHUB_OUTPUT"
+              ;;
+          esac
+
+      - name: Extract metadata
+        if: steps.check.outputs.should_release == 'true'
+        id: meta
+        uses: docker/metadata-action@v6
+        with:
+          images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
+          tags: |
+            type=raw,value=${{ steps.check.outputs.version }}
+            ${{ matrix.push_latest == true && 'type=raw,value=latest' || '' }}
+
+      - name: Build and push Docker image
+        if: steps.check.outputs.should_release == 'true'
+        uses: docker/build-push-action@v7
+        with:
+          context: ${{ matrix.context }}
+          platforms: ${{ matrix.platforms }}
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          build-args: ${{ steps.build-args.outputs.args }}
+          provenance: false
+          sbom: false
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Summary (backstage)
+        if: steps.check.outputs.should_release == 'true' && matrix.name == 'backstage'
+        run: |
+          docker pull "${REGISTRY}/${IMAGE_NAME}:${{ steps.check.outputs.version }}"
+          .github/scripts/summary-backstage.sh "${REGISTRY}/${IMAGE_NAME}:${{ steps.check.outputs.version }}" "${{ steps.check.outputs.version }}" "${{ github.sha }}"

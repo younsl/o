@@ -1,0 +1,160 @@
+/* Toggle buttons */
+.kafka-dist-toggle {
+  padding: 6px 14px;
+  font-size: 12px;
+  font-weight: 600;
+  border: 1px solid rgba(128, 128, 128, 0.25);
+  background: transparent;
+  color: rgba(255, 255, 255, 0.5);
+  cursor: pointer;
+  transition: all 0.15s;
+}
+
+.kafka-dist-toggle-left {
+  border-radius: 6px 0 0 6px;
+  border-right: none;
+}
+
+.kafka-dist-toggle-right {
+  border-radius: 0 6px 6px 0;
+}
+
+.kafka-dist-toggle-active {
+  background: #4f8ff7;
+  border-color: #4f8ff7;
+  color: #fff;
+}
+
+.kafka-dist-toggle-right.kafka-dist-toggle-active {
+  background: #f44336;
+  border-color: #f44336;
+}
+
+.kafka-dist-toggle:not(.kafka-dist-toggle-active):hover {
+  background: rgba(128, 128, 128, 0.1);
+  color: rgba(255, 255, 255, 0.8);
+}
+
+/* Broker column */
+.kafka-dist-broker {
+  display: flex;
+  flex-direction: column;
+  gap: var(--bui-space-2);
+  padding: var(--bui-space-3);
+  border-radius: var(--bui-radius-2);
+  background: rgba(128, 128, 128, 0.08);
+  border: 1px solid rgba(128, 128, 128, 0.12);
+  user-select: none;
+  transition: border-color 0.15s, background-color 0.15s;
+}
+
+.kafka-dist-broker-clickable {
+  cursor: pointer;
+}
+
+.kafka-dist-broker-clickable:hover {
+  border-color: rgba(128, 128, 128, 0.3);
+}
+
+/* Failed broker */
+.kafka-dist-broker-failed {
+  border-color: rgba(244, 67, 54, 0.4);
+  border-style: dashed;
+  background: rgba(244, 67, 54, 0.05);
+}
+
+.kafka-dist-broker-failed:hover {
+  border-color: rgba(244, 67, 54, 0.6);
+}
+
+/* Offline badge */
+.kafka-dist-offline-badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 1px 6px;
+  border-radius: 4px;
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.5px;
+  background: rgba(244, 67, 54, 0.15);
+  color: #f44336;
+}
+
+/* Partition box grid */
+.kafka-dist-partitions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+/* Partition box (shared) */
+.kafka-dist-box {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  min-width: 52px;
+  padding: 4px 8px;
+  border-radius: 6px;
+  font-size: 11px;
+  font-weight: 600;
+  font-family: var(--bui-font-family-mono, monospace);
+  line-height: 1;
+  transition: opacity 0.15s;
+}
+
+/* Leader box */
+.kafka-dist-box-leader {
+  background-color: rgba(79, 143, 247, 0.15);
+  color: #6ea8fe;
+  border: 1px solid rgba(79, 143, 247, 0.3);
+}
+
+/* Follower box */
+.kafka-dist-box-follower {
+  background-color: rgba(128, 128, 128, 0.1);
+  color: rgba(255, 255, 255, 0.5);
+  border: 1px solid rgba(128, 128, 128, 0.2);
+}
+
+/* Dead partition box (on failed broker) */
+.kafka-dist-box-dead {
+  opacity: 0.25;
+  text-decoration: line-through;
+}
+
+/* Role label inside box */
+.kafka-dist-role {
+  font-size: 9px;
+  font-weight: 700;
+  text-transform: uppercase;
+  opacity: 0.7;
+}
+
+/* Simulation result */
+.kafka-dist-result {
+  padding: var(--bui-space-2) var(--bui-space-3);
+  border-radius: var(--bui-radius-2);
+  background: rgba(128, 128, 128, 0.06);
+}
+
+/* Status indicator dots */
+.kafka-dist-status-dot {
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.kafka-dist-status-ok {
+  background-color: #4caf50;
+}
+
+.kafka-dist-status-warning {
+  background-color: #ff9800;
+}
+
+.kafka-dist-status-critical {
+  background-color: #f44336;
+}
