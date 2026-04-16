@@ -16,6 +16,11 @@ Addons and [operators](https://kubernetes.io/docs/concepts/extend-kubernetes/ope
 - [redis-console](./redis-console/) — Interactive multi-cluster Redis management CLI
 - [trivy-collector](./trivy-collector/) — Multi-cluster Trivy report collector with Web UI
 
+## Implementation Details
+
+- All Rust container images are based on [scratch](https://hub.docker.com/_/scratch) with statically linked binaries for minimal attack surface and image size.
+- Helm charts and container images are distributed as [OCI artifacts](https://helm.sh/docs/topics/registries/) via GHCR, following the [OCI distribution best practice](https://opencontainers.org/posts/blog/2024-03-13-image-and-distribution-1-1/) to unify chart and image delivery through a single registry.
+
 ## License
 
 [MIT License](../../LICENSE)
