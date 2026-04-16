@@ -1,0 +1,19 @@
+{{- if and (.Capabilities.APIVersions.Has "monitoring.coreos.com/v1") .Values.prometheusRules.enabled }}
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: {{ include "snowflake-exporter.fullname" . }}
+  {{- with .Values.prometheusRules.namespace }}
+  namespace: {{ . }}
+  {{- end }}
+  labels:
+    {{- include "snowflake-exporter.labels" . | nindent 4 }}
+    {{- with .Values.prometheusRules.labels }}
+    {{- toYaml . | nindent 4 }}
+    {{- end }}
+spec:
+  groups:
+    - name: snowflake-exporter
+      rules:
+        {{- toYaml .Values.prometheusRules.rules | nindent 8 }}
+{{- end }}

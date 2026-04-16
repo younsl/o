@@ -1,0 +1,102 @@
+//! Snowflake ACCOUNT_USAGE queries used by the exporter.
+//!
+//! Query text matches the Grafana reference exporter to preserve semantics.
+
+pub const STORAGE: &str = "SELECT STORAGE_BYTES, STAGE_BYTES, FAILSAFE_BYTES \
+    FROM ACCOUNT_USAGE.STORAGE_USAGE \
+    ORDER BY USAGE_DATE DESC LIMIT 1;";
+
+pub const DATABASE_STORAGE: &str = "SELECT DATABASE_NAME, DATABASE_ID, AVERAGE_DATABASE_BYTES, AVERAGE_FAILSAFE_BYTES \
+    FROM ACCOUNT_USAGE.DATABASE_STORAGE_USAGE_HISTORY \
+    WHERE USAGE_DATE >= dateadd(hour, -24, current_timestamp());";
+
+pub const CREDIT: &str = "SELECT SERVICE_TYPE, NAME, avg(CREDITS_USED_COMPUTE), avg(CREDITS_USED_CLOUD_SERVICES) \
+    FROM ACCOUNT_USAGE.METERING_HISTORY \
+    WHERE START_TIME >= dateadd(hour, -24, current_timestamp()) \
+    GROUP BY SERVICE_TYPE, NAME;";
+
+pub const WAREHOUSE_CREDIT: &str = "SELECT WAREHOUSE_NAME, WAREHOUSE_ID, avg(CREDITS_USED_COMPUTE), avg(CREDITS_USED_CLOUD_SERVICES) \
+    FROM ACCOUNT_USAGE.WAREHOUSE_METERING_HISTORY \
+    WHERE START_TIME >= dateadd(hour, -24, current_timestamp()) \
+    GROUP BY WAREHOUSE_NAME, WAREHOUSE_ID;";
+
+pub const LOGIN: &str = "SELECT REPORTED_CLIENT_TYPE, REPORTED_CLIENT_VERSION, \
+    sum(iff(IS_SUCCESS = 'NO', 1, 0)), sum(iff(IS_SUCCESS = 'YES', 1, 0)), count(*) \
+    FROM ACCOUNT_USAGE.LOGIN_HISTORY \
+    WHERE EVENT_TIMESTAMP >= dateadd(hour, -24, current_timestamp()) \
+    GROUP BY REPORTED_CLIENT_TYPE, REPORTED_CLIENT_VERSION;";
+
+pub const WAREHOUSE_LOAD: &str = "SELECT WAREHOUSE_NAME, WAREHOUSE_ID, avg(AVG_RUNNING), avg(AVG_QUEUED_LOAD), avg(AVG_QUEUED_PROVISIONING), avg(AVG_BLOCKED) \
+    FROM ACCOUNT_USAGE.WAREHOUSE_LOAD_HISTORY \
+    WHERE START_TIME >= dateadd(hour, -24, current_timestamp()) \
+    GROUP BY WAREHOUSE_NAME, WAREHOUSE_ID;";
+
+pub const AUTO_CLUSTERING: &str = "SELECT TABLE_NAME, TABLE_ID, SCHEMA_NAME, SCHEMA_ID, DATABASE_NAME, DATABASE_ID, \
+    sum(CREDITS_USED), sum(NUM_BYTES_RECLUSTERED), sum(NUM_ROWS_RECLUSTERED) \
+    FROM ACCOUNT_USAGE.AUTOMATIC_CLUSTERING_HISTORY \
+    WHERE START_TIME >= dateadd(hour, -24, current_timestamp()) \
+    GROUP BY TABLE_NAME, TABLE_ID, DATABASE_NAME, DATABASE_ID, SCHEMA_NAME, SCHEMA_ID;";
+
+pub const TABLE_STORAGE: &str = "SELECT TABLE_NAME, ID, TABLE_SCHEMA, TABLE_SCHEMA_ID, TABLE_CATALOG, TABLE_CATALOG_ID, \
+    sum(ACTIVE_BYTES), sum(TIME_TRAVEL_BYTES), sum(FAILSAFE_BYTES), sum(RETAINED_FOR_CLONE_BYTES) \
+    FROM ACCOUNT_USAGE.TABLE_STORAGE_METRICS \
+    WHERE TABLE_ENTERED_FAILSAFE IS NULL OR TABLE_ENTERED_FAILSAFE >= dateadd(day, -8, current_timestamp()) \
+    GROUP BY TABLE_NAME, ID, TABLE_CATALOG, TABLE_CATALOG_ID, TABLE_SCHEMA, TABLE_SCHEMA_ID;";
+
+pub const TABLE_STORAGE_EXCLUDE_DELETED: &str = "SELECT TABLE_NAME, ID, TABLE_SCHEMA, TABLE_SCHEMA_ID, TABLE_CATALOG, TABLE_CATALOG_ID, \
+    sum(ACTIVE_BYTES), sum(TIME_TRAVEL_BYTES), sum(FAILSAFE_BYTES), sum(RETAINED_FOR_CLONE_BYTES) \
+    FROM ACCOUNT_USAGE.TABLE_STORAGE_METRICS \
+    WHERE DELETED = FALSE \
+    GROUP BY TABLE_NAME, ID, TABLE_CATALOG, TABLE_CATALOG_ID, TABLE_SCHEMA, TABLE_SCHEMA_ID;";
+
+pub const DELETED_TABLES: &str = "SELECT COUNT(DISTINCT TABLE_NAME, ID, TABLE_SCHEMA, TABLE_SCHEMA_ID, TABLE_CATALOG, TABLE_CATALOG_ID) AS NUM_TABLES \
+    FROM ACCOUNT_USAGE.TABLE_STORAGE_METRICS \
+    WHERE DELETED = TRUE;";
+
+pub const REPLICATION: &str = "SELECT DATABASE_NAME, DATABASE_ID, sum(CREDITS_USED), sum(BYTES_TRANSFERRED) \
+    FROM ACCOUNT_USAGE.REPLICATION_USAGE_HISTORY \
+    WHERE START_TIME >= dateadd(hour, -24, current_timestamp()) \
+    GROUP BY DATABASE_NAME, DATABASE_ID;";
+
+/// Warehouse-scoped query aggregates over the last 24h. Bounded cardinality
+/// (one row per warehouse) — safe to enable by default.
+/// Columns: WAREHOUSE_NAME, WAREHOUSE_ID, success_count, failed_count,
+///          avg_elapsed_ms, avg_queued_overload_ms, avg_bytes_scanned,
+///          avg_cloud_services_credits.
+pub const QUERY_STATS: &str = "SELECT WAREHOUSE_NAME, WAREHOUSE_ID, \
+    sum(iff(EXECUTION_STATUS = 'SUCCESS', 1, 0)) AS success_count, \
+    sum(iff(EXECUTION_STATUS LIKE 'FAIL%' OR EXECUTION_STATUS LIKE 'INCIDENT%', 1, 0)) AS failed_count, \
+    avg(iff(EXECUTION_STATUS = 'SUCCESS', TOTAL_ELAPSED_TIME, NULL)) AS avg_elapsed_ms, \
+    avg(iff(EXECUTION_STATUS = 'SUCCESS', QUEUED_OVERLOAD_TIME, NULL)) AS avg_queued_ms, \
+    avg(iff(EXECUTION_STATUS = 'SUCCESS', BYTES_SCANNED, NULL)) AS avg_bytes_scanned, \
+    avg(iff(EXECUTION_STATUS = 'SUCCESS', CREDITS_USED_CLOUD_SERVICES, NULL)) AS avg_cloud_svc_credits \
+    FROM ACCOUNT_USAGE.QUERY_HISTORY \
+    WHERE START_TIME >= dateadd(hour, -24, current_timestamp()) \
+      AND WAREHOUSE_NAME IS NOT NULL \
+    GROUP BY WAREHOUSE_NAME, WAREHOUSE_ID;";
+
+// -------------------------------------------------------------------------
+// Serverless detail queries — cardinality can be high (per pipe/task/MV).
+// Gated by collection.enable_serverless_detail in Config.
+// -------------------------------------------------------------------------
+
+pub const PIPE_USAGE: &str = "SELECT PIPE_NAME, \
+    sum(CREDITS_USED), sum(BYTES_INSERTED), sum(FILES_INSERTED) \
+    FROM ACCOUNT_USAGE.PIPE_USAGE_HISTORY \
+    WHERE START_TIME >= dateadd(hour, -24, current_timestamp()) \
+      AND PIPE_NAME IS NOT NULL \
+    GROUP BY PIPE_NAME;";
+
+pub const SERVERLESS_TASK: &str = "SELECT TASK_NAME, DATABASE_NAME, SCHEMA_NAME, \
+    sum(CREDITS_USED) \
+    FROM ACCOUNT_USAGE.SERVERLESS_TASK_HISTORY \
+    WHERE START_TIME >= dateadd(hour, -24, current_timestamp()) \
+      AND TASK_NAME IS NOT NULL \
+    GROUP BY TASK_NAME, DATABASE_NAME, SCHEMA_NAME;";
+
+pub const MV_REFRESH: &str = "SELECT DATABASE_NAME, SCHEMA_NAME, TABLE_NAME, \
+    sum(CREDITS_USED) \
+    FROM ACCOUNT_USAGE.MATERIALIZED_VIEW_REFRESH_HISTORY \
+    WHERE START_TIME >= dateadd(hour, -24, current_timestamp()) \
+      AND TABLE_NAME IS NOT NULL \
+    GROUP BY DATABASE_NAME, SCHEMA_NAME, TABLE_NAME;";
