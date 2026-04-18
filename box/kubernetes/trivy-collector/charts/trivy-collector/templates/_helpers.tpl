@@ -41,12 +41,36 @@ app.kubernetes.io/managed-by: {{ .Release.Service }}
 {{- end }}
 
 {{/*
-Selector labels
+Selector labels (chart-wide — DO NOT use on per-role Deployments / Pods;
+selectors must differ for server and scraper to avoid one replica set
+managing the other's pods).
 */}}
 {{- define "trivy-collector.selectorLabels" -}}
 app.kubernetes.io/name: {{ include "trivy-collector.name" . }}
 app.kubernetes.io/instance: {{ .Release.Name }}
 {{- end }}
+
+{{/*
+Role-specific names: one pod per responsibility.
+*/}}
+{{- define "trivy-collector.serverName" -}}
+{{ include "trivy-collector.fullname" . }}-server
+{{- end }}
+
+{{- define "trivy-collector.scraperName" -}}
+{{ include "trivy-collector.fullname" . }}-scraper
+{{- end }}
+
+{{- define "trivy-collector.serverSelectorLabels" -}}
+{{ include "trivy-collector.selectorLabels" . }}
+app.kubernetes.io/component: server
+{{- end }}
+
+{{- define "trivy-collector.scraperSelectorLabels" -}}
+{{ include "trivy-collector.selectorLabels" . }}
+app.kubernetes.io/component: scraper
+{{- end }}
+
 
 {{/*
 Create the name of the service account to use

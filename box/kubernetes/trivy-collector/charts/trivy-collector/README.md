@@ -73,15 +73,15 @@ The following table lists the configurable parameters and their default values.
 
 | Key | Type | Default | Description |
 |-----|------|---------|-------------|
-| replicaCount | int | `1` | Number of replicas for the deployment |
+| nameOverride | string | `""` | Override the name of the chart |
+| fullnameOverride | string | `""` | Override the full name of the chart |
+| replicaCount | int | `1` | Default replica count (deprecated — use server.replicaCount for UI pods; scraper always runs as a single replica to avoid split-brain writes). |
 | revisionHistoryLimit | int | `10` | Number of old ReplicaSets to retain for rollback |
 | image | object | `{"pullPolicy":"IfNotPresent","repository":"ghcr.io/younsl/trivy-collector","tag":""}` | Container image configuration |
 | image.repository | string | `"ghcr.io/younsl/trivy-collector"` | Image repository |
 | image.pullPolicy | string | `"IfNotPresent"` | Image pull policy |
 | image.tag | string | `""` | Image tag (defaults to chart appVersion) |
 | imagePullSecrets | list | `[]` | Image pull secrets for private registries |
-| nameOverride | string | `""` | Override the name of the chart |
-| fullnameOverride | string | `""` | Override the full name of the chart |
 | serviceAccount | object | `{"annotations":{},"automount":true,"create":true,"name":""}` | ServiceAccount configuration |
 | serviceAccount.create | bool | `true` | Create a ServiceAccount |
 | serviceAccount.automount | bool | `true` | Automount service account token |
@@ -98,17 +98,38 @@ The following table lists the configurable parameters and their default values.
 | securityContext.allowPrivilegeEscalation | bool | `false` | Disallow privilege escalation |
 | securityContext.capabilities | object | `{"drop":["ALL"]}` | Capabilities to drop |
 | securityContext.readOnlyRootFilesystem | bool | `true` | Mount root filesystem as read-only |
-| mode | string | collector | Deployment mode: "collector" (Edge clusters) or "server" (Central cluster) |
-| clusterName | string | `"local"` | Cluster name identifier |
-| collector | object | `{"collectSbomReports":true,"collectVulnerabilityReports":true,"namespaces":[],"retryAttempts":3,"retryDelaySecs":5,"serverUrl":""}` | Collector mode configuration (for Edge clusters) |
-| collector.serverUrl | string | `""` | Central server URL (required for collector mode) |
-| collector.namespaces | list | `[]` | Namespaces to watch (empty = all namespaces) |
-| collector.collectVulnerabilityReports | bool | `true` | Collect VulnerabilityReports |
-| collector.collectSbomReports | bool | `true` | Collect SbomReports |
-| collector.retryAttempts | int | `3` | Number of retry attempts on failure |
-| collector.retryDelaySecs | int | `5` | Delay between retries in seconds |
-| server | object | `{"auth":{"mode":"none","rbac":{"defaultPolicy":"role:readonly","policy":"p, role:readonly, reports, get, allow\np, role:readonly, clusters, get, allow\np, role:readonly, stats, get, allow\np, role:readonly, tokens, get, allow\np, role:readonly, tokens, create, allow\np, role:admin, *, *, allow\ng, admin, role:admin\n"},"sso":{"clientId":{"key":"client-id","name":"","value":""},"clientSecret":{"key":"client-secret","name":"","value":""},"issuer":"","redirectUrl":"","scopes":["openid","profile","email","groups"]}},"gateway":{"enabled":false,"hostnames":["trivy.example.com"],"name":"","parentRefs":[{"group":"gateway.networking.k8s.io","kind":"Gateway","name":"main-gateway","namespace":"gateway-system","sectionName":"https"}],"rules":[{"backendRefs":[{"name":"","port":3000}],"filters":[],"matches":[{"path":{"type":"PathPrefix","value":"/"}}]}]},"ingress":{"annotations":{},"className":"","enabled":false,"hosts":[{"host":"trivy.example.com","paths":[{"path":"/","pathType":"Prefix"}]}],"tls":[]},"persistence":{"accessMode":"ReadWriteOnce","annotations":{},"enabled":true,"existingClaim":"","labels":{},"size":"1Gi","storageClass":""},"port":3000}` | Server mode configuration (for Central cluster) |
+| clusterName | string | `"local"` | Cluster name identifier recorded on the Hub's own reports. |
+| scraper.namespaces | list | `[]` | Namespaces the local watcher scans on the Hub's own cluster (empty = all). |
+| scraper.watchLocal | bool | `true` | Enable the local-cluster watcher (Hub itself). Set to false if Trivy Operator is not installed on the central cluster. |
+| scraper.resources | object | `{"limits":{"memory":"128Mi"},"requests":{"cpu":"50m","memory":"64Mi"}}` | Resource requests and limits. |
+| scraper.resizePolicy | list | `[]` | Container resize policy for in-place resource updates. |
+| scraper.nodeSelector | object | `{}` | Node selector. |
+| scraper.tolerations | list | `[]` | Tolerations. |
+| scraper.affinity | object | `{}` | Affinity rules. |
+| scraper.topologySpreadConstraints | list | `[]` | Topology spread constraints. |
+| scraper.serviceMonitor | object | `{"additionalLabels":{},"annotations":{},"enabled":false,"interval":"30s","scrapeTimeout":""}` | ServiceMonitor for scraper (requires Prometheus Operator). |
+| scraper.serviceMonitor.enabled | bool | `false` | Create a ServiceMonitor for the scraper pod. |
+| scraper.serviceMonitor.interval | string | `"30s"` | Scrape interval. |
+| scraper.serviceMonitor.scrapeTimeout | string | `""` | Scrape timeout (defaults to Prometheus global when empty). |
+| scraper.serviceMonitor.additionalLabels | object | `{}` | Additional labels to attach to the ServiceMonitor. |
+| scraper.serviceMonitor.annotations | object | `{}` | Annotations to attach to the ServiceMonitor. |
+| server.replicaCount | int | `1` | Replica count for the UI / API pod. |
 | server.port | int | `3000` | HTTP server port |
+| server.resources | object | `{"limits":{"memory":"64Mi"},"requests":{"cpu":"20m","memory":"32Mi"}}` | Resource requests and limits. |
+| server.resizePolicy | list | `[]` | Container resize policy for in-place resource updates. |
+| server.nodeSelector | object | `{}` | Node selector. |
+| server.tolerations | list | `[]` | Tolerations. |
+| server.affinity | object | `{}` | Affinity rules. |
+| server.topologySpreadConstraints | list | `[]` | Topology spread constraints. |
+| server.serviceMonitor | object | `{"additionalLabels":{},"annotations":{},"enabled":false,"interval":"30s","scrapeTimeout":""}` | ServiceMonitor for server (requires Prometheus Operator). |
+| server.serviceMonitor.enabled | bool | `false` | Create a ServiceMonitor for the server pod. |
+| server.serviceMonitor.interval | string | `"30s"` | Scrape interval. |
+| server.serviceMonitor.scrapeTimeout | string | `""` | Scrape timeout (defaults to Prometheus global when empty). |
+| server.serviceMonitor.additionalLabels | object | `{}` | Additional labels to attach to the ServiceMonitor. |
+| server.serviceMonitor.annotations | object | `{}` | Annotations to attach to the ServiceMonitor. |
+| server.hub | object | `{"labelSelector":"","secretNamespace":""}` | Hub-pull configuration. Hub-pull is always active in server mode: the central cluster pulls reports from Edge clusters via registered Secrets. No collector pod is deployed on Edge clusters. |
+| server.hub.secretNamespace | string | `""` | Namespace to watch for cluster-registration Secrets. Empty string = the chart release namespace (auto-injected via downward API). |
+| server.hub.labelSelector | string | `""` | Additional label selector appended to the cluster Secret filter (optional) |
 | server.persistence | object | `{"accessMode":"ReadWriteOnce","annotations":{},"enabled":true,"existingClaim":"","labels":{},"size":"1Gi","storageClass":""}` | Persistent volume configuration |
 | server.persistence.enabled | bool | `true` | Enable persistent storage |
 | server.persistence.existingClaim | string | `""` | Use existing PVC instead of creating one |
@@ -123,13 +144,14 @@ The following table lists the configurable parameters and their default values.
 | server.ingress.annotations | object | `{}` | Annotations to add to the Ingress |
 | server.ingress.hosts | list | `[{"host":"trivy.example.com","paths":[{"path":"/","pathType":"Prefix"}]}]` | Ingress hosts configuration |
 | server.ingress.tls | list | `[]` | TLS configuration for Ingress |
-| server.gateway | object | `{"enabled":false,"hostnames":["trivy.example.com"],"name":"","parentRefs":[{"group":"gateway.networking.k8s.io","kind":"Gateway","name":"main-gateway","namespace":"gateway-system","sectionName":"https"}],"rules":[{"backendRefs":[{"name":"","port":3000}],"filters":[],"matches":[{"path":{"type":"PathPrefix","value":"/"}}]}]}` | Gateway API HTTPRoute configuration (alternative to Ingress) |
+| server.gateway | object | `{"enabled":false,"hostnames":["trivy.example.com"],"name":"","parentRefs":[{"group":"gateway.networking.k8s.io","kind":"Gateway","name":"main-gateway","namespace":"gateway-system","sectionName":"https"}],"rules":[{"backendRefs":[{"group":"","kind":"Service","name":"","port":3000,"weight":1}],"filters":[],"matches":[{"path":{"type":"PathPrefix","value":"/"}}]}]}` | Gateway API HTTPRoute configuration (alternative to Ingress) |
 | server.gateway.enabled | bool | `false` | Enable HTTPRoute |
 | server.gateway.name | string | `""` | HTTPRoute name (defaults to fullname) |
 | server.gateway.parentRefs | list | `[{"group":"gateway.networking.k8s.io","kind":"Gateway","name":"main-gateway","namespace":"gateway-system","sectionName":"https"}]` | Parent Gateway references |
 | server.gateway.hostnames | list | `["trivy.example.com"]` | Hostnames for the route |
-| server.gateway.rules | list | `[{"backendRefs":[{"name":"","port":3000}],"filters":[],"matches":[{"path":{"type":"PathPrefix","value":"/"}}]}]` | HTTP route rules |
+| server.gateway.rules | list | `[{"backendRefs":[{"group":"","kind":"Service","name":"","port":3000,"weight":1}],"filters":[],"matches":[{"path":{"type":"PathPrefix","value":"/"}}]}]` | HTTP route rules |
 | server.gateway.rules[0].filters | list | `[]` | HTTPRoute filters (RequestHeaderModifier, ResponseHeaderModifier, RequestRedirect, URLRewrite, RequestMirror, ExtensionRef) |
+| server.gateway.rules[0].backendRefs | list | `[{"group":"","kind":"Service","name":"","port":3000,"weight":1}]` | HTTPBackendRefs. Each entry is rendered verbatim (group, kind, name, port, weight). Empty `name` defaults to the server pod's Service at render time. |
 | server.auth | object | `{"mode":"none","rbac":{"defaultPolicy":"role:readonly","policy":"p, role:readonly, reports, get, allow\np, role:readonly, clusters, get, allow\np, role:readonly, stats, get, allow\np, role:readonly, tokens, get, allow\np, role:readonly, tokens, create, allow\np, role:admin, *, *, allow\ng, admin, role:admin\n"},"sso":{"clientId":{"key":"client-id","name":"","value":""},"clientSecret":{"key":"client-secret","name":"","value":""},"issuer":"","redirectUrl":"","scopes":["openid","profile","email","groups"]}}` | Authentication configuration (server mode only) |
 | server.auth.mode | string | `"none"` | Authentication mode: "none" (anonymous) or "keycloak" (OIDC) |
 | server.auth.rbac | object | `{"defaultPolicy":"role:readonly","policy":"p, role:readonly, reports, get, allow\np, role:readonly, clusters, get, allow\np, role:readonly, stats, get, allow\np, role:readonly, tokens, get, allow\np, role:readonly, tokens, create, allow\np, role:admin, *, *, allow\ng, admin, role:admin\n"}` | RBAC configuration (ArgoCD-style CSV policy) |
@@ -156,11 +178,6 @@ The following table lists the configurable parameters and their default values.
 | logging | object | `{"format":"json","level":"info"}` | Logging configuration |
 | logging.format | string | `"json"` | Log format: "json" or "pretty" |
 | logging.level | string | `"info"` | Log level: trace, debug, info, warn, error |
-| resources | object | `{"limits":{"memory":"64Mi"},"requests":{"cpu":"20m","memory":"32Mi"}}` | Resource requests and limits |
-| resources.limits.memory | string | `"64Mi"` | Memory limit |
-| resources.requests.cpu | string | `"20m"` | CPU request |
-| resources.requests.memory | string | `"32Mi"` | Memory request |
-| resizePolicy | list | [] | Container resize policy for in-place resource updates |
 | livenessProbe | object | `{"failureThreshold":3,"httpGet":{"path":"/healthz","port":"health"},"initialDelaySeconds":10,"periodSeconds":30,"timeoutSeconds":5}` | Liveness probe configuration |
 | livenessProbe.initialDelaySeconds | int | `10` | Initial delay before starting probes |
 | livenessProbe.periodSeconds | int | `30` | Probe interval |
@@ -171,14 +188,6 @@ The following table lists the configurable parameters and their default values.
 | readinessProbe.periodSeconds | int | `10` | Probe interval |
 | readinessProbe.timeoutSeconds | int | `5` | Probe timeout |
 | readinessProbe.failureThreshold | int | `3` | Number of failures before marking not ready |
-| serviceMonitor | object | `{"additionalLabels":{},"enabled":false,"interval":"30s","scrapeTimeout":""}` | ServiceMonitor configuration (requires Prometheus Operator) |
-| serviceMonitor.enabled | bool | `false` | Create a ServiceMonitor for Prometheus scraping |
-| serviceMonitor.interval | string | `"30s"` | Scrape interval |
-| serviceMonitor.scrapeTimeout | string | `""` | Scrape timeout (defaults to Prometheus global setting if empty) |
-| serviceMonitor.additionalLabels | object | `{}` | Additional labels to add to the ServiceMonitor |
-| nodeSelector | object | `{}` | Node selector for pod scheduling |
-| tolerations | list | `[]` | Tolerations for pod scheduling |
-| affinity | object | `{}` | Affinity rules for pod scheduling |
 | dnsPolicy | string | "" | DNS policy for the pod (ClusterFirst, ClusterFirstWithHostNet, Default, None) |
 | dnsConfig | object | {} | DNS configuration for the pod |
 | extraObjects | list | [] | Extra Kubernetes objects to deploy alongside the chart |

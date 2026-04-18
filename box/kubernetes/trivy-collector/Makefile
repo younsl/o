@@ -20,6 +20,7 @@ release: ## Build optimized release binary
 run: build ## Build and run (server mode)
 	MODE=server \
 	STORAGE_PATH=/tmp/trivy-data \
+	HUB_SECRET_NAMESPACE=trivy-system \
 	LOG_FORMAT=pretty \
 	./target/debug/$(BINARY_NAME)
 
@@ -30,12 +31,44 @@ run-collector: build ## Build and run (collector mode)
 	LOG_FORMAT=pretty \
 	./target/debug/$(BINARY_NAME)
 
-dev: ## Run with debug logging (server mode)
+dev: ## Run with debug logging (server mode = UI only; needs dev-scraper in another shell)
 	MODE=server \
 	STORAGE_PATH=/tmp/trivy-data \
+	HUB_SECRET_NAMESPACE=trivy-system \
 	LOG_FORMAT=pretty \
 	LOG_LEVEL=debug \
-	cargo run
+	cargo run -- --mode=server
+
+dev-scraper: ## Run scraper with debug logging (watchers + DB writes; required for Registered Clusters to flip to Synced)
+	MODE=scraper \
+	STORAGE_PATH=/tmp/trivy-data \
+	HUB_SECRET_NAMESPACE=trivy-system \
+	HEALTH_PORT=8081 \
+	LOG_FORMAT=pretty \
+	LOG_LEVEL=debug \
+	cargo run -- --mode=scraper
+
+dev-all: ## Run server (UI :3000) + scraper (watchers :8081) in one process group; Ctrl+C stops both
+	@echo "==> Building once"
+	@cargo build
+	@echo "==> Starting server (UI :3000) + scraper (watchers, health :8081) — Ctrl+C stops both"
+	@trap 'kill 0' INT TERM EXIT; \
+	{ \
+	  STORAGE_PATH=/tmp/trivy-data \
+	  HUB_SECRET_NAMESPACE=trivy-system \
+	  HEALTH_PORT=8081 \
+	  LOG_FORMAT=pretty LOG_LEVEL=debug \
+	  ./target/debug/$(BINARY_NAME) --mode=scraper 2>&1 \
+	    | sed -u 's/^/[scraper] /' ; \
+	} & \
+	{ \
+	  STORAGE_PATH=/tmp/trivy-data \
+	  HUB_SECRET_NAMESPACE=trivy-system \
+	  LOG_FORMAT=pretty LOG_LEVEL=debug \
+	  ./target/debug/$(BINARY_NAME) --mode=server 2>&1 \
+	    | sed -u 's/^/[server ] /' ; \
+	} & \
+	wait
 
 test: ## Run tests
 	cargo test --verbose

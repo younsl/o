@@ -1,4 +1,11 @@
-# -- (int) Number of replicas for the deployment
+# -- (string) Override the name of the chart
+nameOverride: ""
+
+# -- (string) Override the full name of the chart
+fullnameOverride: ""
+
+# -- (int) Default replica count (deprecated — use server.replicaCount for UI pods;
+# scraper always runs as a single replica to avoid split-brain writes).
 replicaCount: 1
 
 # -- (int) Number of old ReplicaSets to retain for rollback
@@ -15,12 +22,6 @@ image:
 
 # -- (list) Image pull secrets for private registries
 imagePullSecrets: []
-
-# -- (string) Override the name of the chart
-nameOverride: ""
-
-# -- (string) Override the full name of the chart
-fullnameOverride: ""
 
 # -- ServiceAccount configuration
 serviceAccount:
@@ -61,41 +62,93 @@ securityContext:
   # -- (bool) Mount root filesystem as read-only
   readOnlyRootFilesystem: true
 
-# ============================================
-# Deployment Mode
-# ============================================
-# -- (string) Deployment mode: "collector" (Edge clusters) or "server" (Central cluster)
-# @default -- collector
-mode: collector
-
-# -- (string) Cluster name identifier
+# -- (string) Cluster name identifier recorded on the Hub's own reports.
 clusterName: "local"
 
-# ============================================
-# Collector mode settings (Edge clusters)
-# ============================================
-# -- Collector mode configuration (for Edge clusters)
-collector:
-  # -- (string) Central server URL (required for collector mode)
-  serverUrl: ""
-  # -- (list) Namespaces to watch (empty = all namespaces)
+# -- Scraper pod settings. Runs --mode=scraper. Writes Trivy reports to the
+# shared PVC. Always a single replica to avoid split-brain SQLite writers.
+scraper:
+  # -- (list) Namespaces the local watcher scans on the Hub's own cluster
+  # (empty = all).
   namespaces: []
-  # -- (bool) Collect VulnerabilityReports
-  collectVulnerabilityReports: true
-  # -- (bool) Collect SbomReports
-  collectSbomReports: true
-  # -- (int) Number of retry attempts on failure
-  retryAttempts: 3
-  # -- (int) Delay between retries in seconds
-  retryDelaySecs: 5
+  # -- (bool) Enable the local-cluster watcher (Hub itself). Set to false if
+  # Trivy Operator is not installed on the central cluster.
+  watchLocal: true
+  # -- (object) Resource requests and limits.
+  resources:
+    limits:
+      memory: 128Mi
+    requests:
+      cpu: 50m
+      memory: 64Mi
+  # -- (list) Container resize policy for in-place resource updates.
+  resizePolicy: []
+  # -- (object) Node selector.
+  nodeSelector: {}
+  # -- (list) Tolerations.
+  tolerations: []
+  # -- (object) Affinity rules.
+  affinity: {}
+  # -- (list) Topology spread constraints.
+  topologySpreadConstraints: []
+  # -- ServiceMonitor for scraper (requires Prometheus Operator).
+  serviceMonitor:
+    # -- (bool) Create a ServiceMonitor for the scraper pod.
+    enabled: false
+    # -- (string) Scrape interval.
+    interval: 30s
+    # -- (string) Scrape timeout (defaults to Prometheus global when empty).
+    scrapeTimeout: ""
+    # -- (object) Additional labels to attach to the ServiceMonitor.
+    additionalLabels: {}
+    # -- (object) Annotations to attach to the ServiceMonitor.
+    annotations: {}
 
-# ============================================
-# Server mode settings (Central cluster)
-# ============================================
-# -- Server mode configuration (for Central cluster)
+# -- Server pod settings. Runs --mode=server. Reads the shared SQLite DB.
 server:
+  # -- (int) Replica count for the UI / API pod.
+  replicaCount: 1
   # -- (int) HTTP server port
   port: 3000
+  # -- (object) Resource requests and limits.
+  resources:
+    limits:
+      memory: 64Mi
+    requests:
+      cpu: 20m
+      memory: 32Mi
+  # -- (list) Container resize policy for in-place resource updates.
+  resizePolicy: []
+  # -- (object) Node selector.
+  nodeSelector: {}
+  # -- (list) Tolerations.
+  tolerations: []
+  # -- (object) Affinity rules.
+  affinity: {}
+  # -- (list) Topology spread constraints.
+  topologySpreadConstraints: []
+  # -- ServiceMonitor for server (requires Prometheus Operator).
+  serviceMonitor:
+    # -- (bool) Create a ServiceMonitor for the server pod.
+    enabled: false
+    # -- (string) Scrape interval.
+    interval: 30s
+    # -- (string) Scrape timeout (defaults to Prometheus global when empty).
+    scrapeTimeout: ""
+    # -- (object) Additional labels to attach to the ServiceMonitor.
+    additionalLabels: {}
+    # -- (object) Annotations to attach to the ServiceMonitor.
+    annotations: {}
+
+  # -- Hub-pull configuration. Hub-pull is always active in server mode: the
+  # central cluster pulls reports from Edge clusters via registered Secrets.
+  # No collector pod is deployed on Edge clusters.
+  hub:
+    # -- (string) Namespace to watch for cluster-registration Secrets.
+    # Empty string = the chart release namespace (auto-injected via downward API).
+    secretNamespace: ""
+    # -- (string) Additional label selector appended to the cluster Secret filter (optional)
+    labelSelector: ""
 
   # -- Persistent volume configuration
   persistence:
@@ -160,9 +213,15 @@ server:
               value: /
         # -- (list) HTTPRoute filters (RequestHeaderModifier, ResponseHeaderModifier, RequestRedirect, URLRewrite, RequestMirror, ExtensionRef)
         filters: []
+        # -- (list) HTTPBackendRefs. Each entry is rendered verbatim (group,
+        # kind, name, port, weight). Empty `name` defaults to the server
+        # pod's Service at render time.
         backendRefs:
-          - name: ""
+          - group: ""
+            kind: Service
+            name: ""
             port: 3000
+            weight: 1
 
   # -- Authentication configuration (server mode only)
   auth:
@@ -232,25 +291,6 @@ logging:
   # -- (string) Log level: trace, debug, info, warn, error
   level: info
 
-# -- Resource requests and limits
-resources:
-  limits:
-    # -- (string) Memory limit
-    memory: 64Mi
-  requests:
-    # -- (string) CPU request
-    cpu: 20m
-    # -- (string) Memory request
-    memory: 32Mi
-
-# -- (list) Container resize policy for in-place resource updates
-# @default -- []
-resizePolicy: []
-  # - resourceName: cpu
-  #   restartPolicy: NotRequired
-  # - resourceName: memory
-  #   restartPolicy: NotRequired
-
 # -- Liveness probe configuration
 livenessProbe:
   httpGet:
@@ -278,26 +318,6 @@ readinessProbe:
   timeoutSeconds: 5
   # -- (int) Number of failures before marking not ready
   failureThreshold: 3
-
-# -- ServiceMonitor configuration (requires Prometheus Operator)
-serviceMonitor:
-  # -- (bool) Create a ServiceMonitor for Prometheus scraping
-  enabled: false
-  # -- (string) Scrape interval
-  interval: 30s
-  # -- (string) Scrape timeout (defaults to Prometheus global setting if empty)
-  scrapeTimeout: ""
-  # -- (object) Additional labels to add to the ServiceMonitor
-  additionalLabels: {}
-
-# -- (object) Node selector for pod scheduling
-nodeSelector: {}
-
-# -- (list) Tolerations for pod scheduling
-tolerations: []
-
-# -- (object) Affinity rules for pod scheduling
-affinity: {}
 
 # -- (string) DNS policy for the pod (ClusterFirst, ClusterFirstWithHostNet, Default, None)
 # @default -- ""

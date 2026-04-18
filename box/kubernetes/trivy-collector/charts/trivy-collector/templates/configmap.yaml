@@ -1,4 +1,4 @@
-{{- if and (eq .Values.mode "server") (eq .Values.server.auth.mode "keycloak") }}
+{{- if eq .Values.server.auth.mode "keycloak" }}
 apiVersion: v1
 kind: ConfigMap
 metadata:

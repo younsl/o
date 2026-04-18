@@ -6,6 +6,9 @@ metadata:
   labels:
     {{- include "trivy-collector.labels" . | nindent 4 }}
 rules:
+  # Read-only access to Trivy Operator CRDs on any cluster the pod connects to.
+  # For hub-pull mode this is used both locally and via mounted kubeconfig
+  # credentials when watching remote Edge clusters.
   - apiGroups:
       - aquasecurity.github.io
     resources:
