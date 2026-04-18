@@ -380,6 +380,11 @@ export default function ClustersPage() {
   const { permissions } = useAuth()
   const [clusters, setClusters] = useState<RegisteredCluster[]>([])
   const [dbClusters, setDbClusters] = useState<Record<string, ClusterInfo>>({})
+  // Tracks whether /api/v1/clusters has returned at least once for this mount.
+  // Until then we render "—" for Status rather than "Awaiting first sync",
+  // so navigating away and back doesn't momentarily flash Awaiting for a
+  // cluster that has plenty of reports in the DB.
+  const [dbLoaded, setDbLoaded] = useState(false)
 
   const [step, setStep] = useState<1 | 2>(1)
   const [clusterName, setClusterName] = useState('')
@@ -401,8 +406,11 @@ export default function ClustersPage() {
       const map: Record<string, ClusterInfo> = {}
       for (const c of resp.items ?? []) map[c.name] = c
       setDbClusters(map)
+      setDbLoaded(true)
     } catch {
-      setDbClusters({})
+      // Keep the previous dbClusters snapshot on transient failures instead of
+      // wiping it to {}, which would otherwise flip every Synced row back to
+      // Awaiting for the next 10s until the poll recovers.
     }
   }, [])
 
@@ -477,7 +485,9 @@ export default function ClustersPage() {
                         )}
                       </td>
                       <td>
-                        {synced ? (
+                        {!dbLoaded ? (
+                          <span style={{ color: 'var(--text-muted)' }}>—</span>
+                        ) : synced ? (
                           <span style={{ color: 'var(--accent)', fontWeight: 600 }}>Synced</span>
                         ) : (
                           <span style={{ color: 'var(--text-muted)' }}>Awaiting first sync</span>
