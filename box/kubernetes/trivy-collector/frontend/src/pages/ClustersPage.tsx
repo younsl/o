@@ -395,23 +395,29 @@ export default function ClustersPage() {
   const [deleteBusy, setDeleteBusy] = useState(false)
 
   const fetchClusters = useCallback(async () => {
-    try {
-      const list = await getRegisteredClusters()
-      setClusters(Array.isArray(list) ? list : [])
-    } catch {
+    // Fetch both endpoints in parallel; /api/v1/hub/clusters can take ~1.5s
+    // when the server's Kubernetes client is hitting a remote API server
+    // (e.g. local dev with an EKS kubeconfig), and waiting for it before
+    // refreshing dbClusters caused a visible Awaiting flash.
+    const [regRes, dbRes] = await Promise.allSettled([
+      getRegisteredClusters(),
+      getClusters(),
+    ])
+
+    if (regRes.status === 'fulfilled') {
+      setClusters(Array.isArray(regRes.value) ? regRes.value : [])
+    } else {
       setClusters([])
     }
-    try {
-      const resp = await getClusters()
+
+    if (dbRes.status === 'fulfilled') {
       const map: Record<string, ClusterInfo> = {}
-      for (const c of resp.items ?? []) map[c.name] = c
+      for (const c of dbRes.value.items ?? []) map[c.name] = c
       setDbClusters(map)
       setDbLoaded(true)
-    } catch {
-      // Keep the previous dbClusters snapshot on transient failures instead of
-      // wiping it to {}, which would otherwise flip every Synced row back to
-      // Awaiting for the next 10s until the poll recovers.
     }
+    // On failure keep the previous dbClusters snapshot so one flaky poll
+    // doesn't flip every Synced row back to Awaiting.
   }, [])
 
   useEffect(() => {
