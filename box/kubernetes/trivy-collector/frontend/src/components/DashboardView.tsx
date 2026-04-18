@@ -192,7 +192,7 @@ export default function DashboardView() {
             <div className={styles.overviewHeader}><span className={styles.overviewTitle}>Overview</span></div>
             <div className={styles.overviewSegments}>
               <div className={styles.overviewSegment}>
-                <span className={styles.overviewSegmentLabel}>Collectors</span>
+                <span className={styles.overviewSegmentLabel}>Clusters</span>
                 <span className={styles.overviewSegmentValue}>{(statsData?.total_clusters || 0).toLocaleString()}</span>
               </div>
               <div className={styles.overviewSegment}>
@@ -231,7 +231,7 @@ export default function DashboardView() {
                 data={{
                   labels,
                   datasets: [
-                    { label: 'Collectors', data: series.map((s) => s.clusters_count || 0), borderColor: '#6b7280', backgroundColor: 'transparent', borderDash: [4, 4], borderWidth: 2, pointRadius: 0, tension: 0.3, yAxisID: 'y1' },
+                    { label: 'Clusters', data: series.map((s) => s.clusters_count || 0), borderColor: '#6b7280', backgroundColor: 'transparent', borderDash: [4, 4], borderWidth: 2, pointRadius: 0, tension: 0.3, yAxisID: 'y1' },
                     { label: 'Vulnerability Reports', data: series.map((s) => s.vuln_reports), borderColor: '#3b82f6', backgroundColor: 'rgba(59,130,246,0.1)', fill: true, borderWidth: 2, pointRadius: 0, tension: 0.3 },
                     { label: 'SBOM Reports', data: series.map((s) => s.sbom_reports), borderColor: '#8b5cf6', backgroundColor: 'rgba(139,92,246,0.1)', fill: true, borderWidth: 2, pointRadius: 0, tension: 0.3 },
                   ],
@@ -240,7 +240,7 @@ export default function DashboardView() {
                   ...chartOpts,
                   scales: {
                     ...chartOpts.scales,
-                    y1: { type: 'linear' as const, display: true, position: 'right' as const, title: { display: true, text: 'Collectors', color: '#9ca3af' }, ticks: { color: '#9ca3af', stepSize: 1 }, grid: { display: false } },
+                    y1: { type: 'linear' as const, display: true, position: 'right' as const, title: { display: true, text: 'Clusters', color: '#9ca3af' }, ticks: { color: '#9ca3af', stepSize: 1 }, grid: { display: false } },
                   },
                 }}
               />

@@ -55,6 +55,7 @@ pub struct ConfigInfo {
     pub server_port: u16,
     pub storage_path: String,
     pub watch_local: bool,
+    pub hub_secret_namespace: String,
     pub auth_mode: Option<String>,
 }
 
@@ -78,6 +79,7 @@ impl From<&Config> for ConfigInfo {
             server_port: config.server_port,
             storage_path: config.storage_path.clone(),
             watch_local: config.watch_local,
+            hub_secret_namespace: config.hub_secret_namespace.clone(),
             auth_mode,
         }
     }
@@ -228,6 +230,8 @@ mod tests {
             server_port: 8080,
             storage_path: "/tmp".to_string(),
             watch_local: true,
+            hub_secret_namespace: String::new(),
+            hub_label_selector: String::new(),
             auth_mode: "keycloak".to_string(),
             oidc_issuer_url: None,
             oidc_client_id: None,
@@ -254,7 +258,7 @@ mod tests {
     fn test_config_info_auth_mode_none() {
         let config = crate::config::Config {
             command: None,
-            mode: crate::config::Mode::Collector,
+            mode: crate::config::Mode::Scraper,
             log_format: "pretty".to_string(),
             log_level: "info".to_string(),
             health_port: 8080,
@@ -269,6 +273,8 @@ mod tests {
             server_port: 3000,
             storage_path: "/data".to_string(),
             watch_local: false,
+            hub_secret_namespace: String::new(),
+            hub_label_selector: String::new(),
             auth_mode: "none".to_string(),
             oidc_issuer_url: None,
             oidc_client_id: None,
@@ -279,7 +285,7 @@ mod tests {
             rbac_default_policy: "role:readonly".to_string(),
         };
         let info = ConfigInfo::from(&config);
-        assert_eq!(info.mode, "collector");
+        assert_eq!(info.mode, "scraper");
         assert!(info.auth_mode.is_none());
     }
 }

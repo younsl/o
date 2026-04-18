@@ -123,7 +123,7 @@ export default function VersionView() {
                 <span className="detail-summary-value">{escapeHtml(status.uptime)}</span>
               </div>
               <div className="detail-summary-item">
-                <span className="detail-summary-label">Collectors</span>
+                <span className="detail-summary-label">Clusters</span>
                 <span className="detail-summary-value">{status.collectors}</span>
               </div>
             </>

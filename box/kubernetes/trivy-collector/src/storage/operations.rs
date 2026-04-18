@@ -80,6 +80,23 @@ impl Database {
         Ok(())
     }
 
+    /// Delete every report for a cluster. Used when a cluster registration
+    /// is removed so its data stops showing up in Dashboard / Vulnerabilities
+    /// / SBOM views.
+    pub async fn delete_reports_for_cluster(&self, cluster: &str) -> Result<u64> {
+        let result = sqlx::query("DELETE FROM reports WHERE cluster = $1")
+            .bind(cluster)
+            .execute(&self.pool)
+            .await?;
+        let affected = result.rows_affected();
+        debug!(
+            cluster = %cluster,
+            deleted = affected,
+            "All reports for cluster deleted"
+        );
+        Ok(affected)
+    }
+
     /// Delete a report
     pub async fn delete_report(
         &self,

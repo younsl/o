@@ -1,31 +1,19 @@
 import { Link, useLocation } from 'react-router-dom'
-import StatusLed from './StatusLed'
 import { useAuth } from '../contexts/AuthContext'
 import { logout } from '../auth'
 import styles from './Header.module.css'
-import type { WatcherStatusResponse, VersionResponse } from '../types'
+import type { VersionResponse } from '../types'
 
 interface HeaderProps {
-  watcherStatus: WatcherStatusResponse | null
-  dbOk: boolean
   version: VersionResponse | null
 }
 
-export default function Header({
-  watcherStatus,
-  dbOk,
-  version,
-}: HeaderProps) {
+export default function Header({ version }: HeaderProps) {
   const location = useLocation()
   const path = location.pathname
   const { authMode, authenticated, user, permissions } = useAuth()
 
   const commitShort = version ? version.commit.substring(0, 7) : ''
-
-  const getDbLedStatus = () => {
-    if (!dbOk) return { running: false, initial_sync_done: false, reports_count: 0 }
-    return { running: true, initial_sync_done: true, reports_count: 0 }
-  }
 
   return (
     <header className={styles.header}>
@@ -39,14 +27,6 @@ export default function Header({
           ) : (
             <span className={styles.subtitle}>Powered by Trivy Operator</span>
           )}
-        </div>
-        <div className={styles.watcherStatus}>
-          <span className={styles.watcherTitle}>Status</span>
-          <StatusLed status={watcherStatus?.vuln_watcher ?? null} label="VULN" />
-          <StatusLed status={watcherStatus?.sbom_watcher ?? null} label="SBOM" />
-          <div className={styles.statusItem} id="db-status">
-            <StatusLed status={getDbLedStatus()} label="DB" />
-          </div>
         </div>
       </div>
       <div className={styles.headerRight}>
@@ -77,8 +57,8 @@ export default function Header({
           </Link>
           {permissions?.can_admin && (
             <Link
-              to="/admin"
-              className={`${styles.navButton}${path === '/admin' ? ` ${styles.active}` : ''}`}
+              to="/admin/clusters"
+              className={`${styles.navButton}${path.startsWith('/admin') ? ` ${styles.active}` : ''}`}
             >
               <i className="fa-solid fa-shield-halved" /> Admin
             </Link>

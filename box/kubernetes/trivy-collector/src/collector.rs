@@ -1,69 +1,111 @@
-pub mod health_checker;
-pub mod sender;
-pub mod types;
-pub mod watcher;
+//! Central-cluster collector: pulls Trivy reports from the Hub's own cluster
+//! and all registered Edge clusters, writing directly to the shared SQLite DB.
+//!
+//! This replaces the legacy Edge-side push collector. In the current
+//! architecture the collector runs **only on the central cluster** alongside
+//! (but separate from) the `server` pod, following single-responsibility:
+//!
+//! - `server` pod → HTTP UI/API, read-only access to the DB
+//! - `collector` pod → all watchers, writes to the DB
+
+pub mod types; // retained for ReportPayload / ReportEvent consumed by storage + hub
 
 use anyhow::Result;
 use std::sync::Arc;
-use tracing::info;
+use tracing::{error, info, warn};
 
 use crate::config::Config;
 use crate::health::HealthServer;
+use crate::hub::{self, HubConfig};
 use crate::metrics::Metrics;
-use health_checker::HealthChecker;
-use sender::ReportSender;
-use watcher::K8sWatcher;
+use crate::storage::Database;
+use crate::web::LocalWatcher;
+use crate::web::state::WatcherStatus;
 
 pub async fn run(
     config: Config,
     health_server: HealthServer,
-    shutdown: tokio::sync::watch::Receiver<bool>,
-    metrics: Arc<Metrics>,
+    mut shutdown: tokio::sync::watch::Receiver<bool>,
+    _metrics: Arc<Metrics>,
 ) -> Result<()> {
     info!(
-        cluster = %config.get_cluster_name(),
-        server_url = %config.get_server_url(),
+        cluster = %config.cluster_name,
         namespaces = ?config.namespaces,
-        health_check_interval_secs = config.health_check_interval_secs,
-        "Starting collector mode"
+        storage_path = %config.storage_path,
+        hub_secret_namespace = %config.hub_secret_namespace,
+        "Starting collector (central cluster, hub-pull)"
     );
 
-    // Create report sender
-    let sender = Arc::new(ReportSender::new(
-        config.get_server_url().to_string(),
-        config.get_cluster_name().to_string(),
-        config.retry_attempts,
-        config.retry_delay_secs,
-        metrics.clone(),
-    )?);
+    let db = Arc::new(Database::new(&config.get_db_path()).await?);
+    let watcher_status = Arc::new(WatcherStatus::new());
 
-    // Create watcher
-    let watcher = K8sWatcher::new(
-        sender.clone(),
-        config.namespaces.clone(),
-        config.collect_vulnerability_reports,
-        config.collect_sbom_reports,
-        metrics.clone(),
-    )
-    .await?;
+    // 1. Local watcher (Hub's own cluster, if trivy-operator is deployed there)
+    let local_handle = if config.watch_local {
+        let db = db.clone();
+        let ws = watcher_status.clone();
+        let cluster_name = config.cluster_name.clone();
+        let namespaces = config.namespaces.clone();
+        let shutdown_rx = shutdown.clone();
 
-    // Start health checker task
-    let health_checker = HealthChecker::new(
-        config.get_server_url().to_string(),
-        config.health_check_interval_secs,
-        metrics,
-    )?;
-    let health_shutdown = shutdown.clone();
-    tokio::spawn(async move {
-        health_checker.run(health_shutdown).await;
-    });
+        info!(cluster = %cluster_name, namespaces = ?namespaces, "Local watcher enabled");
 
-    // Mark as ready
+        Some(tokio::spawn(async move {
+            match LocalWatcher::new(db, cluster_name, namespaces, ws).await {
+                Ok(w) => {
+                    if let Err(e) = w.run(shutdown_rx).await {
+                        error!(error = %e, "Local watcher exited with error");
+                    }
+                }
+                Err(e) => warn!(error = %e, "Failed to create local watcher — skipping"),
+            }
+        }))
+    } else {
+        None
+    };
+
+    // 2. Hub Secret watcher — spawns per-cluster watchers for every registered Edge
+    let hub_handle = if config.hub_secret_namespace.trim().is_empty() {
+        warn!(
+            "HUB_SECRET_NAMESPACE is empty \
+             (Downward API not wired or running outside a pod) \
+             — skipping Edge cluster watcher"
+        );
+        None
+    } else {
+        let hub_cfg = HubConfig {
+            secret_namespace: config.hub_secret_namespace.clone(),
+            extra_label_selector: config.hub_label_selector.clone(),
+        };
+        let db = db.clone();
+        let ws = watcher_status.clone();
+        let shutdown_rx = shutdown.clone();
+
+        info!(
+            secret_namespace = %hub_cfg.secret_namespace,
+            label_selector = %hub_cfg.label_selector(),
+            "Hub Secret watcher enabled"
+        );
+
+        Some(tokio::spawn(async move {
+            if let Err(e) = hub::run(hub_cfg, db, ws, shutdown_rx).await {
+                error!(error = %e, "Hub Secret watcher exited with error");
+            }
+        }))
+    };
+
     health_server.set_ready(true);
     info!("Collector is ready");
 
-    // Run watcher
-    watcher.run(shutdown).await?;
+    // Block until shutdown signal
+    let _ = shutdown.changed().await;
+    info!("Collector shutdown signal received");
+
+    if let Some(h) = local_handle {
+        let _ = h.await;
+    }
+    if let Some(h) = hub_handle {
+        let _ = h.await;
+    }
 
     Ok(())
 }

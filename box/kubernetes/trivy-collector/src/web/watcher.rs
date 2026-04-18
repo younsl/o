@@ -43,6 +43,24 @@ impl LocalWatcher {
         })
     }
 
+    /// Construct a watcher bound to a pre-built client (used by hub-pull mode
+    /// when the client is derived from a registered cluster Secret).
+    pub fn new_with_client(
+        client: Client,
+        db: Arc<Database>,
+        cluster_name: String,
+        namespaces: Vec<String>,
+        watcher_status: Arc<WatcherStatus>,
+    ) -> Self {
+        Self {
+            client,
+            db,
+            cluster_name,
+            namespaces,
+            watcher_status,
+        }
+    }
+
     pub async fn run(&self, mut shutdown: tokio::sync::watch::Receiver<bool>) -> Result<()> {
         info!(
             cluster = %self.cluster_name,

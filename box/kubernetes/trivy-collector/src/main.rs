@@ -105,11 +105,12 @@ async fn run_mode(
     metrics: Arc<Metrics>,
 ) -> Result<()> {
     match config.mode {
-        Mode::Collector => {
+        Mode::Scraper => {
             info!(
                 cluster = %config.get_cluster_name(),
-                server_url = %config.get_server_url(),
-                "Running in collector mode"
+                storage_path = %config.storage_path,
+                hub_secret_namespace = %config.hub_secret_namespace,
+                "Running in scraper mode (hub-pull + local watcher)"
             );
             collector::run(config, health_server, shutdown_rx, metrics).await
         }
@@ -117,9 +118,7 @@ async fn run_mode(
             info!(
                 port = config.server_port,
                 storage_path = %config.storage_path,
-                cluster = %config.cluster_name,
-                watch_local = config.watch_local,
-                "Running in server mode"
+                "Running in server mode (UI/API only)"
             );
             web::run(config, health_server, shutdown_rx, metrics).await
         }

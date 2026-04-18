@@ -11,9 +11,10 @@
 //! - `logging_middleware`: API request logging
 
 mod admin_handlers;
+mod cluster_handlers;
 mod handlers;
 mod logging_middleware;
-mod state;
+pub mod state;
 mod types;
 mod watcher;
 
@@ -76,6 +77,10 @@ use crate::storage::{
         admin_handlers::get_api_log_stats,
         admin_handlers::cleanup_api_logs,
         admin_handlers::admin_info,
+        cluster_handlers::list_registered_clusters,
+        cluster_handlers::register_cluster,
+        cluster_handlers::delete_registered_cluster,
+        cluster_handlers::validate_cluster,
         crate::auth::handlers::auth_me,
         crate::auth::handlers::list_tokens,
         crate::auth::handlers::create_token,
@@ -105,6 +110,9 @@ use crate::storage::{
         TrendMeta,
         TrendDataPoint,
         CleanupHistoryEntry,
+        cluster_handlers::RegisterClusterRequest,
+        cluster_handlers::RegisteredCluster,
+        cluster_handlers::ValidationResponse,
     )),
     tags(
         (name = "Health", description = "Health check endpoints"),
@@ -121,6 +129,7 @@ use crate::storage::{
         (name = "Dashboard", description = "Dashboard trend analysis endpoints"),
         (name = "Admin", description = "Admin API log management endpoints"),
         (name = "Auth", description = "Authentication and token management endpoints"),
+        (name = "Hub", description = "Cluster registration endpoints for hub-pull mode"),
     )
 )]
 pub struct ApiDoc;
@@ -160,46 +169,18 @@ pub async fn run(
     info!(
         port = config.server_port,
         storage_path = %config.storage_path,
-        watch_local = config.watch_local,
-        "Starting server mode"
+        "Starting server mode (UI/API only — watchers run in the scraper pod)"
     );
 
-    // Initialize database
+    // Initialize database. The scraper pod is the writer for report rows; the
+    // server pod reads from the same SQLite file on the shared volume and only
+    // writes user-interaction state (notes, tokens, API logs).
     let db = Arc::new(Database::new(&config.get_db_path()).await?);
 
-    // Initialize watcher status
+    // /api/v1/watcher/status is kept for API compatibility but is updated by
+    // the scraper pod's WatcherStatus, not this process. The local one starts
+    // empty so the endpoint returns "not running" until the scraper reports in.
     let watcher_status = Arc::new(WatcherStatus::new());
-
-    // Start local Kubernetes watcher if enabled
-    let watcher_handle = if config.watch_local {
-        let db_clone = db.clone();
-        let cluster_name = config.cluster_name.clone();
-        let namespaces = config.namespaces.clone();
-        let shutdown_rx = shutdown.clone();
-        let watcher_status_clone = watcher_status.clone();
-
-        info!(
-            cluster = %cluster_name,
-            namespaces = ?namespaces,
-            "Local Kubernetes watcher enabled"
-        );
-
-        Some(tokio::spawn(async move {
-            match LocalWatcher::new(db_clone, cluster_name, namespaces, watcher_status_clone).await
-            {
-                Ok(watcher) => {
-                    if let Err(e) = watcher.run(shutdown_rx).await {
-                        error!(error = %e, "Local watcher error");
-                    }
-                }
-                Err(e) => {
-                    warn!(error = %e, "Failed to create local watcher - running without K8s API watching");
-                }
-            }
-        }))
-    } else {
-        None
-    };
 
     let config_info = Arc::new(state::ConfigInfo::from(&config));
     let runtime_info = Arc::new(state::RuntimeInfo::new());
@@ -411,11 +392,7 @@ pub async fn run(
     })
     .await?;
 
-    // Wait for watcher to finish if it was started
-    if let Some(handle) = watcher_handle {
-        let _ = handle.await;
-    }
-
+    // Server mode has no watchers to wait on.
     Ok(())
 }
 
@@ -512,6 +489,20 @@ fn build_router(state: AppState, auth_mode: auth::AuthMode) -> Router {
             get(admin_handlers::get_api_log_stats),
         )
         .route("/api/v1/admin/info", get(admin_handlers::admin_info))
+        // Hub-pull cluster registration
+        .route(
+            "/api/v1/hub/clusters",
+            get(cluster_handlers::list_registered_clusters)
+                .post(cluster_handlers::register_cluster),
+        )
+        .route(
+            "/api/v1/hub/clusters/validate",
+            post(cluster_handlers::validate_cluster),
+        )
+        .route(
+            "/api/v1/hub/clusters/{name}",
+            delete(cluster_handlers::delete_registered_cluster),
+        )
         .route("/", get(serve_index))
         .fallback(get(serve_index));
 
@@ -613,6 +604,7 @@ mod tests {
                 server_port: 3000,
                 storage_path: ":memory:".to_string(),
                 watch_local: false,
+                hub_secret_namespace: String::new(),
                 auth_mode: None,
             }),
             runtime: Arc::new(state::RuntimeInfo::new()),

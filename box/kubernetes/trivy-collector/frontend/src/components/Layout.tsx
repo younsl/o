@@ -1,24 +1,19 @@
 import { useState, useEffect, useCallback } from 'react'
 import { Outlet, useLocation, useNavigate } from 'react-router-dom'
 import Header from './Header'
-import { getStats, getClusters, getNamespaces, getWatcherStatus, getVersion } from '../api'
+import { getStats, getClusters, getNamespaces, getVersion } from '../api'
 import { usePolling } from '../hooks/usePolling'
-import type { Stats, ClusterInfo, VersionResponse, WatcherStatusResponse } from '../types'
+import type { Stats, ClusterInfo, VersionResponse } from '../types'
 
 export default function Layout() {
   const [stats, setStats] = useState<Stats | null>(null)
   const [clusterOptions, setClusterOptions] = useState<ClusterInfo[]>([])
   const [namespaceOptions, setNamespaceOptions] = useState<string[]>([])
   const [version, setVersion] = useState<VersionResponse | null>(null)
-  const [dbOk, setDbOk] = useState(false)
   const [filterCluster, setFilterCluster] = useState('')
 
   const location = useLocation()
   const navigate = useNavigate()
-
-  // Polling for watcher status
-  const watcherStatusFetcher = useCallback(() => getWatcherStatus(), [])
-  const { data: watcherStatus } = usePolling<WatcherStatusResponse>(watcherStatusFetcher, 5000)
 
   // Polling for stats
   const statsFetcher = useCallback(() => getStats(), [])
@@ -27,7 +22,6 @@ export default function Layout() {
   useEffect(() => {
     if (polledStats) {
       setStats(polledStats)
-      setDbOk(true)
     }
   }, [polledStats])
 
@@ -68,11 +62,7 @@ export default function Layout() {
 
   return (
     <>
-      <Header
-        watcherStatus={watcherStatus}
-        dbOk={dbOk}
-        version={version}
-      />
+      <Header version={version} />
       <main>
         <Outlet context={{ stats, clusterOptions, namespaceOptions, setFilterCluster }} />
       </main>

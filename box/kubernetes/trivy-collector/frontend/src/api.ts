@@ -241,6 +241,101 @@ export async function cleanupApiLogs(
   return response.json()
 }
 
+// ── Hub-pull cluster registration ──
+
+export interface RegisteredCluster {
+  name: string
+  server: string
+  namespaces: string[]
+  insecure: boolean
+}
+
+export async function getRegisteredClusters(): Promise<RegisteredCluster[]> {
+  const res = await fetch('/api/v1/hub/clusters')
+  if (res.status === 401) {
+    const returnTo = encodeURIComponent(window.location.pathname)
+    window.location.href = `/auth/login?return_to=${returnTo}`
+    return new Promise(() => {})
+  }
+  if (!res.ok) {
+    // Hub mode may be inactive (412) or the API may have failed. Treat as empty list.
+    return []
+  }
+  const body = await res.json()
+  return Array.isArray(body) ? body : []
+}
+
+export interface RegisterClusterRequest {
+  name: string
+  server: string
+  bearer_token: string
+  ca_data?: string
+  insecure?: boolean
+  namespaces?: string[]
+}
+
+export async function registerCluster(
+  req: RegisterClusterRequest,
+): Promise<RegisteredCluster> {
+  const res = await fetch('/api/v1/hub/clusters', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(req),
+  })
+  if (res.status === 401) {
+    const returnTo = encodeURIComponent(window.location.pathname)
+    window.location.href = `/auth/login?return_to=${returnTo}`
+    return new Promise(() => {})
+  }
+  const body = await res.json().catch(() => ({}))
+  if (!res.ok) {
+    throw new Error(body.error || `Registration failed (${res.status})`)
+  }
+  return body as RegisteredCluster
+}
+
+export async function deleteRegisteredCluster(name: string): Promise<boolean> {
+  const res = await fetch(`/api/v1/hub/clusters/${encodeURIComponent(name)}`, {
+    method: 'DELETE',
+  })
+  return res.ok
+}
+
+export interface RegistrationManifests {
+  edge_rbac: string
+  extract_commands: string
+  hub_secret_template: string
+  edge_namespace: string
+  hub_namespace: string
+  cluster_name: string
+}
+
+export interface ManifestParams {
+  edgeNamespace?: string
+  hubNamespace?: string
+  clusterName?: string
+}
+
+export async function getRegistrationManifests(
+  params: ManifestParams = {},
+): Promise<RegistrationManifests> {
+  const qs = new URLSearchParams()
+  if (params.edgeNamespace) qs.set('edge_namespace', params.edgeNamespace)
+  if (params.hubNamespace) qs.set('hub_namespace', params.hubNamespace)
+  if (params.clusterName) qs.set('cluster_name', params.clusterName)
+  const suffix = qs.toString() ? `?${qs.toString()}` : ''
+  const res = await fetch(`/api/v1/hub/manifests${suffix}`)
+  if (res.status === 401) {
+    const returnTo = encodeURIComponent(window.location.pathname)
+    window.location.href = `/auth/login?return_to=${returnTo}`
+    return new Promise(() => {})
+  }
+  if (!res.ok) {
+    throw new Error(`Failed to fetch manifests: ${res.status}`)
+  }
+  return res.json()
+}
+
 export async function updateNotes(
   cluster: string,
   reportType: ReportType,

@@ -158,7 +158,7 @@ export default function ReportsView({
       <div className={styles.toolbar}>
         <div className={styles.toolbarLeft}>
           <span className={styles.statItem}>
-            <span className={styles.statLabel}>Collectors</span>
+            <span className={styles.statLabel}>Clusters</span>
             <span className={styles.statValue}>{stats?.total_clusters || 0}</span>
           </span>
           <span className={styles.statItem}>

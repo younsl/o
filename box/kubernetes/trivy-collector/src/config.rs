@@ -22,24 +22,36 @@ pub mod env {
     pub const STORAGE_PATH: &str = "STORAGE_PATH";
     pub const WATCH_LOCAL: &str = "WATCH_LOCAL";
 
+    // Hub-pull mode (server-mode only). Hub is always on in server mode; no toggle.
+    pub const HUB_SECRET_NAMESPACE: &str = "HUB_SECRET_NAMESPACE";
+    pub const HUB_LABEL_SELECTOR: &str = "HUB_LABEL_SELECTOR";
+
     // Authentication
     pub use crate::auth::config::env::*;
 }
 
+/// Deployment role. The binary ships as a single image but runs as one of
+/// two pods on the central cluster, distinguished by `--mode` / `MODE=`:
+///
+/// - `server` — HTTP UI + API. Read-only access to the shared SQLite DB.
+///   No watchers. Default for new installs.
+/// - `scraper` — Hub-pull watchers (Secret watcher + per-cluster watchers +
+///   optional local Trivy CRD watcher). Writes to the shared DB.
+///   No UI/API (only /healthz and /metrics).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, ValueEnum, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum Mode {
-    /// Collector mode: Watch Trivy CRDs and send to central server
-    Collector,
-    /// Server mode: Receive reports, store in SQLite, serve UI
+    /// UI / API only — reads the shared DB, no watchers.
     Server,
+    /// Hub-pull scraper — runs all watchers, writes to the shared DB.
+    Scraper,
 }
 
 impl std::fmt::Display for Mode {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            Mode::Collector => write!(f, "collector"),
             Mode::Server => write!(f, "server"),
+            Mode::Scraper => write!(f, "scraper"),
         }
     }
 }
@@ -60,8 +72,8 @@ pub enum Command {
 pub struct Config {
     #[command(subcommand)]
     pub command: Option<Command>,
-    /// Deployment mode
-    #[arg(long, env = env::MODE, value_enum, default_value = "collector")]
+    /// Deployment role: `server` (UI/API) or `scraper` (watchers).
+    #[arg(long, env = env::MODE, value_enum, default_value = "server")]
     pub mode: Mode,
 
     /// Log format: json or pretty
@@ -126,6 +138,15 @@ pub struct Config {
     #[arg(long, env = env::WATCH_LOCAL, default_value = "true")]
     pub watch_local: bool,
 
+    /// Namespace where cluster-registration Secrets live. Empty = auto-detect from
+    /// the in-cluster ServiceAccount mount. Hub-pull mode is always active in server mode.
+    #[arg(long, env = env::HUB_SECRET_NAMESPACE, default_value = "")]
+    pub hub_secret_namespace: String,
+
+    /// Extra label selector appended to the cluster Secret filter (optional)
+    #[arg(long, env = env::HUB_LABEL_SELECTOR, default_value = "")]
+    pub hub_label_selector: String,
+
     // ============================================
     // Authentication settings (server mode only)
     // ============================================
@@ -173,10 +194,10 @@ impl Config {
     /// Validate configuration based on mode
     pub fn validate(&self) -> Result<(), String> {
         match self.mode {
-            Mode::Collector => {
-                if self.server_url.is_none() {
-                    return Err("SERVER_URL is required in collector mode".to_string());
-                }
+            Mode::Scraper => {
+                // Scraper reads reports by watching Kubernetes directly; no
+                // server URL needed. HUB_SECRET_NAMESPACE may be empty in dev
+                // (warns and skips the Secret watcher).
             }
             Mode::Server => {
                 if self.auth_mode == "keycloak" {
@@ -230,6 +251,8 @@ mod tests {
             server_port: 3000,
             storage_path: "/data".to_string(),
             watch_local: true,
+            hub_secret_namespace: String::new(),
+            hub_label_selector: String::new(),
             auth_mode: "none".to_string(),
             oidc_issuer_url: None,
             oidc_client_id: None,
@@ -242,19 +265,9 @@ mod tests {
     }
 
     #[test]
-    fn test_validate_collector_without_server_url() {
-        let config = default_config(Mode::Collector);
-        assert!(config.validate().is_err());
-        assert_eq!(
-            config.validate().unwrap_err(),
-            "SERVER_URL is required in collector mode"
-        );
-    }
-
-    #[test]
-    fn test_validate_collector_with_server_url() {
-        let mut config = default_config(Mode::Collector);
-        config.server_url = Some("http://server:3000".to_string());
+    fn test_validate_scraper_mode() {
+        // Scraper needs no mandatory config; empty hub namespace just warns.
+        let config = default_config(Mode::Scraper);
         assert!(config.validate().is_ok());
     }
 
@@ -266,14 +279,14 @@ mod tests {
 
     #[test]
     fn test_get_server_url_present() {
-        let mut config = default_config(Mode::Collector);
+        let mut config = default_config(Mode::Scraper);
         config.server_url = Some("http://server:3000".to_string());
         assert_eq!(config.get_server_url(), "http://server:3000");
     }
 
     #[test]
     fn test_get_server_url_absent() {
-        let config = default_config(Mode::Collector);
+        let config = default_config(Mode::Scraper);
         assert_eq!(config.get_server_url(), "");
     }
 
@@ -292,13 +305,13 @@ mod tests {
 
     #[test]
     fn test_mode_display() {
-        assert_eq!(Mode::Collector.to_string(), "collector");
+        assert_eq!(Mode::Scraper.to_string(), "scraper");
         assert_eq!(Mode::Server.to_string(), "server");
     }
 
     #[test]
     fn test_get_cluster_name() {
-        let config = default_config(Mode::Collector);
+        let config = default_config(Mode::Scraper);
         assert_eq!(config.get_cluster_name(), "local");
     }
 

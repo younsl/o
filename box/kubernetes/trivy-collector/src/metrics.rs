@@ -135,7 +135,7 @@ impl Metrics {
 
         let mode_count = match mode {
             Mode::Server => metrics.register_server(registry),
-            Mode::Collector => metrics.register_collector(registry),
+            Mode::Scraper => metrics.register_collector(registry),
         };
         metrics.registered_count += mode_count;
 
@@ -143,7 +143,7 @@ impl Metrics {
 
         match mode {
             Mode::Server => metrics.init_for_server(),
-            Mode::Collector => metrics.init_for_collector(),
+            Mode::Scraper => metrics.init_for_collector(),
         }
 
         metrics
@@ -378,7 +378,7 @@ mod tests {
     #[test]
     fn test_collector_metrics_registration() {
         let mut registry = Registry::default();
-        let metrics = Metrics::new(&mut registry, Mode::Collector);
+        let metrics = Metrics::new(&mut registry, Mode::Scraper);
 
         assert!(metrics.reports_sent_total.is_some());
         assert!(metrics.watcher_events_total.is_some());
@@ -428,7 +428,7 @@ mod tests {
     #[test]
     fn test_collector_pre_initialization() {
         let mut registry = Registry::default();
-        let _metrics = Metrics::new(&mut registry, Mode::Collector);
+        let _metrics = Metrics::new(&mut registry, Mode::Scraper);
 
         let mut buf = String::new();
         encode(&mut buf, &registry).unwrap();

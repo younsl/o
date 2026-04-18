@@ -936,6 +936,7 @@ mod tests {
             server_port: 3000,
             storage_path: ":memory:".to_string(),
             watch_local: false,
+            hub_secret_namespace: String::new(),
             auth_mode: None,
         });
         let runtime = Arc::new(RuntimeInfo::new());

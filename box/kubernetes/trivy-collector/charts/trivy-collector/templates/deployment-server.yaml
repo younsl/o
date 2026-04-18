@@ -1,0 +1,141 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "trivy-collector.serverName" . }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "trivy-collector.serverSelectorLabels" . | nindent 4 }}
+    helm.sh/chart: {{ include "trivy-collector.chart" . }}
+    {{- if .Chart.AppVersion }}
+    app.kubernetes.io/version: {{ .Chart.AppVersion | quote }}
+    {{- end }}
+    app.kubernetes.io/managed-by: {{ .Release.Service }}
+spec:
+  replicas: {{ .Values.server.replicaCount | default 1 }}
+  revisionHistoryLimit: {{ .Values.revisionHistoryLimit }}
+  selector:
+    matchLabels:
+      {{- include "trivy-collector.serverSelectorLabels" . | nindent 6 }}
+  template:
+    metadata:
+      {{- with .Values.podAnnotations }}
+      annotations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      labels:
+        {{- include "trivy-collector.serverSelectorLabels" . | nindent 8 }}
+        {{- with .Values.podLabels }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
+    spec:
+      {{- with .Values.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      serviceAccountName: {{ include "trivy-collector.serviceAccountName" . }}
+      securityContext:
+        {{- toYaml .Values.podSecurityContext | nindent 8 }}
+      containers:
+        - name: server
+          securityContext:
+            {{- toYaml .Values.securityContext | nindent 12 }}
+          image: "{{ .Values.image.repository }}:{{ .Values.image.tag | default .Chart.AppVersion }}"
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          args:
+            - --mode=server
+          env:
+            - name: MODE
+              value: "server"
+            - name: LOG_FORMAT
+              value: {{ .Values.logging.format | quote }}
+            - name: LOG_LEVEL
+              value: {{ .Values.logging.level | quote }}
+            - name: HEALTH_PORT
+              value: {{ .Values.health.port | quote }}
+            - name: SERVER_PORT
+              value: {{ .Values.server.port | quote }}
+            - name: STORAGE_PATH
+              value: "/data"
+            - name: HUB_SECRET_NAMESPACE
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.namespace
+            {{- if eq .Values.server.auth.mode "keycloak" }}
+            - name: AUTH_MODE
+              valueFrom: { configMapKeyRef: { name: {{ include "trivy-collector.fullname" . }}-auth, key: AUTH_MODE } }
+            - name: OIDC_ISSUER_URL
+              valueFrom: { configMapKeyRef: { name: {{ include "trivy-collector.fullname" . }}-auth, key: OIDC_ISSUER_URL } }
+            - name: OIDC_REDIRECT_URL
+              valueFrom: { configMapKeyRef: { name: {{ include "trivy-collector.fullname" . }}-auth, key: OIDC_REDIRECT_URL } }
+            - name: OIDC_SCOPES
+              valueFrom: { configMapKeyRef: { name: {{ include "trivy-collector.fullname" . }}-auth, key: OIDC_SCOPES } }
+            - name: OIDC_CLIENT_ID
+              {{- if .Values.server.auth.sso.clientId.value }}
+              value: {{ .Values.server.auth.sso.clientId.value | quote }}
+              {{- else }}
+              valueFrom:
+                secretKeyRef: { name: {{ .Values.server.auth.sso.clientId.name }}, key: {{ .Values.server.auth.sso.clientId.key }} }
+              {{- end }}
+            - name: OIDC_CLIENT_SECRET
+              {{- if .Values.server.auth.sso.clientSecret.value }}
+              value: {{ .Values.server.auth.sso.clientSecret.value | quote }}
+              {{- else }}
+              valueFrom:
+                secretKeyRef: { name: {{ .Values.server.auth.sso.clientSecret.name }}, key: {{ .Values.server.auth.sso.clientSecret.key }} }
+              {{- end }}
+            - name: RBAC_POLICY_CSV
+              valueFrom: { configMapKeyRef: { name: {{ include "trivy-collector.fullname" . }}-auth, key: RBAC_POLICY_CSV } }
+            - name: RBAC_DEFAULT_POLICY
+              valueFrom: { configMapKeyRef: { name: {{ include "trivy-collector.fullname" . }}-auth, key: RBAC_DEFAULT_POLICY } }
+            {{- end }}
+          ports:
+            - name: health
+              containerPort: {{ .Values.health.port }}
+              protocol: TCP
+            - name: http
+              containerPort: {{ .Values.server.port }}
+              protocol: TCP
+          livenessProbe:
+            {{- toYaml .Values.livenessProbe | nindent 12 }}
+          readinessProbe:
+            {{- toYaml .Values.readinessProbe | nindent 12 }}
+          resources:
+            {{- toYaml .Values.server.resources | nindent 12 }}
+          {{- with .Values.server.resizePolicy }}
+          resizePolicy:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          volumeMounts:
+            - name: data
+              mountPath: /data
+      volumes:
+        - name: data
+          {{- if .Values.server.persistence.enabled }}
+          persistentVolumeClaim:
+            claimName: {{ .Values.server.persistence.existingClaim | default (include "trivy-collector.fullname" .) }}
+          {{- else }}
+          emptyDir: {}
+          {{- end }}
+      {{- with .Values.server.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.server.affinity }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.server.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.server.topologySpreadConstraints }}
+      topologySpreadConstraints:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.dnsPolicy }}
+      dnsPolicy: {{ . }}
+      {{- end }}
+      {{- with .Values.dnsConfig }}
+      dnsConfig:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}

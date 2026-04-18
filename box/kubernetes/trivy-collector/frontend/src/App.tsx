@@ -9,6 +9,7 @@ import VulnSearchPage from './pages/VulnSearchPage'
 import DashboardView from './components/DashboardView'
 import VersionView from './components/VersionView'
 import AdminPage from './pages/AdminPage'
+import ClustersPage from './pages/ClustersPage'
 
 export default function App() {
   return (
@@ -26,7 +27,9 @@ export default function App() {
               <Route path="sbom/:cluster/:namespace/:name" element={<DetailPage reportType="sbomreport" />} />
               <Route path="dashboard" element={<DashboardView />} />
               <Route path="auth" element={<AuthPage />} />
-              <Route path="admin" element={<AdminPage />} />
+              <Route path="admin" element={<Navigate to="/admin/clusters" replace />} />
+              <Route path="admin/clusters" element={<ClustersPage />} />
+              <Route path="admin/audit" element={<AdminPage />} />
               <Route path="version" element={<VersionView />} />
               <Route path="*" element={<Navigate to="/vulnerabilities" replace />} />
             </Route>

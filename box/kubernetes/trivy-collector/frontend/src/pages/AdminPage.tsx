@@ -3,6 +3,7 @@ import { useAuth } from '../contexts/AuthContext'
 import { getApiLogs, getApiLogStats, cleanupApiLogs } from '../api'
 import type { ApiLogEntry, ApiLogStats } from '../types'
 import { formatDate } from '../utils'
+import AdminSubNav from '../components/AdminSubNav'
 import styles from './AdminPage.module.css'
 
 const PAGE_SIZE = 50
@@ -165,6 +166,8 @@ export default function AdminPage() {
 
   return (
     <div className={styles.container}>
+      <AdminSubNav />
+
       {/* Stats cards */}
       {stats && (
         <div className={styles.statsGrid}>

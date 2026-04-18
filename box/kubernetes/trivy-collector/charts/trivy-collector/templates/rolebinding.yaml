@@ -1,0 +1,19 @@
+{{- if .Values.serviceAccount.create -}}
+# Binds the hub-pull Role to the chart's ServiceAccount. Kept in its own file
+# alongside role.yaml so each RBAC object is easy to audit in isolation.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: {{ include "trivy-collector.fullname" . }}-hub
+  namespace: {{ .Values.server.hub.secretNamespace | default .Release.Namespace }}
+  labels:
+    {{- include "trivy-collector.labels" . | nindent 4 }}
+subjects:
+  - kind: ServiceAccount
+    name: {{ include "trivy-collector.serviceAccountName" . }}
+    namespace: {{ .Release.Namespace }}
+roleRef:
+  kind: Role
+  name: {{ include "trivy-collector.fullname" . }}-hub
+  apiGroup: rbac.authorization.k8s.io
+{{- end }}

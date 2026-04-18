@@ -15,6 +15,27 @@ export default defineConfig({
     emptyOutDir: true,
     // Note: emptyOutDir deletes all files in ../static/ before build.
     // The .gitignore for build output is at the trivy-collector root level.
+    chunkSizeWarningLimit: 600,
+    rollupOptions: {
+      output: {
+        // Split third-party deps into stable vendor chunks so the main bundle
+        // stops tripping Vite's 500kB size warning. Grouping keeps the number
+        // of chunks small while isolating the heaviest libraries.
+        manualChunks: (id) => {
+          if (!id.includes('node_modules')) return undefined
+          if (id.includes('/react/') || id.includes('/react-dom/') || id.includes('/scheduler/')) {
+            return 'vendor-react'
+          }
+          if (id.includes('/react-router')) return 'vendor-router'
+          if (id.includes('/chart.js') || id.includes('/react-chartjs-2')) {
+            return 'vendor-chart'
+          }
+          if (id.includes('/cytoscape')) return 'vendor-cytoscape'
+          if (id.includes('/html2canvas')) return 'vendor-html2canvas'
+          return 'vendor'
+        },
+      },
+    },
   },
   server: {
     port: 5173,
