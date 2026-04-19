@@ -24,9 +24,7 @@ use kube::{
 use std::collections::BTreeMap;
 use tracing::{info, warn};
 
-use super::types::{
-    IN_CLUSTER_LABEL, IN_CLUSTER_SERVER, SECRET_TYPE_LABEL, SECRET_TYPE_VALUE,
-};
+use super::types::{IN_CLUSTER_LABEL, IN_CLUSTER_SERVER, SECRET_TYPE_LABEL, SECRET_TYPE_VALUE};
 
 const SELF_FIELD_MANAGER: &str = "trivy-collector-self-register";
 

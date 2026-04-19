@@ -248,8 +248,7 @@ async fn probe_cluster(parsed: &ClusterSecret) -> (bool, String, u64) {
         }
     };
 
-    let (reachable, msg) = match tokio::time::timeout(TIMEOUT, client.apiserver_version()).await
-    {
+    let (reachable, msg) = match tokio::time::timeout(TIMEOUT, client.apiserver_version()).await {
         Ok(Ok(v)) => (true, format!("Kubernetes v{}.{}", v.major, v.minor)),
         Ok(Err(e)) => (false, format!("API error: {}", e)),
         Err(_) => (false, format!("timed out after {}s", TIMEOUT.as_secs())),
@@ -477,9 +476,8 @@ pub async fn delete_registered_cluster(
         return (
             StatusCode::FORBIDDEN,
             Json(ErrorResponse {
-                error:
-                    "cannot delete the Hub's own cluster — this is an auto-managed entry"
-                        .to_string(),
+                error: "cannot delete the Hub's own cluster — this is an auto-managed entry"
+                    .to_string(),
             }),
         )
             .into_response();

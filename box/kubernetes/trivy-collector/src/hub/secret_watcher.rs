@@ -92,8 +92,7 @@ impl SecretWatcher {
                                 secret = ?s.metadata.name,
                                 "In-cluster self-secret deleted — recreating"
                             );
-                            let _ =
-                                ensure_local_cluster_secret(&ns, &name, &namespaces).await;
+                            let _ = ensure_local_cluster_secret(&ns, &name, &namespaces).await;
                         }
                         _ => warn!(
                             secret = ?s.metadata.name,
