@@ -14,6 +14,7 @@ use tracing::{debug, error, info, warn};
 
 use super::client_builder::parse_cluster_secret;
 use super::cluster_manager::ClusterManager;
+use super::self_register::{ensure_local_cluster_secret, is_in_cluster};
 use super::types::HubConfig;
 
 pub struct SecretWatcher {
@@ -76,6 +77,33 @@ impl SecretWatcher {
         match event {
             Event::Apply(s) | Event::InitApply(s) => self.handle_upsert(s).await,
             Event::Delete(s) => {
+                // Self-healing: if someone deletes the Hub-self Secret via
+                // kubectl, immediately recreate it so the UI's Registered
+                // Clusters table keeps showing the local entry without
+                // waiting for a scraper restart. Metadata for the recreate
+                // is derived from the deleted Secret itself.
+                if is_in_cluster(&s) {
+                    let hub_ns = s.metadata.namespace.clone();
+                    let cluster_name = cluster_name_from_secret(&s);
+                    let namespaces = namespaces_from_secret(&s);
+                    match (hub_ns, cluster_name) {
+                        (Some(ns), Some(name)) => {
+                            warn!(
+                                secret = ?s.metadata.name,
+                                "In-cluster self-secret deleted — recreating"
+                            );
+                            let _ =
+                                ensure_local_cluster_secret(&ns, &name, &namespaces).await;
+                        }
+                        _ => warn!(
+                            secret = ?s.metadata.name,
+                            "In-cluster self-secret deleted but metadata was incomplete \
+                             — cannot auto-recreate"
+                        ),
+                    }
+                    return;
+                }
+
                 let name = cluster_name_from_secret(&s);
                 if let Some(name) = name {
                     self.manager.remove(&name).await;
@@ -95,6 +123,17 @@ impl SecretWatcher {
     }
 
     async fn handle_upsert(&self, secret: Secret) {
+        // In-cluster (self) Secret is display-only; the LocalWatcher on this
+        // pod already watches the Hub's own Trivy CRDs, so spawning another
+        // per-cluster watcher against https://kubernetes.default.svc would
+        // duplicate every report.
+        if is_in_cluster(&secret) {
+            debug!(
+                secret = ?secret.metadata.name,
+                "Skipping per-cluster watcher for in-cluster self-secret"
+            );
+            return;
+        }
         let resource_version = secret.metadata.resource_version.clone();
         match parse_cluster_secret(&secret) {
             Ok(parsed) => {
@@ -125,4 +164,28 @@ fn cluster_name_from_secret(secret: &Secret) -> Option<String> {
         return Some(s.to_string());
     }
     secret.metadata.name.clone()
+}
+
+/// Best-effort read of the Secret's `namespaces` JSON array field. Used to
+/// preserve the original namespace filter when auto-recreating the deleted
+/// self-secret.
+fn namespaces_from_secret(secret: &Secret) -> Vec<String> {
+    let raw = secret
+        .string_data
+        .as_ref()
+        .and_then(|m| m.get("namespaces"))
+        .cloned()
+        .or_else(|| {
+            secret
+                .data
+                .as_ref()
+                .and_then(|m| m.get("namespaces"))
+                .and_then(|v| std::str::from_utf8(&v.0).ok().map(str::to_string))
+        });
+    match raw {
+        Some(s) if !s.trim().is_empty() => {
+            serde_json::from_str::<Vec<String>>(&s).unwrap_or_default()
+        }
+        _ => Vec::new(),
+    }
 }

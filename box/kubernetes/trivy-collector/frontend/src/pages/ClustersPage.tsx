@@ -474,9 +474,26 @@ export default function ClustersPage() {
                   const info = dbClusters[c.name]
                   const synced = !!info
                     && (info.vuln_report_count > 0 || info.sbom_report_count > 0)
+                  const isLocal = c.in_cluster === true
                   return (
                     <tr key={c.name}>
-                      <td>{c.name}</td>
+                      <td>
+                        {c.name}
+                        {isLocal && (
+                          <span style={{
+                            marginLeft: 8,
+                            fontSize: 10,
+                            fontWeight: 600,
+                            padding: '2px 6px',
+                            borderRadius: 4,
+                            background: 'var(--bg-tertiary)',
+                            color: 'var(--accent)',
+                            verticalAlign: 'middle',
+                          }}>
+                            LOCAL
+                          </span>
+                        )}
+                      </td>
                       <td className={styles.mono}>{c.server}</td>
                       <td>{c.insecure ? 'insecure' : 'verified'}</td>
                       <td className={styles.mono}>
@@ -500,7 +517,15 @@ export default function ClustersPage() {
                         )}
                       </td>
                       <td>
-                        <button className={styles.toolbarBtnDanger} onClick={() => setDeleteTarget(c.name)}>
+                        <button
+                          className={styles.toolbarBtnDanger}
+                          disabled={isLocal}
+                          title={isLocal
+                            ? 'The Hub\'s own cluster is auto-managed and cannot be deleted'
+                            : undefined}
+                          style={isLocal ? { opacity: 0.4, cursor: 'not-allowed' } : undefined}
+                          onClick={() => !isLocal && setDeleteTarget(c.name)}
+                        >
                           Delete
                         </button>
                       </td>

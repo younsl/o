@@ -8,6 +8,7 @@
 pub mod client_builder;
 pub mod cluster_manager;
 pub mod secret_watcher;
+pub mod self_register;
 pub mod types;
 
 use anyhow::{Context, Result};

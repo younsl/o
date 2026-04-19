@@ -22,6 +22,7 @@ use utoipa::ToSchema;
 use super::state::AppState;
 use super::types::ErrorResponse;
 use crate::hub::client_builder::{build_client, parse_cluster_secret};
+use crate::hub::self_register::is_in_cluster;
 use crate::hub::types::{
     ClusterCredentials, ClusterSecret, SECRET_TYPE_LABEL, SECRET_TYPE_VALUE, TlsClientConfig,
 };
@@ -51,6 +52,11 @@ pub struct RegisteredCluster {
     pub server: String,
     pub namespaces: Vec<String>,
     pub insecure: bool,
+    /// True when this entry represents the Hub's own cluster (auto-registered,
+    /// not user-created). UI uses this to show a "Local" badge and disable
+    /// the Delete button.
+    #[serde(default)]
+    pub in_cluster: bool,
 }
 
 #[derive(Debug, Serialize, ToSchema)]
@@ -195,12 +201,13 @@ fn build_secret(namespace: &str, req: &RegisterClusterRequest) -> Result<Secret,
     })
 }
 
-fn to_registered(parsed: &ClusterSecret) -> RegisteredCluster {
+fn to_registered(parsed: &ClusterSecret, in_cluster: bool) -> RegisteredCluster {
     RegisteredCluster {
         name: parsed.name.clone(),
         server: parsed.server.clone(),
         namespaces: parsed.namespaces.clone(),
         insecure: parsed.credentials.tls_client_config.insecure,
+        in_cluster,
     }
 }
 
@@ -226,8 +233,10 @@ pub async fn list_registered_clusters(State(state): State<AppState>) -> impl Int
             let items: Vec<RegisteredCluster> = list
                 .items
                 .iter()
-                .filter_map(|s| parse_cluster_secret(s).ok())
-                .map(|p| to_registered(&p))
+                .filter_map(|s| {
+                    let in_cluster = is_in_cluster(s);
+                    parse_cluster_secret(s).ok().map(|p| to_registered(&p, in_cluster))
+                })
                 .collect();
             (StatusCode::OK, Json(items)).into_response()
         }
@@ -327,6 +336,7 @@ pub async fn register_cluster(
         server: req.server,
         namespaces: req.namespaces,
         insecure: req.insecure,
+        in_cluster: false,
     };
     (StatusCode::CREATED, Json(response)).into_response()
 }
@@ -389,6 +399,17 @@ pub async fn delete_registered_cluster(
         )
             .into_response();
     };
+    if is_in_cluster(secret) {
+        return (
+            StatusCode::FORBIDDEN,
+            Json(ErrorResponse {
+                error:
+                    "cannot delete the Hub's own cluster — this is an auto-managed entry"
+                        .to_string(),
+            }),
+        )
+            .into_response();
+    }
     let Some(obj_name) = secret.metadata.name.clone() else {
         return (
             StatusCode::INTERNAL_SERVER_ERROR,

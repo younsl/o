@@ -248,6 +248,8 @@ export interface RegisteredCluster {
   server: string
   namespaces: string[]
   insecure: boolean
+  /** True for the auto-registered Hub-self entry. */
+  in_cluster?: boolean
 }
 
 export async function getRegisteredClusters(): Promise<RegisteredCluster[]> {

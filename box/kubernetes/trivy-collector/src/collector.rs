@@ -72,6 +72,21 @@ pub async fn run(
         );
         None
     } else {
+        // Self-register the Hub's own cluster as a display-only Secret so it
+        // shows up alongside registered Edge clusters in the UI. Only when
+        // the local watcher is active — otherwise we'd list a cluster that
+        // isn't actually being watched.
+        if config.watch_local
+            && let Err(e) = hub::self_register::ensure_local_cluster_secret(
+                &config.hub_secret_namespace,
+                &config.cluster_name,
+                &config.namespaces,
+            )
+            .await
+        {
+            warn!(error = %e, "self-register: non-fatal failure");
+        }
+
         let hub_cfg = HubConfig {
             secret_namespace: config.hub_secret_namespace.clone(),
             extra_label_selector: config.hub_label_selector.clone(),
