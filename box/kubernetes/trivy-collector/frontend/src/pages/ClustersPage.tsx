@@ -518,13 +518,37 @@ export default function ClustersPage() {
                       </td>
                       <td title={c.reachability_message || undefined}>
                         {c.reachable === true ? (
-                          <span style={{ color: 'var(--accent)', fontWeight: 600 }}>
-                            Reachable
-                          </span>
+                          <>
+                            <span style={{ color: 'var(--accent)', fontWeight: 600 }}>
+                              Reachable
+                            </span>
+                            {typeof c.reachability_latency_ms === 'number' && (
+                              <span style={{
+                                marginLeft: 6,
+                                fontFamily: "'SF Mono', Monaco, Consolas, monospace",
+                                color: 'var(--text-muted)',
+                                fontSize: 11,
+                              }}>
+                                {c.reachability_latency_ms} ms
+                              </span>
+                            )}
+                          </>
                         ) : c.reachable === false ? (
-                          <span style={{ color: 'var(--text-error, #ef4444)', fontWeight: 600 }}>
-                            Unreachable
-                          </span>
+                          <>
+                            <span style={{ color: 'var(--text-error, #ef4444)', fontWeight: 600 }}>
+                              Unreachable
+                            </span>
+                            {typeof c.reachability_latency_ms === 'number' && (
+                              <span style={{
+                                marginLeft: 6,
+                                fontFamily: "'SF Mono', Monaco, Consolas, monospace",
+                                color: 'var(--text-muted)',
+                                fontSize: 11,
+                              }}>
+                                {c.reachability_latency_ms} ms
+                              </span>
+                            )}
+                          </>
                         ) : (
                           <span style={{ color: 'var(--text-muted)' }}>—</span>
                         )}

@@ -254,6 +254,8 @@ export interface RegisteredCluster {
   reachable?: boolean
   /** Human-readable probe outcome (Kubernetes version, error, or timeout). */
   reachability_message?: string
+  /** Probe wall-clock duration in milliseconds. */
+  reachability_latency_ms?: number
 }
 
 export async function getRegisteredClusters(): Promise<RegisteredCluster[]> {

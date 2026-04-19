@@ -67,6 +67,10 @@ pub struct RegisteredCluster {
     /// `"connection timed out"`). Meant for tooltip display in the UI.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub reachability_message: Option<String>,
+    /// Wall-clock duration of the probe in milliseconds. `None` when the
+    /// probe was skipped (in-cluster entries).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub reachability_latency_ms: Option<u64>,
 }
 
 #[derive(Debug, Serialize, ToSchema)]
@@ -216,6 +220,7 @@ fn to_registered(
     in_cluster: bool,
     reachable: Option<bool>,
     reachability_message: Option<String>,
+    reachability_latency_ms: Option<u64>,
 ) -> RegisteredCluster {
     RegisteredCluster {
         name: parsed.name.clone(),
@@ -225,24 +230,32 @@ fn to_registered(
         in_cluster,
         reachable,
         reachability_message,
+        reachability_latency_ms,
     }
 }
 
 /// Probe an Edge cluster's /version endpoint with a short timeout.
-/// Returns `(reachable, human-readable-message)`.
-async fn probe_cluster(parsed: &ClusterSecret) -> (bool, String) {
+/// Returns `(reachable, human-readable-message, latency_ms)`.
+async fn probe_cluster(parsed: &ClusterSecret) -> (bool, String, u64) {
     const TIMEOUT: std::time::Duration = std::time::Duration::from_secs(3);
 
+    let started = std::time::Instant::now();
     let client = match build_client(parsed).await {
         Ok(c) => c,
-        Err(e) => return (false, format!("client build failed: {}", e)),
+        Err(e) => {
+            let ms = started.elapsed().as_millis() as u64;
+            return (false, format!("client build failed: {}", e), ms);
+        }
     };
 
-    match tokio::time::timeout(TIMEOUT, client.apiserver_version()).await {
+    let (reachable, msg) = match tokio::time::timeout(TIMEOUT, client.apiserver_version()).await
+    {
         Ok(Ok(v)) => (true, format!("Kubernetes v{}.{}", v.major, v.minor)),
         Ok(Err(e)) => (false, format!("API error: {}", e)),
         Err(_) => (false, format!("timed out after {}s", TIMEOUT.as_secs())),
-    }
+    };
+    let ms = started.elapsed().as_millis() as u64;
+    (reachable, msg, ms)
 }
 
 /// List registered clusters
@@ -286,10 +299,11 @@ pub async fn list_registered_clusters(State(state): State<AppState>) -> impl Int
                             true,
                             Some(true),
                             Some("in-cluster (pod's own SA)".to_string()),
+                            None,
                         );
                     }
-                    let (reachable, msg) = probe_cluster(&p).await;
-                    to_registered(&p, false, Some(reachable), Some(msg))
+                    let (reachable, msg, ms) = probe_cluster(&p).await;
+                    to_registered(&p, false, Some(reachable), Some(msg), Some(ms))
                 }),
             )
             .await;
@@ -396,6 +410,7 @@ pub async fn register_cluster(
         in_cluster: false,
         reachable: None,
         reachability_message: None,
+        reachability_latency_ms: None,
     };
     (StatusCode::CREATED, Json(response)).into_response()
 }
