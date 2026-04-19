@@ -475,7 +475,7 @@ export default function ClustersPage() {
               <thead>
                 <tr>
                   <th>Name</th><th>API Server</th><th>TLS</th><th>Reports</th>
-                  <th>Reachable</th><th>Status</th><th></th>
+                  <th>Status</th><th></th>
                 </tr>
               </thead>
               <tbody>
@@ -484,6 +484,20 @@ export default function ClustersPage() {
                   const synced = !!info
                     && (info.vuln_report_count > 0 || info.sbom_report_count > 0)
                   const isLocal = c.in_cluster === true
+                  // Priority: if the live probe reported the cluster
+                  // unreachable, surface that first. Otherwise fall back to
+                  // the DB-derived Synced / Awaiting first sync state.
+                  const baseStatus = !dbLoaded
+                    ? '—'
+                    : c.reachable === false
+                      ? 'Unreachable'
+                      : synced
+                        ? 'Synced'
+                        : 'Awaiting first sync'
+                  const latencySuffix =
+                    typeof c.reachability_latency_ms === 'number'
+                      ? ` (${c.reachability_latency_ms} ms)`
+                      : ''
                   return (
                     <tr key={c.name}>
                       <td>{c.name}</td>
@@ -501,48 +515,8 @@ export default function ClustersPage() {
                         )}
                       </td>
                       <td title={c.reachability_message || undefined}>
-                        {c.reachable === true ? (
-                          <>
-                            <span style={{ color: 'var(--accent)', fontWeight: 600 }}>
-                              Reachable
-                            </span>
-                            {typeof c.reachability_latency_ms === 'number' && (
-                              <span style={{
-                                marginLeft: 6,
-                                fontFamily: "'SF Mono', Monaco, Consolas, monospace",
-                                color: 'var(--text-muted)',
-                                fontSize: 11,
-                              }}>
-                                {c.reachability_latency_ms} ms
-                              </span>
-                            )}
-                          </>
-                        ) : c.reachable === false ? (
-                          <>
-                            <span style={{ color: 'var(--text-error, #ef4444)', fontWeight: 600 }}>
-                              Unreachable
-                            </span>
-                            {typeof c.reachability_latency_ms === 'number' && (
-                              <span style={{
-                                marginLeft: 6,
-                                fontFamily: "'SF Mono', Monaco, Consolas, monospace",
-                                color: 'var(--text-muted)',
-                                fontSize: 11,
-                              }}>
-                                {c.reachability_latency_ms} ms
-                              </span>
-                            )}
-                          </>
-                        ) : (
-                          <span style={{ color: 'var(--text-muted)' }}>—</span>
-                        )}
-                      </td>
-                      <td>
-                        {!dbLoaded
-                          ? '—'
-                          : synced
-                            ? 'Synced'
-                            : 'Awaiting first sync'}
+                        {baseStatus}
+                        {latencySuffix}
                       </td>
                       <td>
                         <button
