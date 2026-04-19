@@ -341,9 +341,12 @@
 }
 
 /* Allow very long values (API server URLs, secret names) to truncate with
-   an ellipsis instead of wrapping. Mark specific cells with this class. */
+   an ellipsis instead of wrapping. Mark specific cells with this class.
+   Width picked so a typical EKS API server URL
+   (https://<32-hex>.<region>.eks.amazonaws.com ≈ 73 chars in monospace)
+   fits without truncation. */
 .cellTruncate {
-    max-width: 280px;
+    max-width: 560px;
     overflow: hidden;
     text-overflow: ellipsis;
 }
