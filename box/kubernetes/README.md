@@ -17,6 +17,10 @@ Addons and [operators](https://kubernetes.io/docs/concepts/extend-kubernetes/ope
 - [snowflake-exporter](./snowflake-exporter/) — Prometheus exporter for Snowflake account usage metrics (PAT auth)
 - [trivy-collector](./trivy-collector/) — Multi-cluster Trivy report collector with Web UI
 
+## These addons are written in Rust
+
+Go is Kubernetes' default language, but these small, long-running operators and exporters optimize for different axes: image size, memory, and crash behavior at 3am. Statically linked scratch images land at 5–15MB against Go's typical 30–80MB, and binaries idle around 5–10MB RSS — meaningful once the same workload fans out across a DaemonSet or parallel CronJobs. The type system removes an entire class of incidents: Option makes nil pointer panics structurally impossible, Result turns ignored errors into compile errors. No GC pauses plus Tokio's structured cancellation make SIGTERM handling deterministic, so controllers shut down cleanly instead of leaking a reconcile mid-flight.
+
 ## Implementation Details
 
 - All Rust container images are based on [scratch](https://hub.docker.com/_/scratch) with statically linked binaries built via [cargo-zigbuild](https://github.com/rust-cross/cargo-zigbuild) for simplified cross-compilation, minimal attack surface and image size.
