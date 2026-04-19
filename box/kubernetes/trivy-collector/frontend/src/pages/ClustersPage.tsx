@@ -474,7 +474,8 @@ export default function ClustersPage() {
             <table className={styles.logTable}>
               <thead>
                 <tr>
-                  <th>Name</th><th>API Server</th><th>TLS</th><th>Reports</th><th>Status</th><th></th>
+                  <th>Name</th><th>API Server</th><th>TLS</th><th>Reports</th>
+                  <th>Reachable</th><th>Status</th><th></th>
                 </tr>
               </thead>
               <tbody>
@@ -515,14 +516,25 @@ export default function ClustersPage() {
                           <span style={{ color: 'var(--text-muted)' }}>—</span>
                         )}
                       </td>
-                      <td>
-                        {!dbLoaded ? (
-                          <span style={{ color: 'var(--text-muted)' }}>—</span>
-                        ) : synced ? (
-                          <span style={{ color: 'var(--accent)', fontWeight: 600 }}>Synced</span>
+                      <td title={c.reachability_message || undefined}>
+                        {c.reachable === true ? (
+                          <span style={{ color: 'var(--accent)', fontWeight: 600 }}>
+                            Reachable
+                          </span>
+                        ) : c.reachable === false ? (
+                          <span style={{ color: 'var(--text-error, #ef4444)', fontWeight: 600 }}>
+                            Unreachable
+                          </span>
                         ) : (
-                          <span style={{ color: 'var(--text-muted)' }}>Awaiting first sync</span>
+                          <span style={{ color: 'var(--text-muted)' }}>—</span>
                         )}
+                      </td>
+                      <td>
+                        {!dbLoaded
+                          ? '—'
+                          : synced
+                            ? 'Synced'
+                            : 'Awaiting first sync'}
                       </td>
                       <td>
                         <button

@@ -57,6 +57,16 @@ pub struct RegisteredCluster {
     /// the Delete button.
     #[serde(default)]
     pub in_cluster: bool,
+    /// Result of a live probe to the Edge API server performed at list time.
+    /// `true` = `/version` returned OK within the timeout. `false` = network,
+    /// TLS, or auth failure. `None` = probe was skipped (in-cluster entries
+    /// always report `Some(true)` so consumers don't special-case them).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub reachable: Option<bool>,
+    /// One-line human-readable probe result (e.g. `"Kubernetes v1.31"` or
+    /// `"connection timed out"`). Meant for tooltip display in the UI.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub reachability_message: Option<String>,
 }
 
 #[derive(Debug, Serialize, ToSchema)]
@@ -201,13 +211,37 @@ fn build_secret(namespace: &str, req: &RegisterClusterRequest) -> Result<Secret,
     })
 }
 
-fn to_registered(parsed: &ClusterSecret, in_cluster: bool) -> RegisteredCluster {
+fn to_registered(
+    parsed: &ClusterSecret,
+    in_cluster: bool,
+    reachable: Option<bool>,
+    reachability_message: Option<String>,
+) -> RegisteredCluster {
     RegisteredCluster {
         name: parsed.name.clone(),
         server: parsed.server.clone(),
         namespaces: parsed.namespaces.clone(),
         insecure: parsed.credentials.tls_client_config.insecure,
         in_cluster,
+        reachable,
+        reachability_message,
+    }
+}
+
+/// Probe an Edge cluster's /version endpoint with a short timeout.
+/// Returns `(reachable, human-readable-message)`.
+async fn probe_cluster(parsed: &ClusterSecret) -> (bool, String) {
+    const TIMEOUT: std::time::Duration = std::time::Duration::from_secs(3);
+
+    let client = match build_client(parsed).await {
+        Ok(c) => c,
+        Err(e) => return (false, format!("client build failed: {}", e)),
+    };
+
+    match tokio::time::timeout(TIMEOUT, client.apiserver_version()).await {
+        Ok(Ok(v)) => (true, format!("Kubernetes v{}.{}", v.major, v.minor)),
+        Ok(Err(e)) => (false, format!("API error: {}", e)),
+        Err(_) => (false, format!("timed out after {}s", TIMEOUT.as_secs())),
     }
 }
 
@@ -230,14 +264,36 @@ pub async fn list_registered_clusters(State(state): State<AppState>) -> impl Int
 
     match api.list(&lp).await {
         Ok(list) => {
-            let items: Vec<RegisteredCluster> = list
+            // Parse all Secrets first so we can decide which ones need a
+            // probe, then fire the probes in parallel.
+            let parsed_all: Vec<(bool, ClusterSecret)> = list
                 .items
                 .iter()
                 .filter_map(|s| {
                     let in_cluster = is_in_cluster(s);
-                    parse_cluster_secret(s).ok().map(|p| to_registered(&p, in_cluster))
+                    parse_cluster_secret(s).ok().map(|p| (in_cluster, p))
                 })
                 .collect();
+
+            let items: Vec<RegisteredCluster> = futures::future::join_all(
+                parsed_all.into_iter().map(|(in_cluster, p)| async move {
+                    // In-cluster: we are currently running inside it, so the
+                    // concept of "reachable" is trivially true; skip the probe
+                    // to save latency.
+                    if in_cluster {
+                        return to_registered(
+                            &p,
+                            true,
+                            Some(true),
+                            Some("in-cluster (pod's own SA)".to_string()),
+                        );
+                    }
+                    let (reachable, msg) = probe_cluster(&p).await;
+                    to_registered(&p, false, Some(reachable), Some(msg))
+                }),
+            )
+            .await;
+
             (StatusCode::OK, Json(items)).into_response()
         }
         Err(e) => {
@@ -330,13 +386,16 @@ pub async fn register_cluster(
         }
     }
 
-    // Echo back without the bearer token
+    // Echo back without the bearer token. Reachability fields are omitted
+    // here — they're computed on list; the caller can re-list to see status.
     let response = RegisteredCluster {
         name: req.name,
         server: req.server,
         namespaces: req.namespaces,
         insecure: req.insecure,
         in_cluster: false,
+        reachable: None,
+        reachability_message: None,
     };
     (StatusCode::CREATED, Json(response)).into_response()
 }

@@ -250,6 +250,10 @@ export interface RegisteredCluster {
   insecure: boolean
   /** True for the auto-registered Hub-self entry. */
   in_cluster?: boolean
+  /** Live probe result computed at list time (server calls /version on each Edge). */
+  reachable?: boolean
+  /** Human-readable probe outcome (Kubernetes version, error, or timeout). */
+  reachability_message?: string
 }
 
 export async function getRegisteredClusters(): Promise<RegisteredCluster[]> {
