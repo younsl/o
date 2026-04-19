@@ -487,11 +487,14 @@ export default function ClustersPage() {
                   // Priority: if the live probe reported the cluster
                   // unreachable, surface that first. Otherwise fall back to
                   // the DB-derived Synced / Awaiting first sync state.
+                  // In-cluster row is the Hub itself — LocalWatcher on this
+                  // pod is always active, so treat it as Synced regardless of
+                  // whether the DB has accumulated reports yet.
                   const baseStatus = !dbLoaded
                     ? '—'
                     : c.reachable === false
                       ? 'Unreachable'
-                      : synced
+                      : isLocal || synced
                         ? 'Synced'
                         : 'Awaiting first sync'
                   const latencySuffix =

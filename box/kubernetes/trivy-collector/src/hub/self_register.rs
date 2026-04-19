@@ -11,6 +11,11 @@
 //!   - The UI flags rows carrying `trivy-collector.io/in-cluster=true` and
 //!     disables the Delete button to prevent wiping the Hub's own reports.
 //!
+//! Naming: `cluster-<clusterName>-kubernetes.default.svc`. One Secret per
+//! `clusterName` value. Rotating `clusterName` in Helm leaves the previous
+//! Secret as an orphan — the operator cleans it up manually (same behaviour
+//! as ArgoCD's registered clusters).
+//!
 //! The Secret stores no credentials. `server` is set to
 //! `https://kubernetes.default.svc`; auth is handled by `Client::try_default()`
 //! when a watcher (hypothetically) is ever built from it.
@@ -19,7 +24,7 @@ use anyhow::{Context, Result};
 use k8s_openapi::api::core::v1::Secret;
 use kube::{
     Api, Client,
-    api::{DeleteParams, ListParams, ObjectMeta, Patch, PatchParams},
+    api::{ObjectMeta, Patch, PatchParams},
 };
 use std::collections::BTreeMap;
 use tracing::{info, warn};
@@ -28,11 +33,16 @@ use super::types::{IN_CLUSTER_LABEL, IN_CLUSTER_SERVER, SECRET_TYPE_LABEL, SECRE
 
 const SELF_FIELD_MANAGER: &str = "trivy-collector-self-register";
 
-/// Fixed Secret name for the Hub's own cluster entry. Using a fixed name
-/// (rather than embedding `cluster_name`) means rotating `clusterName` in
-/// Helm values updates the `stringData.name` field in place without leaving
-/// orphaned Secrets behind.
-const SELF_SECRET_NAME: &str = "cluster-in-cluster-kubernetes.default.svc";
+/// Build the self-secret name for a given `clusterName`. Returns `None` when
+/// `cluster_name` is empty so callers can skip the apply instead of producing
+/// a DNS-1123-invalid name like `cluster--kubernetes.default.svc`.
+pub fn self_secret_name(cluster_name: &str) -> Option<String> {
+    let trimmed = cluster_name.trim();
+    if trimmed.is_empty() {
+        return None;
+    }
+    Some(format!("cluster-{}-kubernetes.default.svc", trimmed))
+}
 
 /// Ensure a Secret representing the Hub's own cluster exists in `hub_ns`.
 ///
@@ -44,17 +54,19 @@ pub async fn ensure_local_cluster_secret(
     cluster_name: &str,
     namespaces: &[String],
 ) -> Result<()> {
+    let Some(secret_name) = self_secret_name(cluster_name) else {
+        warn!(
+            "self-register: cluster_name is empty — skipping. \
+             LocalWatcher still runs; the Hub just won't appear in the \
+             Registered Clusters table."
+        );
+        return Ok(());
+    };
+
     let client = Client::try_default()
         .await
         .context("self-register: failed to build in-cluster client")?;
     let api: Api<Secret> = Api::namespaced(client, hub_ns);
-
-    // Clean up any stale self-secrets left behind by older scraper versions
-    // that embedded the cluster name in the Secret name. Anything else
-    // carrying the in-cluster label is considered obsolete.
-    cleanup_stale_self_secrets(&api).await;
-
-    let secret_name = SELF_SECRET_NAME.to_string();
 
     let mut labels = BTreeMap::new();
     labels.insert(SECRET_TYPE_LABEL.to_string(), SECRET_TYPE_VALUE.to_string());
@@ -123,37 +135,29 @@ pub fn is_in_cluster(secret: &Secret) -> bool {
         .unwrap_or(false)
 }
 
-/// Delete any in-cluster labelled Secret whose name differs from the fixed
-/// `SELF_SECRET_NAME`. Such Secrets are leftovers from earlier scraper
-/// versions that embedded `cluster_name` in the Secret name, so rotating
-/// `clusterName` in Helm values produced duplicate rows in the UI.
-async fn cleanup_stale_self_secrets(api: &Api<Secret>) {
-    let lp = ListParams::default().labels(&format!("{}=true", IN_CLUSTER_LABEL));
-    let list = match api.list(&lp).await {
-        Ok(l) => l,
-        Err(e) => {
-            warn!(error = %e, "self-register: failed to list existing in-cluster secrets");
-            return;
-        }
-    };
-    for s in list.items {
-        let Some(name) = s.metadata.name else {
-            continue;
-        };
-        if name == SELF_SECRET_NAME {
-            continue;
-        }
-        match api.delete(&name, &DeleteParams::default()).await {
-            Ok(_) => info!(
-                stale_secret = %name,
-                current = %SELF_SECRET_NAME,
-                "self-register: removed stale self-secret from earlier version"
-            ),
-            Err(e) => warn!(
-                stale_secret = %name,
-                error = %e,
-                "self-register: failed to remove stale self-secret"
-            ),
-        }
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_self_secret_name_default() {
+        assert_eq!(
+            self_secret_name("local").as_deref(),
+            Some("cluster-local-kubernetes.default.svc")
+        );
+    }
+
+    #[test]
+    fn test_self_secret_name_custom() {
+        assert_eq!(
+            self_secret_name("shared-mpay-cluster").as_deref(),
+            Some("cluster-shared-mpay-cluster-kubernetes.default.svc")
+        );
+    }
+
+    #[test]
+    fn test_self_secret_name_empty_or_whitespace() {
+        assert_eq!(self_secret_name(""), None);
+        assert_eq!(self_secret_name("   "), None);
     }
 }
