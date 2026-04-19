@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from 'react'
+import { useOutletContext } from 'react-router-dom'
 import { useAuth } from '../contexts/AuthContext'
 import {
   getRegisteredClusters,
@@ -8,6 +9,10 @@ import {
   type RegisteredCluster,
 } from '../api'
 import type { ClusterInfo } from '../types'
+
+interface LayoutContext {
+  clusterOptions: ClusterInfo[]
+}
 import { SyntaxHighlight } from '../components/SyntaxHighlight'
 import AdminSubNav from '../components/AdminSubNav'
 import styles from './AdminPage.module.css'
@@ -378,13 +383,16 @@ function Step2Register({
 
 export default function ClustersPage() {
   const { permissions } = useAuth()
+  // Seed initial state from the Layout-level clusterOptions cache (fetched
+  // once at app entry and shared across routes via Outlet context). On page
+  // re-entry this gives us immediate Synced/Reports display instead of a
+  // "—" flash until our own poll completes.
+  const { clusterOptions } = useOutletContext<LayoutContext>()
+  const seed: Record<string, ClusterInfo> = {}
+  for (const c of clusterOptions ?? []) seed[c.name] = c
   const [clusters, setClusters] = useState<RegisteredCluster[]>([])
-  const [dbClusters, setDbClusters] = useState<Record<string, ClusterInfo>>({})
-  // Tracks whether /api/v1/clusters has returned at least once for this mount.
-  // Until then we render "—" for Status rather than "Awaiting first sync",
-  // so navigating away and back doesn't momentarily flash Awaiting for a
-  // cluster that has plenty of reports in the DB.
-  const [dbLoaded, setDbLoaded] = useState(false)
+  const [dbClusters, setDbClusters] = useState<Record<string, ClusterInfo>>(seed)
+  const [dbLoaded, setDbLoaded] = useState(Object.keys(seed).length > 0)
 
   const [step, setStep] = useState<1 | 2>(1)
   const [clusterName, setClusterName] = useState('')
