@@ -501,7 +501,12 @@ export default function ClustersPage() {
                   return (
                     <tr key={c.name}>
                       <td>{c.name}</td>
-                      <td className={styles.mono}>{c.server}</td>
+                      <td
+                        className={`${styles.mono} ${styles.cellTruncate}`}
+                        title={c.server}
+                      >
+                        {c.server}
+                      </td>
                       <td>{c.insecure ? 'insecure' : 'verified'}</td>
                       <td className={styles.mono}>
                         {info ? (
