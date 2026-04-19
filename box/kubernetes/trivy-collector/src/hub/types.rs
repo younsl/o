@@ -22,6 +22,14 @@ pub struct HubConfig {
     pub secret_namespace: String,
     /// Additional label selector filter (optional, empty string = no extra filter)
     pub extra_label_selector: String,
+    /// Current cluster's logical name — used by the Secret watcher to rebuild
+    /// the Hub's self-secret when it gets deleted. Sourcing this from config
+    /// (rather than the deleted Secret's stringData) avoids the identity drift
+    /// that caused the old recreate-loop bug.
+    pub cluster_name: String,
+    /// Namespace filter for the Hub's own cluster entry (mirrors the scraper's
+    /// `--namespaces` flag). Empty = all namespaces.
+    pub namespaces: Vec<String>,
 }
 
 impl HubConfig {

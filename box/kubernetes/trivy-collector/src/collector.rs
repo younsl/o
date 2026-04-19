@@ -90,6 +90,8 @@ pub async fn run(
         let hub_cfg = HubConfig {
             secret_namespace: config.hub_secret_namespace.clone(),
             extra_label_selector: config.hub_label_selector.clone(),
+            cluster_name: config.cluster_name.clone(),
+            namespaces: config.namespaces.clone(),
         };
         let db = db.clone();
         let ws = watcher_status.clone();

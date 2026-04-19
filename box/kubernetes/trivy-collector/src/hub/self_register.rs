@@ -11,10 +11,14 @@
 //!   - The UI flags rows carrying `trivy-collector.io/in-cluster=true` and
 //!     disables the Delete button to prevent wiping the Hub's own reports.
 //!
-//! Naming: `cluster-<clusterName>-kubernetes.default.svc`. One Secret per
-//! `clusterName` value. Rotating `clusterName` in Helm leaves the previous
-//! Secret as an orphan — the operator cleans it up manually (same behaviour
-//! as ArgoCD's registered clusters).
+//! Naming — two names are recognised:
+//!   - **canonical**: `cluster-<clusterName>-kubernetes.default.svc`. The
+//!     authoritative name, 1:1 with the current `clusterName` value.
+//!   - **legacy**: `cluster-in-cluster-kubernetes.default.svc`. The fixed
+//!     name produced by earlier versions. Still accepted as a self-secret
+//!     identity so manual deletions trigger recreation, but never created
+//!     anew — `ensure_local_cluster_secret` best-effort deletes it so the
+//!     canonical and legacy forms don't coexist.
 //!
 //! The Secret stores no credentials. `server` is set to
 //! `https://kubernetes.default.svc`; auth is handled by `Client::try_default()`
@@ -24,7 +28,7 @@ use anyhow::{Context, Result};
 use k8s_openapi::api::core::v1::Secret;
 use kube::{
     Api, Client,
-    api::{ObjectMeta, Patch, PatchParams},
+    api::{DeleteParams, ObjectMeta, Patch, PatchParams},
 };
 use std::collections::BTreeMap;
 use tracing::{info, warn};
@@ -33,9 +37,14 @@ use super::types::{IN_CLUSTER_LABEL, IN_CLUSTER_SERVER, SECRET_TYPE_LABEL, SECRE
 
 const SELF_FIELD_MANAGER: &str = "trivy-collector-self-register";
 
-/// Build the self-secret name for a given `clusterName`. Returns `None` when
-/// `cluster_name` is empty so callers can skip the apply instead of producing
-/// a DNS-1123-invalid name like `cluster--kubernetes.default.svc`.
+/// Legacy fixed self-secret name produced by pre-858d67b builds. Still treated
+/// as a self-secret identity so manual deletions trigger recreation of the
+/// canonical form, but never applied directly — see `ensure_local_cluster_secret`.
+pub const LEGACY_SELF_SECRET_NAME: &str = "cluster-in-cluster-kubernetes.default.svc";
+
+/// Build the canonical self-secret name for a given `clusterName`. Returns
+/// `None` when `cluster_name` is empty so callers can skip the apply instead
+/// of producing a DNS-1123-invalid name like `cluster--kubernetes.default.svc`.
 pub fn self_secret_name(cluster_name: &str) -> Option<String> {
     let trimmed = cluster_name.trim();
     if trimmed.is_empty() {
@@ -44,11 +53,24 @@ pub fn self_secret_name(cluster_name: &str) -> Option<String> {
     Some(format!("cluster-{}-kubernetes.default.svc", trimmed))
 }
 
+/// Does this Secret name identify a self-secret for `cluster_name`?
+///
+/// Matches either the canonical form or the legacy fixed name. The watcher
+/// uses this to decide whether a Delete event should trigger a recreate.
+pub fn is_managed_self_secret_name(name: &str, cluster_name: &str) -> bool {
+    if name == LEGACY_SELF_SECRET_NAME {
+        return true;
+    }
+    self_secret_name(cluster_name)
+        .map(|canonical| canonical == name)
+        .unwrap_or(false)
+}
+
 /// Ensure a Secret representing the Hub's own cluster exists in `hub_ns`.
 ///
-/// Safe to call on every scraper startup: uses server-side apply so a
-/// pre-existing self-secret is upserted in place without generating spurious
-/// resource version churn.
+/// Applies the canonical `cluster-<clusterName>-kubernetes.default.svc` via
+/// server-side apply (idempotent) and best-effort deletes any legacy
+/// `cluster-in-cluster-kubernetes.default.svc` so the two forms never coexist.
 pub async fn ensure_local_cluster_secret(
     hub_ns: &str,
     cluster_name: &str,
@@ -109,7 +131,6 @@ pub async fn ensure_local_cluster_secret(
                 cluster_name = %cluster_name,
                 "Self-registered local cluster"
             );
-            Ok(())
         }
         Err(e) => {
             warn!(
@@ -119,9 +140,31 @@ pub async fn ensure_local_cluster_secret(
                  will not appear in Registered Clusters table"
             );
             // Non-fatal: LocalWatcher still works, the UI just won't list it.
-            Ok(())
         }
     }
+
+    // Mutual exclusion: evict the legacy fixed-name Secret if it still exists
+    // and differs from the canonical name. 404 is the expected steady state.
+    if secret_name != LEGACY_SELF_SECRET_NAME {
+        match api
+            .delete(LEGACY_SELF_SECRET_NAME, &DeleteParams::default())
+            .await
+        {
+            Ok(_) => info!(
+                legacy_secret = %LEGACY_SELF_SECRET_NAME,
+                canonical = %secret_name,
+                "self-register: evicted legacy self-secret"
+            ),
+            Err(kube::Error::Api(e)) if e.code == 404 => {}
+            Err(e) => warn!(
+                legacy_secret = %LEGACY_SELF_SECRET_NAME,
+                error = %e,
+                "self-register: failed to evict legacy self-secret"
+            ),
+        }
+    }
+
+    Ok(())
 }
 
 /// Does this Secret carry the `in-cluster=true` marker?
@@ -159,5 +202,31 @@ mod tests {
     fn test_self_secret_name_empty_or_whitespace() {
         assert_eq!(self_secret_name(""), None);
         assert_eq!(self_secret_name("   "), None);
+    }
+
+    #[test]
+    fn test_is_managed_self_secret_name_canonical() {
+        assert!(is_managed_self_secret_name(
+            "cluster-shared-mpay-cluster-kubernetes.default.svc",
+            "shared-mpay-cluster"
+        ));
+    }
+
+    #[test]
+    fn test_is_managed_self_secret_name_legacy() {
+        assert!(is_managed_self_secret_name(
+            LEGACY_SELF_SECRET_NAME,
+            "shared-mpay-cluster"
+        ));
+        // Legacy name is recognised even when clusterName is empty.
+        assert!(is_managed_self_secret_name(LEGACY_SELF_SECRET_NAME, ""));
+    }
+
+    #[test]
+    fn test_is_managed_self_secret_name_unrelated() {
+        assert!(!is_managed_self_secret_name(
+            "cluster-edge-a-somewhere.eks.amazonaws.com",
+            "shared-mpay-cluster"
+        ));
     }
 }

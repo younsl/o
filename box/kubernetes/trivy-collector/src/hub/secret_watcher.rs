@@ -14,7 +14,9 @@ use tracing::{debug, error, info, warn};
 
 use super::client_builder::parse_cluster_secret;
 use super::cluster_manager::ClusterManager;
-use super::self_register::is_in_cluster;
+use super::self_register::{
+    ensure_local_cluster_secret, is_in_cluster, is_managed_self_secret_name,
+};
 use super::types::HubConfig;
 
 pub struct SecretWatcher {
@@ -77,16 +79,32 @@ impl SecretWatcher {
         match event {
             Event::Apply(s) | Event::InitApply(s) => self.handle_upsert(s).await,
             Event::Delete(s) => {
-                // In-cluster self-secret deletes are ignored: the next scraper
-                // start-up re-applies the Secret idempotently. Previously we
-                // recreated here, which combined with stale-secret cleanup
-                // produced a delete/recreate loop that duplicated the self-
-                // secret every watcher relist.
-                if is_in_cluster(&s) {
-                    debug!(
-                        secret = ?s.metadata.name,
-                        "In-cluster self-secret deleted — not auto-recreating"
+                // Self-healing for the Hub's own cluster entry: if someone
+                // deletes the canonical or legacy self-secret (via kubectl,
+                // ArgoCD prune, etc.), re-apply it so the Registered Clusters
+                // table keeps showing the local entry.
+                //
+                // Recreation uses `cluster_name` / `namespaces` from HubConfig
+                // — not the deleted Secret's stringData — so the canonical
+                // name is always produced regardless of which form was deleted.
+                // Calling `ensure_local_cluster_secret` is idempotent; the
+                // legacy-eviction it performs internally is a no-op once legacy
+                // is gone, so there's no recreate loop.
+                let deleted_name = s.metadata.name.as_deref().unwrap_or_default();
+                let is_self_secret = is_in_cluster(&s)
+                    || is_managed_self_secret_name(deleted_name, &self.hub_config.cluster_name);
+                if is_self_secret {
+                    warn!(
+                        secret = %deleted_name,
+                        cluster_name = %self.hub_config.cluster_name,
+                        "Self-secret deleted — recreating"
                     );
+                    let _ = ensure_local_cluster_secret(
+                        &self.hub_config.secret_namespace,
+                        &self.hub_config.cluster_name,
+                        &self.hub_config.namespaces,
+                    )
+                    .await;
                     return;
                 }
 
