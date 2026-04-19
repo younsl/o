@@ -56,6 +56,17 @@ pub async fn init_schema(pool: &SqlitePool) -> Result<()> {
         CREATE INDEX IF NOT EXISTS idx_reports_app ON reports(app);
         CREATE INDEX IF NOT EXISTS idx_reports_severity ON reports(critical_count, high_count);
         CREATE INDEX IF NOT EXISTS idx_reports_received_at ON reports(received_at);
+        -- Composite index that serves the clusters_view aggregation
+        -- (GROUP BY cluster with SUM per report_type and MAX(updated_at)).
+        -- On a ~300 MB DB a scan-based aggregation can take tens of seconds;
+        -- this index lets SQLite answer the whole view from the index alone.
+        CREATE INDEX IF NOT EXISTS idx_reports_cluster_type_updated
+            ON reports(cluster, report_type, updated_at);
+        -- Serves "list newest reports of a given type" (ReportsPage):
+        --   SELECT ... WHERE report_type = ? ORDER BY updated_at DESC LIMIT ?
+        -- ORDER BY DESC is covered — SQLite walks the index in reverse.
+        CREATE INDEX IF NOT EXISTS idx_reports_type_updated
+            ON reports(report_type, updated_at);
 
         -- API tokens table
         CREATE TABLE IF NOT EXISTS api_tokens (
@@ -222,6 +233,28 @@ async fn run_migrations(pool: &SqlitePool) -> Result<()> {
         .context("Failed to create cleanup_history table")?;
     }
 
+    // Migration: Add composite indexes that dramatically speed up the
+    // clusters_view aggregation and "recent reports of type X" query. These
+    // are IF NOT EXISTS so the migration is safe to run repeatedly, and we
+    // follow up with ANALYZE so SQLite's query planner actually picks them.
+    if !index_exists(pool, "idx_reports_cluster_type_updated").await?
+        || !index_exists(pool, "idx_reports_type_updated").await?
+    {
+        info!("Migrating database: adding composite indexes on reports");
+        sqlx::raw_sql(
+            r#"
+            CREATE INDEX IF NOT EXISTS idx_reports_cluster_type_updated
+                ON reports(cluster, report_type, updated_at);
+            CREATE INDEX IF NOT EXISTS idx_reports_type_updated
+                ON reports(report_type, updated_at);
+            ANALYZE reports;
+            "#,
+        )
+        .execute(pool)
+        .await
+        .context("Failed to add composite indexes on reports")?;
+    }
+
     // Migration: Create api_logs table if it doesn't exist
     if !table_exists_check(pool, "api_logs").await? {
         info!("Migrating database: creating api_logs table");
@@ -257,6 +290,17 @@ async fn table_exists_check(pool: &SqlitePool, table_name: &str) -> Result<bool>
     let (exists,): (bool,) =
         sqlx::query_as("SELECT COUNT(*) > 0 FROM sqlite_master WHERE type='table' AND name=$1")
             .bind(table_name)
+            .fetch_one(pool)
+            .await
+            .unwrap_or((false,));
+    Ok(exists)
+}
+
+/// Check if an index exists in the database.
+async fn index_exists(pool: &SqlitePool, index_name: &str) -> Result<bool> {
+    let (exists,): (bool,) =
+        sqlx::query_as("SELECT COUNT(*) > 0 FROM sqlite_master WHERE type='index' AND name=$1")
+            .bind(index_name)
             .fetch_one(pool)
             .await
             .unwrap_or((false,));
