@@ -137,7 +137,9 @@ async fn cleanup_stale_self_secrets(api: &Api<Secret>) {
         }
     };
     for s in list.items {
-        let Some(name) = s.metadata.name else { continue };
+        let Some(name) = s.metadata.name else {
+            continue;
+        };
         if name == SELF_SECRET_NAME {
             continue;
         }
