@@ -486,23 +486,7 @@ export default function ClustersPage() {
                   const isLocal = c.in_cluster === true
                   return (
                     <tr key={c.name}>
-                      <td>
-                        {c.name}
-                        {isLocal && (
-                          <span style={{
-                            marginLeft: 8,
-                            fontSize: 10,
-                            fontWeight: 600,
-                            padding: '2px 6px',
-                            borderRadius: 4,
-                            background: 'var(--bg-tertiary)',
-                            color: 'var(--accent)',
-                            verticalAlign: 'middle',
-                          }}>
-                            LOCAL
-                          </span>
-                        )}
-                      </td>
+                      <td>{c.name}</td>
                       <td className={styles.mono}>{c.server}</td>
                       <td>{c.insecure ? 'insecure' : 'verified'}</td>
                       <td className={styles.mono}>
