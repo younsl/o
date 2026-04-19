@@ -19,7 +19,7 @@ use anyhow::{Context, Result};
 use k8s_openapi::api::core::v1::Secret;
 use kube::{
     Api, Client,
-    api::{ObjectMeta, Patch, PatchParams},
+    api::{DeleteParams, ListParams, ObjectMeta, Patch, PatchParams},
 };
 use std::collections::BTreeMap;
 use tracing::{info, warn};
@@ -27,6 +27,12 @@ use tracing::{info, warn};
 use super::types::{IN_CLUSTER_LABEL, IN_CLUSTER_SERVER, SECRET_TYPE_LABEL, SECRET_TYPE_VALUE};
 
 const SELF_FIELD_MANAGER: &str = "trivy-collector-self-register";
+
+/// Fixed Secret name for the Hub's own cluster entry. Using a fixed name
+/// (rather than embedding `cluster_name`) means rotating `clusterName` in
+/// Helm values updates the `stringData.name` field in place without leaving
+/// orphaned Secrets behind.
+const SELF_SECRET_NAME: &str = "cluster-in-cluster-kubernetes.default.svc";
 
 /// Ensure a Secret representing the Hub's own cluster exists in `hub_ns`.
 ///
@@ -43,7 +49,12 @@ pub async fn ensure_local_cluster_secret(
         .context("self-register: failed to build in-cluster client")?;
     let api: Api<Secret> = Api::namespaced(client, hub_ns);
 
-    let secret_name = format!("cluster-{}-kubernetes.default.svc", cluster_name);
+    // Clean up any stale self-secrets left behind by older scraper versions
+    // that embedded the cluster name in the Secret name. Anything else
+    // carrying the in-cluster label is considered obsolete.
+    cleanup_stale_self_secrets(&api).await;
+
+    let secret_name = SELF_SECRET_NAME.to_string();
 
     let mut labels = BTreeMap::new();
     labels.insert(SECRET_TYPE_LABEL.to_string(), SECRET_TYPE_VALUE.to_string());
@@ -110,4 +121,37 @@ pub fn is_in_cluster(secret: &Secret) -> bool {
         .and_then(|m| m.get(IN_CLUSTER_LABEL))
         .map(|v| v == "true")
         .unwrap_or(false)
+}
+
+/// Delete any in-cluster labelled Secret whose name differs from the fixed
+/// `SELF_SECRET_NAME`. Such Secrets are leftovers from earlier scraper
+/// versions that embedded `cluster_name` in the Secret name, so rotating
+/// `clusterName` in Helm values produced duplicate rows in the UI.
+async fn cleanup_stale_self_secrets(api: &Api<Secret>) {
+    let lp = ListParams::default().labels(&format!("{}=true", IN_CLUSTER_LABEL));
+    let list = match api.list(&lp).await {
+        Ok(l) => l,
+        Err(e) => {
+            warn!(error = %e, "self-register: failed to list existing in-cluster secrets");
+            return;
+        }
+    };
+    for s in list.items {
+        let Some(name) = s.metadata.name else { continue };
+        if name == SELF_SECRET_NAME {
+            continue;
+        }
+        match api.delete(&name, &DeleteParams::default()).await {
+            Ok(_) => info!(
+                stale_secret = %name,
+                current = %SELF_SECRET_NAME,
+                "self-register: removed stale self-secret from earlier version"
+            ),
+            Err(e) => warn!(
+                stale_secret = %name,
+                error = %e,
+                "self-register: failed to remove stale self-secret"
+            ),
+        }
+    }
 }
