@@ -17,6 +17,8 @@ pub struct Instance {
     pub instance_id: String,
     #[tabled(rename = "TYPE")]
     pub instance_type: String,
+    #[tabled(rename = "STATE")]
+    pub state: String,
     #[tabled(rename = "AZ")]
     pub az: String,
     #[tabled(rename = "PRIVATE IP")]
@@ -50,10 +52,11 @@ impl Instance {
     /// Format instance as a row for selection list.
     pub fn to_row(&self, widths: &ColumnWidths) -> String {
         format!(
-            "{:<w0$}  {:<w1$}  {:<w2$}  {:<w3$}  {:<w4$}  {:<w5$}  {:<w6$}",
+            "{:<w0$}  {:<w1$}  {:<w2$}  {:<w3$}  {:<w4$}  {:<w5$}  {:<w6$}  {:<w7$}",
             self.name,
             self.instance_id,
             self.instance_type,
+            self.state,
             self.az,
             self.private_ip,
             self.platform,
@@ -61,10 +64,11 @@ impl Instance {
             w0 = widths.name,
             w1 = widths.instance_id,
             w2 = widths.instance_type,
-            w3 = widths.az,
-            w4 = widths.private_ip,
-            w5 = widths.platform,
-            w6 = widths.age,
+            w3 = widths.state,
+            w4 = widths.az,
+            w5 = widths.private_ip,
+            w6 = widths.platform,
+            w7 = widths.age,
         )
     }
 }
@@ -75,6 +79,7 @@ pub struct ColumnWidths {
     pub name: usize,
     pub instance_id: usize,
     pub instance_type: usize,
+    pub state: usize,
     pub az: usize,
     pub private_ip: usize,
     pub platform: usize,
@@ -89,6 +94,7 @@ impl ColumnWidths {
                 name: 4,
                 instance_id: 11,
                 instance_type: 4,
+                state: 5,
                 az: 2,
                 private_ip: 10,
                 platform: 5,
@@ -98,6 +104,7 @@ impl ColumnWidths {
                 w.name = w.name.max(i.name.len());
                 w.instance_id = w.instance_id.max(i.instance_id.len());
                 w.instance_type = w.instance_type.max(i.instance_type.len());
+                w.state = w.state.max(i.state.len());
                 w.az = w.az.max(i.az.len());
                 w.private_ip = w.private_ip.max(i.private_ip.len());
                 w.platform = w.platform.max(i.platform.len());
@@ -110,10 +117,11 @@ impl ColumnWidths {
     /// Format header row.
     pub fn header(&self) -> String {
         format!(
-            "{:<w0$}  {:<w1$}  {:<w2$}  {:<w3$}  {:<w4$}  {:<w5$}  {:<w6$}",
+            "{:<w0$}  {:<w1$}  {:<w2$}  {:<w3$}  {:<w4$}  {:<w5$}  {:<w6$}  {:<w7$}",
             "NAME",
             "INSTANCE ID",
             "TYPE",
+            "STATE",
             "AZ",
             "PRIVATE IP",
             "OS",
@@ -121,10 +129,11 @@ impl ColumnWidths {
             w0 = self.name,
             w1 = self.instance_id,
             w2 = self.instance_type,
-            w3 = self.az,
-            w4 = self.private_ip,
-            w5 = self.platform,
-            w6 = self.age,
+            w3 = self.state,
+            w4 = self.az,
+            w5 = self.private_ip,
+            w6 = self.platform,
+            w7 = self.age,
         )
     }
 }
@@ -262,6 +271,12 @@ async fn fetch_region_instances_with_config(
                 .map(|t| t.as_str())
                 .unwrap_or("N/A")
                 .to_string(),
+            state: i
+                .state()
+                .and_then(|s| s.name())
+                .map(|n| n.as_str())
+                .unwrap_or("unknown")
+                .to_string(),
             az: i
                 .placement()
                 .and_then(|p| p.availability_zone())
@@ -288,6 +303,66 @@ async fn fetch_region_instances_with_config(
         .collect();
 
     Ok(instances)
+}
+
+/// Start an EC2 instance. Returns the current state reported by the API.
+pub async fn start_instance(
+    base_config: &aws_config::SdkConfig,
+    region: &str,
+    instance_id: &str,
+) -> Result<String> {
+    let region_config = aws_sdk_ec2::config::Builder::from(base_config)
+        .region(aws_config::Region::new(region.to_string()))
+        .build();
+    let client = aws_sdk_ec2::Client::from_conf(region_config);
+
+    let resp = client
+        .start_instances()
+        .instance_ids(instance_id)
+        .send()
+        .await
+        .map_err(|e| Error::Aws(e.to_string()))?;
+
+    let state = resp
+        .starting_instances()
+        .iter()
+        .find(|s| s.instance_id() == Some(instance_id))
+        .and_then(|s| s.current_state())
+        .and_then(|s| s.name())
+        .map(|n| n.as_str().to_string())
+        .unwrap_or_else(|| "pending".to_string());
+
+    Ok(state)
+}
+
+/// Stop an EC2 instance. Returns the current state reported by the API.
+pub async fn stop_instance(
+    base_config: &aws_config::SdkConfig,
+    region: &str,
+    instance_id: &str,
+) -> Result<String> {
+    let region_config = aws_sdk_ec2::config::Builder::from(base_config)
+        .region(aws_config::Region::new(region.to_string()))
+        .build();
+    let client = aws_sdk_ec2::Client::from_conf(region_config);
+
+    let resp = client
+        .stop_instances()
+        .instance_ids(instance_id)
+        .send()
+        .await
+        .map_err(|e| Error::Aws(e.to_string()))?;
+
+    let state = resp
+        .stopping_instances()
+        .iter()
+        .find(|s| s.instance_id() == Some(instance_id))
+        .and_then(|s| s.current_state())
+        .and_then(|s| s.name())
+        .map(|n| n.as_str().to_string())
+        .unwrap_or_else(|| "stopping".to_string());
+
+    Ok(state)
 }
 
 fn build_filters(tag_filters: &[String], running_only: bool) -> Vec<Filter> {
@@ -435,10 +510,11 @@ mod tests {
             name: "very-long-instance-name".into(),    // 23 chars > 4
             instance_id: "i-01234567890abcdef".into(), // 19 chars > 11
             instance_type: "m5.24xlarge".into(),       // 11 chars > 4
-            az: "ap-southeast-3a".into(),              // 15 chars > 2
-            private_ip: "192.168.100.200".into(),      // 15 chars > 10
-            age: "365d".into(),                        // 4 chars > 3
-            platform: "Windows".into(),                // 7 chars > 5
+            state: "running".into(),
+            az: "ap-southeast-3a".into(),         // 15 chars > 2
+            private_ip: "192.168.100.200".into(), // 15 chars > 10
+            age: "365d".into(),                   // 4 chars > 3
+            platform: "Windows".into(),           // 7 chars > 5
         }];
         let widths = ColumnWidths::from_instances(&instances);
         assert_eq!(widths.name, 23);
@@ -469,6 +545,7 @@ mod tests {
             name: "web-1".into(),
             instance_id: "i-abc123".into(),
             instance_type: "t3.micro".into(),
+            state: "running".into(),
             az: "us-east-1a".into(),
             private_ip: "10.0.0.1".into(),
             platform: "Linux".into(),
@@ -492,6 +569,7 @@ mod tests {
             name: "test".into(),
             instance_id: "i-test".into(),
             instance_type: "t3.micro".into(),
+            state: "running".into(),
             az: "ap-northeast-2a".into(),
             private_ip: "10.0.0.1".into(),
             platform: "Linux".into(),
@@ -506,6 +584,7 @@ mod tests {
             name: "test".into(),
             instance_id: "i-test".into(),
             instance_type: "t3.micro".into(),
+            state: "running".into(),
             az: "us-east-1f".into(),
             private_ip: "10.0.0.1".into(),
             platform: "Linux".into(),
@@ -609,6 +688,7 @@ mod tests {
                 name: "short".into(),
                 instance_id: "i-abc".into(),
                 instance_type: "t3.micro".into(),
+                state: "running".into(),
                 az: "us-east-1a".into(),
                 private_ip: "10.0.0.1".into(),
                 age: "3d".into(),
@@ -618,6 +698,7 @@ mod tests {
                 name: "very-long-instance-name".into(),
                 instance_id: "i-01234567890abcdef".into(),
                 instance_type: "m5.24xlarge".into(),
+                state: "stopped".into(),
                 az: "ap-southeast-3a".into(),
                 private_ip: "192.168.100.200".into(),
                 age: "120d".into(),

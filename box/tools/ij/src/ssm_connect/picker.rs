@@ -2,15 +2,17 @@
 
 use nucleo::{Config as NucleoConfig, Matcher, Utf32Str};
 use ratatui::{
-    Frame,
     layout::{Constraint, Direction, Layout, Rect},
     style::{Color, Modifier, Style},
     text::{Line, Span},
-    widgets::{List, ListItem, ListState, Paragraph},
+    widgets::{Block, Borders, Clear, List, ListItem, ListState, Paragraph},
+    Frame,
 };
 
 use crate::config::Config;
-use crate::ec2::ColumnWidths;
+use crate::ec2::{ColumnWidths, Instance};
+
+use super::Overlay;
 
 /// Fuzzy picker state.
 pub(crate) struct PickerState {
@@ -110,6 +112,7 @@ pub(crate) fn update_filter(items: &[String], state: &mut PickerState, matcher: 
 }
 
 /// Draw the instance picker into the given area.
+#[allow(clippy::too_many_arguments)]
 pub(crate) fn draw_picker(
     frame: &mut Frame,
     area: Rect,
@@ -117,6 +120,9 @@ pub(crate) fn draw_picker(
     widths: &ColumnWidths,
     config: &Config,
     state: &PickerState,
+    instances: &[Instance],
+    overlay: Option<&Overlay>,
+    status: Option<&str>,
 ) {
     let chunks = Layout::default()
         .direction(Direction::Vertical)
@@ -124,6 +130,7 @@ pub(crate) fn draw_picker(
             Constraint::Length(1), // Search line
             Constraint::Length(1), // Header
             Constraint::Min(1),    // List
+            Constraint::Length(1), // Hint / status
         ])
         .split(area);
 
@@ -191,6 +198,139 @@ pub(crate) fn draw_picker(
     list_state.select(Some(state.selected));
 
     frame.render_stateful_widget(list, chunks[2], &mut list_state);
+
+    // Hint / status line
+    let hint_line = if let Some(msg) = status {
+        Line::from(Span::styled(
+            format!(" {msg}"),
+            Style::default().fg(Color::Yellow),
+        ))
+    } else {
+        Line::from(vec![
+            Span::styled(" ↑↓ ", Style::default().fg(Color::DarkGray)),
+            Span::styled("Move  ", Style::default().fg(Color::White)),
+            Span::styled("Enter ", Style::default().fg(Color::DarkGray)),
+            Span::styled("Connect  ", Style::default().fg(Color::White)),
+            Span::styled("Ctrl+S ", Style::default().fg(Color::DarkGray)),
+            Span::styled("Stop  ", Style::default().fg(Color::White)),
+            Span::styled("Ctrl+B ", Style::default().fg(Color::DarkGray)),
+            Span::styled("Start  ", Style::default().fg(Color::White)),
+            Span::styled("Esc ", Style::default().fg(Color::DarkGray)),
+            Span::styled("Quit", Style::default().fg(Color::White)),
+        ])
+    };
+    frame.render_widget(Paragraph::new(hint_line), chunks[3]);
+
+    // Overlay (confirmation modal or in-progress message)
+    if let Some(ov) = overlay {
+        draw_overlay(frame, area, ov, instances);
+    }
+}
+
+/// Render a centered modal for overlay state.
+fn draw_overlay(frame: &mut Frame, area: Rect, overlay: &Overlay, instances: &[Instance]) {
+    let (title, body, accent) = match overlay {
+        Overlay::ConfirmStop { index } => {
+            let inst = &instances[*index];
+            (
+                " Stop instance ",
+                vec![
+                    Line::from(vec![
+                        Span::styled("Name: ", Style::default().fg(Color::DarkGray)),
+                        Span::styled(&inst.name, Style::default().fg(Color::Cyan)),
+                    ]),
+                    Line::from(vec![
+                        Span::styled("ID:   ", Style::default().fg(Color::DarkGray)),
+                        Span::styled(&inst.instance_id, Style::default().fg(Color::White)),
+                    ]),
+                    Line::from(vec![
+                        Span::styled("AZ:   ", Style::default().fg(Color::DarkGray)),
+                        Span::styled(&inst.az, Style::default().fg(Color::White)),
+                    ]),
+                    Line::from(""),
+                    Line::from(vec![
+                        Span::styled("Stop this instance? ", Style::default().fg(Color::White)),
+                        Span::styled(
+                            "[y/N]",
+                            Style::default()
+                                .fg(Color::Yellow)
+                                .add_modifier(Modifier::BOLD),
+                        ),
+                    ]),
+                ],
+                Color::Red,
+            )
+        }
+        Overlay::ConfirmStart { index } => {
+            let inst = &instances[*index];
+            (
+                " Start instance ",
+                vec![
+                    Line::from(vec![
+                        Span::styled("Name: ", Style::default().fg(Color::DarkGray)),
+                        Span::styled(&inst.name, Style::default().fg(Color::Cyan)),
+                    ]),
+                    Line::from(vec![
+                        Span::styled("ID:   ", Style::default().fg(Color::DarkGray)),
+                        Span::styled(&inst.instance_id, Style::default().fg(Color::White)),
+                    ]),
+                    Line::from(vec![
+                        Span::styled("AZ:   ", Style::default().fg(Color::DarkGray)),
+                        Span::styled(&inst.az, Style::default().fg(Color::White)),
+                    ]),
+                    Line::from(""),
+                    Line::from(vec![
+                        Span::styled("Start this instance? ", Style::default().fg(Color::White)),
+                        Span::styled(
+                            "[y/N]",
+                            Style::default()
+                                .fg(Color::Yellow)
+                                .add_modifier(Modifier::BOLD),
+                        ),
+                    ]),
+                ],
+                Color::Green,
+            )
+        }
+        Overlay::InProgress { message } => (
+            " In progress ",
+            vec![
+                Line::from(""),
+                Line::from(Span::styled(
+                    message.clone(),
+                    Style::default().fg(Color::Yellow),
+                )),
+            ],
+            Color::Yellow,
+        ),
+    };
+
+    let width: u16 = 56;
+    let height: u16 = body.len() as u16 + 2; // border
+    let x = area.x + area.width.saturating_sub(width) / 2;
+    let y = area.y + area.height.saturating_sub(height) / 2;
+    let modal_area = Rect::new(
+        x,
+        y,
+        width.min(area.width),
+        height.min(area.height.saturating_sub(1)),
+    );
+
+    frame.render_widget(Clear, modal_area);
+
+    let block = Block::default()
+        .title(Span::styled(
+            title,
+            Style::default().fg(accent).add_modifier(Modifier::BOLD),
+        ))
+        .borders(Borders::ALL)
+        .border_style(Style::default().fg(accent))
+        .style(Style::default().bg(Color::Black));
+
+    let inner = block.inner(modal_area);
+    frame.render_widget(block, modal_area);
+
+    frame.render_widget(Paragraph::new(body), inner);
 }
 
 /// Create a new nucleo matcher with default config.
@@ -203,8 +343,8 @@ mod tests {
     use super::*;
     use crate::config::Config;
     use crate::ec2::{ColumnWidths, Instance};
-    use ratatui::Terminal;
     use ratatui::backend::TestBackend;
+    use ratatui::Terminal;
 
     // --- PickerState initialization ---
 
@@ -373,6 +513,7 @@ mod tests {
                 name: "web-server".into(),
                 instance_id: "i-abc123".into(),
                 instance_type: "t3.micro".into(),
+                state: "running".into(),
                 az: "us-east-1a".into(),
                 private_ip: "10.0.0.1".into(),
                 platform: "Linux".into(),
@@ -382,6 +523,7 @@ mod tests {
                 name: "db-server".into(),
                 instance_id: "i-def456".into(),
                 instance_type: "m5.large".into(),
+                state: "running".into(),
                 az: "us-west-2b".into(),
                 private_ip: "10.0.1.1".into(),
                 platform: "Linux".into(),
@@ -391,6 +533,7 @@ mod tests {
                 name: "cache-node".into(),
                 instance_id: "i-ghi789".into(),
                 instance_type: "r6g.medium".into(),
+                state: "stopped".into(),
                 az: "ap-northeast-2a".into(),
                 private_ip: "10.0.2.1".into(),
                 platform: "Linux".into(),
@@ -494,7 +637,19 @@ mod tests {
         let backend = TestBackend::new(120, 20);
         let mut terminal = Terminal::new(backend).unwrap();
         terminal
-            .draw(|frame| draw_picker(frame, frame.area(), &items, &widths, &config, &state))
+            .draw(|frame| {
+                draw_picker(
+                    frame,
+                    frame.area(),
+                    &items,
+                    &widths,
+                    &config,
+                    &state,
+                    &instances,
+                    None,
+                    None,
+                )
+            })
             .unwrap();
     }
 
@@ -512,7 +667,19 @@ mod tests {
         let backend = TestBackend::new(120, 20);
         let mut terminal = Terminal::new(backend).unwrap();
         terminal
-            .draw(|frame| draw_picker(frame, frame.area(), &items, &widths, &config, &state))
+            .draw(|frame| {
+                draw_picker(
+                    frame,
+                    frame.area(),
+                    &items,
+                    &widths,
+                    &config,
+                    &state,
+                    &instances,
+                    None,
+                    None,
+                )
+            })
             .unwrap();
     }
 
@@ -527,7 +694,19 @@ mod tests {
         let backend = TestBackend::new(120, 20);
         let mut terminal = Terminal::new(backend).unwrap();
         terminal
-            .draw(|frame| draw_picker(frame, frame.area(), &items, &widths, &config, &state))
+            .draw(|frame| {
+                draw_picker(
+                    frame,
+                    frame.area(),
+                    &items,
+                    &widths,
+                    &config,
+                    &state,
+                    &instances,
+                    None,
+                    None,
+                )
+            })
             .unwrap();
     }
 
@@ -551,7 +730,19 @@ mod tests {
         let backend = TestBackend::new(120, 20);
         let mut terminal = Terminal::new(backend).unwrap();
         terminal
-            .draw(|frame| draw_picker(frame, frame.area(), &items, &widths, &config, &state))
+            .draw(|frame| {
+                draw_picker(
+                    frame,
+                    frame.area(),
+                    &items,
+                    &widths,
+                    &config,
+                    &state,
+                    &instances,
+                    None,
+                    None,
+                )
+            })
             .unwrap();
     }
 
@@ -566,7 +757,19 @@ mod tests {
         let backend = TestBackend::new(120, 20);
         let mut terminal = Terminal::new(backend).unwrap();
         terminal
-            .draw(|frame| draw_picker(frame, frame.area(), &items, &widths, &config, &state))
+            .draw(|frame| {
+                draw_picker(
+                    frame,
+                    frame.area(),
+                    &items,
+                    &widths,
+                    &config,
+                    &state,
+                    &instances,
+                    None,
+                    None,
+                )
+            })
             .unwrap();
     }
 
@@ -581,7 +784,19 @@ mod tests {
         let backend = TestBackend::new(120, 20);
         let mut terminal = Terminal::new(backend).unwrap();
         terminal
-            .draw(|frame| draw_picker(frame, frame.area(), &items, &widths, &config, &state))
+            .draw(|frame| {
+                draw_picker(
+                    frame,
+                    frame.area(),
+                    &items,
+                    &widths,
+                    &config,
+                    &state,
+                    &instances,
+                    None,
+                    None,
+                )
+            })
             .unwrap();
     }
 
@@ -591,6 +806,7 @@ mod tests {
             name: "solo".into(),
             instance_id: "i-solo".into(),
             instance_type: "t3.nano".into(),
+            state: "running".into(),
             az: "us-east-1a".into(),
             private_ip: "10.0.0.1".into(),
             platform: "Linux".into(),
@@ -603,7 +819,19 @@ mod tests {
         let backend = TestBackend::new(120, 20);
         let mut terminal = Terminal::new(backend).unwrap();
         terminal
-            .draw(|frame| draw_picker(frame, frame.area(), &items, &widths, &config, &state))
+            .draw(|frame| {
+                draw_picker(
+                    frame,
+                    frame.area(),
+                    &items,
+                    &widths,
+                    &config,
+                    &state,
+                    &instances,
+                    None,
+                    None,
+                )
+            })
             .unwrap();
     }
 
@@ -618,7 +846,19 @@ mod tests {
         let backend = TestBackend::new(120, 20);
         let mut terminal = Terminal::new(backend).unwrap();
         terminal
-            .draw(|frame| draw_picker(frame, frame.area(), &items, &widths, &config, &state))
+            .draw(|frame| {
+                draw_picker(
+                    frame,
+                    frame.area(),
+                    &items,
+                    &widths,
+                    &config,
+                    &state,
+                    &instances,
+                    None,
+                    None,
+                )
+            })
             .unwrap();
     }
 }

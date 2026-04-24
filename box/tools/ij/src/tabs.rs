@@ -24,9 +24,27 @@ use crate::asg_scaling;
 use crate::asg_scaling::Msg as AsgMsg;
 use crate::asg_scaling::app::{App as AsgApp, AppAction as AsgAction, AppMode as AsgMode};
 use crate::config::Config;
-use crate::ec2::{Instance, Scanner};
+use crate::ec2::{Instance, Scanner, start_instance, stop_instance};
 use crate::error::{Error, Result};
 use crate::ssm_connect::{Ec2Action, Ec2Phase};
+
+/// Result of a stop/start operation on an EC2 instance.
+enum Ec2StateMsg {
+    Stopped {
+        instance_id: String,
+        name: String,
+        state: String,
+    },
+    Started {
+        instance_id: String,
+        name: String,
+        state: String,
+    },
+    Error {
+        name: String,
+        error: String,
+    },
+}
 
 const TAB_LABELS: &[&str] = &["EC2 Connect", "AMI Cleanup", "ASG Scaling"];
 const TAB_DESCS: &[&str] = &[
@@ -155,6 +173,9 @@ pub(crate) async fn run_tabbed(config: Config) -> Result<TabResult> {
     // ASG channels
     let (asg_tx, mut asg_rx) = mpsc::unbounded_channel::<AsgMsg>();
 
+    // EC2 stop/start state change channel
+    let (ec2_state_tx, mut ec2_state_rx) = mpsc::unbounded_channel::<Ec2StateMsg>();
+
     let mut reader = EventStream::new();
     let mut tick = tokio::time::interval(Duration::from_millis(100));
 
@@ -227,6 +248,22 @@ pub(crate) async fn run_tabbed(config: Config) -> Result<TabResult> {
                                     Ec2Action::Select(instance) => {
                                         break TabResult::Connect(instance);
                                     }
+                                    Ec2Action::Stop(instance) => {
+                                        spawn_state_change(
+                                            &app.config,
+                                            instance,
+                                            false,
+                                            ec2_state_tx.clone(),
+                                        );
+                                    }
+                                    Ec2Action::Start(instance) => {
+                                        spawn_state_change(
+                                            &app.config,
+                                            instance,
+                                            true,
+                                            ec2_state_tx.clone(),
+                                        );
+                                    }
                                     Ec2Action::Quit => break TabResult::Quit,
                                     Ec2Action::None => {}
                                 }
@@ -297,6 +334,24 @@ pub(crate) async fn run_tabbed(config: Config) -> Result<TabResult> {
                 }
                 // Disable this branch — EC2 scan is one-shot
                 ec2_rx = None;
+            }
+
+            // EC2 stop/start result
+            msg = ec2_state_rx.recv() => {
+                match msg {
+                    Some(Ec2StateMsg::Stopped { instance_id, name, state }) => {
+                        app.ec2.update_instance_state(&instance_id, &state);
+                        app.ec2.set_status(format!("Stopped {name} → {state}"));
+                    }
+                    Some(Ec2StateMsg::Started { instance_id, name, state }) => {
+                        app.ec2.update_instance_state(&instance_id, &state);
+                        app.ec2.set_status(format!("Started {name} → {state}"));
+                    }
+                    Some(Ec2StateMsg::Error { name, error }) => {
+                        app.ec2.set_status(format!("Failed {name}: {error}"));
+                    }
+                    None => {}
+                }
             }
 
             // ASG messages
@@ -498,4 +553,60 @@ fn draw_dropdown(frame: &mut Frame, bar_area: Rect, cursor: usize, _active: Acti
     }
 
     frame.render_widget(Paragraph::new(lines), inner);
+}
+
+/// Spawn a background task to start or stop an EC2 instance and deliver the
+/// resulting state (or error) via `tx`.
+fn spawn_state_change(
+    config: &Config,
+    instance: Instance,
+    start: bool,
+    tx: mpsc::UnboundedSender<Ec2StateMsg>,
+) {
+    let profile = config.profile.clone();
+    let aws_config_file = config.aws_config_file.clone();
+
+    tokio::spawn(async move {
+        use aws_config::BehaviorVersion;
+
+        let mut loader = aws_config::defaults(BehaviorVersion::latest());
+        if let Some(ref p) = profile {
+            loader = loader.profile_name(p);
+        }
+        #[allow(deprecated)]
+        if let Some(ref path) = aws_config_file {
+            use aws_config::profile::profile_file::{ProfileFileKind, ProfileFiles};
+            let profile_files = ProfileFiles::builder()
+                .with_file(ProfileFileKind::Config, path)
+                .include_default_credentials_file(true)
+                .build();
+            loader = loader.profile_files(profile_files);
+        }
+        let base_config = loader.load().await;
+
+        let region = instance.region().to_string();
+        let result = if start {
+            start_instance(&base_config, &region, &instance.instance_id).await
+        } else {
+            stop_instance(&base_config, &region, &instance.instance_id).await
+        };
+
+        let msg = match result {
+            Ok(state) if start => Ec2StateMsg::Started {
+                instance_id: instance.instance_id.clone(),
+                name: instance.name.clone(),
+                state,
+            },
+            Ok(state) => Ec2StateMsg::Stopped {
+                instance_id: instance.instance_id.clone(),
+                name: instance.name.clone(),
+                state,
+            },
+            Err(e) => Ec2StateMsg::Error {
+                name: instance.name.clone(),
+                error: e.to_string(),
+            },
+        };
+        let _ = tx.send(msg);
+    });
 }
