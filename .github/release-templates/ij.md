@@ -8,7 +8,8 @@ Inspired by [gossm](https://github.com/gjbae1212/gossm).
 
 - Multi-region parallel scanning (22 AWS regions)
 - Fuzzy search with real-time filtering
-- Interactive instance selection
+- Interactive instance selection with STATE column
+- Start/stop EC2 instances from the picker with confirmation modal (`Ctrl+S` / `Ctrl+B`)
 - SSH-style escape sequences (`Enter ~ .` to disconnect)
 - SSM port forwarding (`-L` flag, SSH-style syntax)
 

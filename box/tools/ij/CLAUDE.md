@@ -8,7 +8,8 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 **Key features:**
 - Multi-region parallel scanning (22 AWS regions)
-- Interactive instance selection with arrow keys
+- Interactive instance selection with arrow keys and STATE column
+- Start/stop EC2 instances from the picker with confirmation modal (`Ctrl+S` / `Ctrl+B`)
 - Tag-based filtering (`-t Key=Value`)
 - SSH-style escape sequences (`Enter ~ .` to disconnect)
 - PTY-based session management with proper signal handling
@@ -100,6 +101,15 @@ Escape sequences (SSH-style):
       "Effect": "Allow",
       "Action": "ec2:DescribeInstances",
       "Resource": "*"
+    },
+    {
+      "Sid": "AllowStartStopInstances",
+      "Effect": "Allow",
+      "Action": [
+        "ec2:StartInstances",
+        "ec2:StopInstances"
+      ],
+      "Resource": "arn:aws:ec2:*:123456789012:instance/*"
     },
     {
       "Sid": "AllowSSMStartSession",

@@ -10,7 +10,8 @@
 
 - Multi-region parallel scanning (22 AWS regions)
 - Fuzzy search with real-time filtering
-- Interactive instance selection
+- Interactive instance selection with state column
+- Start/stop EC2 instances from the picker with confirmation modal
 - SSH-style escape sequences
 - SSM port forwarding (`-L` flag, SSH-style syntax)
 - File-based config with `ij init` wizard
@@ -89,9 +90,13 @@ Navigate and filter instances interactively.
 | `Page Up/Down` | Page up/down (10 items) |
 | `Home/End` | Jump to first/last |
 | `Enter` | Connect to selected instance |
+| `Ctrl+s` | Stop selected instance (confirm with `y`) |
+| `Ctrl+b` | Start (boot) selected instance (confirm with `y`) |
 | `Esc` / `Ctrl+c` | Cancel |
 | `Backspace` | Delete search character |
 | `Ctrl+u` | Clear search query |
+
+When the confirmation modal is open, press `y` / `Enter` to proceed or `n` / `Esc` to cancel.
 
 ## Options
 
@@ -135,6 +140,8 @@ IAM permissions needed for ij to work.
 
 **User/Role:**
 - `ec2:DescribeInstances`
+- `ec2:StartInstances` (for start from picker)
+- `ec2:StopInstances` (for stop from picker)
 - `ssm:StartSession`
 
 **EC2 Instance:** `AmazonSSMManagedInstanceCore` policy attached.
@@ -151,6 +158,15 @@ IAM permissions needed for ij to work.
       "Effect": "Allow",
       "Action": "ec2:DescribeInstances",
       "Resource": "*"
+    },
+    {
+      "Sid": "AllowStartStopInstances",
+      "Effect": "Allow",
+      "Action": [
+        "ec2:StartInstances",
+        "ec2:StopInstances"
+      ],
+      "Resource": "arn:aws:ec2:*:123456789012:instance/*"
     },
     {
       "Sid": "AllowSSMStartSession",

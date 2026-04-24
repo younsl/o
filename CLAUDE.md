@@ -218,11 +218,12 @@ make install    # Install to ~/.cargo/bin/
 
 **Features**:
 - Multi-region parallel scanning (22 AWS regions)
-- Interactive instance selection with fuzzy search
+- Interactive instance selection with fuzzy search and STATE column
+- Start/stop EC2 instances from the picker with confirmation modal (`Ctrl+S` stop, `Ctrl+B` start)
 - Tag-based filtering (`-t Key=Value`)
 - SSH-style escape sequences (`Enter ~ .` to disconnect stuck sessions)
 
-**AWS Permissions Required**: `ec2:DescribeInstances`, `ssm:StartSession` (EC2 instances need `AmazonSSMManagedInstanceCore` policy)
+**AWS Permissions Required**: `ec2:DescribeInstances`, `ec2:StartInstances`, `ec2:StopInstances`, `ssm:StartSession` (EC2 instances need `AmazonSSMManagedInstanceCore` policy)
 
 ### kuo - Kubernetes Upgrade Operator (Rust)
 
