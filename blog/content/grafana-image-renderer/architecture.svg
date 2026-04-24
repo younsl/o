@@ -1,0 +1,78 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 900 560" font-family="system-ui, -apple-system, Segoe UI, Roboto, sans-serif">
+  <rect width="900" height="560" fill="#000000"/>
+
+  <defs>
+    <marker id="arrow-white" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse">
+      <path d="M 0 0 L 10 5 L 0 10 z" fill="#FFFFFF"/>
+    </marker>
+  </defs>
+
+  <!-- Kubernetes Cluster boundary -->
+  <rect x="40" y="60" width="580" height="460" rx="8" ry="8" fill="none" stroke="#FFFFFF" stroke-width="2" stroke-dasharray="6 4"/>
+  <text x="60" y="85" fill="#FFFFFF" font-size="14" font-weight="600">Kubernetes Cluster (air-gapped)</text>
+
+  <!-- Image Renderer Pod (top-center inside K8s) -->
+  <rect x="265" y="110" width="180" height="70" rx="6" ry="6" fill="#1E1E1E" stroke="#FFFFFF" stroke-width="2"/>
+  <text x="355" y="138" fill="#D7A5E5" font-size="13" font-weight="600" text-anchor="middle">Image Renderer Pod</text>
+  <text x="355" y="158" fill="#D7A5E5" font-size="10" text-anchor="middle">(headless Chromium)</text>
+
+  <!-- Alert Rule (left) -->
+  <rect x="80" y="280" width="140" height="70" rx="6" ry="6" fill="#1E1E1E" stroke="#FFFFFF" stroke-width="2"/>
+  <text x="150" y="310" fill="#F4B483" font-size="13" font-weight="600" text-anchor="middle">Alert Rule</text>
+  <text x="150" y="330" fill="#F4B483" font-size="11" text-anchor="middle">(fires)</text>
+
+  <!-- Grafana Pod (center) -->
+  <rect x="265" y="230" width="180" height="120" rx="6" ry="6" fill="#2B1810" stroke="#FFFFFF" stroke-width="2"/>
+  <text x="355" y="270" fill="#F4B483" font-size="13" font-weight="600" text-anchor="middle">Grafana Pod</text>
+  <text x="355" y="295" fill="#F4B483" font-size="11" text-anchor="middle">(alerting +</text>
+  <text x="355" y="312" fill="#F4B483" font-size="11" text-anchor="middle">orchestrator)</text>
+
+  <!-- ConfigMap/Secret (below Grafana) -->
+  <rect x="265" y="400" width="180" height="80" rx="6" ry="6" fill="#1E1E1E" stroke="#FFFFFF" stroke-width="1.5"/>
+  <text x="355" y="427" fill="#7FD09F" font-size="11" font-weight="600" text-anchor="middle">ConfigMap / Secret</text>
+  <text x="355" y="447" fill="#7FD09F" font-size="10" text-anchor="middle">templates.yaml</text>
+  <text x="355" y="463" fill="#7FD09F" font-size="10" text-anchor="middle">contactpoints.yaml</text>
+
+  <!-- Slack Web API (right, outside K8s) -->
+  <rect x="680" y="230" width="200" height="120" rx="6" ry="6" fill="#2A0F3A" stroke="#FFFFFF" stroke-width="2"/>
+  <text x="780" y="258" fill="#F4D79E" font-size="13" font-weight="600" text-anchor="middle">Slack Web API</text>
+  <text x="780" y="283" fill="#F4D79E" font-size="10" text-anchor="middle">files.getUploadURLExternal</text>
+  <text x="780" y="300" fill="#F4D79E" font-size="10" text-anchor="middle">files.completeUploadExternal</text>
+  <text x="780" y="322" fill="#F4D79E" font-size="10" text-anchor="middle">chat.postMessage</text>
+
+  <!-- Slack channel (right bottom, outside K8s) -->
+  <rect x="710" y="400" width="140" height="50" rx="6" ry="6" fill="#2A0F3A" stroke="#FFFFFF" stroke-width="2"/>
+  <text x="780" y="430" fill="#F4D79E" font-size="13" font-weight="600" text-anchor="middle">#alerts-channel</text>
+
+  <!-- Edges -->
+
+  <!-- Alert Rule -> Grafana -->
+  <line x1="220" y1="315" x2="263" y2="315" stroke="#FFFFFF" stroke-width="2" marker-end="url(#arrow-white)"/>
+  <text x="241" y="308" fill="#F4B483" font-size="10" text-anchor="middle">on fire</text>
+
+  <!-- Grafana -> Image Renderer (up) -->
+  <line x1="335" y1="230" x2="335" y2="182" stroke="#FFFFFF" stroke-width="2" marker-end="url(#arrow-white)"/>
+  <text x="328" y="210" fill="#D7A5E5" font-size="10" text-anchor="end">render?timeout=30</text>
+
+  <!-- Image Renderer -> Grafana (down, dashed) -->
+  <line x1="380" y1="180" x2="380" y2="228" stroke="#FFFFFF" stroke-width="2" stroke-dasharray="4 3" marker-end="url(#arrow-white)"/>
+  <text x="388" y="210" fill="#D7A5E5" font-size="10">load panel</text>
+  <text x="388" y="222" fill="#D7A5E5" font-size="10">(ClusterIP)</text>
+
+  <!-- ConfigMap -> Grafana (up, dashed) -->
+  <line x1="355" y1="400" x2="355" y2="352" stroke="#FFFFFF" stroke-width="1.5" stroke-dasharray="4 3" marker-end="url(#arrow-white)"/>
+  <text x="363" y="377" fill="#7FD09F" font-size="10">provisioning (mounted)</text>
+
+  <!-- Grafana -> Slack API (horizontal, crosses K8s boundary) -->
+  <line x1="445" y1="290" x2="678" y2="290" stroke="#FFFFFF" stroke-width="2" marker-end="url(#arrow-white)"/>
+  <text x="561" y="283" fill="#F4D79E" font-size="10" text-anchor="middle">HTTPS (Bearer xoxb-...)</text>
+
+  <!-- Slack API -> Slack Channel (down) -->
+  <line x1="780" y1="350" x2="780" y2="398" stroke="#FFFFFF" stroke-width="2" marker-end="url(#arrow-white)"/>
+  <text x="790" y="370" fill="#F4D79E" font-size="10">post message</text>
+  <text x="790" y="384" fill="#F4D79E" font-size="10">+ image</text>
+
+  <!-- Annotation: external traffic -->
+  <text x="560" y="240" fill="#888888" font-size="10" font-style="italic" text-anchor="middle">only external traffic</text>
+</svg>

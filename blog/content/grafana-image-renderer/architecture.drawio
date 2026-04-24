@@ -1,0 +1,82 @@
+<mxfile host="app.diagrams.net" modified="2026-04-25T02:00:00.000Z" agent="Claude" version="24.0.0" etag="grafana-image-renderer">
+  <diagram name="Architecture" id="grafana-image-renderer-arch">
+    <mxGraphModel dx="1200" dy="800" grid="0" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="900" pageHeight="560" math="0" shadow="0" background="#000000">
+      <root>
+        <mxCell id="0" />
+        <mxCell id="1" parent="0" />
+        <mxCell id="k8s-boundary" value="Kubernetes Cluster (air-gapped)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=none;strokeColor=#FFFFFF;strokeWidth=2;dashed=1;fontColor=#FFFFFF;fontSize=14;verticalAlign=top;fontStyle=1;align=left;spacingLeft=20;spacingTop=10;" vertex="1" parent="1">
+          <mxGeometry x="40" y="60" width="580" height="460" as="geometry" />
+        </mxCell>
+        <mxCell id="renderer" value="Image Renderer Pod&#10;(headless Chromium)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#1E1E1E;strokeColor=#FFFFFF;strokeWidth=2;fontColor=#D7A5E5;fontSize=12;fontStyle=1;" vertex="1" parent="1">
+          <mxGeometry x="265" y="110" width="180" height="70" as="geometry" />
+        </mxCell>
+        <mxCell id="alert-rule" value="Alert Rule&#10;(fires)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#1E1E1E;strokeColor=#FFFFFF;strokeWidth=2;fontColor=#F4B483;fontSize=12;fontStyle=1;" vertex="1" parent="1">
+          <mxGeometry x="80" y="280" width="140" height="70" as="geometry" />
+        </mxCell>
+        <mxCell id="grafana" value="Grafana Pod&#10;(alerting + orchestrator)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#2B1810;strokeColor=#FFFFFF;strokeWidth=2;fontColor=#F4B483;fontSize=12;fontStyle=1;" vertex="1" parent="1">
+          <mxGeometry x="265" y="230" width="180" height="120" as="geometry" />
+        </mxCell>
+        <mxCell id="configmap" value="ConfigMap / Secret&#10;(templates.yaml,&#10;contactpoints.yaml)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#1E1E1E;strokeColor=#FFFFFF;strokeWidth=1.5;fontColor=#7FD09F;fontSize=11;" vertex="1" parent="1">
+          <mxGeometry x="265" y="400" width="180" height="80" as="geometry" />
+        </mxCell>
+        <mxCell id="slack-api" value="Slack Web API&#10;files.getUploadURLExternal&#10;files.completeUploadExternal&#10;chat.postMessage" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#2A0F3A;strokeColor=#FFFFFF;strokeWidth=2;fontColor=#F4D79E;fontSize=11;fontStyle=1;" vertex="1" parent="1">
+          <mxGeometry x="680" y="230" width="200" height="120" as="geometry" />
+        </mxCell>
+        <mxCell id="slack-channel" value="#alerts-channel" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#2A0F3A;strokeColor=#FFFFFF;strokeWidth=2;fontColor=#F4D79E;fontSize=12;fontStyle=1;" vertex="1" parent="1">
+          <mxGeometry x="710" y="400" width="140" height="50" as="geometry" />
+        </mxCell>
+        <mxCell id="edge-ar-grafana" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;exitX=1;exitY=0.5;exitDx=0;exitDy=0;entryX=0;entryY=0.5;entryDx=0;entryDy=0;strokeColor=#FFFFFF;strokeWidth=2;fontColor=#F4B483;fontSize=11;" edge="1" parent="1" source="alert-rule" target="grafana">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="edge-ar-label" value="on fire" style="edgeLabel;html=1;align=center;verticalAlign=middle;resizable=0;points=[];fontColor=#F4B483;fontSize=10;" vertex="1" connectable="0" parent="edge-ar-grafana">
+          <mxGeometry x="-0.1" relative="1" as="geometry">
+            <mxPoint as="offset" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="edge-grafana-renderer" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;exitX=0.4;exitY=0;exitDx=0;exitDy=0;entryX=0.4;entryY=1;entryDx=0;entryDy=0;strokeColor=#FFFFFF;strokeWidth=2;fontColor=#D7A5E5;fontSize=10;" edge="1" parent="1" source="grafana" target="renderer">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="edge-gr-label" value="render?timeout=30" style="edgeLabel;html=1;align=center;verticalAlign=middle;resizable=0;points=[];fontColor=#D7A5E5;fontSize=10;" vertex="1" connectable="0" parent="edge-grafana-renderer">
+          <mxGeometry x="0" relative="1" as="geometry">
+            <mxPoint as="offset" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="edge-renderer-grafana" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;exitX=0.6;exitY=1;exitDx=0;exitDy=0;entryX=0.6;entryY=0;entryDx=0;entryDy=0;strokeColor=#FFFFFF;strokeWidth=2;dashed=1;fontColor=#D7A5E5;fontSize=10;" edge="1" parent="1" source="renderer" target="grafana">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="edge-rg-label" value="load panel (ClusterIP)" style="edgeLabel;html=1;align=center;verticalAlign=middle;resizable=0;points=[];fontColor=#D7A5E5;fontSize=10;" vertex="1" connectable="0" parent="edge-renderer-grafana">
+          <mxGeometry x="0" relative="1" as="geometry">
+            <mxPoint as="offset" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="edge-cm-grafana" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;exitX=0.5;exitY=0;exitDx=0;exitDy=0;entryX=0.5;entryY=1;entryDx=0;entryDy=0;strokeColor=#FFFFFF;strokeWidth=1.5;dashed=1;fontColor=#7FD09F;fontSize=10;" edge="1" parent="1" source="configmap" target="grafana">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="edge-cm-label" value="provisioning (mounted)" style="edgeLabel;html=1;align=center;verticalAlign=middle;resizable=0;points=[];fontColor=#7FD09F;fontSize=10;" vertex="1" connectable="0" parent="edge-cm-grafana">
+          <mxGeometry x="0" relative="1" as="geometry">
+            <mxPoint as="offset" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="edge-grafana-slack" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;exitX=1;exitY=0.5;exitDx=0;exitDy=0;entryX=0;entryY=0.5;entryDx=0;entryDy=0;strokeColor=#FFFFFF;strokeWidth=2;fontColor=#F4D79E;fontSize=10;" edge="1" parent="1" source="grafana" target="slack-api">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="edge-gs-label" value="HTTPS (Bearer xoxb-...)" style="edgeLabel;html=1;align=center;verticalAlign=middle;resizable=0;points=[];fontColor=#F4D79E;fontSize=10;" vertex="1" connectable="0" parent="edge-grafana-slack">
+          <mxGeometry x="0" relative="1" as="geometry">
+            <mxPoint as="offset" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="edge-slack-channel" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;exitX=0.5;exitY=1;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;strokeColor=#FFFFFF;strokeWidth=2;fontColor=#F4D79E;fontSize=10;" edge="1" parent="1" source="slack-api" target="slack-channel">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="edge-sc-label" value="post message + image" style="edgeLabel;html=1;align=center;verticalAlign=middle;resizable=0;points=[];fontColor=#F4D79E;fontSize=10;" vertex="1" connectable="0" parent="edge-slack-channel">
+          <mxGeometry x="0" relative="1" as="geometry">
+            <mxPoint as="offset" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="boundary-label" value="only external traffic" style="text;html=1;strokeColor=none;fillColor=none;align=center;verticalAlign=middle;whiteSpace=wrap;rounded=0;fontColor=#888888;fontSize=10;fontStyle=2;" vertex="1" parent="1">
+          <mxGeometry x="470" y="220" width="180" height="20" as="geometry" />
+        </mxCell>
+      </root>
+    </mxGraphModel>
+  </diagram>
+</mxfile>
