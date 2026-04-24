@@ -173,11 +173,7 @@ fn digit_width(n: i32) -> usize {
     }
     let abs = n.unsigned_abs();
     let digits = (abs as f64).log10().floor() as usize + 1;
-    if n < 0 {
-        digits + 1
-    } else {
-        digits
-    }
+    if n < 0 { digits + 1 } else { digits }
 }
 
 // ---------------------------------------------------------------------------

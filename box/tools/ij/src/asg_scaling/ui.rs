@@ -544,7 +544,7 @@ fn centered_rect(width: u16, height: u16, area: Rect) -> Rect {
 #[cfg(test)]
 mod tests {
     use super::*;
-    
+
     use crate::asg_scaling::aws::AsgInfo;
     use ratatui::Terminal;
     use ratatui::backend::TestBackend;
