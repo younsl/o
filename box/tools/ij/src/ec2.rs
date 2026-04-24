@@ -551,7 +551,7 @@ mod tests {
             platform: "Linux".into(),
             age: "5d".into(),
         };
-        let widths = ColumnWidths::from_instances(&[instance.clone()]);
+        let widths = ColumnWidths::from_instances(std::slice::from_ref(&instance));
         let row = instance.to_row(&widths);
         assert!(row.contains("web-1"));
         assert!(row.contains("i-abc123"));

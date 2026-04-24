@@ -2,11 +2,11 @@ use std::collections::HashSet;
 
 use super::app::{AmiStatus, App, AppMode, SortField, SortOrder};
 use ratatui::{
-    Frame,
     layout::{Constraint, Layout, Rect},
     style::{Color, Modifier, Style},
     text::{Line, Span},
     widgets::{Block, Borders, Cell, Clear, Paragraph, Row, Table},
+    Frame,
 };
 
 pub fn draw(frame: &mut Frame, app: &mut App, area: Rect) {
@@ -302,7 +302,7 @@ fn draw_table(frame: &mut Frame, app: &mut App, area: Rect) {
                 (i, days_ago)
             })
             .collect();
-        indexed.sort_by(|a, b| b.1.cmp(&a.1));
+        indexed.sort_by_key(|b| std::cmp::Reverse(b.1));
         let count = ((app.rows.len() as f64) * 0.25).ceil() as usize;
         indexed.iter().take(count).map(|(i, _)| *i).collect()
     } else {
@@ -492,8 +492,8 @@ fn truncate(s: &str, max: usize) -> String {
 mod tests {
     use super::*;
     use chrono::{Duration, Utc};
-    use ratatui::Terminal;
     use ratatui::backend::TestBackend;
+    use ratatui::Terminal;
 
     use super::super::ami::OwnedAmi;
     use super::super::app::{AmiRow, ScanSummary};

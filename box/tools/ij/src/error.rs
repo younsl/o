@@ -158,7 +158,7 @@ mod tests {
 
     #[test]
     fn source_returns_some_for_io() {
-        let io_err = std::io::Error::new(std::io::ErrorKind::Other, "inner");
+        let io_err = std::io::Error::other("inner");
         let e = Error::Io(io_err);
         assert!(e.source().is_some());
     }

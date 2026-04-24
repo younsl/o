@@ -2,11 +2,11 @@
 
 use nucleo::{Config as NucleoConfig, Matcher, Utf32Str};
 use ratatui::{
-    Frame,
     layout::{Constraint, Direction, Layout, Rect},
     style::{Color, Modifier, Style},
     text::{Line, Span},
     widgets::{Block, Borders, Clear, List, ListItem, ListState, Paragraph},
+    Frame,
 };
 
 use crate::config::Config;
@@ -102,7 +102,7 @@ pub(crate) fn update_filter(items: &[String], state: &mut PickerState, matcher: 
             }
         }
 
-        results.sort_by(|a, b| b.1.cmp(&a.1));
+        results.sort_by_key(|b| std::cmp::Reverse(b.1));
         state.filtered_indices = results;
     }
 
@@ -343,8 +343,8 @@ mod tests {
     use super::*;
     use crate::config::Config;
     use crate::ec2::{ColumnWidths, Instance};
-    use ratatui::Terminal;
     use ratatui::backend::TestBackend;
+    use ratatui::Terminal;
 
     // --- PickerState initialization ---
 
@@ -568,7 +568,7 @@ mod tests {
 
         state.query = "web".to_string();
         update_filter(&items, &mut state, &mut matcher);
-        assert!(state.filtered_indices.len() >= 1);
+        assert!(!state.filtered_indices.is_empty());
         assert_eq!(state.filtered_indices[0].0, 0);
     }
 

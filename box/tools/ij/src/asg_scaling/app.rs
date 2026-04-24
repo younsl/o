@@ -173,7 +173,11 @@ fn digit_width(n: i32) -> usize {
     }
     let abs = n.unsigned_abs();
     let digits = (abs as f64).log10().floor() as usize + 1;
-    if n < 0 { digits + 1 } else { digits }
+    if n < 0 {
+        digits + 1
+    } else {
+        digits
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -413,7 +417,7 @@ impl App {
                     results.push((idx, score));
                 }
             }
-            results.sort_by(|a, b| b.1.cmp(&a.1));
+            results.sort_by_key(|b| std::cmp::Reverse(b.1));
             self.filtered_indices = results;
         }
 
@@ -1043,7 +1047,7 @@ mod tests {
         let mut app = make_app();
         app.query = "web".into();
         app.update_filter();
-        assert!(app.filtered_indices.len() >= 1);
+        assert!(!app.filtered_indices.is_empty());
         assert_eq!(app.filtered_indices[0].0, 0);
     }
 
@@ -1492,7 +1496,7 @@ mod tests {
     #[test]
     fn to_row_format_contains_fields() {
         let row = AsgRow::from_info(make_info("my-asg", 2, 10, 5));
-        let widths = ColWidths::from_rows(&[row.clone()]);
+        let widths = ColWidths::from_rows(std::slice::from_ref(&row));
         let formatted = row.to_row(&widths);
         assert!(formatted.contains("my-asg"));
         assert!(formatted.contains("us-east-1"));

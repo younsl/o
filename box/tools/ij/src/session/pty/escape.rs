@@ -157,7 +157,7 @@ mod tests {
         // Both start in Normal state - verify by running same sequence
         let mut d1 = d1;
         let mut d2 = d2;
-        for &byte in &[b'\n', b'~', b'.'] {
+        for &byte in b"\n~." {
             assert_eq!(d1.process(byte), d2.process(byte));
         }
     }

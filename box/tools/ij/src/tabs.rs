@@ -202,16 +202,14 @@ pub(crate) async fn run_tabbed(config: Config) -> Result<TabResult> {
                         // Menu is open: handle menu navigation
                         if app.menu_open {
                             match key.code {
-                                KeyCode::Up | KeyCode::Char('k') => {
-                                    if app.menu_cursor > 0 {
+                                KeyCode::Up | KeyCode::Char('k')
+                                    if app.menu_cursor > 0 => {
                                         app.menu_cursor -= 1;
                                     }
-                                }
-                                KeyCode::Down | KeyCode::Char('j') => {
-                                    if app.menu_cursor + 1 < TAB_LABELS.len() {
+                                KeyCode::Down | KeyCode::Char('j')
+                                    if app.menu_cursor + 1 < TAB_LABELS.len() => {
                                         app.menu_cursor += 1;
                                     }
-                                }
                                 KeyCode::Enter => {
                                     app.active_tab = ActiveTab::from_index(app.menu_cursor);
                                     app.menu_open = false;
