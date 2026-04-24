@@ -2,11 +2,11 @@
 
 use nucleo::{Config as NucleoConfig, Matcher, Utf32Str};
 use ratatui::{
+    Frame,
     layout::{Constraint, Direction, Layout, Rect},
     style::{Color, Modifier, Style},
     text::{Line, Span},
     widgets::{Block, Borders, Clear, List, ListItem, ListState, Paragraph},
-    Frame,
 };
 
 use crate::config::Config;
@@ -343,8 +343,8 @@ mod tests {
     use super::*;
     use crate::config::Config;
     use crate::ec2::{ColumnWidths, Instance};
-    use ratatui::backend::TestBackend;
     use ratatui::Terminal;
+    use ratatui::backend::TestBackend;
 
     // --- PickerState initialization ---
 
