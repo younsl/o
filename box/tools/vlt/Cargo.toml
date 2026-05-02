@@ -1,0 +1,52 @@
+[package]
+name = "vlt"
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.95"
+description = "vlt — local-first password manager TUI"
+authors = ["younsl"]
+license = "MIT"
+
+[[bin]]
+name = "vlt"
+path = "src/main.rs"
+
+[dependencies]
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+argon2 = "0.5"
+chacha20poly1305 = "0.10"
+getrandom = "0.4"
+base64 = "0.22"
+uuid = { version = "1", features = ["v4", "serde"] }
+thiserror = "2"
+chrono = { version = "0.4", features = ["serde"] }
+zeroize = { version = "1", features = ["derive"] }
+ratatui = "0.30"
+crossterm = "0.29"
+arboard = "3"
+open = "5"
+unicode-width = "0.2.2"
+
+# Per-platform native credential store. Default features in keyring 3.x do
+# not pull in any backend automatically — each target must enable one.
+[target.'cfg(target_os = "macos")'.dependencies]
+keyring = { version = "3", features = ["apple-native"] }
+
+[target.'cfg(target_os = "linux")'.dependencies]
+keyring = { version = "3", features = ["linux-native-sync-persistent"] }
+
+[target.'cfg(target_os = "windows")'.dependencies]
+keyring = { version = "3", features = ["windows-native"] }
+
+[lints.rust]
+unsafe_code = "forbid"
+
+[lints.clippy]
+all = "warn"
+
+[profile.release]
+opt-level = 3
+lto = true
+codegen-units = 1
+strip = true

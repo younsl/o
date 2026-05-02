@@ -1,0 +1,17 @@
+# Rust
+/target/
+
+# QR code outputs
+*.png
+!docs/*.png
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db

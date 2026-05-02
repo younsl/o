@@ -1,0 +1,103 @@
+.gdm-tier-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 22px;
+  height: 18px;
+  padding: 0 6px;
+  border-radius: var(--bui-radius-2);
+  font-size: var(--bui-font-size-1);
+  font-weight: var(--bui-font-weight-bold);
+  letter-spacing: 0.6px;
+  font-family: var(--bui-font-monospace);
+  line-height: 1;
+  border: 1px solid var(--bui-fg-primary);
+  box-sizing: border-box;
+}
+
+/* Tier identity (default colors when alertState is not provided) */
+
+.gdm-tier-l1 {
+  background: var(--bui-fg-primary);
+  color: var(--bui-bg-app);
+}
+
+.gdm-tier-l2 {
+  background: transparent;
+  color: var(--bui-fg-primary);
+}
+
+.gdm-tier-l3 {
+  background: transparent;
+  color: var(--bui-fg-secondary);
+  border-color: var(--bui-fg-secondary);
+  border-style: dashed;
+}
+
+.gdm-tier-none {
+  background: transparent;
+  color: var(--bui-fg-disabled);
+  border-color: var(--bui-border-1);
+  border-style: dotted;
+}
+
+/* Alert state colors override tier colors but preserve tier shape (fill / outline / dashed / dotted) */
+
+.gdm-tier-state-ok.gdm-tier-l1 {
+  background: #22c55e;
+  color: #ffffff;
+  border-color: #22c55e;
+}
+.gdm-tier-state-ok.gdm-tier-l2 {
+  background: transparent;
+  color: #22c55e;
+  border-color: #22c55e;
+}
+.gdm-tier-state-ok.gdm-tier-l3 {
+  background: transparent;
+  color: #22c55e;
+  border-color: #22c55e;
+  border-style: dashed;
+}
+.gdm-tier-state-ok.gdm-tier-none {
+  background: transparent;
+  color: #22c55e;
+  border-color: #22c55e;
+  border-style: dotted;
+}
+
+.gdm-tier-state-firing.gdm-tier-l1 {
+  background: #ef4444;
+  color: #ffffff;
+  border-color: #ef4444;
+}
+.gdm-tier-state-firing.gdm-tier-l2 {
+  background: transparent;
+  color: #ef4444;
+  border-color: #ef4444;
+}
+.gdm-tier-state-firing.gdm-tier-l3 {
+  background: transparent;
+  color: #ef4444;
+  border-color: #ef4444;
+  border-style: dashed;
+}
+.gdm-tier-state-firing.gdm-tier-none {
+  background: transparent;
+  color: #ef4444;
+  border-color: #ef4444;
+  border-style: dotted;
+}
+
+.gdm-tier-state-firing {
+  animation: gdm-tier-pulse 1.4s ease-in-out infinite;
+}
+
+@keyframes gdm-tier-pulse {
+  0%, 100% {
+    box-shadow: 0 0 0 0 rgba(239, 68, 68, 0);
+  }
+  50% {
+    box-shadow: 0 0 0 2px rgba(239, 68, 68, 0.4);
+  }
+}

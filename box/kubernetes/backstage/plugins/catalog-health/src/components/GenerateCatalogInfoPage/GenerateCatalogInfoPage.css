@@ -1,0 +1,192 @@
+.gcid-input {
+  width: 100%;
+  padding: 8px;
+  border: 1px solid #444;
+  border-radius: 4px;
+  background: #2a2a2a;
+  color: inherit;
+  font-family: inherit;
+  font-size: 14px;
+  box-sizing: border-box;
+}
+
+.gcid-input:focus {
+  outline: 2px solid var(--bui-border-primary);
+  outline-offset: -1px;
+}
+
+.gcid-preview-wrapper {
+  position: relative;
+}
+
+.gcid-copy-btn {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  padding: 6px 16px;
+  font-size: 0.8rem;
+  font-weight: 600;
+  border-radius: 6px;
+  border: 1px solid #444;
+  background: #2a2a2a;
+  color: #ccc;
+  cursor: pointer;
+  z-index: 1;
+  transition: background-color 0.15s;
+}
+
+.gcid-copy-btn:hover {
+  background: #3a3a3a;
+}
+
+.gcid-preview {
+  font-family: 'SF Mono', 'Fira Code', monospace;
+  font-size: 0.75rem;
+  background: #1a1a1a;
+  border: 1px solid #2a2a2a;
+  border-radius: 4px;
+  padding: 12px;
+  overflow: auto;
+  white-space: pre;
+  line-height: 1.5;
+  color: #d4d4d4;
+  counter-reset: line;
+}
+
+.gcid-preview-line::before {
+  counter-increment: line;
+  content: attr(data-line);
+  display: inline-block;
+  width: 2.5em;
+  text-align: right;
+  margin-right: 12px;
+  color: #555;
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+.yaml-key {
+  color: #569cd6;
+}
+
+.yaml-colon {
+  color: #9a9a9a;
+}
+
+.yaml-string {
+  color: #6a9955;
+}
+
+.yaml-bool {
+  color: #c586c0;
+}
+
+.yaml-number {
+  color: #b5cea8;
+}
+
+.yaml-comment {
+  color: #4a4a4a;
+  font-style: italic;
+}
+
+.yaml-dash {
+  color: #9a9a9a;
+}
+
+.gcid-tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 8px;
+  border-radius: 4px;
+  font-size: 0.75rem;
+  font-weight: 600;
+  background: var(--bui-color-text-accent, #90caf9)22;
+  color: var(--bui-color-text-accent, #90caf9);
+  border: 1px solid var(--bui-color-text-accent, #90caf9)44;
+}
+
+.gcid-tag-remove {
+  background: none;
+  border: none;
+  color: inherit;
+  font-size: 0.85rem;
+  cursor: pointer;
+  padding: 0;
+  line-height: 1;
+  opacity: 0.7;
+}
+
+.gcid-tag-remove:hover {
+  opacity: 1;
+}
+
+.gcid-tag-autocomplete,
+.gcid-autocomplete {
+  position: relative;
+}
+
+.gcid-suggestions {
+  position: absolute;
+  top: 100%;
+  left: 0;
+  right: 0;
+  z-index: 10;
+  background: #2a2a2a;
+  border: 1px solid #444;
+  border-top: none;
+  border-radius: 0 0 4px 4px;
+  max-height: 180px;
+  overflow-y: auto;
+}
+
+.gcid-suggestion-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 6px 10px;
+  font-size: 0.8rem;
+  cursor: pointer;
+  color: inherit;
+}
+
+.gcid-suggestion-count {
+  font-size: 0.7rem;
+  font-weight: 600;
+  color: #888;
+  background: rgba(128, 128, 128, 0.2);
+  padding: 1px 6px;
+  border-radius: 8px;
+  min-width: 18px;
+  text-align: center;
+}
+
+.gcid-suggestion-item:hover,
+.gcid-suggestion-active {
+  background: #3a3a3a;
+}
+
+.gcid-owner-kind {
+  display: inline-block;
+  padding: 1px 6px;
+  border-radius: 4px;
+  font-size: 0.65rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+.gcid-owner-kind-group {
+  background: #10b98122;
+  color: #10b981;
+  border: 1px solid #10b98144;
+}
+
+.gcid-owner-kind-user {
+  background: #64748b22;
+  color: #94a3b8;
+  border: 1px solid #64748b44;
+}

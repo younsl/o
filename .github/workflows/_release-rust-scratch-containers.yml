@@ -1,0 +1,382 @@
+name: Release Rust Scratch Containers
+run-name: "📦 Release rust scratch containers (version label change)"
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'box/kubernetes/aurora-database-insights-exporter/Dockerfile'
+      - 'box/kubernetes/filesystem-cleaner/Dockerfile'
+      - 'box/kubernetes/gss/Dockerfile'
+      - 'box/kubernetes/trivy-collector/Dockerfile'
+      - 'box/kubernetes/kubernetes-upgrade-operator/Dockerfile'
+      - 'box/kubernetes/snowflake-exporter/Dockerfile'
+  workflow_dispatch:
+    inputs:
+      project:
+        description: "Project to release"
+        required: true
+        type: choice
+        options:
+          - aurora-database-insights-exporter
+          - filesystem-cleaner
+          - gss
+          - trivy-collector
+          - kuo
+          - snowflake-exporter
+
+jobs:
+  # ---------------------------------------------------------------------------
+  # Detect: extract version from Dockerfile label, check GHCR for duplicates,
+  # emit dynamic matrices for downstream jobs.
+  # ---------------------------------------------------------------------------
+  detect:
+    runs-on: ubuntu-24.04
+    permissions:
+      packages: read
+    outputs:
+      has_releases: ${{ steps.gen.outputs.has_releases }}
+      test_matrix: ${{ steps.gen.outputs.test_matrix }}
+      binary_matrix: ${{ steps.gen.outputs.binary_matrix }}
+      docker_matrix: ${{ steps.gen.outputs.docker_matrix }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Generate release matrices
+        id: gen
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          SELECTED: ${{ inputs.project }}
+        run: |
+          set -euo pipefail
+
+          extract_version() {
+            grep -oP 'org\.opencontainers\.image\.version="\K[^"]+' "$1" || echo ""
+          }
+
+          check_ghcr() {
+            local image="$1" version="$2"
+            local token tags
+            token=$(echo -n "${GH_TOKEN}" | base64)
+            tags=$(curl -sf -H "Authorization: Bearer ${token}" \
+              "https://ghcr.io/v2/${image}/tags/list" 2>/dev/null || echo '{"tags":[]}')
+            if echo "${tags}" | jq -e --arg v "${version}" '.tags // [] | index($v)' > /dev/null 2>&1; then
+              echo "exists"
+            else
+              echo "new"
+            fi
+          }
+
+          # project_name:project_dir:binary_name:has_frontend
+          PROJECTS=(
+            "aurora-database-insights-exporter:aurora-database-insights-exporter:adie:false"
+            "filesystem-cleaner:filesystem-cleaner:filesystem-cleaner:false"
+            "gss:gss:ghes-schedule-scanner:false"
+            "trivy-collector:trivy-collector:trivy-collector:true"
+            "kuo:kubernetes-upgrade-operator:kuo:false"
+            "snowflake-exporter:snowflake-exporter:snowflake-exporter:false"
+          )
+
+          TEST_JSON="[]"
+          BINARY_JSON="[]"
+          DOCKER_JSON="[]"
+
+          for entry in "${PROJECTS[@]}"; do
+            IFS=':' read -r project project_dir binary has_frontend <<< "${entry}"
+            dockerfile="box/kubernetes/${project_dir}/Dockerfile"
+
+            if [[ -n "${SELECTED}" && "${SELECTED}" != "${project}" ]]; then
+              continue
+            fi
+
+            if [[ ! -f "${dockerfile}" ]]; then
+              echo "::warning::${dockerfile} not found, skipping"
+              continue
+            fi
+
+            version=$(extract_version "${dockerfile}")
+            if [[ -z "${version}" ]]; then
+              echo "::error::org.opencontainers.image.version not found in ${dockerfile}"
+              continue
+            fi
+
+            status=$(check_ghcr "younsl/${project}" "${version}")
+            if [[ "${status}" == "exists" ]]; then
+              echo "✅ ${project}:${version} already exists on GHCR — skip"
+              continue
+            fi
+            echo "🆕 ${project}:${version} not found on GHCR — will release"
+
+            project_base_dir="box/kubernetes/${project_dir}"
+            image_name="younsl/${project}"
+
+            TEST_JSON=$(echo "${TEST_JSON}" | jq -c \
+              --arg project "${project}" \
+              --arg base "${project_base_dir}" \
+              --arg has_frontend "${has_frontend}" \
+              '. + [{project: $project, base_dir: $base, has_frontend: $has_frontend}]')
+
+            for pair in "x86_64-unknown-linux-musl:amd64" "aarch64-unknown-linux-musl:arm64"; do
+              IFS=':' read -r target arch <<< "${pair}"
+              BINARY_JSON=$(echo "${BINARY_JSON}" | jq -c \
+                --arg project "${project}" \
+                --arg binary "${binary}" \
+                --arg base "${project_base_dir}" \
+                --arg version "${version}" \
+                --arg target "${target}" \
+                --arg arch "${arch}" \
+                --arg has_frontend "${has_frontend}" \
+                '. + [{project: $project, binary: $binary, base_dir: $base, version: $version, target: $target, arch: $arch, has_frontend: $has_frontend}]')
+            done
+
+            DOCKER_JSON=$(echo "${DOCKER_JSON}" | jq -c \
+              --arg project "${project}" \
+              --arg binary "${binary}" \
+              --arg base "${project_base_dir}" \
+              --arg image "${image_name}" \
+              --arg version "${version}" \
+              '. + [{project: $project, binary: $binary, base_dir: $base, image: $image, version: $version}]')
+          done
+
+          HAS_RELEASES="false"
+          if [[ "$(echo "${TEST_JSON}" | jq 'length')" -gt 0 ]]; then
+            HAS_RELEASES="true"
+          fi
+
+          echo "has_releases=${HAS_RELEASES}" >> "$GITHUB_OUTPUT"
+          echo "test_matrix={\"include\":${TEST_JSON}}" >> "$GITHUB_OUTPUT"
+          echo "binary_matrix={\"include\":${BINARY_JSON}}" >> "$GITHUB_OUTPUT"
+          echo "docker_matrix={\"include\":${DOCKER_JSON}}" >> "$GITHUB_OUTPUT"
+
+          echo "test_matrix: ${TEST_JSON}"
+          echo "binary_matrix: ${BINARY_JSON}"
+          echo "docker_matrix: ${DOCKER_JSON}"
+
+  # ---------------------------------------------------------------------------
+  # Test: fmt, clippy, tests, coverage (70% minimum, shared across projects)
+  # ---------------------------------------------------------------------------
+  test:
+    needs: detect
+    if: needs.detect.outputs.has_releases == 'true'
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJson(needs.detect.outputs.test_matrix) }}
+    env:
+      PROJECT_BASE_DIR: ${{ matrix.base_dir }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache cargo registry
+        uses: actions/cache@v5
+        with:
+          path: ~/.cargo/registry
+          key: ${{ runner.os }}-cargo-registry-${{ matrix.project }}-${{ hashFiles('**/Cargo.lock') }}
+
+      - name: Cache cargo build
+        uses: actions/cache@v5
+        with:
+          path: ${{ env.PROJECT_BASE_DIR }}/target
+          key: ${{ runner.os }}-cargo-build-test-${{ matrix.project }}-${{ hashFiles('**/Cargo.lock') }}
+
+      - name: Create static directory for rust-embed
+        if: matrix.has_frontend == 'true'
+        working-directory: ${{ env.PROJECT_BASE_DIR }}
+        run: mkdir -p static
+
+      - name: Check formatting
+        working-directory: ${{ env.PROJECT_BASE_DIR }}
+        run: cargo fmt --check
+
+      - name: Run clippy
+        working-directory: ${{ env.PROJECT_BASE_DIR }}
+        run: cargo clippy -- -D warnings
+
+      - name: Run tests
+        working-directory: ${{ env.PROJECT_BASE_DIR }}
+        run: |
+          cargo test --verbose
+          cargo test --release --verbose
+
+      - name: Install cargo-llvm-cov
+        uses: taiki-e/install-action@v2.69.4
+        with:
+          tool: cargo-llvm-cov
+
+      - name: Check test coverage (minimum 70%)
+        working-directory: ${{ env.PROJECT_BASE_DIR }}
+        run: cargo llvm-cov --fail-under-lines 70
+
+  # ---------------------------------------------------------------------------
+  # Build binaries: cargo-zigbuild for musl targets (per project × arch)
+  # ---------------------------------------------------------------------------
+  build-binaries:
+    needs: [detect, test]
+    if: needs.detect.outputs.has_releases == 'true'
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJson(needs.detect.outputs.binary_matrix) }}
+    env:
+      PROJECT_NAME: ${{ matrix.project }}
+      BINARY_NAME: ${{ matrix.binary }}
+      PROJECT_BASE_DIR: ${{ matrix.base_dir }}
+      VERSION: ${{ matrix.version }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+
+      - name: Install cargo-zigbuild
+        run: pip install ziglang && cargo install cargo-zigbuild
+
+      - name: Cache cargo registry
+        uses: actions/cache@v5
+        with:
+          path: ~/.cargo/registry
+          key: ${{ runner.os }}-cargo-registry-${{ matrix.project }}-${{ hashFiles('**/Cargo.lock') }}
+
+      - name: Cache cargo index
+        uses: actions/cache@v5
+        with:
+          path: ~/.cargo/git
+          key: ${{ runner.os }}-cargo-index-${{ matrix.project }}-${{ hashFiles('**/Cargo.lock') }}
+
+      - name: Setup Node.js
+        if: matrix.has_frontend == 'true'
+        uses: actions/setup-node@v6.3.0
+        with:
+          node-version: '24'
+
+      - name: Build frontend
+        if: matrix.has_frontend == 'true'
+        working-directory: ${{ env.PROJECT_BASE_DIR }}/frontend
+        run: |
+          npm ci
+          npm run build
+
+      - name: Build binary with cargo-zigbuild
+        working-directory: ${{ env.PROJECT_BASE_DIR }}
+        env:
+          VERGEN_GIT_SHA: ${{ github.sha }}
+          BUILD_TIMESTAMP: ${{ github.event.head_commit.timestamp }}
+        run: |
+          echo "================================="
+          echo "Building ${PROJECT_NAME} (binary: ${BINARY_NAME})"
+          echo "Target: ${{ matrix.target }}"
+          echo "Architecture: ${{ matrix.arch }}"
+          echo "Version: ${VERSION}"
+          echo "================================="
+
+          export VERGEN_BUILD_TIMESTAMP="${BUILD_TIMESTAMP}"
+          cargo zigbuild --release --target ${{ matrix.target }} --bin "${BINARY_NAME}"
+
+          ARTIFACT_NAME="${BINARY_NAME}-linux-${{ matrix.arch }}"
+          SOURCE_BINARY="target/${{ matrix.target }}/release/${BINARY_NAME}"
+
+          if [ ! -f "${SOURCE_BINARY}" ]; then
+            echo "Error: Binary not found at ${SOURCE_BINARY}"
+            ls -la "target/${{ matrix.target }}/release/" || echo "Directory not found"
+            exit 1
+          fi
+
+          cp "${SOURCE_BINARY}" "${ARTIFACT_NAME}"
+          chmod +x "${ARTIFACT_NAME}"
+
+          echo "Binary created: ${ARTIFACT_NAME}"
+          ls -lh "${ARTIFACT_NAME}"
+          file "${ARTIFACT_NAME}"
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v6
+        with:
+          name: ${{ matrix.binary }}-linux-${{ matrix.arch }}
+          path: ${{ env.PROJECT_BASE_DIR }}/${{ env.BINARY_NAME }}-linux-${{ matrix.arch }}
+
+  # ---------------------------------------------------------------------------
+  # Build & push Docker image (scratch, multiarch)
+  # ---------------------------------------------------------------------------
+  build-docker:
+    needs: [detect, test, build-binaries]
+    if: needs.detect.outputs.has_releases == 'true'
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+      packages: write
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJson(needs.detect.outputs.docker_matrix) }}
+    env:
+      BINARY_NAME: ${{ matrix.binary }}
+      PROJECT_BASE_DIR: ${{ matrix.base_dir }}
+      REGISTRY: ghcr.io
+      IMAGE_NAME: ${{ matrix.image }}
+      VERSION: ${{ matrix.version }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Download amd64 binary
+        uses: actions/download-artifact@v7
+        with:
+          name: ${{ matrix.binary }}-linux-amd64
+          path: ${{ env.PROJECT_BASE_DIR }}
+
+      - name: Download arm64 binary
+        uses: actions/download-artifact@v7
+        with:
+          name: ${{ matrix.binary }}-linux-arm64
+          path: ${{ env.PROJECT_BASE_DIR }}
+
+      - name: Verify binaries
+        working-directory: ${{ env.PROJECT_BASE_DIR }}
+        run: |
+          echo "Downloaded binaries:"
+          ls -lh "${BINARY_NAME}"-linux-*
+          file "${BINARY_NAME}"-linux-*
+          chmod +x "${BINARY_NAME}"-linux-*
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v4
+
+      - name: Login to Container Registry
+        uses: docker/login-action@v4
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Extract metadata
+        id: meta
+        uses: docker/metadata-action@v6
+        with:
+          images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
+          tags: |
+            type=raw,value=${{ env.VERSION }}
+            type=raw,value=latest
+
+      - name: Build and push Docker image
+        uses: docker/build-push-action@v7
+        with:
+          context: ${{ env.PROJECT_BASE_DIR }}
+          platforms: linux/amd64,linux/arm64
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          provenance: false
+          sbom: false
+          cache-from: type=gha
+          cache-to: type=gha,mode=max

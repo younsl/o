@@ -1,0 +1,64 @@
+[package]
+name = "snowflake-exporter"
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.95.0"
+authors = ["younsl <cysl@kakao.com>"]
+description = "Prometheus exporter for Snowflake account usage metrics"
+license = "MIT"
+repository = "https://github.com/younsl/o"
+
+[[bin]]
+name = "snowflake-exporter"
+path = "src/main.rs"
+
+[dependencies]
+# Async runtime
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "signal", "sync", "time"] }
+
+# HTTP server
+axum = "0.8"
+
+# Prometheus
+prometheus = { version = "0.13", features = ["process"] }
+
+# CLI and config
+clap = { version = "4", features = ["derive", "env"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+serde_yaml = "0.9"
+
+# Logging
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["json", "env-filter"] }
+
+# Error handling
+thiserror = "2"
+
+# Trait objects for async methods
+async-trait = "0.1"
+
+# HTTP client (Snowflake SQL API v2)
+reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls", "gzip"] }
+
+# TLS
+rustls = { version = "0.23", default-features = false, features = ["aws-lc-rs"] }
+
+# Utilities
+chrono = { version = "0.4", features = ["serde"] }
+
+[dev-dependencies]
+tokio = { version = "1", features = ["test-util"] }
+tower = { version = "0.5", features = ["util"] }
+http-body-util = "0.1"
+tempfile = "3"
+wiremock = "0.6"
+
+[profile.release]
+opt-level = "z"
+lto = true
+strip = true
+panic = "abort"
+
+[lints.rust]
+unsafe_code = "forbid"

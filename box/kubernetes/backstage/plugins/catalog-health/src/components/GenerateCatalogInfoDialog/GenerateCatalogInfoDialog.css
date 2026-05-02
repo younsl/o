@@ -1,0 +1,144 @@
+.gcid-required {
+  color: #ef4444;
+  font-weight: 700;
+}
+
+.gcid-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.6);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+  backdrop-filter: blur(4px);
+}
+
+.gcid-dialog {
+  background: #1e1e1e;
+  border: 1px solid #444;
+  border-radius: 8px;
+  padding: 20px;
+  width: 520px;
+  max-width: 90vw;
+  max-height: 85vh;
+  overflow-y: auto;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.6);
+}
+
+.gcid-label {
+  display: flex;
+  flex-direction: column;
+  gap: var(--bui-space-1);
+}
+
+.gcid-input {
+  width: 100%;
+  padding: 8px;
+  border: 1px solid #444;
+  border-radius: 4px;
+  background: #2a2a2a;
+  color: inherit;
+  font-family: inherit;
+  font-size: 14px;
+  box-sizing: border-box;
+}
+
+.gcid-input:focus {
+  outline: 2px solid var(--bui-border-primary);
+  outline-offset: -1px;
+}
+
+.gcid-select {
+  width: 100%;
+  padding: 8px;
+  border: 1px solid #444;
+  border-radius: 4px;
+  background: #2a2a2a;
+  color: inherit;
+  font-family: inherit;
+  font-size: 14px;
+  box-sizing: border-box;
+}
+
+.gcid-preview {
+  font-family: monospace;
+  font-size: 0.8rem;
+  background: #111;
+  border: 1px solid #333;
+  border-radius: 4px;
+  padding: 12px;
+  overflow: auto;
+  white-space: pre;
+  line-height: 1.6;
+  color: #d4d4d4;
+}
+
+.gcid-preview .yaml-key {
+  color: #9cdcfe;
+}
+
+.gcid-preview .yaml-value {
+  color: #ce9178;
+}
+
+.gcid-tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 8px;
+  border-radius: 4px;
+  font-size: 0.75rem;
+  font-weight: 600;
+  background: var(--bui-color-text-accent, #90caf9)22;
+  color: var(--bui-color-text-accent, #90caf9);
+  border: 1px solid var(--bui-color-text-accent, #90caf9)44;
+}
+
+.gcid-tag-remove {
+  background: none;
+  border: none;
+  color: inherit;
+  font-size: 0.85rem;
+  cursor: pointer;
+  padding: 0;
+  line-height: 1;
+  opacity: 0.7;
+}
+
+.gcid-tag-remove:hover {
+  opacity: 1;
+}
+
+.gcid-tag-autocomplete {
+  position: relative;
+}
+
+.gcid-suggestions {
+  position: absolute;
+  top: 100%;
+  left: 0;
+  right: 0;
+  z-index: 10;
+  background: #2a2a2a;
+  border: 1px solid #444;
+  border-top: none;
+  border-radius: 0 0 4px 4px;
+  max-height: 180px;
+  overflow-y: auto;
+}
+
+.gcid-suggestion-item {
+  padding: 6px 10px;
+  font-size: 0.8rem;
+  cursor: pointer;
+  color: inherit;
+}
+
+.gcid-suggestion-item:hover,
+.gcid-suggestion-active {
+  background: #3a3a3a;
+}

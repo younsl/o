@@ -1,0 +1,38 @@
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "module": "CommonJS",
+    "lib": ["ES2022", "DOM"],
+    "esModuleInterop": true,
+    "skipLibCheck": true,
+    "forceConsistentCasingInFileNames": true,
+    "strict": true,
+    "declaration": true,
+    "declarationMap": true,
+    "sourceMap": true,
+    "moduleResolution": "node",
+    "resolveJsonModule": true,
+    "jsx": "react-jsx"
+  },
+  "references": [
+    { "path": "packages/app" },
+    { "path": "packages/backend" },
+    { "path": "plugins/openapi-registry" },
+    { "path": "plugins/openapi-registry-backend" },
+    { "path": "plugins/argocd-appset" },
+    { "path": "plugins/argocd-appset-backend" },
+    { "path": "plugins/catalog-health" },
+    { "path": "plugins/catalog-health-backend" },
+    { "path": "plugins/iam-user-audit" },
+    { "path": "plugins/iam-user-audit-backend" },
+    { "path": "plugins/s3-log-extract" },
+    { "path": "plugins/s3-log-extract-backend" },
+    { "path": "plugins/kafka-topic" },
+    { "path": "plugins/kafka-topic-backend" },
+    { "path": "plugins/opencost" },
+    { "path": "plugins/opencost-backend" },
+    { "path": "plugins/grafana-dashboard-map" },
+    { "path": "plugins/grafana-dashboard-map-backend" }
+  ],
+  "files": []
+}
