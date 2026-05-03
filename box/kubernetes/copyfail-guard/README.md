@@ -17,6 +17,12 @@ CVE-2026-31431 lets any authorized user mutate the cached copy of any readable f
 
 The agent auto-detects BPF LSM availability by reading `/sys/kernel/security/lsm`. Events are streamed through a BPF ring buffer and exposed as structured JSON logs and Prometheus metrics.
 
+Behavior verified end-to-end on a managed Kubernetes dev cluster:
+
+- Auto-detect picks `lsm` mode on every node when `bpf` appears in `/sys/kernel/security/lsm`; eBPF program load + attach completes in well under 1 second per node.
+- A `socket(AF_ALG, SOCK_SEQPACKET, 0)` call from inside any container — including UID 0 — fails with `EPERM`. The block is enforced at the host kernel hook, so namespace boundaries do not matter.
+- The intercept is logged exactly once on the node where the offending process ran, with the offender's `pid`, `comm`, and the resolved `target_pod_uid` + `container_id` parsed from the cgroup-v2 path under `/proc/<pid>/cgroup`.
+
 ## Architecture
 
 ```
@@ -60,13 +66,15 @@ See [`charts/copyfail-guard/README.md`](./charts/copyfail-guard/README.md) (auto
 
 ## Verify
 
-On any node where the DaemonSet is running:
+From any pod scheduled on a node where the DaemonSet is running:
 
 ```bash
-# In LSM mode this returns PermissionError (errno 1: Operation not permitted).
-# In tracepoint mode the offending shell is killed by SIGKILL.
 python3 -c "import socket; socket.socket(38, socket.SOCK_SEQPACKET, 0)"
+# LSM mode    → PermissionError: [Errno 1] Operation not permitted
+# tracepoint  → process is terminated by SIGKILL
 ```
+
+A matching line should appear in the agent log on that same node within milliseconds.
 
 ## Observability
 
@@ -75,10 +83,23 @@ python3 -c "import socket; socket.socket(38, socket.SOCK_SEQPACKET, 0)"
 | `copyfail_guard_events_total` | counter | `action=blocked\|killed` | Intercepted `AF_ALG` socket attempts |
 | `copyfail_guard_mode` | gauge | – | Active mode (`1=lsm`, `2=tracepoint`) |
 
-Each intercept is also emitted as a structured log line:
+Each intercept is also emitted as a structured log line, with the offender attributed back to a Kubernetes Pod via cgroup-v2 parsing:
 
 ```json
-{"action":"blocked","pid":12345,"tgid":12345,"uid":1000,"gid":1000,"comm":"python3","message":"AF_ALG socket creation intercepted"}
+{
+  "level": "INFO",
+  "message": "AF_ALG socket creation intercepted",
+  "action": "blocked",
+  "node": "<host-node-name>",
+  "agent_pod": "<copyfail-guard-pod>",
+  "pid": 12345,
+  "tgid": 12345,
+  "uid": 0,
+  "gid": 0,
+  "comm": "python3",
+  "target_pod_uid": "<offender-pod-uid>",
+  "container_id": "<offender-container-id>"
+}
 ```
 
 ## Permissions
