@@ -13,7 +13,9 @@ env:
   BINARY_NAME: copyfail-guard
   IMAGE_NAME: younsl/copyfail-guard
   REGISTRY: ghcr.io
-  RUST_NIGHTLY: nightly-2025-09-15
+  # Pin to a recent nightly that ships rustc >= 1.95 (project MSRV).
+  # The previously pinned 2025-09-15 still shipped 1.92.
+  RUST_NIGHTLY: nightly
 
 jobs:
   # ---------------------------------------------------------------------------
