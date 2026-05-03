@@ -121,6 +121,7 @@ box/
 │   ├── aurora-database-insights-exporter/ # Prometheus exporter for Aurora MySQL Database Insights (Rust, container)
 │   ├── backstage/         # Internal Developer Portal with GitLab catalog discovery and custom plugins (Node.js)
 │   ├── charts/            # Standalone Helm charts distributed via OCI artifacts on GHCR
+│   ├── copyfail-guard/    # CVE-2026-31431 (Copy.Fail) AF_ALG socket blocker via eBPF LSM/tracepoint (Rust + aya, container)
 │   ├── elasticache-backup/# ElastiCache S3 backup automation (Rust, container)
 │   ├── filesystem-cleaner/# Kubernetes filesystem cleanup sidecar/init container (Rust)
 │   ├── gss/               # GHES scheduled workflow scanner (Rust, container)
@@ -641,6 +642,7 @@ Triggered automatically when the `org.opencontainers.image.version` label in a D
 # - trivy-collector                   (Rust scratch+zigbuild)       — _release-rust-scratch-containers.yml
 # - gss                               (Rust scratch+zigbuild)       — _release-rust-scratch-containers.yml
 # - kuo                               (Rust scratch+zigbuild)       — _release-rust-scratch-containers.yml
+# - copyfail-guard                    (Rust + eBPF, nightly + bpf-linker + zigbuild) — release-copyfail-guard.yml
 ```
 
 ### Other releases (tag-based)
@@ -667,6 +669,7 @@ git tag grafana-dashboards/charts/1.0.0 && git push --tags
 # - release-rust-cli.yml                     (Unified Rust CLI release: ij, karc)
 # - _release-rust-containers.yml             (Unified Rust container release: elasticache-backup, redis-console — tag trigger)
 # - _release-rust-scratch-containers.yml     (Unified Rust scratch+zigbuild container release: aurora-database-insights-exporter, filesystem-cleaner, gss, trivy-collector, kuo — version label trigger)
+# - release-copyfail-guard.yml               (eBPF + Rust scratch container: copyfail-guard — nightly bpf-linker + zigbuild, version label trigger)
 # - release-helm-chart.yml                   (Unified Helm chart release to OCI registry)
 # - clean-workflow-runs.yml                  (Maintenance: cleanup old workflow runs)
 ```

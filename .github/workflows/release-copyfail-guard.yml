@@ -1,0 +1,321 @@
+name: Release copyfail-guard
+run-name: "📦 Release copyfail-guard (version label change)"
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'box/kubernetes/copyfail-guard/Dockerfile'
+  workflow_dispatch:
+
+env:
+  PROJECT_DIR: box/kubernetes/copyfail-guard
+  BINARY_NAME: copyfail-guard
+  IMAGE_NAME: younsl/copyfail-guard
+  REGISTRY: ghcr.io
+  RUST_NIGHTLY: nightly-2025-09-15
+
+jobs:
+  # ---------------------------------------------------------------------------
+  # Detect: extract version from Dockerfile label, check GHCR for duplicates
+  # ---------------------------------------------------------------------------
+  detect:
+    runs-on: ubuntu-24.04
+    permissions:
+      packages: read
+    outputs:
+      release: ${{ steps.check.outputs.release }}
+      version: ${{ steps.check.outputs.version }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Extract version and check GHCR
+        id: check
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          VERSION=$(grep -oP 'org\.opencontainers\.image\.version="\K[^"]+' "${PROJECT_DIR}/Dockerfile")
+          if [[ -z "${VERSION}" ]]; then
+            echo "::error::version label missing in ${PROJECT_DIR}/Dockerfile"
+            exit 1
+          fi
+          echo "version=${VERSION}" >> "$GITHUB_OUTPUT"
+
+          TOKEN=$(echo -n "${GH_TOKEN}" | base64)
+          TAGS=$(curl -sf -H "Authorization: Bearer ${TOKEN}" \
+            "https://ghcr.io/v2/${IMAGE_NAME}/tags/list" 2>/dev/null || echo '{"tags":[]}')
+          if echo "${TAGS}" | jq -e --arg v "${VERSION}" '.tags // [] | index($v)' > /dev/null 2>&1; then
+            echo "✅ ${IMAGE_NAME}:${VERSION} already exists on GHCR — skip"
+            echo "release=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "🆕 ${IMAGE_NAME}:${VERSION} not found on GHCR — will release"
+            echo "release=true" >> "$GITHUB_OUTPUT"
+          fi
+
+  # ---------------------------------------------------------------------------
+  # Test: fmt, clippy, tests, coverage on the userspace bin only.
+  # The eBPF bin is gated by required-features = ["build-ebpf"] and excluded
+  # from default checks.
+  # ---------------------------------------------------------------------------
+  test:
+    needs: detect
+    if: needs.detect.outputs.release == 'true'
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+    defaults:
+      run:
+        working-directory: ${{ env.PROJECT_DIR }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Setup Rust (stable)
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache cargo registry
+        uses: actions/cache@v5
+        with:
+          path: ~/.cargo/registry
+          key: ${{ runner.os }}-cargo-registry-copyfail-guard-${{ hashFiles('**/Cargo.lock') }}
+
+      - name: Cache cargo build
+        uses: actions/cache@v5
+        with:
+          path: ${{ env.PROJECT_DIR }}/target
+          key: ${{ runner.os }}-cargo-build-test-copyfail-guard-${{ hashFiles('**/Cargo.lock') }}
+
+      - name: Check formatting
+        run: cargo fmt --check
+
+      - name: Run clippy (userspace bin)
+        run: cargo clippy --bin "${BINARY_NAME}" --tests -- -D warnings
+
+      - name: Run tests
+        run: |
+          cargo test --bin "${BINARY_NAME}" --verbose
+          cargo test --release --bin "${BINARY_NAME}" --verbose
+
+      # TODO: re-enable 70% coverage gate once unit tests cover loader/metrics/main paths.
+      # Most of those modules wrap aya (Linux-only) or async I/O which is hard to unit-test.
+
+  # ---------------------------------------------------------------------------
+  # Build the eBPF object once (BPF bytecode is architecture-independent),
+  # upload as artifact for downstream userspace builds.
+  # ---------------------------------------------------------------------------
+  build-ebpf:
+    needs: [detect, test]
+    if: needs.detect.outputs.release == 'true'
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+    defaults:
+      run:
+        working-directory: ${{ env.PROJECT_DIR }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Setup Rust (nightly + rust-src)
+        uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: ${{ env.RUST_NIGHTLY }}
+          components: rust-src
+
+      - name: Cache cargo registry
+        uses: actions/cache@v5
+        with:
+          path: ~/.cargo/registry
+          key: ${{ runner.os }}-cargo-registry-copyfail-guard-ebpf-${{ hashFiles('**/Cargo.lock') }}
+
+      - name: Cache bpf-linker install
+        uses: actions/cache@v5
+        id: bpf-linker-cache
+        with:
+          path: ~/.cargo/bin/bpf-linker
+          key: ${{ runner.os }}-bpf-linker-v0.9
+
+      - name: Install bpf-linker
+        if: steps.bpf-linker-cache.outputs.cache-hit != 'true'
+        run: cargo install bpf-linker --locked
+
+      - name: Build eBPF object
+        run: |
+          cargo +${{ env.RUST_NIGHTLY }} build \
+            --bin copyfail-guard-ebpf \
+            --target bpfel-unknown-none \
+            -Z build-std=core \
+            --features build-ebpf \
+            --profile ebpf
+
+          OBJ="target/bpfel-unknown-none/ebpf/copyfail-guard-ebpf"
+          if [ ! -f "${OBJ}" ]; then
+            echo "::error::eBPF object not found at ${OBJ}"
+            ls -la target/bpfel-unknown-none/ebpf/ || true
+            exit 1
+          fi
+          file "${OBJ}"
+          ls -lh "${OBJ}"
+
+      - name: Upload eBPF object
+        uses: actions/upload-artifact@v6
+        with:
+          name: copyfail-guard-ebpf
+          path: ${{ env.PROJECT_DIR }}/target/bpfel-unknown-none/ebpf/copyfail-guard-ebpf
+          if-no-files-found: error
+
+  # ---------------------------------------------------------------------------
+  # Build userspace binaries with cargo-zigbuild for amd64 + arm64 musl.
+  # Each binary embeds the same eBPF bytecode via include_bytes!.
+  # ---------------------------------------------------------------------------
+  build-binaries:
+    needs: [detect, test, build-ebpf]
+    if: needs.detect.outputs.release == 'true'
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - target: x86_64-unknown-linux-musl
+            arch: amd64
+          - target: aarch64-unknown-linux-musl
+            arch: arm64
+    defaults:
+      run:
+        working-directory: ${{ env.PROJECT_DIR }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Setup Rust (stable)
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+
+      - name: Install cargo-zigbuild
+        run: pip install ziglang && cargo install cargo-zigbuild
+
+      - name: Cache cargo registry
+        uses: actions/cache@v5
+        with:
+          path: ~/.cargo/registry
+          key: ${{ runner.os }}-cargo-registry-copyfail-guard-${{ hashFiles('**/Cargo.lock') }}
+
+      - name: Cache cargo index
+        uses: actions/cache@v5
+        with:
+          path: ~/.cargo/git
+          key: ${{ runner.os }}-cargo-index-copyfail-guard-${{ hashFiles('**/Cargo.lock') }}
+
+      - name: Download eBPF object
+        uses: actions/download-artifact@v7
+        with:
+          name: copyfail-guard-ebpf
+          path: ${{ env.PROJECT_DIR }}/target/bpfel-unknown-none/ebpf/
+
+      - name: Build userspace binary
+        env:
+          VERGEN_GIT_SHA: ${{ github.sha }}
+          COPYFAIL_GUARD_EBPF_OBJ: ${{ github.workspace }}/${{ env.PROJECT_DIR }}/target/bpfel-unknown-none/ebpf/copyfail-guard-ebpf
+        run: |
+          chmod +r "${COPYFAIL_GUARD_EBPF_OBJ}"
+          cargo zigbuild --release --target ${{ matrix.target }} --bin "${BINARY_NAME}"
+
+          ARTIFACT="${BINARY_NAME}-linux-${{ matrix.arch }}"
+          SRC="target/${{ matrix.target }}/release/${BINARY_NAME}"
+          [ -f "${SRC}" ] || { echo "::error::binary not found at ${SRC}"; exit 1; }
+          cp "${SRC}" "${ARTIFACT}"
+          chmod +x "${ARTIFACT}"
+          file "${ARTIFACT}"
+          ls -lh "${ARTIFACT}"
+
+      - name: Upload userspace binary
+        uses: actions/upload-artifact@v6
+        with:
+          name: ${{ env.BINARY_NAME }}-linux-${{ matrix.arch }}
+          path: ${{ env.PROJECT_DIR }}/${{ env.BINARY_NAME }}-linux-${{ matrix.arch }}
+
+  # ---------------------------------------------------------------------------
+  # Build & push the multiarch scratch container.
+  # ---------------------------------------------------------------------------
+  build-docker:
+    needs: [detect, build-binaries]
+    if: needs.detect.outputs.release == 'true'
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+      packages: write
+    env:
+      VERSION: ${{ needs.detect.outputs.version }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Download amd64 binary
+        uses: actions/download-artifact@v7
+        with:
+          name: ${{ env.BINARY_NAME }}-linux-amd64
+          path: ${{ env.PROJECT_DIR }}
+
+      - name: Download arm64 binary
+        uses: actions/download-artifact@v7
+        with:
+          name: ${{ env.BINARY_NAME }}-linux-arm64
+          path: ${{ env.PROJECT_DIR }}
+
+      - name: Verify binaries
+        working-directory: ${{ env.PROJECT_DIR }}
+        run: |
+          ls -lh "${BINARY_NAME}"-linux-*
+          file "${BINARY_NAME}"-linux-*
+          chmod +x "${BINARY_NAME}"-linux-*
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v4
+
+      - name: Login to GHCR
+        uses: docker/login-action@v4
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Extract metadata
+        id: meta
+        uses: docker/metadata-action@v6
+        with:
+          images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
+          tags: |
+            type=raw,value=${{ env.VERSION }}
+            type=raw,value=latest
+
+      - name: Build and push image
+        uses: docker/build-push-action@v7
+        with:
+          context: ${{ env.PROJECT_DIR }}
+          platforms: linux/amd64,linux/arm64
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          provenance: false
+          sbom: false
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Summary
+        if: always()
+        run: |
+          {
+            echo "## copyfail-guard ${VERSION}"
+            echo ""
+            echo "| Key | Value |"
+            echo "|-----|-------|"
+            echo "| Image | \`${REGISTRY}/${IMAGE_NAME}:${VERSION}\` |"
+            echo "| Platforms | \`linux/amd64,linux/arm64\` |"
+            echo "| eBPF | bpfel-unknown-none (nightly ${RUST_NIGHTLY}) |"
+            echo "| Userspace | musl (cargo-zigbuild) |"
+          } >> $GITHUB_STEP_SUMMARY

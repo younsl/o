@@ -1,0 +1,10 @@
+.DS_Store
+.git/
+.gitignore
+.idea/
+.vscode/
+*.tgz
+*.swp
+*.tmp
+*.bak
+README.md.gotmpl

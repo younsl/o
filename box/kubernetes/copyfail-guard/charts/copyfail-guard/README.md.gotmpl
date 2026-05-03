@@ -1,0 +1,52 @@
+{{ template "chart.header" . }}
+
+{{ template "chart.deprecationWarning" . }}
+
+{{ template "chart.badgesSection" . }}
+
+{{ template "chart.description" . }}
+
+CVE: [CVE-2026-31431 (Copy.Fail)](https://nvd.nist.gov/vuln/detail/CVE-2026-31431) — local privilege escalation via cached file mutation through `AF_ALG` crypto sockets. Disabling the `algif_*` modules is insufficient when they are built into the kernel; this chart deploys an eBPF agent that blocks `AF_ALG` socket creation cluster-wide.
+
+## TL;DR
+
+```bash
+helm install copyfail-guard oci://ghcr.io/younsl/charts/copyfail-guard \
+  --namespace kube-system
+```
+
+## How it works
+
+| Mode | Hook | Action | Requires |
+|------|------|--------|----------|
+| `lsm` (preferred, auto-selected) | `lsm/socket_create` | Returns `-EPERM` for any non-kernel `AF_ALG` socket | BPF LSM enabled (`/sys/kernel/security/lsm` contains `bpf`) |
+| `tracepoint` (fallback) | `tracepoint/syscalls/sys_enter_socket` | Sends `SIGKILL` to the offending task | Any kernel with tracepoints + BTF |
+
+The agent reads events from a BPF ring buffer and exposes them as structured logs and Prometheus metrics.
+
+{{ template "chart.maintainersSection" . }}
+
+{{ template "chart.sourcesSection" . }}
+
+{{ template "chart.requirementsSection" . }}
+
+{{ template "chart.valuesSection" . }}
+
+## Verifying the mitigation
+
+On any node where the DaemonSet is running:
+
+```bash
+# In LSM mode this returns PermissionError (errno 1).
+# In tracepoint mode the shell is killed.
+python3 -c "import socket; socket.socket(38, socket.SOCK_SEQPACKET, 0)"
+```
+
+## Metrics
+
+| Metric | Type | Labels | Meaning |
+|--------|------|--------|---------|
+| `copyfail_guard_events_total` | counter | `action=blocked|killed` | Number of intercepted `AF_ALG` socket attempts |
+| `copyfail_guard_mode` | gauge | – | Active mode (`1=lsm`, `2=tracepoint`) |
+
+{{ template "helm-docs.versionFooter" . }}

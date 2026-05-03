@@ -1,0 +1,36 @@
+{{- if .Values.prometheusRule.enabled -}}
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: {{ include "copyfail-guard.fullname" . }}
+  namespace: {{ default .Release.Namespace .Values.prometheusRule.namespace }}
+  labels:
+    {{- include "copyfail-guard.labels" . | nindent 4 }}
+    {{- with .Values.prometheusRule.labels }}
+    {{- toYaml . | nindent 4 }}
+    {{- end }}
+spec:
+  groups:
+    - name: copyfail-guard.rules
+      rules:
+        - alert: CopyfailGuardAFAlgAttempt
+          expr: increase(copyfail_guard_events_total[5m]) > 0
+          for: 0m
+          labels:
+            severity: warning
+            cve: CVE-2026-31431
+          annotations:
+            summary: "AF_ALG socket creation attempt detected (Copy.Fail)"
+            description: "copyfail-guard intercepted {{ "{{" }} $value {{ "}}" }} AF_ALG socket creation events on {{ "{{" }} $labels.instance {{ "}}" }} in the last 5 minutes."
+        - alert: CopyfailGuardDown
+          expr: up{job=~".*copyfail-guard.*"} == 0
+          for: 10m
+          labels:
+            severity: critical
+          annotations:
+            summary: "copyfail-guard agent is down"
+            description: "The copyfail-guard agent on {{ "{{" }} $labels.instance {{ "}}" }} has been unreachable for 10 minutes."
+    {{- with .Values.prometheusRule.additionalRules }}
+    {{- toYaml . | nindent 4 }}
+    {{- end }}
+{{- end }}

@@ -1,0 +1,18 @@
+{{ include "copyfail-guard.fullname" . }} {{ .Chart.AppVersion }} installed in namespace "{{ .Release.Namespace }}".
+
+Mitigation: blocks AF_ALG (family=38) socket creation to neutralize CVE-2026-31431 (Copy.Fail).
+Mode: {{ .Values.agent.mode }} (auto = LSM if /sys/kernel/security/lsm contains "bpf", else tracepoint+SIGKILL).
+
+Verify the DaemonSet is running on every Linux node:
+  kubectl -n {{ .Release.Namespace }} get ds {{ include "copyfail-guard.fullname" . }}
+
+Tail intercept logs from one pod:
+  kubectl -n {{ .Release.Namespace }} logs -l app.kubernetes.io/name={{ include "copyfail-guard.name" . }} -f --tail=50
+
+Test enforcement on a node (this MUST fail with EPERM in LSM mode, or kill the shell in tracepoint mode):
+  python3 -c "import socket; socket.socket(38, socket.SOCK_SEQPACKET, 0)"
+
+Prometheus metrics:
+  curl http://<pod-ip>:{{ .Values.ports.metrics }}/metrics
+  # copyfail_guard_events_total{action="blocked|killed"}
+  # copyfail_guard_mode  (1=lsm, 2=tracepoint)

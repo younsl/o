@@ -1,0 +1,32 @@
+apiVersion: v2
+name: copyfail-guard
+description: |
+  Kubernetes DaemonSet that blocks AF_ALG socket creation to mitigate
+  CVE-2026-31431 (Copy.Fail) via eBPF LSM hook (preferred) or syscall
+  tracepoint (fallback). Built in Rust with cargo-zigbuild on a scratch
+  base image.
+type: application
+version: 0.1.0
+appVersion: "0.1.0"
+kubeVersion: ">=1.27.0-0"
+home: https://github.com/younsl/o
+sources:
+  - https://github.com/younsl/o/tree/main/box/kubernetes/copyfail-guard
+keywords:
+  - security
+  - ebpf
+  - lsm
+  - cve-2026-31431
+  - copyfail
+  - af-alg
+  - daemonset
+maintainers:
+  - name: younsl
+    url: https://github.com/younsl
+icon: https://raw.githubusercontent.com/cncf/artwork/main/projects/falco/icon/color/falco-icon-color.svg
+annotations:
+  artifacthub.io/category: security
+  artifacthub.io/license: MIT
+  artifacthub.io/changes: |
+    - kind: added
+      description: Initial chart for copyfail-guard 0.1.0.

@@ -1,0 +1,178 @@
+# -- Override the chart name (defaults to the Chart.yaml `name`).
+nameOverride: ""
+# -- Override the fully qualified app name (defaults to release-name + chart name).
+fullnameOverride: ""
+
+# @section -- Image
+image:
+  # -- Container image registry.
+  registry: ghcr.io
+  # -- Container image repository.
+  repository: younsl/copyfail-guard
+  # -- Container image tag. Defaults to `Chart.appVersion` when empty.
+  tag: ""
+  # -- Container image pull policy.
+  pullPolicy: IfNotPresent
+
+# -- Image pull secrets for private registries.
+imagePullSecrets: []
+
+# @section -- Agent
+agent:
+  # -- Enforcement mode: `auto` (detect BPF LSM), `lsm` (force LSM hook), or `tracepoint` (force syscall killer).
+  mode: auto
+  # -- Log format: `json` or `pretty`.
+  logFormat: json
+  # -- Log level: `trace`, `debug`, `info`, `warn`, `error`.
+  logLevel: info
+  # -- Extra environment variables passed to the agent container.
+  extraEnv: []
+  # -- Extra CLI args appended to the entrypoint.
+  extraArgs: []
+
+# @section -- Ports
+ports:
+  # -- Port serving `/healthz` and `/readyz`.
+  health: 8080
+  # -- Port serving Prometheus `/metrics`.
+  metrics: 8081
+
+# @section -- Service Account
+serviceAccount:
+  # -- Create a dedicated ServiceAccount.
+  create: true
+  # -- Annotations to add to the ServiceAccount (e.g. IRSA role ARN).
+  annotations: {}
+  # -- Override the ServiceAccount name. Generated from fullname when empty.
+  name: ""
+
+# @section -- Pod
+podAnnotations: {}
+# -- Extra labels to add to the DaemonSet pod template.
+podLabels: {}
+
+# -- Pod-level security context. Required by eBPF: privileged + hostPID.
+podSecurityContext: {}
+
+# -- Container-level security context. eBPF requires CAP_SYS_ADMIN, CAP_BPF, CAP_PERFMON, CAP_SYS_RESOURCE; running privileged is the simplest path.
+securityContext:
+  privileged: true
+  readOnlyRootFilesystem: true
+  allowPrivilegeEscalation: true
+  runAsNonRoot: false
+  runAsUser: 0
+  capabilities:
+    drop:
+      - ALL
+    add:
+      - SYS_ADMIN
+      - SYS_RESOURCE
+      - BPF
+      - PERFMON
+      - SYS_PTRACE
+
+# -- Whether the pod uses the host PID namespace (required for `bpf_send_signal` and accurate process attribution).
+hostPID: true
+# -- Whether the pod uses the host network namespace.
+hostNetwork: false
+# -- Pod DNS policy. Set to `ClusterFirstWithHostNet` when `hostNetwork: true`.
+dnsPolicy: ClusterFirst
+
+# -- Resource requests and limits. Conservative defaults; an event-driven eBPF agent has a small footprint.
+resources:
+  requests:
+    cpu: 10m
+    memory: 32Mi
+  limits:
+    cpu: 100m
+    memory: 128Mi
+
+# -- Node selector for DaemonSet pods.
+nodeSelector:
+  kubernetes.io/os: linux
+
+# -- Tolerations. The default tolerates every taint so the agent reaches every node.
+tolerations:
+  - operator: Exists
+
+# -- Affinity rules.
+affinity: {}
+
+# -- Priority class name. Use `system-node-critical` to match other host-level agents.
+priorityClassName: system-node-critical
+
+# -- DaemonSet update strategy.
+updateStrategy:
+  type: RollingUpdate
+  rollingUpdate:
+    maxUnavailable: 1
+
+# -- Termination grace period in seconds.
+terminationGracePeriodSeconds: 30
+
+# @section -- Probes
+livenessProbe:
+  # -- Enable the liveness probe.
+  enabled: true
+  # -- Initial delay before the first probe.
+  initialDelaySeconds: 15
+  # -- Probe interval.
+  periodSeconds: 20
+  # -- Probe timeout.
+  timeoutSeconds: 3
+  # -- Failure threshold before the container is restarted.
+  failureThreshold: 3
+
+readinessProbe:
+  # -- Enable the readiness probe.
+  enabled: true
+  # -- Initial delay before the first probe.
+  initialDelaySeconds: 5
+  # -- Probe interval.
+  periodSeconds: 10
+  # -- Probe timeout.
+  timeoutSeconds: 3
+  # -- Failure threshold before the pod is marked NotReady.
+  failureThreshold: 3
+
+# @section -- Service
+service:
+  # -- Create a headless Service exposing the metrics port.
+  create: true
+  # -- Service type.
+  type: ClusterIP
+  # -- Annotations to add to the Service.
+  annotations: {}
+
+# @section -- Monitoring
+serviceMonitor:
+  # -- Create a Prometheus Operator `ServiceMonitor`.
+  enabled: false
+  # -- Namespace where the ServiceMonitor is created. Defaults to release namespace.
+  namespace: ""
+  # -- Scrape interval.
+  interval: 30s
+  # -- Scrape timeout.
+  scrapeTimeout: 10s
+  # -- Extra labels added to the ServiceMonitor (e.g. `release: kube-prometheus-stack`).
+  labels: {}
+  # -- Metric relabeling rules.
+  metricRelabelings: []
+  # -- Relabeling rules.
+  relabelings: []
+
+prometheusRule:
+  # -- Create a Prometheus Operator `PrometheusRule` with default Copy.Fail alerts.
+  enabled: false
+  # -- Namespace where the PrometheusRule is created. Defaults to release namespace.
+  namespace: ""
+  # -- Extra labels added to the PrometheusRule.
+  labels: {}
+  # -- Additional rule groups appended to the default groups.
+  additionalRules: []
+
+# @section -- Volumes
+# -- Extra volumes added to the pod (the chart already mounts `/sys/fs/bpf`, `/sys/kernel/debug`, `/sys/kernel/security`).
+extraVolumes: []
+# -- Extra volume mounts added to the agent container.
+extraVolumeMounts: []

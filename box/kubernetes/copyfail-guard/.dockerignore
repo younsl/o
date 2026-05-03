@@ -1,0 +1,7 @@
+target/
+copyfail-guard-ebpf/target/
+**/*.rs.bk
+.git/
+docs/
+README.md
+charts/
