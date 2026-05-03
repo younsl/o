@@ -6,7 +6,9 @@ This re-implementation uses [aya](https://aya-rs.dev) so the userspace agent shi
 
 ## What is Copy.Fail
 
-CVE-2026-31431 lets any authorized user mutate the cached copy of any readable file via `AF_ALG` crypto sockets (provided by the `algif_*` kernel modules). The vulnerability enables local privilege escalation, container escapes, and sandbox bypass. Disabling the `algif_*` modules does **not** mitigate the issue when those modules are built into the kernel — this is the case on most distribution kernels and EKS-optimized AMIs.
+[CVE-2026-31431](https://nvd.nist.gov/vuln/detail/CVE-2026-31431) (a.k.a. [Copy.Fail](https://copy.fail/)) lets any authorized user mutate the cached copy of any readable file via `AF_ALG` crypto sockets (provided by the `algif_*` kernel modules). The vulnerability enables local privilege escalation, container escapes, and sandbox bypass. Disabling the `algif_*` modules does **not** mitigate the issue when those modules are built into the kernel — this is the case on most distribution kernels and EKS-optimized AMIs.
+
+References: [CVE-2026-31431 (NVD)](https://nvd.nist.gov/vuln/detail/CVE-2026-31431) · [copy.fail disclosure site](https://copy.fail/) · [upstream eBPF reference impl in C](https://github.com/iwanhae/copyfail-ebpf-k8s) · [Linux `algif_*` userspace crypto interface](https://www.kernel.org/doc/html/latest/crypto/userspace-if.html).
 
 ## How it works
 
