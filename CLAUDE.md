@@ -29,7 +29,7 @@ Types: `feat`, `fix`, `refactor`, `docs`, `test`, `chore`, etc.
 
 ### Rust Projects
 
-Standard Makefile patterns for Rust tools (ij, kuo, karc, qg, gss, filesystem-cleaner, elasticache-backup, redis-console, trivy-collector):
+Standard Makefile patterns for Rust tools (ij, kuo, karc, gss, filesystem-cleaner, elasticache-backup, redis-console, trivy-collector):
 
 ```bash
 # Core build commands
@@ -130,8 +130,7 @@ box/
 │   ├── redis-console/     # Interactive Redis cluster management CLI (Rust, CLI + container)
 │   └── trivy-collector/   # Multi-cluster Trivy report collector/viewer (Rust, container)
 ├── tools/                 # CLI utilities
-│   ├── ij/                # Interactive EC2 SSM connection tool (Rust)
-│   └── qg/                # QR code generator (Rust)
+│   └── ij/                # Interactive EC2 SSM connection tool (Rust)
 └── terraform/             # Infrastructure as Code
     └── vault/irsa/        # Vault auto-unseal with AWS KMS
 ```
@@ -315,27 +314,6 @@ make install-local  # Install to /usr/local/bin/
 **Constraints**:
 - Requires Karpenter v1 or v1beta1 NodePool CRD installed in the cluster
 - Requires RBAC: `karpenter.sh` apiGroup, `nodepools`/`nodeclaims` resources, `get`/`list`/`patch` verbs
-
-### qg - QR Code Generator (Rust)
-
-```bash
-# Generate QR code from URL
-./target/release/qg https://github.com/
-
-# Or use Makefile
-make run        # Build and run with example URL
-
-# Build commands
-make build      # Debug build
-make release    # Optimized release build
-make install    # Install to ~/.cargo/bin/
-
-# Custom options
-qg --width 200 --height 200 --filename custom.png https://example.com
-qg --quiet https://example.com  # Suppress output
-```
-
-**Note**: Uses qrcode crate for generation and Clap for CLI.
 
 ### filesystem-cleaner - Kubernetes Filesystem Cleanup Tool (Rust)
 
@@ -691,9 +669,6 @@ git tag grafana-dashboards/charts/1.0.0 && git push --tags
 # - _release-rust-scratch-containers.yml     (Unified Rust scratch+zigbuild container release: aurora-database-insights-exporter, filesystem-cleaner, gss, trivy-collector, kuo — version label trigger)
 # - release-helm-chart.yml                   (Unified Helm chart release to OCI registry)
 # - clean-workflow-runs.yml                  (Maintenance: cleanup old workflow runs)
-
-# Rust tools without automated releases (manual release required):
-# - qg (QR code generator)
 ```
 
 ## Testing Guidelines

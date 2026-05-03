@@ -12,7 +12,6 @@ All CLI tools are built with [Rust](https://github.com/rust-lang/rust) 1.93+. Ru
 
 | Category | Name | Language | Description |
 |----------|------|----------|-------------|
-| CLI | [qg](./qg/) (qr generator) | [Rust](./qg/Cargo.toml) | CLI tool that generates QR code images from text or URLs. |
 | CLI | [ij](./ij/) (Infra Janitor) | [Rust](./ij/Cargo.toml) | EC2 operations CLI for SSM connect and AMI cleanup with multi-region scanning. |
 
 ## License
