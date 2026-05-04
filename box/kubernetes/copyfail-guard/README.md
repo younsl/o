@@ -5,7 +5,7 @@
 [![Helm Chart](https://img.shields.io/badge/ghcr.io-charts%2Fcopyfail--guard-black?style=flat-square&logo=helm&logoColor=white)](https://github.com/younsl/o/pkgs/container/charts%2Fcopyfail-guard)
 [![GitHub license](https://img.shields.io/github/license/younsl/o?style=flat-square&color=black)](https://github.com/younsl/o/blob/main/LICENSE)
 
-Kubernetes DaemonSet that blocks `AF_ALG` socket creation to mitigate **CVE-2026-31431 (Copy.Fail)** via [eBPF](https://github.com/ebpf-io/ebpf.io), written in Rust 1.95.0 + cargo-zigbuild on a `scratch` base image.
+Kubernetes DaemonSet that blocks `AF_ALG` socket creation to mitigate **CVE-2026-31431 (Copy.Fail)** via [eBPF](https://ebpf.io/), written in Rust 1.95.0 + cargo-zigbuild on a `scratch` base image.
 
 This re-implementation uses [aya](https://aya-rs.dev) so the userspace agent ships as a single static musl binary.
 
