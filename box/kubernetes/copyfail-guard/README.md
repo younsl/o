@@ -13,9 +13,20 @@ This re-implementation uses [aya](https://aya-rs.dev) so the userspace agent shi
 
 [CVE-2026-31431](https://nvd.nist.gov/vuln/detail/CVE-2026-31431) (a.k.a. [Copy.Fail](https://copy.fail/)) lets any authorized user mutate the cached copy of any readable file via `AF_ALG` crypto sockets (provided by the `algif_*` kernel modules). The vulnerability enables local privilege escalation, container escapes, and sandbox bypass. Disabling the `algif_*` modules does **not** mitigate the issue when those modules are built into the kernel — this is the case on most distribution kernels and EKS-optimized AMIs.
 
-References: [CVE-2026-31431 (NVD)](https://nvd.nist.gov/vuln/detail/CVE-2026-31431) · [copy.fail disclosure site](https://copy.fail/) · [upstream eBPF reference impl in C](https://github.com/iwanhae/copyfail-ebpf-k8s) · [Linux `algif_*` userspace crypto interface](https://www.kernel.org/doc/html/latest/crypto/userspace-if.html).
+<details>
+<summary>References & AWS patch status</summary>
 
-> **EKS-optimized AMI patch status**: tracked in [[EKS] [request]: Roadmap for AMI patches addressing CVE-2026-31431 (Copy.Fail / AF_ALG) #2808](https://github.com/aws/containers-roadmap/issues/2808) — a roadmap request for AL2023 / AL2 / Bottlerocket kernel patches. Until AWS ships a fixed kernel, every EKS node is exposed at the host kernel level regardless of pod-level hardening (PSA, seccomp, AppArmor); this DaemonSet is intended as the stop-gap referenced in that issue.
+- [CVE-2026-31431 (NVD)](https://nvd.nist.gov/vuln/detail/CVE-2026-31431)
+- [copy.fail disclosure site](https://copy.fail/)
+- [ALAS — CVE-2026-31431](https://explore.alas.aws.amazon.com/CVE-2026-31431.html)
+- [Upstream eBPF reference impl in C](https://github.com/iwanhae/copyfail-ebpf-k8s)
+- [Linux `algif_*` userspace crypto interface](https://www.kernel.org/doc/html/latest/crypto/userspace-if.html)
+
+**Amazon Linux patch status (ALAS)**: [Amazon Linux Security Center — CVE-2026-31431](https://explore.alas.aws.amazon.com/CVE-2026-31431.html) lists every affected package across **AL2** (`kernel`, `kernel-5.4`, `kernel-5.10`, `kernel-5.15`) and **AL2023** (`kernel`, `kernel6.12`, `kernel6.18`) as **Pending Fix** — no ALAS advisory ID has been issued yet. AWS's recommended workaround is to blacklist the `algif_aead` module, which only addresses the publicly demonstrated exploit path; this DaemonSet blocks `AF_ALG` socket creation entirely and therefore covers the broader `algif_*` family.
+
+**EKS-optimized AMI patch status**: tracked in [[EKS] [request]: Roadmap for AMI patches addressing CVE-2026-31431 (Copy.Fail / AF_ALG) #2808](https://github.com/aws/containers-roadmap/issues/2808) — a roadmap request for AL2023 / AL2 / Bottlerocket kernel patches. Until AWS ships a fixed kernel, every EKS node is exposed at the host kernel level regardless of pod-level hardening (PSA, seccomp, AppArmor); this DaemonSet is intended as the stop-gap referenced in that issue.
+
+</details>
 
 ## How it works
 
@@ -120,4 +131,5 @@ The agent needs `CAP_SYS_ADMIN` (loading eBPF programs), `CAP_BPF` and `CAP_PERF
 - [CVE-2026-31431 details](https://github.com/iwanhae/copyfail-ebpf-k8s) — upstream eBPF reference implementation in C
 - [Linux kernel `algif_*` modules](https://www.kernel.org/doc/html/latest/crypto/userspace-if.html)
 - [aya — Rust eBPF library](https://aya-rs.dev)
+- [Amazon Linux Security Center — CVE-2026-31431](https://explore.alas.aws.amazon.com/CVE-2026-31431.html) — ALAS tracking for AL2 / AL2023 kernel packages (currently Pending Fix)
 - [[EKS] [request]: Roadmap for AMI patches addressing CVE-2026-31431 (Copy.Fail / AF_ALG) #2808](https://github.com/aws/containers-roadmap/issues/2808) — EKS AMI patch roadmap request
