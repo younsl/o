@@ -104,7 +104,8 @@ The following table lists the configurable parameters and their default values.
 | hostPID | bool | `true` | Whether the pod uses the host PID namespace (required for `bpf_send_signal` and accurate process attribution). |
 | hostNetwork | bool | `false` | Whether the pod uses the host network namespace. |
 | dnsPolicy | string | `"ClusterFirst"` | Pod DNS policy. Set to `ClusterFirstWithHostNet` when `hostNetwork: true`. |
-| resources | object | `{"limits":{"cpu":"100m","memory":"128Mi"},"requests":{"cpu":"10m","memory":"32Mi"}}` | Resource requests and limits. Conservative defaults; an event-driven eBPF agent has a small footprint. |
+| resources | object | `{}` | Resource requests and limits. Empty by default so VPA/HPA or in-place resize can manage the values without conflicting defaults. |
+| resizePolicy | list | `[{"resourceName":"cpu","restartPolicy":"NotRequired"},{"resourceName":"memory","restartPolicy":"RestartContainer"}]` | In-place pod resize policy (Kubernetes 1.27+ feature, stable in 1.33+). CPU resizes without restart; memory requires a container restart. |
 | nodeSelector | object | `{"kubernetes.io/os":"linux"}` | Node selector for DaemonSet pods. |
 | tolerations | list | `[{"operator":"Exists"}]` | Tolerations. The default tolerates every taint so the agent reaches every node. |
 | affinity | object | `{}` | Affinity rules. |

@@ -78,14 +78,15 @@ hostNetwork: false
 # -- Pod DNS policy. Set to `ClusterFirstWithHostNet` when `hostNetwork: true`.
 dnsPolicy: ClusterFirst
 
-# -- Resource requests and limits. Conservative defaults; an event-driven eBPF agent has a small footprint.
-resources:
-  requests:
-    cpu: 10m
-    memory: 32Mi
-  limits:
-    cpu: 100m
-    memory: 128Mi
+# -- Resource requests and limits. Empty by default so VPA/HPA or in-place resize can manage the values without conflicting defaults.
+resources: {}
+
+# -- In-place pod resize policy (Kubernetes 1.27+ feature, stable in 1.33+). CPU resizes without restart; memory requires a container restart.
+resizePolicy:
+  - resourceName: cpu
+    restartPolicy: NotRequired
+  - resourceName: memory
+    restartPolicy: RestartContainer
 
 # -- Node selector for DaemonSet pods.
 nodeSelector:
