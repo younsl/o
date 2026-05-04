@@ -45,6 +45,10 @@ Behavior verified end-to-end on a managed Kubernetes dev cluster:
 
 ## Architecture
 
+![copyfail-guard architecture](./1.png)
+
+The agent on each node loads a small eBPF program into the host kernel and attaches it at the socket-creation hook. Every `socket()` call — from any pod, any namespace, any UID — traverses that hook. When the address family is `AF_ALG`, the call is denied: **LSM mode** returns `-EPERM` so `socket()` fails before `algif_*` is ever reached; **tracepoint mode** (fallback for kernels without BPF LSM) sends `SIGKILL` to the offending task. Each decision is published to a BPF ring buffer that the userspace agent drains into structured logs and Prometheus counters. The kernel hook is the single choke point — there is no userspace fast path and no per-pod configuration.
+
 ```
 copyfail-guard/
 ├── Cargo.toml                # Single crate, two [[bin]]s gated by target_arch

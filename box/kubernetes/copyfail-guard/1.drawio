@@ -1,0 +1,76 @@
+<mxfile host="app.diagrams.net" modified="2026-05-04T00:00:00.000Z" agent="copyfail-guard" version="24.0.0">
+  <diagram id="copyfail-guard-arch" name="copyfail-guard">
+    <mxGraphModel dx="1400" dy="900" grid="0" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="1100" pageHeight="720" math="0" shadow="0">
+      <root>
+        <mxCell id="0" />
+        <mxCell id="1" parent="0" />
+
+        <mxCell id="cluster" value="Kubernetes Cluster" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#000000;fontColor=#000000;fontSize=14;fontStyle=1;verticalAlign=top;align=left;spacingLeft=14;spacingTop=10;" vertex="1" parent="1">
+          <mxGeometry x="40" y="40" width="1020" height="660" as="geometry" />
+        </mxCell>
+
+        <mxCell id="userPod" value="&lt;b&gt;User Pod&lt;/b&gt;&lt;br&gt;socket(AF_ALG, ...)" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#000000;fontColor=#000000;fontSize=12;align=center;verticalAlign=middle;" vertex="1" parent="1">
+          <mxGeometry x="100" y="100" width="300" height="80" as="geometry" />
+        </mxCell>
+
+        <mxCell id="agentPod" value="&lt;b&gt;copyfail-guard agent&lt;/b&gt;&lt;br&gt;(DaemonSet, one per node)" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#000000;fontColor=#000000;fontSize=12;align=center;verticalAlign=middle;" vertex="1" parent="1">
+          <mxGeometry x="640" y="100" width="300" height="80" as="geometry" />
+        </mxCell>
+
+        <mxCell id="kernel" value="Linux Kernel (host)" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#000000;fontColor=#000000;fontSize=13;fontStyle=1;align=left;verticalAlign=top;spacingLeft=12;spacingTop=8;dashed=1;" vertex="1" parent="1">
+          <mxGeometry x="80" y="250" width="940" height="400" as="geometry" />
+        </mxCell>
+
+        <mxCell id="hook" value="&lt;b&gt;eBPF program&lt;/b&gt;&amp;nbsp;&amp;nbsp;(LSM / tracepoint)&lt;br&gt;filter: family == AF_ALG ?" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#000000;fontColor=#000000;fontSize=12;align=center;verticalAlign=middle;" vertex="1" parent="1">
+          <mxGeometry x="290" y="310" width="520" height="80" as="geometry" />
+        </mxCell>
+
+        <mxCell id="lsm" value="&lt;b&gt;LSM mode&lt;/b&gt;&lt;br&gt;return -EPERM (block)" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#000000;fontColor=#000000;fontSize=12;align=center;verticalAlign=middle;" vertex="1" parent="1">
+          <mxGeometry x="200" y="450" width="280" height="70" as="geometry" />
+        </mxCell>
+
+        <mxCell id="kill" value="&lt;b&gt;Tracepoint mode&lt;/b&gt;&lt;br&gt;send SIGKILL (kill)" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#000000;fontColor=#000000;fontSize=12;align=center;verticalAlign=middle;" vertex="1" parent="1">
+          <mxGeometry x="620" y="450" width="280" height="70" as="geometry" />
+        </mxCell>
+
+        <mxCell id="ringbuf" value="BPF ring buffer (events)" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#000000;fontColor=#000000;fontSize=12;align=center;verticalAlign=middle;" vertex="1" parent="1">
+          <mxGeometry x="350" y="560" width="400" height="60" as="geometry" />
+        </mxCell>
+
+        <mxCell id="e1" value="syscall" style="endArrow=classic;html=1;rounded=0;strokeColor=#000000;fontColor=#000000;fontSize=11;exitX=0.5;exitY=1;exitDx=0;exitDy=0;entryX=0.15;entryY=0;entryDx=0;entryDy=0;labelBackgroundColor=#FFFFFF;" edge="1" parent="1" source="userPod" target="hook">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+
+        <mxCell id="e2" value="load + attach" style="endArrow=classic;html=1;rounded=0;strokeColor=#000000;fontColor=#000000;fontSize=11;exitX=0.5;exitY=1;exitDx=0;exitDy=0;entryX=0.85;entryY=0;entryDx=0;entryDy=0;labelBackgroundColor=#FFFFFF;" edge="1" parent="1" source="agentPod" target="hook">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+
+        <mxCell id="e3" style="endArrow=classic;html=1;rounded=0;strokeColor=#000000;exitX=0.2;exitY=1;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;" edge="1" parent="1" source="hook" target="lsm">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+
+        <mxCell id="e4" style="endArrow=classic;html=1;rounded=0;strokeColor=#000000;exitX=0.8;exitY=1;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;" edge="1" parent="1" source="hook" target="kill">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+
+        <mxCell id="e5" style="endArrow=classic;html=1;rounded=0;strokeColor=#000000;exitX=0.5;exitY=1;exitDx=0;exitDy=0;entryX=0.25;entryY=0;entryDx=0;entryDy=0;" edge="1" parent="1" source="lsm" target="ringbuf">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+
+        <mxCell id="e6" style="endArrow=classic;html=1;rounded=0;strokeColor=#000000;exitX=0.5;exitY=1;exitDx=0;exitDy=0;entryX=0.75;entryY=0;entryDx=0;entryDy=0;" edge="1" parent="1" source="kill" target="ringbuf">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+
+        <mxCell id="e7" value="events &#8594; log + metrics" style="endArrow=classic;html=1;rounded=0;strokeColor=#000000;fontColor=#000000;fontSize=11;exitX=1;exitY=0.5;exitDx=0;exitDy=0;entryX=1;entryY=0.5;entryDx=0;entryDy=0;labelBackgroundColor=#FFFFFF;" edge="1" parent="1" source="ringbuf" target="agentPod">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="990" y="590" />
+              <mxPoint x="990" y="140" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+
+      </root>
+    </mxGraphModel>
+  </diagram>
+</mxfile>
