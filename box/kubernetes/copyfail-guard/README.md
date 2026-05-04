@@ -1,5 +1,10 @@
 # copyfail-guard
 
+[![Rust](https://img.shields.io/badge/rust-1.95.0-black?style=flat-square&logo=rust&logoColor=white)](https://www.rust-lang.org/)
+[![GitHub Container Registry](https://img.shields.io/badge/ghcr.io-copyfail--guard-black?style=flat-square&logo=docker&logoColor=white)](https://github.com/younsl/o/pkgs/container/copyfail-guard)
+[![Helm Chart](https://img.shields.io/badge/ghcr.io-charts%2Fcopyfail--guard-black?style=flat-square&logo=helm&logoColor=white)](https://github.com/younsl/o/pkgs/container/charts%2Fcopyfail-guard)
+[![GitHub license](https://img.shields.io/github/license/younsl/o?style=flat-square&color=black)](https://github.com/younsl/o/blob/main/LICENSE)
+
 Kubernetes DaemonSet that blocks `AF_ALG` socket creation to mitigate **CVE-2026-31431 (Copy.Fail)** via eBPF, written in Rust 1.95.0 + cargo-zigbuild on a `scratch` base image.
 
 This re-implementation uses [aya](https://aya-rs.dev) so the userspace agent ships as a single static musl binary.
@@ -9,6 +14,8 @@ This re-implementation uses [aya](https://aya-rs.dev) so the userspace agent shi
 [CVE-2026-31431](https://nvd.nist.gov/vuln/detail/CVE-2026-31431) (a.k.a. [Copy.Fail](https://copy.fail/)) lets any authorized user mutate the cached copy of any readable file via `AF_ALG` crypto sockets (provided by the `algif_*` kernel modules). The vulnerability enables local privilege escalation, container escapes, and sandbox bypass. Disabling the `algif_*` modules does **not** mitigate the issue when those modules are built into the kernel — this is the case on most distribution kernels and EKS-optimized AMIs.
 
 References: [CVE-2026-31431 (NVD)](https://nvd.nist.gov/vuln/detail/CVE-2026-31431) · [copy.fail disclosure site](https://copy.fail/) · [upstream eBPF reference impl in C](https://github.com/iwanhae/copyfail-ebpf-k8s) · [Linux `algif_*` userspace crypto interface](https://www.kernel.org/doc/html/latest/crypto/userspace-if.html).
+
+> **EKS-optimized AMI patch status**: tracked in [[EKS] [request]: Roadmap for AMI patches addressing CVE-2026-31431 (Copy.Fail / AF_ALG) #2808](https://github.com/aws/containers-roadmap/issues/2808) — a roadmap request for AL2023 / AL2 / Bottlerocket kernel patches. Until AWS ships a fixed kernel, every EKS node is exposed at the host kernel level regardless of pod-level hardening (PSA, seccomp, AppArmor); this DaemonSet is intended as the stop-gap referenced in that issue.
 
 ## How it works
 
@@ -113,3 +120,4 @@ The agent needs `CAP_SYS_ADMIN` (loading eBPF programs), `CAP_BPF` and `CAP_PERF
 - [CVE-2026-31431 details](https://github.com/iwanhae/copyfail-ebpf-k8s) — upstream eBPF reference implementation in C
 - [Linux kernel `algif_*` modules](https://www.kernel.org/doc/html/latest/crypto/userspace-if.html)
 - [aya — Rust eBPF library](https://aya-rs.dev)
+- [[EKS] [request]: Roadmap for AMI patches addressing CVE-2026-31431 (Copy.Fail / AF_ALG) #2808](https://github.com/aws/containers-roadmap/issues/2808) — EKS AMI patch roadmap request
