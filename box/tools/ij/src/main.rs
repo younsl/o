@@ -19,7 +19,7 @@ use config::{Args, Command, Config};
 use error::Error;
 use file_config::FileConfig;
 use forward::PortForward;
-use session::SessionManager;
+use session::{SessionCredentials, SessionManager};
 use tabs::TabResult;
 
 fn init_logging(config: &Config) {
@@ -93,6 +93,27 @@ async fn main() {
         std::process::exit(1);
     }
 
+    // Pull the cached STS credentials so the spawned `aws ssm start-session`
+    // can reuse them via env vars. Without this, AWS CLI re-runs its own
+    // credential resolution and prompts for the OTP a second time.
+    let session_credentials = match aws_mfa::resolve_credentials(
+        config.profile.as_deref(),
+        config.aws_config_file.as_deref(),
+    )
+    .await
+    {
+        Ok(Some(creds)) => creds.session_token().map(|token| SessionCredentials {
+            access_key_id: creds.access_key_id().to_string(),
+            secret_access_key: creds.secret_access_key().to_string(),
+            session_token: token.to_string(),
+        }),
+        Ok(None) => None,
+        Err(e) => {
+            eprintln!("{} {}", "Error:".red().bold(), e);
+            std::process::exit(1);
+        }
+    };
+
     // Run tabbed TUI
     match tabs::run_tabbed(config.clone()).await {
         Ok(TabResult::Connect(instance)) => {
@@ -104,8 +125,11 @@ async fn main() {
                 instance.az.bright_blue()
             );
 
-            let session =
+            let mut session =
                 SessionManager::new(config.profile.clone(), config.shell_commands.clone());
+            if let Some(creds) = session_credentials {
+                session = session.with_credentials(creds);
+            }
 
             if let Some(ref pf) = port_forward {
                 println!(

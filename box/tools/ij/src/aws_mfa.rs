@@ -52,6 +52,26 @@ pub async fn build_sdk_config(
     Ok(default_loader(profile, aws_config_file).load().await)
 }
 
+/// Return resolved STS credentials for an MFA-enabled profile, or `None` for
+/// profiles that do not declare `mfa_serial`.
+///
+/// Reuses the same in-process cache as [`build_sdk_config`], so calling this
+/// after `build_sdk_config` for the same profile does not re-prompt for an
+/// OTP nor issue another `AssumeRole` call.
+pub async fn resolve_credentials(
+    profile: Option<&str>,
+    aws_config_file: Option<&str>,
+) -> Result<Option<Credentials>> {
+    let Some(p) = profile else {
+        return Ok(None);
+    };
+    let Some(info) = detect_mfa_profile(p, aws_config_file).await else {
+        return Ok(None);
+    };
+    let creds = resolve_mfa_credentials(&info, aws_config_file).await?;
+    Ok(Some(creds))
+}
+
 fn default_loader(
     profile: Option<&str>,
     aws_config_file: Option<&str>,
