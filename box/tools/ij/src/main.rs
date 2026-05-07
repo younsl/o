@@ -85,11 +85,9 @@ async fn main() {
     // Resolve MFA credentials before entering the TUI. dialoguer cannot
     // read input once crossterm is in raw mode, so prompts must happen here.
     // For non-MFA profiles this is a no-op that warms the credential cache.
-    if let Err(e) = aws_mfa::build_sdk_config(
-        config.profile.as_deref(),
-        config.aws_config_file.as_deref(),
-    )
-    .await
+    if let Err(e) =
+        aws_mfa::build_sdk_config(config.profile.as_deref(), config.aws_config_file.as_deref())
+            .await
     {
         eprintln!("{} {}", "Error:".red().bold(), e);
         std::process::exit(1);
