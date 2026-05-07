@@ -1608,10 +1608,11 @@ dependencies = [
 
 [[package]]
 name = "ij"
-version = "0.4.0"
+version = "0.5.0"
 dependencies = [
  "anyhow",
  "aws-config",
+ "aws-credential-types",
  "aws-sdk-autoscaling",
  "aws-sdk-ec2",
  "aws-sdk-sts",

@@ -4,14 +4,24 @@ use std::path::PathBuf;
 use aws_sdk_ec2::Client as Ec2Client;
 
 pub async fn build_config(profile: &str, region: Option<&str>) -> aws_config::SdkConfig {
-    let mut loader =
-        aws_config::defaults(aws_config::BehaviorVersion::latest()).profile_name(profile);
+    // Resolve credentials via the MFA-aware path so profiles with `mfa_serial`
+    // prompt for an OTP. Profiles without MFA fall back to the standard
+    // provider chain unchanged.
+    let base = match crate::aws_mfa::build_sdk_config(Some(profile), None).await {
+        Ok(c) => c,
+        Err(e) => {
+            tracing::error!("Failed to build AWS config for profile {profile}: {e}");
+            std::process::exit(1);
+        }
+    };
 
-    if let Some(r) = region {
-        loader = loader.region(aws_config::Region::new(r.to_string()));
+    match region {
+        Some(r) => base
+            .into_builder()
+            .region(aws_config::Region::new(r.to_string()))
+            .build(),
+        None => base,
     }
-
-    loader.load().await
 }
 
 pub async fn get_account_id(config: &aws_config::SdkConfig) -> anyhow::Result<String> {

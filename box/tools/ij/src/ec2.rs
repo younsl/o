@@ -1,10 +1,10 @@
 //! EC2 instance discovery and management.
 
-use aws_config::BehaviorVersion;
 use aws_sdk_ec2::types::Filter;
 use tabled::Tabled;
 use tracing::{debug, warn};
 
+use crate::aws_mfa;
 use crate::config::{AWS_REGIONS, Config};
 use crate::error::{Error, Result};
 
@@ -157,21 +157,14 @@ impl Scanner {
 
         let start = std::time::Instant::now();
 
-        // Load base SDK config once (credential resolution happens only here)
-        let mut config_loader = aws_config::defaults(BehaviorVersion::latest());
-        if let Some(ref p) = self.config.profile {
-            config_loader = config_loader.profile_name(p);
-        }
-        #[allow(deprecated)]
-        if let Some(ref path) = self.config.aws_config_file {
-            use aws_config::profile::profile_file::{ProfileFileKind, ProfileFiles};
-            let profile_files = ProfileFiles::builder()
-                .with_file(ProfileFileKind::Config, path)
-                .include_default_credentials_file(true)
-                .build();
-            config_loader = config_loader.profile_files(profile_files);
-        }
-        let base_sdk_config = config_loader.load().await;
+        // Load base SDK config once (credential resolution happens only here).
+        // `aws_mfa` transparently handles profiles with `mfa_serial` by
+        // prompting for an OTP and performing an explicit STS AssumeRole.
+        let base_sdk_config = aws_mfa::build_sdk_config(
+            self.config.profile.as_deref(),
+            self.config.aws_config_file.as_deref(),
+        )
+        .await?;
 
         let num_regions = regions.len();
         let tasks: Vec<_> = regions

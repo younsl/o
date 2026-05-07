@@ -134,6 +134,24 @@ AWS profile is resolved in priority order.
 3. `AWS_PROFILE` env variable
 4. Default profile (lowest)
 
+## MFA Profiles
+
+Profiles with `mfa_serial` in `~/.aws/config` are detected automatically. `ij`
+prompts for an OTP once per invocation, performs an STS `AssumeRole` using the
+source profile's credentials, and caches the resulting temporary credentials
+in-memory for the rest of the session.
+
+```ini
+[profile prod]
+region = ap-northeast-2
+role_arn = arn:aws:iam::123456789012:role/admin
+source_profile = default
+mfa_serial = arn:aws:iam::123456789012:mfa/your-device
+```
+
+Profiles without `mfa_serial` continue to use the standard provider chain
+unchanged.
+
 ## Requirements
 
 IAM permissions needed for ij to work.

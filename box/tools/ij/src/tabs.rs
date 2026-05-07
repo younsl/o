@@ -565,22 +565,19 @@ fn spawn_state_change(
     let aws_config_file = config.aws_config_file.clone();
 
     tokio::spawn(async move {
-        use aws_config::BehaviorVersion;
-
-        let mut loader = aws_config::defaults(BehaviorVersion::latest());
-        if let Some(ref p) = profile {
-            loader = loader.profile_name(p);
-        }
-        #[allow(deprecated)]
-        if let Some(ref path) = aws_config_file {
-            use aws_config::profile::profile_file::{ProfileFileKind, ProfileFiles};
-            let profile_files = ProfileFiles::builder()
-                .with_file(ProfileFileKind::Config, path)
-                .include_default_credentials_file(true)
-                .build();
-            loader = loader.profile_files(profile_files);
-        }
-        let base_config = loader.load().await;
+        let base_config =
+            match crate::aws_mfa::build_sdk_config(profile.as_deref(), aws_config_file.as_deref())
+                .await
+            {
+                Ok(c) => c,
+                Err(e) => {
+                    let _ = tx.send(Ec2StateMsg::Error {
+                        name: instance.name.clone(),
+                        error: e.to_string(),
+                    });
+                    return;
+                }
+            };
 
         let region = instance.region().to_string();
         let result = if start {

@@ -1,5 +1,6 @@
 mod ami_cleanup;
 mod asg_scaling;
+mod aws_mfa;
 mod config;
 mod ec2;
 mod error;
@@ -80,6 +81,19 @@ async fn main() {
             std::process::exit(1);
         }
     };
+
+    // Resolve MFA credentials before entering the TUI. dialoguer cannot
+    // read input once crossterm is in raw mode, so prompts must happen here.
+    // For non-MFA profiles this is a no-op that warms the credential cache.
+    if let Err(e) = aws_mfa::build_sdk_config(
+        config.profile.as_deref(),
+        config.aws_config_file.as_deref(),
+    )
+    .await
+    {
+        eprintln!("{} {}", "Error:".red().bold(), e);
+        std::process::exit(1);
+    }
 
     // Run tabbed TUI
     match tabs::run_tabbed(config.clone()).await {
