@@ -1,0 +1,42 @@
+# ==============================================================================
+# Backstage Catalog Info - gRPC Example
+# ==============================================================================
+# Use this template for gRPC APIs
+# ==============================================================================
+
+apiVersion: backstage.io/v1alpha1
+kind: API
+metadata:
+  name: payment-grpc-api
+  title: Payment gRPC API
+  description: |
+    gRPC API for payment processing.
+    High-performance internal API for payment transactions.
+  annotations:
+    gitlab.com/project-slug: my-group/payment-service
+  tags:
+    - grpc
+    - internal
+    - payment
+spec:
+  type: grpc
+  lifecycle: production
+  owner: team-payments
+  definition:
+    $text: ./proto/payment.proto
+
+---
+apiVersion: backstage.io/v1alpha1
+kind: Component
+metadata:
+  name: payment-service
+  title: Payment Service
+  description: Internal payment processing service
+  annotations:
+    gitlab.com/project-slug: my-group/payment-service
+spec:
+  type: service
+  lifecycle: production
+  owner: team-payments
+  providesApis:
+    - payment-grpc-api

@@ -1,0 +1,56 @@
+.statusItem {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+
+.statusLabel {
+    font-size: 10px;
+    font-weight: 600;
+    color: var(--text-secondary);
+    letter-spacing: 0.5px;
+}
+
+.led {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background-color: var(--text-muted);
+    transition: all 0.3s ease;
+}
+
+.off {
+    background-color: var(--text-muted);
+    box-shadow: none;
+}
+
+.syncing {
+    background-color: var(--medium);
+    box-shadow: 0 0 6px var(--medium);
+    animation: pulse 1.5s infinite;
+}
+
+.running {
+    background-color: var(--low);
+    box-shadow: 0 0 6px var(--low);
+}
+
+.error {
+    background-color: var(--critical);
+    box-shadow: 0 0 6px var(--critical);
+}
+
+.blink {
+    animation: blink 0.3s ease-in-out;
+}
+
+@keyframes blink {
+    0% { transform: scale(1); opacity: 1; }
+    50% { transform: scale(1.5); opacity: 0.5; }
+    100% { transform: scale(1); opacity: 1; }
+}
+
+@keyframes pulse {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.5; }
+}

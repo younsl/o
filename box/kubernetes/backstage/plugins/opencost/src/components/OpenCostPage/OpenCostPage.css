@@ -1,0 +1,702 @@
+/* Override @backstage/ui FieldLabelWrapper margin to match oc-native-select-label */
+.oc-section-box [class*='bui-FieldLabelWrapper'] {
+  margin-bottom: var(--bui-space-1, 4px);
+}
+
+.oc-section-box {
+  background: var(--bui-color-surface-2, rgba(255, 255, 255, 0.05));
+  border-radius: 8px;
+  border: 1px solid var(--bui-color-border, rgba(255, 255, 255, 0.1));
+}
+
+.oc-summary-bar {
+  display: flex;
+  gap: 16px;
+  flex-wrap: wrap;
+}
+
+.oc-summary-card {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 8px 16px;
+  background: var(--bui-color-surface-3, rgba(255, 255, 255, 0.03));
+  border-radius: 6px;
+  min-width: 120px;
+}
+
+.oc-summary-value {
+  font-size: 1.25rem;
+}
+
+.oc-summary-card-collecting {
+  background: rgba(59, 130, 246, 0.15);
+}
+
+.oc-summary-card-collecting .oc-status-collecting {
+  background: none;
+}
+
+.oc-summary-card-missing {
+  background: rgba(239, 68, 68, 0.15);
+}
+
+.oc-summary-card-missing .oc-status-missing {
+  background: none;
+}
+
+.oc-summary-card-forecast {
+  background: var(--bui-color-surface-3, rgba(255, 255, 255, 0.03));
+  border: 1px dashed var(--bui-color-border, rgba(255, 255, 255, 0.15));
+  opacity: 0.7;
+}
+
+.oc-summary-card-forecast:hover {
+  opacity: 1;
+}
+
+.oc-filter-bar {
+  display: flex;
+  gap: 12px;
+  flex-wrap: wrap;
+  align-items: flex-end;
+}
+
+.oc-filter-bar > * {
+  min-width: 200px;
+}
+
+/* Native select for filters with many items (workaround for @backstage/ui
+   Select popover closing immediately when item count exceeds viewport) */
+.oc-native-select {
+  display: flex;
+  flex-direction: column;
+}
+
+.oc-native-select-label {
+  font-size: var(--bui-font-size-2, 0.75rem);
+  font-weight: var(--bui-font-weight-regular, 400);
+  color: var(--bui-fg-primary, inherit);
+  cursor: pointer;
+  margin-bottom: var(--bui-space-1, 4px);
+}
+
+.oc-native-select select {
+  height: 2rem;
+  padding: 0 8px;
+  border-radius: 6px;
+  border: 1px solid var(--bui-color-border, rgba(255, 255, 255, 0.2));
+  background: var(--bui-color-surface-2, rgba(255, 255, 255, 0.05));
+  color: var(--bui-color-text-primary, inherit);
+  font-size: 0.875rem;
+  cursor: pointer;
+  appearance: auto;
+}
+
+.oc-count-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 2px 10px;
+  border-radius: 12px;
+  font-size: 0.75rem;
+  font-weight: 600;
+  background: var(--bui-color-surface-3, rgba(255, 255, 255, 0.08));
+  color: var(--bui-color-text-primary, #fff);
+}
+
+.oc-export-btn {
+  padding: 4px 10px;
+  border-radius: 6px;
+  border: 1px solid var(--bui-color-border, rgba(255, 255, 255, 0.2));
+  background: var(--bui-color-surface-3, rgba(255, 255, 255, 0.05));
+  color: var(--bui-color-text-secondary, rgba(255, 255, 255, 0.6));
+  font-size: 0.6875rem;
+  cursor: pointer;
+  transition: background 0.15s, color 0.15s;
+}
+
+.oc-export-btn:hover {
+  background: var(--bui-color-surface-2, rgba(255, 255, 255, 0.1));
+  color: var(--bui-color-text-primary, #fff);
+}
+
+
+.oc-empty-state {
+  display: flex;
+  justify-content: center;
+  padding: 48px 0;
+}
+
+/* Breadcrumb */
+.oc-breadcrumb {
+  display: flex;
+  align-items: center;
+  gap: 0;
+  font-size: 0.875rem;
+  font-family: monospace;
+}
+
+.oc-crumb-active {
+  font-weight: 600;
+  color: var(--bui-color-text-primary, #fff);
+}
+
+.oc-crumb-link {
+  color: var(--bui-color-text-secondary, rgba(255, 255, 255, 0.5));
+  cursor: pointer;
+  transition: color 0.15s;
+}
+
+.oc-crumb-link:hover {
+  color: var(--bui-color-primary, #90caf9);
+}
+
+.oc-crumb-sep {
+  margin: 0 8px;
+  color: var(--bui-color-text-secondary, rgba(255, 255, 255, 0.3));
+}
+
+/* Table */
+.oc-table-wrapper {
+  overflow-x: auto;
+}
+
+.oc-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.8125rem;
+}
+
+.oc-table thead th {
+  position: sticky;
+  top: 0;
+  background: var(--bui-color-surface-2, rgba(255, 255, 255, 0.05));
+  padding: 10px 12px;
+  text-align: left;
+  font-weight: 600;
+  font-size: 0.75rem;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  color: var(--bui-color-text-secondary, rgba(255, 255, 255, 0.6));
+  border-bottom: 1px solid var(--bui-color-border, rgba(255, 255, 255, 0.1));
+  cursor: pointer;
+  user-select: none;
+}
+
+.oc-table thead th:hover {
+  color: var(--bui-color-text-primary, #fff);
+}
+
+.oc-table tbody td {
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--bui-color-border, rgba(255, 255, 255, 0.06));
+  color: var(--bui-color-text-primary, rgba(255, 255, 255, 0.87));
+}
+
+.oc-table tbody tr:hover td {
+  background: var(--bui-color-surface-3, rgba(255, 255, 255, 0.04));
+}
+
+.oc-table tfoot td {
+  padding: 10px 12px;
+  border-top: 2px solid var(--bui-color-border, rgba(255, 255, 255, 0.15));
+  color: var(--bui-color-text-primary, #fff);
+}
+
+.oc-table tfoot tr:not(.oc-daily-avg-row) td {
+  background: var(--bui-color-surface-3, rgba(255, 255, 255, 0.06));
+}
+
+.oc-daily-avg-row td {
+  font-style: italic;
+  opacity: 0.75;
+  border-top: 1px dashed var(--bui-color-border, rgba(255, 255, 255, 0.10));
+  border-bottom: none;
+}
+
+.oc-kind {
+  text-transform: lowercase;
+  font-size: 0.75rem;
+  opacity: 0.8;
+}
+
+.oc-pod-name {
+  font-family: monospace;
+  font-size: 0.8125rem;
+  word-break: break-all;
+  max-width: 360px;
+}
+
+.oc-cost {
+  text-align: right;
+  font-family: monospace;
+  white-space: nowrap;
+}
+
+.oc-cost-total {
+  font-weight: 600;
+  color: var(--bui-color-warning, #f59e0b);
+}
+
+.oc-sort-icon {
+  margin-left: 1px;
+  opacity: 0.3;
+  font-size: 0.75rem;
+}
+
+.oc-sort-icon.oc-sort-active {
+  opacity: 1;
+  color: var(--bui-color-primary, #90caf9);
+}
+
+/* Clickable rows (drill-down) */
+.oc-clickable-row {
+  cursor: pointer;
+}
+
+.oc-clickable-row:hover td {
+  background: var(--bui-color-surface-3, rgba(255, 255, 255, 0.06));
+}
+
+/* Disabled rows (missing/pending days) */
+.oc-row-disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
+/* Snapshot status badges */
+.oc-status {
+  display: inline-block;
+  padding: 2px 8px;
+  border-radius: 10px;
+  font-size: 0.6875rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.3px;
+}
+
+.oc-status-collected {
+  background: rgba(34, 197, 94, 0.15);
+  color: #4ade80;
+}
+
+.oc-status-collecting {
+  background: rgba(59, 130, 246, 0.15);
+  color: #60a5fa;
+}
+
+.oc-status-missing {
+  background: rgba(239, 68, 68, 0.15);
+  color: #f87171;
+}
+
+.oc-status-pending {
+  background: rgba(148, 163, 184, 0.15);
+  color: #94a3b8;
+}
+
+/* Estimated cost (in-progress day) */
+.oc-cost-estimated {
+  opacity: 0.7;
+}
+
+/* Day of week */
+.oc-day-of-week {
+  font-size: 0.75rem;
+  color: var(--bui-color-text-secondary, rgba(255, 255, 255, 0.6));
+}
+
+.oc-dow-sat {
+  color: #60a5fa;
+}
+
+.oc-dow-sun {
+  color: #f87171;
+}
+
+/* Cost breakdown bar */
+.oc-breakdown {
+  margin-top: 16px;
+}
+
+.oc-breakdown-bar {
+  display: flex;
+  height: 10px;
+  border-radius: 5px;
+  overflow: hidden;
+  background: var(--bui-color-surface-3, rgba(255, 255, 255, 0.06));
+}
+
+.oc-breakdown-segment {
+  transition: width 0.3s ease;
+}
+
+.oc-breakdown-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 20px;
+  margin-top: 10px;
+}
+
+.oc-breakdown-item {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 0.75rem;
+}
+
+.oc-breakdown-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.oc-breakdown-label {
+  color: var(--bui-color-text-secondary, rgba(255, 255, 255, 0.6));
+}
+
+.oc-breakdown-value {
+  font-family: monospace;
+  font-weight: 600;
+  color: var(--bui-color-text-primary, #fff);
+}
+
+.oc-breakdown-pct {
+  font-family: monospace;
+  color: var(--bui-color-text-secondary, rgba(255, 255, 255, 0.5));
+}
+
+/* Carbon cost */
+.oc-carbon {
+  color: var(--bui-color-text-secondary, rgba(255, 255, 255, 0.6));
+}
+
+/* Summary split layout */
+.oc-summary-split {
+  display: flex;
+  gap: 24px;
+}
+
+.oc-summary-left {
+  flex: 1;
+  min-width: 0;
+  order: 2;
+}
+
+.oc-summary-right {
+  flex: 0 0 auto;
+  min-width: 200px;
+  order: 1;
+}
+
+/* Collection calendar */
+.oc-calendar-header {
+  margin-bottom: 6px;
+}
+
+.oc-calendar-grid {
+  display: grid;
+  grid-template-columns: 20px repeat(7, 24px);
+  gap: 2px;
+  user-select: none;
+}
+
+.oc-calendar-week-label {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.55rem;
+  color: var(--bui-color-text-secondary, rgba(255, 255, 255, 0.4));
+  font-weight: 500;
+}
+
+.oc-calendar-dow {
+  text-align: center;
+  font-size: 0.6rem;
+  color: var(--bui-color-text-secondary, rgba(255, 255, 255, 0.5));
+  padding-bottom: 2px;
+}
+
+.oc-calendar-cell {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.oc-calendar-stamp {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  border-radius: 3px;
+  font-size: 0.65rem;
+  font-weight: 600;
+  color: #fff;
+}
+
+.oc-calendar-stamp.oc-stamp-pending {
+  opacity: 0.3;
+}
+
+.oc-calendar-stamp.oc-stamp-missing {
+  background: repeating-linear-gradient(
+    -45deg,
+    #f87171,
+    #f87171 2px,
+    rgba(248, 113, 113, 0.3) 2px,
+    rgba(248, 113, 113, 0.3) 4px
+  );
+}
+
+.oc-led-missing {
+  background: repeating-linear-gradient(
+    -45deg,
+    #f87171,
+    #f87171 1px,
+    rgba(248, 113, 113, 0.3) 1px,
+    rgba(248, 113, 113, 0.3) 2.5px
+  ) !important;
+}
+
+.oc-stamp-collecting {
+  animation: stamp-pulse 1.5s ease-in-out infinite;
+}
+
+.oc-led-pulse {
+  animation: stamp-pulse 1.5s ease-in-out infinite;
+}
+
+@keyframes stamp-pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.4; }
+}
+
+.oc-calendar-clickable {
+  cursor: pointer;
+}
+
+.oc-calendar-clickable:hover > .oc-calendar-stamp {
+  filter: brightness(1.3);
+}
+
+/* Calendar cell tooltip */
+.oc-has-tooltip {
+  position: relative;
+}
+
+.oc-tooltip {
+  display: none;
+  position: absolute;
+  bottom: calc(100% + 6px);
+  left: 50%;
+  transform: translateX(-50%);
+  white-space: nowrap;
+  padding: 4px 8px;
+  border-radius: 4px;
+  font-size: 0.65rem;
+  font-weight: 500;
+  color: var(--bui-fg-primary, #fff);
+  background: var(--bui-bg-popover, rgba(30, 30, 30, 0.95));
+  border: 1px solid var(--bui-border-1, rgba(255, 255, 255, 0.1));
+  box-shadow: var(--bui-shadow, 0 2px 8px rgba(0, 0, 0, 0.3));
+  pointer-events: none;
+  z-index: 10;
+}
+
+.oc-has-tooltip:hover > .oc-tooltip {
+  display: block;
+}
+
+.oc-tooltip-multiline {
+  display: none;
+  flex-direction: column;
+  gap: 2px;
+  white-space: nowrap;
+  text-align: left;
+}
+
+.oc-has-tooltip:hover > .oc-tooltip-multiline {
+  display: flex;
+}
+
+.oc-tooltip-multiline > span:first-child {
+  opacity: 0.6;
+  font-size: 0.6rem;
+}
+
+.oc-calendar-legend {
+  display: flex;
+  gap: 10px;
+  margin-top: 6px;
+  font-size: 0.65rem;
+  color: var(--bui-color-text-secondary, rgba(255, 255, 255, 0.6));
+}
+
+.oc-calendar-legend-item {
+  display: flex;
+  align-items: center;
+  gap: 3px;
+}
+
+/* Controller multi-select */
+.oc-controller-toggle {
+  height: 2rem;
+  padding: 0 var(--bui-space-3, 12px);
+  border-radius: var(--bui-radius-3, 0.5rem);
+  border: 1px solid var(--bui-border-2, rgba(255, 255, 255, 0.2));
+  background: var(--bui-bg-neutral-1, rgba(255, 255, 255, 0.05));
+  color: var(--bui-fg-primary, inherit);
+  font-size: var(--bui-font-size-3, 0.875rem);
+  font-weight: var(--bui-font-weight-regular, 400);
+  font-family: var(--bui-font-regular, inherit);
+  cursor: pointer;
+  text-align: left;
+  min-width: 200px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--bui-space-2, 8px);
+}
+
+.oc-controller-dropdown {
+  position: absolute;
+  top: calc(100% + 4px);
+  left: 0;
+  min-width: 280px;
+  max-height: 300px;
+  border-radius: 6px;
+  border: 1px solid var(--bui-color-border, rgba(255, 255, 255, 0.15));
+  background: var(--bui-color-surface-2, #1e1e1e);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4);
+  z-index: 20;
+  display: flex;
+  flex-direction: column;
+}
+
+.oc-controller-search {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 10px;
+  border-bottom: 1px solid var(--bui-color-border, rgba(255, 255, 255, 0.1));
+}
+
+.oc-controller-search input {
+  flex: 1;
+  min-width: 0;
+  height: 1.75rem;
+  padding: 0 8px;
+  border-radius: 4px;
+  border: 1px solid var(--bui-color-border, rgba(255, 255, 255, 0.15));
+  background: var(--bui-color-surface-3, rgba(255, 255, 255, 0.05));
+  color: var(--bui-color-text-primary, inherit);
+  font-size: 0.8125rem;
+  outline: none;
+}
+
+.oc-controller-search input:focus {
+  border-color: var(--bui-color-primary, #60a5fa);
+}
+
+.oc-controller-actions {
+  display: flex;
+  gap: 4px;
+  flex-shrink: 0;
+}
+
+.oc-controller-no-match {
+  padding: 12px 10px;
+  text-align: center;
+  font-size: 0.8125rem;
+  color: var(--bui-color-text-secondary, rgba(255, 255, 255, 0.4));
+}
+
+.oc-controller-actions button {
+  height: 1.75rem;
+  min-width: 4.5rem;
+  text-align: center;
+  padding: 0 8px;
+  border-radius: 4px;
+  border: 1px solid var(--bui-color-border, rgba(255, 255, 255, 0.15));
+  background: var(--bui-color-surface-3, rgba(255, 255, 255, 0.05));
+  color: var(--bui-color-text-secondary, rgba(255, 255, 255, 0.6));
+  font-size: 0.75rem;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.oc-controller-actions button:hover {
+  background: var(--bui-color-surface-3, rgba(255, 255, 255, 0.08));
+  color: var(--bui-color-text-primary, #fff);
+}
+
+.oc-controller-list {
+  overflow-y: auto;
+  max-height: 240px;
+  padding: 4px 0;
+}
+
+.oc-controller-option {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 10px;
+  font-size: 0.8125rem;
+  cursor: pointer;
+  color: var(--bui-color-text-primary, rgba(255, 255, 255, 0.87));
+  white-space: nowrap;
+}
+
+.oc-controller-option > span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  min-width: 0;
+}
+
+.oc-controller-option:hover {
+  background: var(--bui-color-surface-3, rgba(255, 255, 255, 0.06));
+}
+
+.oc-controller-option input[type="checkbox"] {
+  accent-color: var(--bui-color-primary, #60a5fa);
+}
+
+.oc-highlight {
+  background: rgba(96, 165, 250, 0.25);
+  color: inherit;
+  border-radius: 2px;
+}
+
+.oc-controller-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 8px;
+}
+
+.oc-controller-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 8px;
+  border-radius: 12px;
+  font-size: 0.75rem;
+  font-weight: 500;
+  background: rgba(96, 165, 250, 0.15);
+  color: #60a5fa;
+}
+
+.oc-controller-chip-remove {
+  cursor: pointer;
+  font-size: 0.875rem;
+  line-height: 1;
+  opacity: 0.7;
+}
+
+.oc-controller-chip-remove:hover {
+  opacity: 1;
+}
+

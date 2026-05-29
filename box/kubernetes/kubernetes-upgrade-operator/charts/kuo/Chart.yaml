@@ -1,0 +1,24 @@
+apiVersion: v2
+name: kuo
+description: Kubernetes Upgrade Operator for EKS clusters
+type: application
+deprecated: false
+version: 0.2.0
+appVersion: "0.2.0"
+home: https://github.com/younsl/o
+sources:
+  - https://github.com/younsl/o/tree/main/box/kubernetes/kubernetes-upgrade-operator
+maintainers:
+  - name: younsl
+    email: cysl@kakao.com
+    url: https://github.com/younsl
+keywords:
+  - eks
+  - kubernetes
+  - upgrade
+  - operator
+  - aws
+annotations:
+  artifacthub.io/changes: |
+    - kind: added
+      description: "Add extraObjects value for deploying additional Kubernetes resources"

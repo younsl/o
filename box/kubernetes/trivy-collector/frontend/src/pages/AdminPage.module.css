@@ -1,0 +1,583 @@
+.container {
+    max-width: 1200px;
+    margin: 0 auto;
+}
+
+/* Stats cards */
+.statsGrid {
+    display: grid;
+    grid-template-columns: repeat(5, 1fr);
+    gap: 12px;
+    margin-bottom: 24px;
+}
+
+.statCard {
+    background-color: var(--bg-secondary);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 16px;
+    text-align: center;
+}
+
+.statValue {
+    font-size: 24px;
+    font-weight: 700;
+    color: var(--text-primary);
+    margin-bottom: 4px;
+}
+
+.statLabel {
+    font-size: 11px;
+    font-weight: 600;
+    color: var(--text-secondary);
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+/* Cleanup info */
+.cleanupInfo {
+    background-color: var(--bg-secondary);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 12px 16px;
+    margin-bottom: 16px;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+}
+
+.cleanupRow {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+}
+
+.cleanupLabel {
+    font-size: 11px;
+    font-weight: 600;
+    color: var(--text-secondary);
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    min-width: 100px;
+}
+
+.cleanupValue {
+    font-size: 12px;
+    color: var(--text-primary);
+    font-family: 'SF Mono', Monaco, Consolas, monospace;
+}
+
+/* Main table card */
+.tableCard {
+    position: relative;
+    background-color: var(--bg-secondary);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    margin-bottom: 24px;
+}
+
+/* Toolbar */
+.toolbar {
+    display: flex;
+    justify-content: flex-end;
+    align-items: center;
+    padding: 12px 16px;
+    border-bottom: 1px solid var(--border);
+    background-color: var(--bg-tertiary);
+    border-radius: 8px 8px 0 0;
+}
+
+.toolbarRight {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+/* Column filter buttons */
+.filterBtn {
+    background: transparent;
+    border: none;
+    color: var(--text-muted);
+    font-size: 10px;
+    cursor: pointer;
+    padding: 2px 4px;
+    margin-left: 1px;
+    border-radius: 3px;
+    transition: all 0.15s ease;
+    vertical-align: middle;
+    opacity: 0.6;
+}
+
+.filterBtn:hover {
+    background-color: var(--bg-hover);
+    color: var(--text-primary);
+    opacity: 1;
+}
+
+.filterBtnActive {
+    composes: filterBtn;
+    color: var(--accent);
+    background-color: rgba(59, 130, 246, 0.15);
+    opacity: 1;
+}
+
+/* Filter popup (anchored to chip) */
+.filterPopup {
+    position: absolute;
+    background-color: var(--bg-secondary);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    box-shadow: 0 10px 25px rgba(0, 0, 0, 0.4);
+    min-width: 200px;
+    z-index: 200;
+}
+
+.filterPopupHeader {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 10px 12px;
+    border-bottom: 1px solid var(--border);
+    background-color: var(--bg-tertiary);
+    border-radius: 8px 8px 0 0;
+}
+
+.filterPopupTitle {
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--text-primary);
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+.filterPopupClose {
+    background: transparent;
+    border: none;
+    color: var(--text-secondary);
+    font-size: 16px;
+    cursor: pointer;
+    padding: 2px 6px;
+    border-radius: 4px;
+    line-height: 1;
+}
+
+.filterPopupClose:hover {
+    background-color: var(--bg-hover);
+    color: var(--text-primary);
+}
+
+.filterPopupBody {
+    padding: 12px;
+}
+
+.filterPopupBody input[type="text"],
+.filterPopupBody input[type="number"] {
+    width: 100%;
+    background-color: var(--bg-primary);
+    border: 1px solid var(--border);
+    color: var(--text-primary);
+    padding: 8px 10px;
+    border-radius: 6px;
+    font-size: 13px;
+    outline: none;
+}
+
+.filterPopupBody input:focus {
+    border-color: var(--accent);
+}
+
+.filterPopupOptions {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    max-height: 200px;
+    overflow-y: auto;
+}
+
+.filterOption {
+    display: block;
+    width: 100%;
+    padding: 7px 10px;
+    background: transparent;
+    border: none;
+    color: var(--text-primary);
+    font-size: 13px;
+    text-align: left;
+    cursor: pointer;
+    border-radius: 4px;
+    transition: background-color 0.1s ease;
+}
+
+.filterOption:hover {
+    background-color: var(--bg-hover);
+}
+
+.filterOptionActive {
+    color: var(--accent);
+    font-weight: 500;
+    background-color: rgba(88, 166, 255, 0.08);
+}
+
+.filterPopupFooter {
+    display: flex;
+    gap: 8px;
+    padding: 10px 12px;
+    border-top: 1px solid var(--border);
+    background-color: var(--bg-tertiary);
+    border-radius: 0 0 8px 8px;
+}
+
+.filterPopupFooter button {
+    flex: 1;
+    padding: 6px 12px;
+    font-size: 12px;
+}
+
+.statusRange {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+
+.statusRange input {
+    width: 70px !important;
+}
+
+.statusRangeSep {
+    color: var(--text-muted);
+    font-size: 12px;
+}
+
+/* Toolbar buttons */
+.toolbarBtn {
+    background: transparent;
+    border: 1px solid var(--border);
+    color: var(--text-secondary);
+    padding: 6px 12px;
+    border-radius: 6px;
+    cursor: pointer;
+    font-size: 12px;
+    transition: all 0.15s ease;
+    white-space: nowrap;
+    line-height: 1.4;
+}
+
+.toolbarBtn:hover {
+    background-color: var(--bg-hover);
+    color: var(--text-primary);
+}
+
+.toolbarBtnDanger {
+    background: transparent;
+    border: 1px solid var(--border);
+    color: var(--critical);
+    padding: 6px 12px;
+    border-radius: 6px;
+    cursor: pointer;
+    font-size: 12px;
+    transition: all 0.15s ease;
+    white-space: nowrap;
+    line-height: 1.4;
+}
+
+.toolbarBtnDanger:hover {
+    border-color: var(--critical);
+    background-color: rgba(239, 68, 68, 0.1);
+}
+
+/* Auto-refresh toggle */
+.autoRefresh {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 12px;
+    color: var(--text-secondary);
+}
+
+.toggle {
+    appearance: none;
+    width: 32px;
+    height: 18px;
+    background: var(--border);
+    border-radius: 9px;
+    position: relative;
+    cursor: pointer;
+    transition: background 0.2s ease;
+    flex-shrink: 0;
+}
+
+.toggle::after {
+    content: '';
+    position: absolute;
+    top: 2px;
+    left: 2px;
+    width: 14px;
+    height: 14px;
+    background: white;
+    border-radius: 50%;
+    transition: transform 0.2s ease;
+}
+
+.toggle:checked {
+    background: var(--accent);
+}
+
+.toggle:checked::after {
+    transform: translateX(14px);
+}
+
+/* Log table */
+.logTable {
+    width: 100%;
+    border-collapse: collapse;
+}
+
+.logTable th,
+.logTable td {
+    padding: 9px 14px;
+    text-align: left;
+    border-bottom: 1px solid var(--border);
+    white-space: nowrap;
+}
+
+/* Allow very long values (API server URLs, secret names) to truncate with
+   an ellipsis instead of wrapping. Mark specific cells with this class.
+   Width picked so a typical EKS API server URL
+   (https://<32-hex>.<region>.eks.amazonaws.com ≈ 73 chars in monospace)
+   fits without truncation. */
+.cellTruncate {
+    max-width: 560px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.logTable th {
+    background-color: var(--bg-tertiary);
+    font-size: 11px;
+    font-weight: 600;
+    color: var(--text-secondary);
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    white-space: nowrap;
+}
+
+.logTable tbody tr {
+    transition: background-color 0.1s ease;
+}
+
+.logTable tbody tr:hover {
+    background-color: var(--bg-hover);
+}
+
+.rowNew {
+    animation: flash 1.5s ease-out;
+}
+
+@keyframes flash {
+    0% { background-color: rgba(88, 166, 255, 0.15); }
+    100% { background-color: transparent; }
+}
+
+.logTable tbody tr:last-child td {
+    border-bottom: none;
+}
+
+/* Method colors */
+.methodBadge {
+    font-size: 11px;
+    font-weight: 600;
+    font-family: 'SF Mono', Monaco, Consolas, monospace;
+}
+
+.methodGet { color: #22c55e; }
+.methodPost { color: #3b82f6; }
+.methodPut { color: #eab308; }
+.methodDelete { color: #ef4444; }
+
+/* Status codes */
+.status2xx { color: #22c55e; }
+.status3xx { color: #3b82f6; }
+.status4xx { color: #eab308; }
+.status5xx { color: #ef4444; }
+
+.mono {
+    font-family: 'SF Mono', Monaco, Consolas, monospace;
+    font-size: 12px;
+}
+
+.pathCell {
+    max-width: 300px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    font-family: 'SF Mono', Monaco, Consolas, monospace;
+    font-size: 12px;
+}
+
+.errorRate {
+    color: var(--critical);
+}
+
+.userCell {
+    max-width: 160px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+/* Pagination */
+.pagination {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 12px 16px;
+    border-top: 1px solid var(--border);
+    background-color: var(--bg-tertiary);
+}
+
+.paginationInfo {
+    font-size: 12px;
+    color: var(--text-secondary);
+}
+
+.paginationBtns {
+    display: flex;
+    gap: 8px;
+}
+
+.pageBtn {
+    background: transparent;
+    border: 1px solid var(--border);
+    color: var(--text-secondary);
+    padding: 4px 12px;
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 12px;
+    transition: all 0.15s ease;
+}
+
+.pageBtn:hover:not(:disabled) {
+    border-color: var(--accent);
+    color: var(--accent);
+}
+
+.pageBtn:disabled {
+    opacity: 0.3;
+    cursor: not-allowed;
+}
+
+/* Top Paths section */
+.section {
+    background-color: var(--bg-secondary);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    overflow: hidden;
+    margin-bottom: 24px;
+}
+
+.sectionHeader {
+    padding: 12px 16px;
+    border-bottom: 1px solid var(--border);
+    background-color: var(--bg-tertiary);
+}
+
+.sectionTitle {
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--text-primary);
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    margin: 0;
+}
+
+/* Empty / error */
+.emptyState {
+    padding: 48px 16px;
+    text-align: center;
+    color: var(--text-muted);
+    font-size: 13px;
+}
+
+/* Cleanup modal */
+.overlay {
+    position: fixed;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.6);
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    z-index: 200;
+}
+
+.modal {
+    background: var(--bg-secondary);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 24px;
+    width: 400px;
+    max-width: 90vw;
+}
+
+.modalTitle {
+    font-size: 16px;
+    font-weight: 600;
+    margin-bottom: 12px;
+    color: var(--text-primary);
+}
+
+.modalText {
+    font-size: 13px;
+    color: var(--text-secondary);
+    margin-bottom: 16px;
+    line-height: 1.5;
+}
+
+.modalActions {
+    display: flex;
+    justify-content: flex-end;
+    gap: 8px;
+}
+
+.cancelBtn {
+    background: transparent;
+    border: 1px solid var(--border);
+    color: var(--text-secondary);
+    padding: 8px 16px;
+    border-radius: 6px;
+    cursor: pointer;
+    font-size: 13px;
+    transition: all 0.15s ease;
+}
+
+.cancelBtn:hover {
+    border-color: var(--text-muted);
+    color: var(--text-primary);
+}
+
+.dangerBtn {
+    background-color: var(--critical);
+    color: white;
+    border: none;
+    padding: 8px 16px;
+    border-radius: 6px;
+    cursor: pointer;
+    font-size: 13px;
+    font-weight: 500;
+    transition: all 0.15s ease;
+}
+
+.dangerBtn:hover {
+    filter: brightness(1.1);
+}
+
+@media (max-width: 900px) {
+    .statsGrid {
+        grid-template-columns: repeat(3, 1fr);
+    }
+}
+
+@media (max-width: 600px) {
+    .statsGrid {
+        grid-template-columns: repeat(2, 1fr);
+    }
+}

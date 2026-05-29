@@ -1,0 +1,172 @@
+crds:
+  # -- (bool) Whether to install CRDs. Set to false if CRDs are managed externally.
+  install: true
+  # -- (object) Annotations to add to the CRD resources.
+  annotations: {}
+
+# -- (int) Number of operator replicas to run.
+replicaCount: 1
+
+image:
+  # -- (string) Container image repository.
+  repository: ghcr.io/younsl/kuo
+  # -- (string) Image pull policy.
+  pullPolicy: IfNotPresent
+  # -- (string) Image tag. Defaults to `.Chart.AppVersion` if empty.
+  tag: ""
+
+# -- (list) Image pull secrets for private registries.
+imagePullSecrets: []
+
+serviceAccount:
+  # -- (bool) Whether to create a ServiceAccount.
+  create: true
+  # -- (object) Annotations to add to the ServiceAccount.
+  annotations: {}
+  # -- (string) ServiceAccount name. Defaults to the fullname template if empty.
+  name: ""
+
+resources:
+  limits:
+    # -- (string) Memory limit.
+    memory: 64Mi
+  requests:
+    # -- (string) CPU request.
+    cpu: 25m
+    # -- (string) Memory request.
+    memory: 32Mi
+
+# -- (list) In-place resize policies for container resources
+resizePolicy:
+  - resourceName: cpu
+    restartPolicy: NotRequired
+  - resourceName: memory
+    restartPolicy: RestartContainer
+
+podDisruptionBudget:
+  # -- (bool) Whether to create a PodDisruptionBudget.
+  enabled: true
+  # -- (int) Maximum number of pods that can be unavailable during disruption.
+  maxUnavailable: 1
+  # -- (string) Eviction policy for unhealthy pods. One of `IfHealthyBudget` or `AlwaysAllow`
+  unhealthyPodEvictionPolicy: IfHealthyBudget
+
+# -- (object) Container security context.
+securityContext:
+  runAsNonRoot: true
+  runAsUser: 65532
+  readOnlyRootFilesystem: true
+  allowPrivilegeEscalation: false
+  capabilities:
+    drop:
+      - ALL
+
+serviceMonitor:
+  # -- (bool) Whether to create a ServiceMonitor for Prometheus scraping.
+  enabled: false
+  # -- (string) Scrape interval for the ServiceMonitor.
+  interval: 30s
+  # -- (string) Scrape timeout for the ServiceMonitor. Defaults to Prometheus global setting if empty.
+  scrapeTimeout: ""
+  # -- (object) Additional labels to add to the ServiceMonitor resource.
+  additionalLabels: {}
+
+prometheusRule:
+  # -- (bool) Whether to create a PrometheusRule for alerting. Requires monitoring.coreos.com/v1 CRD.
+  enabled: false
+  # -- (object) Additional labels to add to the PrometheusRule resource.
+  additionalLabels: {}
+  # -- (object) Annotations to add to the PrometheusRule resource.
+  annotations: {}
+  # -- (list) Prometheus rule groups. Each group contains a list of alerting/recording rules.
+  groups: []
+    # - name: kuo.rules
+    #   rules:
+    #     - alert: KuoUpgradeFailed
+    #       expr: increase(kuo_upgrade_failed_total[5m]) > 0
+    #       for: 0m
+    #       labels:
+    #         severity: critical
+    #       annotations:
+    #         summary: "EKS upgrade failed for {{ $labels.cluster_name }}"
+    #         description: "EKS cluster {{ $labels.cluster_name }} in {{ $labels.region }} upgrade has failed."
+    #     - alert: KuoReconcileErrorRate
+    #       expr: |
+    #         (
+    #           sum by (cluster_name, region) (rate(kuo_reconcile_total{result="error"}[5m]))
+    #           /
+    #           sum by (cluster_name, region) (rate(kuo_reconcile_total[5m]))
+    #         ) > 0.5
+    #       for: 10m
+    #       labels:
+    #         severity: warning
+    #       annotations:
+    #         summary: "High reconcile error rate for {{ $labels.cluster_name }}"
+    #         description: "Reconcile error rate for cluster {{ $labels.cluster_name }} exceeds 50% over 10 minutes."
+    #     - alert: KuoUpgradeStuck
+    #       expr: |
+    #         kuo_upgrade_phase_info{phase=~"UpgradingControlPlane|UpgradingAddons|UpgradingNodeGroups"} == 1
+    #       for: 60m
+    #       labels:
+    #         severity: warning
+    #       annotations:
+    #         summary: "EKS upgrade stuck for {{ $labels.cluster_name }}"
+    #         description: "Cluster {{ $labels.cluster_name }} has been in {{ $labels.phase }} phase for over 60 minutes."
+
+# -- (object) Node selector for pod scheduling.
+nodeSelector: {}
+# -- (list) Tolerations for pod scheduling.
+tolerations: []
+# -- (object) Affinity rules for pod scheduling.
+affinity: {}
+
+slack:
+  # -- (bool) Whether to create a Slack webhook Secret and inject the URL into the operator.
+  enabled: false
+  # -- (string) Slack Incoming Webhook URL.
+  webhookUrl: ""
+
+# -- (list) EKSUpgrade custom resources to create. Each entry creates an EKSUpgrade CR that the operator will reconcile.
+eksUpgrades: []
+  # - name: staging-cluster-upgrade
+  #   spec:
+  #     clusterName: staging-cluster
+  #     targetVersion: "1.31"
+  #     region: ap-northeast-2
+  #     dryRun: true
+  #
+  # - name: production-cluster-upgrade
+  #   spec:
+  #     clusterName: production-cluster
+  #     targetVersion: "1.31"
+  #     region: ap-northeast-2
+  #     dryRun: true
+  #     skipPdbCheck: false
+  #     addonVersions:
+  #       kube-proxy: v1.31.0-eksbuild.1
+  #       coredns: v1.11.4-eksbuild.1
+  #     timeouts:
+  #       controlPlaneMinutes: 40
+  #       nodegroupMinutes: 90
+  #     notification:
+  #       onUpgrade: true
+  #       onDryRun: false
+  #
+  # ## Cross-account example: assume a role in another AWS account.
+  # ## Works with both IRSA and EKS Pod Identity as the base credential source.
+  # - name: cross-account-cluster-upgrade
+  #   spec:
+  #     clusterName: remote-cluster
+  #     targetVersion: "1.31"
+  #     region: ap-northeast-2
+  #     assumeRoleArn: arn:aws:iam::123456789012:role/kuo-target-role
+  #     dryRun: false
+
+# -- (list) Additional Kubernetes resources to create alongside the chart.
+extraObjects: []
+  # - apiVersion: v1
+  #   kind: ConfigMap
+  #   metadata:
+  #     name: extra-config
+  #   data:
+  #     key: value

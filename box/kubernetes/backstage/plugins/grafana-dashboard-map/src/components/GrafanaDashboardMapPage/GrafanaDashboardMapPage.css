@@ -1,0 +1,21 @@
+.gdm-canvas-shell {
+  height: 640px;
+  margin-bottom: var(--bui-space-4);
+}
+
+.gdm-page-hint {
+  color: var(--bui-fg-secondary);
+  font-size: var(--bui-font-size-2);
+  margin: 0 0 var(--bui-space-2);
+}
+
+.gdm-toast-host {
+  position: fixed;
+  bottom: var(--bui-space-4);
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 2000;
+  min-width: 280px;
+  max-width: 480px;
+  pointer-events: auto;
+}

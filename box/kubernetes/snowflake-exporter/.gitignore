@@ -1,0 +1,8 @@
+# Cargo / build artifacts
+/target/
+
+# Local dev config and secrets (never commit)
+config.local.yaml
+.token
+token
+*.pat

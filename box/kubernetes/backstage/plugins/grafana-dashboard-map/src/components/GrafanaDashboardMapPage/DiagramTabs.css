@@ -1,0 +1,117 @@
+.gdm-diagram-tabs {
+  display: flex;
+  align-items: stretch;
+  gap: var(--bui-space-1);
+  border-bottom: 1px solid var(--bui-border-1);
+  margin-bottom: var(--bui-space-2);
+  flex-wrap: wrap;
+}
+
+.gdm-diagram-tab {
+  display: inline-flex;
+  align-items: center;
+  border: 1px solid transparent;
+  border-bottom: none;
+  border-top-left-radius: var(--bui-radius-2);
+  border-top-right-radius: var(--bui-radius-2);
+  background: transparent;
+  position: relative;
+  bottom: -1px;
+}
+
+.gdm-diagram-tab--active {
+  border-color: var(--bui-border-1);
+  background: var(--bui-bg-surface-1);
+}
+
+.gdm-diagram-tab__label {
+  background: none;
+  border: none;
+  cursor: pointer;
+  padding: var(--bui-space-1_5) var(--bui-space-3);
+  font-size: var(--bui-font-size-2);
+  color: var(--bui-fg-secondary);
+  font-weight: 500;
+  white-space: nowrap;
+}
+
+.gdm-diagram-tab--active .gdm-diagram-tab__label {
+  color: var(--bui-fg-primary);
+}
+
+.gdm-diagram-tab__label:disabled {
+  cursor: not-allowed;
+  opacity: 0.45;
+}
+
+.gdm-diagram-tab__label:not(:disabled):hover {
+  color: var(--bui-fg-primary);
+}
+
+.gdm-diagram-tab__input {
+  margin: 0 var(--bui-space-2);
+  padding: var(--bui-space-1) var(--bui-space-1_5);
+  font-size: var(--bui-font-size-2);
+  font-weight: 500;
+  color: var(--bui-fg-primary);
+  background: var(--bui-bg-surface-1);
+  border: 1px solid var(--bui-border-2, var(--bui-border-1));
+  border-radius: var(--bui-radius-1);
+  outline: none;
+  min-width: 120px;
+  max-width: 240px;
+}
+
+.gdm-diagram-tab__input:focus {
+  border-color: var(--bui-accent-1, var(--bui-fg-primary));
+}
+
+.gdm-diagram-tab__actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  padding-right: var(--bui-space-1);
+}
+
+.gdm-diagram-tab__icon {
+  width: 22px;
+  height: 22px;
+  border: none;
+  background: transparent;
+  border-radius: var(--bui-radius-1);
+  cursor: pointer;
+  font-size: 13px;
+  line-height: 1;
+  color: var(--bui-fg-secondary);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.gdm-diagram-tab__icon:hover {
+  background: var(--bui-bg-surface-2);
+  color: var(--bui-fg-primary);
+}
+
+.gdm-diagram-tab__icon--danger:hover {
+  background: var(--bui-status-danger-1, rgba(220, 38, 38, 0.1));
+  color: var(--bui-status-danger-fg, #dc2626);
+}
+
+.gdm-diagram-tab__add {
+  border: 1px dashed var(--bui-border-1);
+  background: transparent;
+  cursor: pointer;
+  padding: var(--bui-space-1_5) var(--bui-space-3);
+  font-size: var(--bui-font-size-2);
+  color: var(--bui-fg-secondary);
+  border-radius: var(--bui-radius-2);
+  align-self: center;
+  margin-left: var(--bui-space-1);
+  margin-bottom: var(--bui-space-1);
+}
+
+.gdm-diagram-tab__add:hover {
+  color: var(--bui-fg-primary);
+  border-color: var(--bui-border-2, var(--bui-border-1));
+}

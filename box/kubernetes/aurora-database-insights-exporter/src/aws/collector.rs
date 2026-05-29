@@ -1,0 +1,1755 @@
+use std::collections::HashMap;
+use std::future::Future;
+use std::sync::Arc;
+
+use aws_sdk_pi::Client as PiClient;
+use aws_sdk_pi::types::{DimensionGroup, MetricQuery};
+use chrono::Utc;
+use tokio::sync::RwLock;
+
+use crate::config::CollectionConfig;
+use crate::observability::metrics::Metrics;
+use crate::types::*;
+
+const SQL_TEXT_MAX_LEN: usize = 200;
+
+/// Stable PI API name labels used for `pi_api_errors_total{api=...}`.
+pub const API_GET_RESOURCE_METRICS: &str = "GetResourceMetrics";
+pub const API_DESCRIBE_DIMENSION_KEYS: &str = "DescribeDimensionKeys";
+pub const API_GET_DIMENSION_KEY_DETAILS: &str = "GetDimensionKeyDetails";
+
+/// Grouped metric result: dimension key-value pairs and the metric value.
+type GroupedMetricResult = Vec<(HashMap<String, String>, f64)>;
+
+/// Trait for PI API calls (enables testing with mocks).
+pub trait PiCollector: Send + Sync {
+    fn get_resource_metrics_grouped(
+        &self,
+        resource_id: &str,
+        group: &str,
+        limit: Option<i32>,
+        period: i32,
+    ) -> impl Future<Output = Result<GroupedMetricResult, String>> + Send;
+
+    fn describe_dimension_keys(
+        &self,
+        resource_id: &str,
+        group: &str,
+        limit: i32,
+        period: i32,
+        engine: &str,
+    ) -> impl Future<Output = Result<Vec<DimensionKeyResult>, String>> + Send;
+
+    fn get_dimension_key_details(
+        &self,
+        resource_id: &str,
+        group: &str,
+        group_identifier: &str,
+    ) -> impl Future<Output = Result<Option<String>, String>> + Send;
+}
+
+#[derive(Debug, Clone)]
+pub struct DimensionKeyResult {
+    pub dimensions: Vec<(String, String)>,
+    pub value: f64,
+    pub additional_metrics: HashMap<String, f64>,
+}
+
+/// Real AWS PI collector using the SDK.
+pub struct AwsPiCollector {
+    client: PiClient,
+}
+
+impl AwsPiCollector {
+    pub fn new(client: PiClient) -> Self {
+        Self { client }
+    }
+}
+
+impl PiCollector for AwsPiCollector {
+    async fn get_resource_metrics_grouped(
+        &self,
+        resource_id: &str,
+        group: &str,
+        limit: Option<i32>,
+        period: i32,
+    ) -> Result<GroupedMetricResult, String> {
+        let now = Utc::now();
+        let start = now - chrono::Duration::seconds(i64::from(period) * 2);
+
+        let mut dim_group_builder = DimensionGroup::builder().group(group);
+        if let Some(l) = limit {
+            dim_group_builder = dim_group_builder.limit(l);
+        }
+        let dim_group = dim_group_builder.build().map_err(|e| e.to_string())?;
+
+        let query = MetricQuery::builder()
+            .metric("db.load.avg")
+            .group_by(dim_group)
+            .build()
+            .map_err(|e| e.to_string())?;
+
+        let resp = self
+            .client
+            .get_resource_metrics()
+            .service_type(aws_sdk_pi::types::ServiceType::Rds)
+            .identifier(resource_id)
+            .metric_queries(query)
+            .start_time(aws_sdk_pi::primitives::DateTime::from_secs(
+                start.timestamp(),
+            ))
+            .end_time(aws_sdk_pi::primitives::DateTime::from_secs(now.timestamp()))
+            .period_in_seconds(period)
+            .send()
+            .await
+            .map_err(|e| e.to_string())?;
+
+        let mut results = Vec::new();
+        for metric in resp.metric_list() {
+            if let Some(key_map) = metric.key.as_ref()
+                && let Some(dimensions) = key_map.dimensions.as_ref()
+            {
+                let dims: HashMap<String, String> = dimensions
+                    .iter()
+                    .map(|(k, v)| (k.clone(), v.clone()))
+                    .collect();
+
+                let value = metric
+                    .data_points()
+                    .last()
+                    .map(|dp| dp.value)
+                    .unwrap_or(0.0);
+
+                results.push((dims, value));
+            }
+        }
+
+        Ok(results)
+    }
+
+    async fn describe_dimension_keys(
+        &self,
+        resource_id: &str,
+        group: &str,
+        limit: i32,
+        period: i32,
+        engine: &str,
+    ) -> Result<Vec<DimensionKeyResult>, String> {
+        let now = Utc::now();
+        let start = now - chrono::Duration::seconds(i64::from(period) * 2);
+
+        let dim_group = DimensionGroup::builder()
+            .group(group)
+            .dimensions(format!("{group}.id"))
+            .dimensions(format!("{group}.statement"))
+            .limit(limit)
+            .build()
+            .map_err(|e| e.to_string())?;
+
+        let mut request = self
+            .client
+            .describe_dimension_keys()
+            .service_type(aws_sdk_pi::types::ServiceType::Rds)
+            .identifier(resource_id)
+            .metric("db.load.avg")
+            .group_by(dim_group)
+            .start_time(aws_sdk_pi::primitives::DateTime::from_secs(
+                start.timestamp(),
+            ))
+            .end_time(aws_sdk_pi::primitives::DateTime::from_secs(now.timestamp()))
+            .period_in_seconds(period)
+            .max_results(limit);
+
+        if engine == "aurora-postgresql" && group == "db.sql_tokenized" {
+            request = request
+                .additional_metrics("db.sql_tokenized.stats.calls_per_sec.avg")
+                .additional_metrics("db.sql_tokenized.stats.avg_latency_per_call.avg")
+                .additional_metrics("db.sql_tokenized.stats.rows_per_call.avg");
+        }
+
+        let resp = request.send().await.map_err(|e| format!("{e:?}"))?;
+
+        let mut results = Vec::new();
+        for key in resp.keys() {
+            if let Some(dims) = key.dimensions.as_ref() {
+                let dimensions: Vec<(String, String)> =
+                    dims.iter().map(|(k, v)| (k.clone(), v.clone())).collect();
+                let value = key.total.unwrap_or(0.0);
+                let additional_metrics = key
+                    .additional_metrics
+                    .as_ref()
+                    .map(|m| {
+                        m.iter()
+                            .map(|(k, v)| (k.clone(), *v))
+                            .collect::<HashMap<String, f64>>()
+                    })
+                    .unwrap_or_default();
+                results.push(DimensionKeyResult {
+                    dimensions,
+                    value,
+                    additional_metrics,
+                });
+            }
+        }
+
+        Ok(results)
+    }
+
+    async fn get_dimension_key_details(
+        &self,
+        resource_id: &str,
+        group: &str,
+        group_identifier: &str,
+    ) -> Result<Option<String>, String> {
+        let resp = self
+            .client
+            .get_dimension_key_details()
+            .service_type(aws_sdk_pi::types::ServiceType::Rds)
+            .identifier(resource_id)
+            .group(group)
+            .group_identifier(group_identifier)
+            .requested_dimensions("statement")
+            .send()
+            .await
+            .map_err(|e| format!("{e:?}"))?;
+
+        for dim in resp.dimensions() {
+            if let Some(value) = dim.value.as_deref() {
+                return Ok(Some(value.to_string()));
+            }
+        }
+        Ok(None)
+    }
+}
+
+/// Collect metrics for a single instance. Returns a MetricSnapshot on success.
+pub async fn collect_instance_metrics<P: PiCollector>(
+    pi: &P,
+    instance: &AuroraInstance,
+    region: &str,
+    config: &CollectionConfig,
+    metrics: &Metrics,
+) -> Result<MetricSnapshot, String> {
+    let labels = InstanceLabels::from_instance(instance, region);
+    let resource_id = &instance.dbi_resource_id;
+    let period = config.pi_period_seconds;
+    let instance_id = &instance.db_instance_identifier;
+
+    // 1. Wait events (GetResourceMetrics grouped by db.wait_event)
+    let wait_event_data = pi
+        .get_resource_metrics_grouped(resource_id, "db.wait_event", Some(25), period)
+        .await
+        .inspect_err(|e| {
+            metrics.record_pi_api_error(instance_id, API_GET_RESOURCE_METRICS, e);
+        })?;
+
+    let mut db_load_cpu = 0.0;
+    let mut db_load_total = 0.0;
+    let mut wait_events = Vec::new();
+
+    for (dims, value) in &wait_event_data {
+        let wait_event_name = dims.get("db.wait_event.name").cloned().unwrap_or_default();
+        let wait_event_type = dims.get("db.wait_event.type").cloned().unwrap_or_default();
+
+        db_load_total += value;
+        if wait_event_type.to_uppercase() == "CPU" {
+            db_load_cpu += value;
+        }
+        wait_events.push(WaitEventMetric {
+            wait_event: wait_event_name,
+            wait_event_type,
+            value: *value,
+        });
+    }
+
+    let db_load_non_cpu = (db_load_total - db_load_cpu).max(0.0);
+
+    // 2. Top SQL Tokenized (DescribeDimensionKeys grouped by db.sql_tokenized)
+    let top_sql_tokenized: Vec<SqlTokenizedMetric> = match pi
+        .describe_dimension_keys(
+            resource_id,
+            "db.sql_tokenized",
+            config.top_sql_limit,
+            period,
+            &instance.engine,
+        )
+        .await
+    {
+        Ok(sql_data) => sql_data
+            .iter()
+            .map(|dk| {
+                let sql_tokenized_id = dk
+                    .dimensions
+                    .iter()
+                    .find(|(k, _)| k.contains("id"))
+                    .map(|(_, v)| v.clone())
+                    .unwrap_or_default();
+                let raw_text = dk
+                    .dimensions
+                    .iter()
+                    .find(|(k, _)| k.contains("statement"))
+                    .map(|(_, v)| v.clone())
+                    .unwrap_or_default();
+                let (sql_tokenized_text, sql_tokenized_text_truncated) = truncate_sql(&raw_text);
+                SqlTokenizedMetric {
+                    sql_tokenized_id,
+                    sql_tokenized_text,
+                    sql_tokenized_text_truncated,
+                    value: dk.value,
+                    calls_per_sec: dk
+                        .additional_metrics
+                        .get("db.sql_tokenized.stats.calls_per_sec.avg")
+                        .copied(),
+                    avg_latency_per_call: dk
+                        .additional_metrics
+                        .get("db.sql_tokenized.stats.avg_latency_per_call.avg")
+                        .copied(),
+                    rows_per_call: dk
+                        .additional_metrics
+                        .get("db.sql_tokenized.stats.rows_per_call.avg")
+                        .copied(),
+                }
+            })
+            .collect(),
+        Err(e) => {
+            metrics.record_pi_api_error(instance_id, API_DESCRIBE_DIMENSION_KEYS, &e);
+            tracing::warn!(
+                instance = %instance.db_instance_identifier,
+                error = ?e,
+                "Failed to collect top SQL tokenized. Skipping"
+            );
+            vec![]
+        }
+    };
+
+    // 3. Top SQL (DescribeDimensionKeys grouped by db.sql, then GetDimensionKeyDetails for full text)
+    let top_sql: Vec<SqlMetric> = match pi
+        .describe_dimension_keys(
+            resource_id,
+            "db.sql",
+            config.top_sql_limit,
+            period,
+            &instance.engine,
+        )
+        .await
+    {
+        Ok(sql_data) => {
+            let mut sql_metrics = Vec::new();
+            for dk in &sql_data {
+                let sql_id = dk
+                    .dimensions
+                    .iter()
+                    .find(|(k, _)| k.contains("id"))
+                    .map(|(_, v)| v.clone())
+                    .unwrap_or_default();
+                let raw_text = dk
+                    .dimensions
+                    .iter()
+                    .find(|(k, _)| k.contains("statement"))
+                    .map(|(_, v)| v.clone())
+                    .unwrap_or_default();
+
+                // Fetch full SQL text via GetDimensionKeyDetails
+                let sql_full_text = if !sql_id.is_empty() {
+                    match pi
+                        .get_dimension_key_details(resource_id, "db.sql", &sql_id)
+                        .await
+                    {
+                        Ok(Some(full_text)) => full_text,
+                        Ok(None) => raw_text.clone(),
+                        Err(e) => {
+                            metrics.record_pi_api_error(
+                                instance_id,
+                                API_GET_DIMENSION_KEY_DETAILS,
+                                &e,
+                            );
+                            tracing::debug!(
+                                instance = %instance.db_instance_identifier,
+                                sql_id = %sql_id,
+                                error = %e,
+                                "Failed to get SQL full text via GetDimensionKeyDetails. Using describe text"
+                            );
+                            raw_text.clone()
+                        }
+                    }
+                } else {
+                    raw_text.clone()
+                };
+
+                let (sql_text, sql_text_truncated) = truncate_sql(&sql_full_text);
+                sql_metrics.push(SqlMetric {
+                    sql_id,
+                    sql_text,
+                    sql_full_text,
+                    sql_text_truncated,
+                    value: dk.value,
+                });
+            }
+            sql_metrics
+        }
+        Err(e) => {
+            metrics.record_pi_api_error(instance_id, API_DESCRIBE_DIMENSION_KEYS, &e);
+            tracing::warn!(
+                instance = %instance.db_instance_identifier,
+                error = ?e,
+                "Failed to collect top SQL. Skipping"
+            );
+            vec![]
+        }
+    };
+
+    // 4. Users (GetResourceMetrics grouped by db.user)
+    let users: Vec<UserMetric> = match pi
+        .get_resource_metrics_grouped(resource_id, "db.user", None, period)
+        .await
+    {
+        Ok(data) => data
+            .iter()
+            .map(|(dims, value)| UserMetric {
+                db_user: dims.get("db.user.name").cloned().unwrap_or_default(),
+                value: *value,
+            })
+            .collect(),
+        Err(e) => {
+            metrics.record_pi_api_error(instance_id, API_GET_RESOURCE_METRICS, &e);
+            tracing::debug!(
+                instance = %instance.db_instance_identifier,
+                error = %e,
+                "Failed to collect user metrics. Skipping"
+            );
+            vec![]
+        }
+    };
+
+    // 5. Hosts (GetResourceMetrics grouped by db.host)
+    let hosts: Vec<HostMetric> = match pi
+        .get_resource_metrics_grouped(resource_id, "db.host", Some(config.top_host_limit), period)
+        .await
+    {
+        Ok(data) => data
+            .iter()
+            .map(|(dims, value)| HostMetric {
+                client_host: dims.get("db.host.name").cloned().unwrap_or_default(),
+                value: *value,
+            })
+            .collect(),
+        Err(e) => {
+            metrics.record_pi_api_error(instance_id, API_GET_RESOURCE_METRICS, &e);
+            tracing::debug!(
+                instance = %instance.db_instance_identifier,
+                error = %e,
+                "Failed to collect host metrics. Skipping"
+            );
+            vec![]
+        }
+    };
+
+    // 6. Databases (GetResourceMetrics grouped by db)
+    let databases: Vec<DatabaseMetric> = match pi
+        .get_resource_metrics_grouped(resource_id, "db", None, period)
+        .await
+    {
+        Ok(data) => data
+            .iter()
+            .map(|(dims, value)| DatabaseMetric {
+                db_name: dims.get("db.name").cloned().unwrap_or_default(),
+                value: *value,
+            })
+            .collect(),
+        Err(e) => {
+            metrics.record_pi_api_error(instance_id, API_GET_RESOURCE_METRICS, &e);
+            tracing::debug!(
+                instance = %instance.db_instance_identifier,
+                error = %e,
+                "Failed to collect database metrics. Skipping"
+            );
+            vec![]
+        }
+    };
+
+    Ok(MetricSnapshot {
+        labels,
+        db_load: db_load_total,
+        db_load_cpu,
+        db_load_non_cpu,
+        vcpu: instance.vcpu,
+        wait_events,
+        top_sql_tokenized,
+        top_sql,
+        users,
+        hosts,
+        databases,
+    })
+}
+
+/// Truncate SQL text to max length, returning (text, was_truncated).
+pub fn truncate_sql(raw: &str) -> (String, bool) {
+    if raw.len() > SQL_TEXT_MAX_LEN {
+        let truncated = format!("{}...", &raw[..SQL_TEXT_MAX_LEN]);
+        (truncated, true)
+    } else {
+        (raw.to_string(), false)
+    }
+}
+
+/// Run one collection cycle for all instances concurrently.
+///
+/// Instances are collected in parallel using `tokio::task::JoinSet`, bounded by
+/// the semaphore to limit concurrent PI API calls (configured via `max_concurrent_instances`).
+pub async fn run_collection_cycle<P: PiCollector + Send + Sync + 'static>(
+    pi: &Arc<P>,
+    instances: &[AuroraInstance],
+    region: &str,
+    config: &CollectionConfig,
+    metrics: &Arc<Metrics>,
+    semaphore: &Arc<tokio::sync::Semaphore>,
+) -> (usize, usize) {
+    let timeout_duration = std::time::Duration::from_secs(config.instance_timeout_seconds);
+    let mut join_set = tokio::task::JoinSet::new();
+
+    for instance in instances {
+        let pi = pi.clone();
+        let instance = instance.clone();
+        let region = region.to_string();
+        let config = config.clone();
+        let metrics = metrics.clone();
+        let semaphore = semaphore.clone();
+
+        join_set.spawn(async move {
+            let _permit = semaphore.acquire().await.expect("semaphore closed");
+            let labels = InstanceLabels::from_instance(&instance, &region);
+
+            let result = tokio::time::timeout(timeout_duration, async {
+                for attempt in 0..config.retry.max_attempts {
+                    match collect_instance_metrics(&*pi, &instance, &region, &config, &metrics)
+                        .await
+                    {
+                        Ok(snapshot) => return Ok(snapshot),
+                        Err(e) => {
+                            if attempt + 1 < config.retry.max_attempts {
+                                let delay = config.retry.base_delay_ms * 2u64.pow(attempt);
+                                tracing::warn!(
+                                    instance = %instance.db_instance_identifier,
+                                    error = %e,
+                                    retry_attempt = attempt + 1,
+                                    next_retry_ms = delay,
+                                    "PI API call failed. Retrying"
+                                );
+                                tokio::time::sleep(std::time::Duration::from_millis(delay)).await;
+                            } else {
+                                return Err(e);
+                            }
+                        }
+                    }
+                }
+                Err("max retries exhausted".to_string())
+            })
+            .await;
+
+            match result {
+                Ok(Ok(snapshot)) => {
+                    metrics.apply_snapshot(&snapshot);
+                    true
+                }
+                Ok(Err(e)) => {
+                    tracing::warn!(
+                        instance = %instance.db_instance_identifier,
+                        error = %e,
+                        timeout_seconds = config.instance_timeout_seconds,
+                        max_attempts = config.retry.max_attempts,
+                        "Instance collection failed. Marking up=0"
+                    );
+                    metrics.mark_instance_down(&labels);
+                    false
+                }
+                Err(_elapsed) => {
+                    tracing::warn!(
+                        instance = %instance.db_instance_identifier,
+                        timeout_seconds = config.instance_timeout_seconds,
+                        "Instance collection timed out. Marking up=0"
+                    );
+                    metrics.mark_instance_down(&labels);
+                    false
+                }
+            }
+        });
+    }
+
+    let mut collected = 0;
+    let mut failed = 0;
+
+    while let Some(task_result) = join_set.join_next().await {
+        match task_result {
+            Ok(true) => collected += 1,
+            Ok(false) => failed += 1,
+            Err(join_err) => {
+                tracing::error!(error = %join_err, "Task panicked during collection");
+                failed += 1;
+            }
+        }
+    }
+
+    (collected, failed)
+}
+
+/// Run the collection loop as a background task (without leader election).
+#[allow(dead_code)]
+pub async fn collection_loop<P: PiCollector + Send + Sync + 'static>(
+    pi: Arc<P>,
+    instances_state: Arc<RwLock<Vec<AuroraInstance>>>,
+    region: String,
+    config: CollectionConfig,
+    metrics: Arc<Metrics>,
+) {
+    let semaphore = Arc::new(tokio::sync::Semaphore::new(config.max_concurrent_instances));
+    let mut interval =
+        tokio::time::interval(std::time::Duration::from_secs(config.interval_seconds));
+    let mut cycle: u64 = 0;
+
+    loop {
+        interval.tick().await;
+        cycle += 1;
+
+        let instances = instances_state.read().await.clone();
+        if instances.is_empty() {
+            tracing::debug!(cycle, "No instances discovered. Skipping collection");
+            continue;
+        }
+
+        tracing::info!(
+            cycle,
+            instances = instances.len(),
+            "Collection cycle started"
+        );
+        let start = std::time::Instant::now();
+
+        let (collected, failed) =
+            run_collection_cycle(&pi, &instances, &region, &config, &metrics, &semaphore).await;
+
+        let duration = start.elapsed();
+        metrics.scrape_duration_seconds.set(duration.as_secs_f64());
+
+        tracing::info!(
+            cycle,
+            instances_collected = collected,
+            instances_failed = failed,
+            total_duration_ms = duration.as_millis() as u64,
+            "Collection cycle completed"
+        );
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_truncate_sql_short() {
+        let (text, truncated) = truncate_sql("SELECT 1");
+        assert_eq!(text, "SELECT 1");
+        assert!(!truncated);
+    }
+
+    #[test]
+    fn test_truncate_sql_exact_limit() {
+        let input = "x".repeat(SQL_TEXT_MAX_LEN);
+        let (text, truncated) = truncate_sql(&input);
+        assert_eq!(text, input);
+        assert!(!truncated);
+    }
+
+    #[test]
+    fn test_truncate_sql_over_limit() {
+        let input = "x".repeat(SQL_TEXT_MAX_LEN + 50);
+        let (text, truncated) = truncate_sql(&input);
+        assert_eq!(text.len(), SQL_TEXT_MAX_LEN + 3); // +3 for "..."
+        assert!(text.ends_with("..."));
+        assert!(truncated);
+    }
+
+    struct MockPiCollector {
+        wait_events: GroupedMetricResult,
+        sql_keys: Vec<DimensionKeyResult>,
+        sql_full_texts: HashMap<String, String>,
+        users: GroupedMetricResult,
+        hosts: GroupedMetricResult,
+        databases: GroupedMetricResult,
+    }
+
+    impl MockPiCollector {
+        fn new() -> Self {
+            Self {
+                wait_events: vec![
+                    (
+                        HashMap::from([
+                            ("db.wait_event.name".to_string(), "CPU".to_string()),
+                            ("db.wait_event.type".to_string(), "CPU".to_string()),
+                        ]),
+                        1.5,
+                    ),
+                    (
+                        HashMap::from([
+                            (
+                                "db.wait_event.name".to_string(),
+                                "io/table/sql/handler".to_string(),
+                            ),
+                            ("db.wait_event.type".to_string(), "IO".to_string()),
+                        ]),
+                        0.8,
+                    ),
+                ],
+                sql_keys: vec![DimensionKeyResult {
+                    dimensions: vec![
+                        ("db.sql.id".to_string(), "SQL_ABC".to_string()),
+                        (
+                            "db.sql.statement".to_string(),
+                            "SELECT * FROM orders WHERE id = ?".to_string(),
+                        ),
+                    ],
+                    value: 1.2,
+                    additional_metrics: HashMap::new(),
+                }],
+                sql_full_texts: HashMap::from([(
+                    "SQL_ABC".to_string(),
+                    "SELECT * FROM orders WHERE id = 12345".to_string(),
+                )]),
+                users: vec![(
+                    HashMap::from([("db.user.name".to_string(), "app_user".to_string())]),
+                    2.0,
+                )],
+                hosts: vec![(
+                    HashMap::from([("db.host.name".to_string(), "10.0.1.100".to_string())]),
+                    1.5,
+                )],
+                databases: vec![(
+                    HashMap::from([("db.name".to_string(), "orders_db".to_string())]),
+                    1.0,
+                )],
+            }
+        }
+    }
+
+    impl PiCollector for MockPiCollector {
+        async fn get_resource_metrics_grouped(
+            &self,
+            _resource_id: &str,
+            group: &str,
+            _limit: Option<i32>,
+            _period: i32,
+        ) -> Result<GroupedMetricResult, String> {
+            match group {
+                "db.wait_event" => Ok(self.wait_events.clone()),
+                "db.user" => Ok(self.users.clone()),
+                "db.host" => Ok(self.hosts.clone()),
+                "db" => Ok(self.databases.clone()),
+                _ => Ok(vec![]),
+            }
+        }
+
+        async fn describe_dimension_keys(
+            &self,
+            _resource_id: &str,
+            _group: &str,
+            _limit: i32,
+            _period: i32,
+            _engine: &str,
+        ) -> Result<Vec<DimensionKeyResult>, String> {
+            Ok(self.sql_keys.clone())
+        }
+
+        async fn get_dimension_key_details(
+            &self,
+            _resource_id: &str,
+            _group: &str,
+            group_identifier: &str,
+        ) -> Result<Option<String>, String> {
+            Ok(self.sql_full_texts.get(group_identifier).cloned())
+        }
+    }
+
+    fn test_instance() -> AuroraInstance {
+        AuroraInstance {
+            dbi_resource_id: "db-TEST".to_string(),
+            db_instance_identifier: "test-writer".to_string(),
+            engine: "aurora-mysql".to_string(),
+            db_cluster_identifier: "test-cluster".to_string(),
+            db_instance_class: "db.r6g.large".to_string(),
+            vcpu: 2,
+            exported_tags: vec![],
+        }
+    }
+
+    #[tokio::test]
+    async fn test_collect_instance_metrics() {
+        let pi = MockPiCollector::new();
+        let instance = test_instance();
+        let config = CollectionConfig::default();
+
+        let metrics = Metrics::new(&[]).unwrap();
+        let snapshot =
+            collect_instance_metrics(&pi, &instance, "ap-northeast-2", &config, &metrics)
+                .await
+                .unwrap();
+
+        assert_eq!(snapshot.db_load, 2.3); // 1.5 + 0.8
+        assert_eq!(snapshot.db_load_cpu, 1.5);
+        assert!((snapshot.db_load_non_cpu - 0.8).abs() < 0.001);
+        assert_eq!(snapshot.vcpu, 2);
+        assert_eq!(snapshot.wait_events.len(), 2);
+        assert_eq!(snapshot.top_sql.len(), 1);
+        assert_eq!(snapshot.top_sql[0].sql_id, "SQL_ABC");
+        assert!(!snapshot.top_sql[0].sql_text_truncated);
+        assert_eq!(
+            snapshot.top_sql[0].sql_full_text,
+            "SELECT * FROM orders WHERE id = 12345"
+        );
+        assert_eq!(snapshot.users.len(), 1);
+        assert_eq!(snapshot.hosts.len(), 1);
+        assert_eq!(snapshot.labels.instance, "test-writer");
+    }
+
+    #[tokio::test]
+    async fn test_collect_instance_cpu_non_cpu_split() {
+        let mut pi = MockPiCollector::new();
+        pi.wait_events = vec![
+            (
+                HashMap::from([
+                    ("db.wait_event.name".to_string(), "CPU".to_string()),
+                    ("db.wait_event.type".to_string(), "CPU".to_string()),
+                ]),
+                3.0,
+            ),
+            (
+                HashMap::from([
+                    ("db.wait_event.name".to_string(), "io/read".to_string()),
+                    ("db.wait_event.type".to_string(), "IO".to_string()),
+                ]),
+                1.0,
+            ),
+            (
+                HashMap::from([
+                    ("db.wait_event.name".to_string(), "lock/row".to_string()),
+                    ("db.wait_event.type".to_string(), "Lock".to_string()),
+                ]),
+                0.5,
+            ),
+        ];
+        let instance = test_instance();
+        let config = CollectionConfig::default();
+
+        let metrics = Metrics::new(&[]).unwrap();
+        let snapshot = collect_instance_metrics(&pi, &instance, "us-east-1", &config, &metrics)
+            .await
+            .unwrap();
+
+        assert_eq!(snapshot.db_load, 4.5);
+        assert_eq!(snapshot.db_load_cpu, 3.0);
+        assert!((snapshot.db_load_non_cpu - 1.5).abs() < 0.001);
+    }
+
+    #[tokio::test]
+    async fn test_run_collection_cycle_success() {
+        let pi = Arc::new(MockPiCollector::new());
+        let instances = vec![test_instance()];
+        let config = CollectionConfig::default();
+        let metrics = Arc::new(Metrics::new(&[]).unwrap());
+        let semaphore = Arc::new(tokio::sync::Semaphore::new(5));
+
+        let (collected, failed) = run_collection_cycle(
+            &pi,
+            &instances,
+            "ap-northeast-2",
+            &config,
+            &metrics,
+            &semaphore,
+        )
+        .await;
+
+        assert_eq!(collected, 1);
+        assert_eq!(failed, 0);
+
+        // Verify metrics were applied
+        let output = metrics.encode();
+        assert!(output.contains("aurora_dbinsights_db_load{"));
+        assert!(output.contains("test-writer"));
+    }
+
+    struct FailingPiCollector;
+
+    impl PiCollector for FailingPiCollector {
+        async fn get_resource_metrics_grouped(
+            &self,
+            _resource_id: &str,
+            _group: &str,
+            _limit: Option<i32>,
+            _period: i32,
+        ) -> Result<GroupedMetricResult, String> {
+            Err("ThrottlingException: Rate exceeded".to_string())
+        }
+
+        async fn describe_dimension_keys(
+            &self,
+            _resource_id: &str,
+            _group: &str,
+            _limit: i32,
+            _period: i32,
+            _engine: &str,
+        ) -> Result<Vec<DimensionKeyResult>, String> {
+            Err("ThrottlingException".to_string())
+        }
+
+        async fn get_dimension_key_details(
+            &self,
+            _resource_id: &str,
+            _group: &str,
+            _group_identifier: &str,
+        ) -> Result<Option<String>, String> {
+            Err("ThrottlingException".to_string())
+        }
+    }
+
+    #[tokio::test]
+    async fn test_run_collection_cycle_failure() {
+        let pi = Arc::new(FailingPiCollector);
+        let instances = vec![test_instance()];
+        let mut config = CollectionConfig::default();
+        config.retry.max_attempts = 1; // Fast failure
+        config.retry.base_delay_ms = 1;
+        let metrics = Arc::new(Metrics::new(&[]).unwrap());
+        let semaphore = Arc::new(tokio::sync::Semaphore::new(5));
+
+        let (collected, failed) = run_collection_cycle(
+            &pi,
+            &instances,
+            "ap-northeast-2",
+            &config,
+            &metrics,
+            &semaphore,
+        )
+        .await;
+
+        assert_eq!(collected, 0);
+        assert_eq!(failed, 1);
+
+        // up should be 0
+        let labels = InstanceLabels::from_instance(&instances[0], "ap-northeast-2");
+        let up_val = metrics.up.with_label_values(&labels.as_vec()).get();
+        assert_eq!(up_val, 0.0);
+    }
+
+    #[test]
+    fn test_sql_text_truncation_in_snapshot() {
+        let long_sql = "x".repeat(300);
+        let (text, truncated) = truncate_sql(&long_sql);
+        assert!(truncated);
+        assert!(text.len() <= SQL_TEXT_MAX_LEN + 3);
+    }
+
+    #[tokio::test]
+    async fn test_run_collection_cycle_empty_instances() {
+        let pi = Arc::new(MockPiCollector::new());
+        let instances: Vec<AuroraInstance> = vec![];
+        let config = CollectionConfig::default();
+        let metrics = Arc::new(Metrics::new(&[]).unwrap());
+        let semaphore = Arc::new(tokio::sync::Semaphore::new(5));
+
+        let (collected, failed) = run_collection_cycle(
+            &pi,
+            &instances,
+            "ap-northeast-2",
+            &config,
+            &metrics,
+            &semaphore,
+        )
+        .await;
+
+        assert_eq!(collected, 0);
+        assert_eq!(failed, 0);
+    }
+
+    #[tokio::test]
+    async fn test_run_collection_cycle_multiple_instances() {
+        let pi = Arc::new(MockPiCollector::new());
+        let instances = vec![
+            test_instance(),
+            AuroraInstance {
+                dbi_resource_id: "db-TEST2".to_string(),
+                db_instance_identifier: "test-reader".to_string(),
+                engine: "aurora-mysql".to_string(),
+                db_cluster_identifier: "test-cluster".to_string(),
+                db_instance_class: "db.r6g.xlarge".to_string(),
+                vcpu: 4,
+                exported_tags: vec![],
+            },
+        ];
+        let config = CollectionConfig::default();
+        let metrics = Arc::new(Metrics::new(&[]).unwrap());
+        let semaphore = Arc::new(tokio::sync::Semaphore::new(5));
+
+        let (collected, failed) = run_collection_cycle(
+            &pi,
+            &instances,
+            "ap-northeast-2",
+            &config,
+            &metrics,
+            &semaphore,
+        )
+        .await;
+
+        assert_eq!(collected, 2);
+        assert_eq!(failed, 0);
+
+        let output = metrics.encode();
+        assert!(output.contains("test-writer"));
+        assert!(output.contains("test-reader"));
+    }
+
+    #[tokio::test]
+    async fn test_run_collection_cycle_retry_then_fail() {
+        let pi = Arc::new(FailingPiCollector);
+        let instances = vec![test_instance()];
+        let mut config = CollectionConfig::default();
+        config.retry.max_attempts = 2;
+        config.retry.base_delay_ms = 1;
+        let metrics = Arc::new(Metrics::new(&[]).unwrap());
+        let semaphore = Arc::new(tokio::sync::Semaphore::new(5));
+
+        let (collected, failed) =
+            run_collection_cycle(&pi, &instances, "us-east-1", &config, &metrics, &semaphore).await;
+
+        assert_eq!(collected, 0);
+        assert_eq!(failed, 1);
+
+        // Error counter should be 1
+        let err = metrics
+            .collection_errors_total
+            .with_label_values(&["test-writer"])
+            .get();
+        assert_eq!(err, 1.0);
+    }
+
+    #[tokio::test]
+    async fn test_collect_instance_with_empty_wait_events() {
+        let mut pi = MockPiCollector::new();
+        pi.wait_events = vec![];
+        let instance = test_instance();
+        let config = CollectionConfig::default();
+
+        let metrics = Metrics::new(&[]).unwrap();
+        let snapshot = collect_instance_metrics(&pi, &instance, "us-east-1", &config, &metrics)
+            .await
+            .unwrap();
+
+        assert_eq!(snapshot.db_load, 0.0);
+        assert_eq!(snapshot.db_load_cpu, 0.0);
+        assert_eq!(snapshot.db_load_non_cpu, 0.0);
+        assert!(snapshot.wait_events.is_empty());
+    }
+
+    #[tokio::test]
+    async fn test_collect_instance_with_long_sql() {
+        let long_sql = "x".repeat(300);
+        let mut pi = MockPiCollector::new();
+        pi.sql_keys = vec![DimensionKeyResult {
+            dimensions: vec![
+                ("db.sql.id".to_string(), "LONG1".to_string()),
+                ("db.sql.statement".to_string(), long_sql.clone()),
+            ],
+            value: 5.0,
+            additional_metrics: HashMap::new(),
+        }];
+        pi.sql_full_texts = HashMap::from([("LONG1".to_string(), long_sql.clone())]);
+        let instance = test_instance();
+        let config = CollectionConfig::default();
+
+        let metrics = Metrics::new(&[]).unwrap();
+        let snapshot = collect_instance_metrics(&pi, &instance, "us-east-1", &config, &metrics)
+            .await
+            .unwrap();
+
+        assert_eq!(snapshot.top_sql.len(), 1);
+        assert!(snapshot.top_sql[0].sql_text_truncated);
+        assert!(snapshot.top_sql[0].sql_text.ends_with("..."));
+        assert_eq!(snapshot.top_sql[0].sql_id, "LONG1");
+        assert_eq!(snapshot.top_sql[0].sql_full_text, long_sql);
+    }
+
+    fn test_instance_pg() -> AuroraInstance {
+        AuroraInstance {
+            dbi_resource_id: "db-PGTEST".to_string(),
+            db_instance_identifier: "pg-writer".to_string(),
+            engine: "aurora-postgresql".to_string(),
+            db_cluster_identifier: "pg-cluster".to_string(),
+            db_instance_class: "db.r6g.large".to_string(),
+            vcpu: 2,
+            exported_tags: vec![],
+        }
+    }
+
+    #[tokio::test]
+    async fn test_collect_instance_metrics_postgresql_additional_metrics() {
+        let mut pi = MockPiCollector::new();
+        pi.sql_keys = vec![DimensionKeyResult {
+            dimensions: vec![
+                ("db.sql_tokenized.id".to_string(), "PGSQL_TOK1".to_string()),
+                (
+                    "db.sql_tokenized.statement".to_string(),
+                    "SELECT * FROM users WHERE id = ?".to_string(),
+                ),
+            ],
+            value: 2.0,
+            additional_metrics: HashMap::from([
+                (
+                    "db.sql_tokenized.stats.calls_per_sec.avg".to_string(),
+                    142.5,
+                ),
+                (
+                    "db.sql_tokenized.stats.avg_latency_per_call.avg".to_string(),
+                    1.05,
+                ),
+                ("db.sql_tokenized.stats.rows_per_call.avg".to_string(), 12.3),
+            ]),
+        }];
+        let instance = test_instance_pg();
+        let config = CollectionConfig::default();
+
+        let metrics = Metrics::new(&[]).unwrap();
+        let snapshot = collect_instance_metrics(&pi, &instance, "us-east-1", &config, &metrics)
+            .await
+            .unwrap();
+
+        assert_eq!(snapshot.top_sql_tokenized.len(), 1);
+        let st = &snapshot.top_sql_tokenized[0];
+        assert_eq!(st.sql_tokenized_id, "PGSQL_TOK1");
+        assert_eq!(st.calls_per_sec, Some(142.5));
+        assert_eq!(st.avg_latency_per_call, Some(1.05));
+        assert_eq!(st.rows_per_call, Some(12.3));
+    }
+
+    #[tokio::test]
+    async fn test_collect_instance_metrics_mysql_no_additional_metrics() {
+        let pi = MockPiCollector::new();
+        let instance = test_instance();
+        let config = CollectionConfig::default();
+
+        let metrics = Metrics::new(&[]).unwrap();
+        let snapshot = collect_instance_metrics(&pi, &instance, "us-east-1", &config, &metrics)
+            .await
+            .unwrap();
+
+        for st in &snapshot.top_sql_tokenized {
+            assert_eq!(st.calls_per_sec, None);
+            assert_eq!(st.avg_latency_per_call, None);
+            assert_eq!(st.rows_per_call, None);
+        }
+    }
+
+    /// Mock that fails only on specific dimension groups (simulates partial PI API failure).
+    struct PartialFailPiCollector;
+
+    impl PiCollector for PartialFailPiCollector {
+        async fn get_resource_metrics_grouped(
+            &self,
+            _resource_id: &str,
+            group: &str,
+            _limit: Option<i32>,
+            _period: i32,
+        ) -> Result<GroupedMetricResult, String> {
+            match group {
+                "db.wait_event" => Ok(vec![(
+                    HashMap::from([
+                        ("db.wait_event.name".to_string(), "CPU".to_string()),
+                        ("db.wait_event.type".to_string(), "CPU".to_string()),
+                    ]),
+                    1.0,
+                )]),
+                // user, host, db all fail
+                _ => Err("NotSupportedException".to_string()),
+            }
+        }
+
+        async fn describe_dimension_keys(
+            &self,
+            _resource_id: &str,
+            _group: &str,
+            _limit: i32,
+            _period: i32,
+            _engine: &str,
+        ) -> Result<Vec<DimensionKeyResult>, String> {
+            Err("NotSupportedException".to_string())
+        }
+
+        async fn get_dimension_key_details(
+            &self,
+            _resource_id: &str,
+            _group: &str,
+            _group_identifier: &str,
+        ) -> Result<Option<String>, String> {
+            Err("NotSupportedException".to_string())
+        }
+    }
+
+    #[tokio::test]
+    async fn test_collect_instance_partial_failure_graceful() {
+        let pi = PartialFailPiCollector;
+        let instance = test_instance();
+        let config = CollectionConfig::default();
+
+        let metrics = Metrics::new(&[]).unwrap();
+        let snapshot = collect_instance_metrics(&pi, &instance, "us-east-1", &config, &metrics)
+            .await
+            .unwrap();
+
+        // wait_event succeeds → db_load populated
+        assert_eq!(snapshot.db_load, 1.0);
+        assert_eq!(snapshot.db_load_cpu, 1.0);
+        assert_eq!(snapshot.wait_events.len(), 1);
+
+        // All others gracefully empty
+        assert!(snapshot.top_sql.is_empty());
+        assert!(snapshot.users.is_empty());
+        assert!(snapshot.hosts.is_empty());
+        assert!(snapshot.databases.is_empty());
+    }
+
+    #[tokio::test]
+    async fn test_collect_instance_wait_event_type_correct() {
+        let pi = MockPiCollector::new();
+        let instance = test_instance();
+        let config = CollectionConfig::default();
+
+        let metrics = Metrics::new(&[]).unwrap();
+        let snapshot =
+            collect_instance_metrics(&pi, &instance, "ap-northeast-2", &config, &metrics)
+                .await
+                .unwrap();
+
+        // First wait event: CPU
+        assert_eq!(snapshot.wait_events[0].wait_event, "CPU");
+        assert_eq!(snapshot.wait_events[0].wait_event_type, "CPU");
+
+        // Second wait event: IO
+        assert_eq!(snapshot.wait_events[1].wait_event, "io/table/sql/handler");
+        assert_eq!(snapshot.wait_events[1].wait_event_type, "IO");
+    }
+
+    #[tokio::test]
+    async fn test_collect_instance_database_metric() {
+        let pi = MockPiCollector::new();
+        let instance = test_instance();
+        let config = CollectionConfig::default();
+
+        let metrics = Metrics::new(&[]).unwrap();
+        let snapshot = collect_instance_metrics(&pi, &instance, "us-east-1", &config, &metrics)
+            .await
+            .unwrap();
+
+        assert_eq!(snapshot.databases.len(), 1);
+        assert_eq!(snapshot.databases[0].db_name, "orders_db");
+        assert_eq!(snapshot.databases[0].value, 1.0);
+    }
+
+    #[tokio::test]
+    async fn test_collect_instance_user_host_correct_keys() {
+        let pi = MockPiCollector::new();
+        let instance = test_instance();
+        let config = CollectionConfig::default();
+
+        let metrics = Metrics::new(&[]).unwrap();
+        let snapshot = collect_instance_metrics(&pi, &instance, "us-east-1", &config, &metrics)
+            .await
+            .unwrap();
+
+        assert_eq!(snapshot.users[0].db_user, "app_user");
+        assert_eq!(snapshot.hosts[0].client_host, "10.0.1.100");
+    }
+
+    /// Mock that sleeps longer than the timeout to simulate a hung PI API call.
+    struct SlowPiCollector {
+        delay: std::time::Duration,
+    }
+
+    impl PiCollector for SlowPiCollector {
+        async fn get_resource_metrics_grouped(
+            &self,
+            _resource_id: &str,
+            _group: &str,
+            _limit: Option<i32>,
+            _period: i32,
+        ) -> Result<GroupedMetricResult, String> {
+            tokio::time::sleep(self.delay).await;
+            Ok(vec![])
+        }
+
+        async fn describe_dimension_keys(
+            &self,
+            _resource_id: &str,
+            _group: &str,
+            _limit: i32,
+            _period: i32,
+            _engine: &str,
+        ) -> Result<Vec<DimensionKeyResult>, String> {
+            tokio::time::sleep(self.delay).await;
+            Ok(vec![])
+        }
+
+        async fn get_dimension_key_details(
+            &self,
+            _resource_id: &str,
+            _group: &str,
+            _group_identifier: &str,
+        ) -> Result<Option<String>, String> {
+            tokio::time::sleep(self.delay).await;
+            Ok(None)
+        }
+    }
+
+    #[tokio::test]
+    async fn test_run_collection_cycle_instance_timeout() {
+        let pi = Arc::new(SlowPiCollector {
+            delay: std::time::Duration::from_secs(5),
+        });
+        let instances = vec![test_instance()];
+        let mut config = CollectionConfig::default();
+        config.instance_timeout_seconds = 1; // 1s timeout, collector sleeps 5s
+        config.retry.max_attempts = 1;
+        let metrics = Arc::new(Metrics::new(&[]).unwrap());
+        let semaphore = Arc::new(tokio::sync::Semaphore::new(5));
+
+        let start = std::time::Instant::now();
+        let (collected, failed) = run_collection_cycle(
+            &pi,
+            &instances,
+            "ap-northeast-2",
+            &config,
+            &metrics,
+            &semaphore,
+        )
+        .await;
+        let elapsed = start.elapsed();
+
+        assert_eq!(collected, 0);
+        assert_eq!(failed, 1);
+
+        // Should complete within ~1s, not 5s
+        assert!(elapsed < std::time::Duration::from_secs(3));
+
+        // up should be 0
+        let labels = InstanceLabels::from_instance(&instances[0], "ap-northeast-2");
+        let up_val = metrics.up.with_label_values(&labels.as_vec()).get();
+        assert_eq!(up_val, 0.0);
+    }
+
+    #[tokio::test]
+    async fn test_run_collection_cycle_timeout_does_not_block_other_instances() {
+        let pi = Arc::new(SlowPiCollector {
+            delay: std::time::Duration::from_secs(5),
+        });
+        let instances = vec![
+            test_instance(),
+            AuroraInstance {
+                dbi_resource_id: "db-TEST2".to_string(),
+                db_instance_identifier: "test-reader".to_string(),
+                engine: "aurora-mysql".to_string(),
+                db_cluster_identifier: "test-cluster".to_string(),
+                db_instance_class: "db.r6g.xlarge".to_string(),
+                vcpu: 4,
+                exported_tags: vec![],
+            },
+        ];
+        let mut config = CollectionConfig::default();
+        config.instance_timeout_seconds = 1;
+        config.retry.max_attempts = 1;
+        let metrics = Arc::new(Metrics::new(&[]).unwrap());
+        let semaphore = Arc::new(tokio::sync::Semaphore::new(5));
+
+        let start = std::time::Instant::now();
+        let (collected, failed) = run_collection_cycle(
+            &pi,
+            &instances,
+            "ap-northeast-2",
+            &config,
+            &metrics,
+            &semaphore,
+        )
+        .await;
+        let elapsed = start.elapsed();
+
+        // Both instances should time out
+        assert_eq!(collected, 0);
+        assert_eq!(failed, 2);
+
+        // Should complete within ~2s (1s per instance), not 10s
+        assert!(elapsed < std::time::Duration::from_secs(4));
+    }
+
+    #[tokio::test]
+    async fn test_run_collection_cycle_initializes_error_counter() {
+        let pi = Arc::new(MockPiCollector::new());
+        let instances = vec![test_instance()];
+        let config = CollectionConfig::default();
+        let metrics = Arc::new(Metrics::new(&[]).unwrap());
+        let semaphore = Arc::new(tokio::sync::Semaphore::new(5));
+
+        run_collection_cycle(&pi, &instances, "us-east-1", &config, &metrics, &semaphore).await;
+
+        // Error counter should exist with value 0
+        let err = metrics
+            .collection_errors_total
+            .with_label_values(&["test-writer"])
+            .get();
+        assert_eq!(err, 0.0);
+
+        // Verify it appears in encoded output
+        let output = metrics.encode();
+        assert!(
+            output
+                .contains("aurora_dbinsights_collection_errors_total{instance=\"test-writer\"} 0")
+        );
+    }
+
+    // ---------------------------------------------------------------------
+    // Tests for the new observability metrics:
+    //   - aurora_dbinsights_last_success_timestamp_seconds
+    //   - aurora_dbinsights_pi_api_errors_total
+    // ---------------------------------------------------------------------
+
+    /// Collector that returns a specific error message for the first GetResourceMetrics call
+    /// (wait_event), used to validate error classification routing.
+    struct ClassifiedErrorCollector {
+        err_msg: &'static str,
+    }
+
+    impl PiCollector for ClassifiedErrorCollector {
+        async fn get_resource_metrics_grouped(
+            &self,
+            _resource_id: &str,
+            _group: &str,
+            _limit: Option<i32>,
+            _period: i32,
+        ) -> Result<GroupedMetricResult, String> {
+            Err(self.err_msg.to_string())
+        }
+        async fn describe_dimension_keys(
+            &self,
+            _resource_id: &str,
+            _group: &str,
+            _limit: i32,
+            _period: i32,
+            _engine: &str,
+        ) -> Result<Vec<DimensionKeyResult>, String> {
+            Err(self.err_msg.to_string())
+        }
+        async fn get_dimension_key_details(
+            &self,
+            _resource_id: &str,
+            _group: &str,
+            _group_identifier: &str,
+        ) -> Result<Option<String>, String> {
+            Err(self.err_msg.to_string())
+        }
+    }
+
+    #[tokio::test]
+    async fn test_pi_api_errors_total_classifies_throttle() {
+        let pi = Arc::new(ClassifiedErrorCollector {
+            err_msg: "ThrottlingException: Rate exceeded",
+        });
+        let instances = vec![test_instance()];
+        let mut config = CollectionConfig::default();
+        config.retry.max_attempts = 1;
+        config.retry.base_delay_ms = 1;
+        let metrics = Arc::new(Metrics::new(&[]).unwrap());
+        let semaphore = Arc::new(tokio::sync::Semaphore::new(1));
+
+        run_collection_cycle(&pi, &instances, "us-east-1", &config, &metrics, &semaphore).await;
+
+        // wait_event is the first call and uses `?` — it fails first, counter increments for
+        // GetResourceMetrics/throttle. Later APIs are not reached on this path.
+        let throttle = metrics
+            .pi_api_errors_total
+            .with_label_values(&["test-writer", API_GET_RESOURCE_METRICS, "throttle"])
+            .get();
+        assert_eq!(throttle, 1.0);
+
+        // No auth/timeout/other should appear for this API.
+        let auth = metrics
+            .pi_api_errors_total
+            .with_label_values(&["test-writer", API_GET_RESOURCE_METRICS, "auth"])
+            .get();
+        assert_eq!(auth, 0.0);
+    }
+
+    #[tokio::test]
+    async fn test_pi_api_errors_total_classifies_auth() {
+        let pi = Arc::new(ClassifiedErrorCollector {
+            err_msg: "AccessDeniedException: not authorized to perform: pi:GetResourceMetrics",
+        });
+        let instances = vec![test_instance()];
+        let mut config = CollectionConfig::default();
+        config.retry.max_attempts = 1;
+        config.retry.base_delay_ms = 1;
+        let metrics = Arc::new(Metrics::new(&[]).unwrap());
+        let semaphore = Arc::new(tokio::sync::Semaphore::new(1));
+
+        run_collection_cycle(&pi, &instances, "us-east-1", &config, &metrics, &semaphore).await;
+
+        let auth = metrics
+            .pi_api_errors_total
+            .with_label_values(&["test-writer", API_GET_RESOURCE_METRICS, "auth"])
+            .get();
+        assert_eq!(auth, 1.0);
+    }
+
+    #[tokio::test]
+    async fn test_pi_api_errors_total_counts_each_retry() {
+        let pi = Arc::new(ClassifiedErrorCollector {
+            err_msg: "ThrottlingException",
+        });
+        let instances = vec![test_instance()];
+        let mut config = CollectionConfig::default();
+        config.retry.max_attempts = 3;
+        config.retry.base_delay_ms = 1;
+        let metrics = Arc::new(Metrics::new(&[]).unwrap());
+        let semaphore = Arc::new(tokio::sync::Semaphore::new(1));
+
+        run_collection_cycle(&pi, &instances, "us-east-1", &config, &metrics, &semaphore).await;
+
+        // Each retry increments the counter — 3 attempts → 3.
+        let throttle = metrics
+            .pi_api_errors_total
+            .with_label_values(&["test-writer", API_GET_RESOURCE_METRICS, "throttle"])
+            .get();
+        assert_eq!(throttle, 3.0, "expected one increment per retry attempt");
+
+        // collection_errors_total should only increment once (final failure).
+        let coll_err = metrics
+            .collection_errors_total
+            .with_label_values(&["test-writer"])
+            .get();
+        assert_eq!(coll_err, 1.0);
+    }
+
+    /// Collector where wait_event succeeds but all other APIs fail — simulates partial failure.
+    /// This is the scenario that `collection_errors_total` cannot detect but `pi_api_errors_total`
+    /// can, because apply_snapshot is still called (up=1) despite breakdown APIs failing.
+    struct PartialFailureCollector;
+
+    impl PiCollector for PartialFailureCollector {
+        async fn get_resource_metrics_grouped(
+            &self,
+            _resource_id: &str,
+            group: &str,
+            _limit: Option<i32>,
+            _period: i32,
+        ) -> Result<GroupedMetricResult, String> {
+            match group {
+                "db.wait_event" => Ok(vec![(
+                    HashMap::from([
+                        ("db.wait_event.name".to_string(), "CPU".to_string()),
+                        ("db.wait_event.type".to_string(), "CPU".to_string()),
+                    ]),
+                    1.0,
+                )]),
+                // user / host / database all throttle.
+                _ => Err("ThrottlingException".to_string()),
+            }
+        }
+        async fn describe_dimension_keys(
+            &self,
+            _resource_id: &str,
+            _group: &str,
+            _limit: i32,
+            _period: i32,
+            _engine: &str,
+        ) -> Result<Vec<DimensionKeyResult>, String> {
+            Err("ThrottlingException".to_string())
+        }
+        async fn get_dimension_key_details(
+            &self,
+            _resource_id: &str,
+            _group: &str,
+            _group_identifier: &str,
+        ) -> Result<Option<String>, String> {
+            Err("ThrottlingException".to_string())
+        }
+    }
+
+    #[tokio::test]
+    async fn test_partial_failure_detected_only_by_pi_api_errors_total() {
+        let pi = Arc::new(PartialFailureCollector);
+        let instances = vec![test_instance()];
+        let mut config = CollectionConfig::default();
+        config.retry.max_attempts = 1;
+        let metrics = Arc::new(Metrics::new(&[]).unwrap());
+        let semaphore = Arc::new(tokio::sync::Semaphore::new(1));
+
+        let (collected, failed) =
+            run_collection_cycle(&pi, &instances, "us-east-1", &config, &metrics, &semaphore).await;
+
+        // Cycle is considered successful (wait_event succeeded → snapshot built).
+        assert_eq!(collected, 1);
+        assert_eq!(failed, 0);
+
+        let labels = InstanceLabels::from_instance(&instances[0], "us-east-1");
+        assert_eq!(metrics.up.with_label_values(&labels.as_vec()).get(), 1.0);
+
+        // collection_errors_total remains 0 — the coarse-grained counter misses this.
+        let coll_err = metrics
+            .collection_errors_total
+            .with_label_values(&["test-writer"])
+            .get();
+        assert_eq!(coll_err, 0.0);
+
+        // But pi_api_errors_total captures every partial failure:
+        //   - db.sql_tokenized (DescribeDimensionKeys)
+        //   - db.sql          (DescribeDimensionKeys)
+        //   - db.user         (GetResourceMetrics)
+        //   - db.host         (GetResourceMetrics)
+        //   - db              (GetResourceMetrics)
+        let ddk = metrics
+            .pi_api_errors_total
+            .with_label_values(&["test-writer", API_DESCRIBE_DIMENSION_KEYS, "throttle"])
+            .get();
+        assert_eq!(ddk, 2.0);
+
+        let grm = metrics
+            .pi_api_errors_total
+            .with_label_values(&["test-writer", API_GET_RESOURCE_METRICS, "throttle"])
+            .get();
+        assert_eq!(grm, 3.0);
+    }
+
+    #[tokio::test]
+    async fn test_last_success_timestamp_advances_on_success() {
+        let pi = Arc::new(MockPiCollector::new());
+        let instances = vec![test_instance()];
+        let config = CollectionConfig::default();
+        let metrics = Arc::new(Metrics::new(&[]).unwrap());
+        let semaphore = Arc::new(tokio::sync::Semaphore::new(1));
+
+        let before = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_secs_f64();
+
+        run_collection_cycle(&pi, &instances, "us-east-1", &config, &metrics, &semaphore).await;
+
+        let labels = InstanceLabels::from_instance(&instances[0], "us-east-1");
+        let ts = metrics
+            .last_success_timestamp_seconds
+            .with_label_values(&labels.as_vec())
+            .get();
+
+        assert!(
+            ts >= before,
+            "timestamp should be >= before ({ts} vs {before})"
+        );
+        assert!(
+            ts < before + 10.0,
+            "timestamp should be current, not far in future"
+        );
+    }
+
+    #[tokio::test]
+    async fn test_last_success_timestamp_not_updated_on_failure() {
+        let pi = Arc::new(FailingPiCollector);
+        let instances = vec![test_instance()];
+        let mut config = CollectionConfig::default();
+        config.retry.max_attempts = 1;
+        config.retry.base_delay_ms = 1;
+        let metrics = Arc::new(Metrics::new(&[]).unwrap());
+        let semaphore = Arc::new(tokio::sync::Semaphore::new(1));
+
+        run_collection_cycle(&pi, &instances, "us-east-1", &config, &metrics, &semaphore).await;
+
+        // No successful collection → timestamp series should not exist.
+        let labels = InstanceLabels::from_instance(&instances[0], "us-east-1");
+        let output = metrics.encode();
+        let labels_vec = labels.as_vec();
+        let _ = labels_vec; // silence unused
+        assert!(
+            !output.contains("aurora_dbinsights_last_success_timestamp_seconds{"),
+            "timestamp should not be populated when collection fails:\n{output}"
+        );
+
+        // up must be 0.
+        assert_eq!(metrics.up.with_label_values(&labels.as_vec()).get(), 0.0);
+    }
+
+    #[tokio::test]
+    async fn test_last_success_timestamp_retained_after_subsequent_failure() {
+        // First cycle: success → timestamp set.
+        // Second cycle: failure → timestamp must be retained (not reset to 0).
+        let success_pi = Arc::new(MockPiCollector::new());
+        let fail_pi = Arc::new(FailingPiCollector);
+        let instances = vec![test_instance()];
+        let mut config = CollectionConfig::default();
+        config.retry.max_attempts = 1;
+        config.retry.base_delay_ms = 1;
+        let metrics = Arc::new(Metrics::new(&[]).unwrap());
+        let semaphore = Arc::new(tokio::sync::Semaphore::new(1));
+
+        run_collection_cycle(
+            &success_pi,
+            &instances,
+            "us-east-1",
+            &config,
+            &metrics,
+            &semaphore,
+        )
+        .await;
+
+        let labels = InstanceLabels::from_instance(&instances[0], "us-east-1");
+        let ts_after_success = metrics
+            .last_success_timestamp_seconds
+            .with_label_values(&labels.as_vec())
+            .get();
+        assert!(ts_after_success > 0.0);
+
+        // Now fail.
+        run_collection_cycle(
+            &fail_pi,
+            &instances,
+            "us-east-1",
+            &config,
+            &metrics,
+            &semaphore,
+        )
+        .await;
+
+        let ts_after_failure = metrics
+            .last_success_timestamp_seconds
+            .with_label_values(&labels.as_vec())
+            .get();
+        assert_eq!(
+            ts_after_success, ts_after_failure,
+            "last_success_timestamp must be retained on failure so staleness alarms work"
+        );
+        assert_eq!(metrics.up.with_label_values(&labels.as_vec()).get(), 0.0);
+    }
+
+    #[tokio::test]
+    async fn test_pi_api_errors_total_encoded_output_has_expected_labels() {
+        let pi = Arc::new(ClassifiedErrorCollector {
+            err_msg: "ThrottlingException",
+        });
+        let instances = vec![test_instance()];
+        let mut config = CollectionConfig::default();
+        config.retry.max_attempts = 1;
+        config.retry.base_delay_ms = 1;
+        let metrics = Arc::new(Metrics::new(&[]).unwrap());
+        let semaphore = Arc::new(tokio::sync::Semaphore::new(1));
+
+        run_collection_cycle(&pi, &instances, "us-east-1", &config, &metrics, &semaphore).await;
+
+        let output = metrics.encode();
+        // Prometheus sorts labels alphabetically.
+        assert!(
+            output.contains(
+                "aurora_dbinsights_pi_api_errors_total{api=\"GetResourceMetrics\",error_kind=\"throttle\",instance=\"test-writer\"} 1"
+            ),
+            "encoded output missing expected labels:\n{output}"
+        );
+    }
+}

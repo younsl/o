@@ -1,0 +1,60 @@
+.integration-status-badge {
+  position: absolute;
+  top: 12px;
+  right: 16px;
+  z-index: 1;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  cursor: pointer;
+  padding: 4px 12px;
+  border-radius: 16px;
+  border: 1px solid var(--bui-border-default);
+  background-color: var(--bui-bg-neutral-1);
+  transition: background-color 0.2s;
+}
+
+.integration-status-badge:hover {
+  background-color: var(--bui-bg-neutral-2);
+}
+
+.integration-status-badge-label {
+  font-size: 0.75rem;
+  font-weight: 500;
+  color: var(--bui-fg-secondary);
+}
+
+.integration-status-led {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+}
+
+.integration-status-led--connected {
+  background-color: var(--bui-fg-success);
+  box-shadow: 0 0 6px var(--bui-fg-success);
+}
+
+.integration-status-led--disconnected {
+  background-color: var(--bui-fg-secondary);
+}
+
+.integration-status-led--error {
+  background-color: var(--bui-fg-danger);
+  box-shadow: 0 0 6px var(--bui-fg-danger);
+}
+
+.integration-status-spinner {
+  width: 8px;
+  height: 8px;
+  border: 1.5px solid var(--bui-fg-secondary);
+  border-top-color: transparent;
+  border-radius: 50%;
+  animation: integration-status-spin 0.6s linear infinite;
+}
+
+@keyframes integration-status-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}

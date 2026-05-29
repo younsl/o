@@ -1,0 +1,23 @@
+# Rust / build artifacts
+/target/
+**/*.rs.bk
+
+# Helm
+charts/**/charts/
+charts/**/*.tgz
+
+# Local dev config and secrets (never commit)
+*.pem
+*.key
+secrets.yaml
+
+# IDEs
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db

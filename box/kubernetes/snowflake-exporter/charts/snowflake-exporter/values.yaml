@@ -1,0 +1,178 @@
+# -- (int) Number of replicas. Snowflake ACCOUNT_USAGE views are account-wide, so running >1 replica only duplicates queries and credit usage.
+replicaCount: 1
+
+# -- (int) Number of old ReplicaSets to retain
+revisionHistoryLimit: 3
+
+# -- (object) Additional pod annotations
+podAnnotations: {}
+
+image:
+  # -- (string) Container image repository
+  repository: ghcr.io/younsl/snowflake-exporter
+  # -- (string) Image tag (defaults to chart appVersion)
+  tag: ""
+  # -- (string) Image pull policy
+  pullPolicy: IfNotPresent
+
+# -- (list) Image pull secrets for private registries
+imagePullSecrets: []
+  # - name: regcred
+
+serviceAccount:
+  # -- (bool) Create a ServiceAccount
+  create: true
+  # -- (string) ServiceAccount name (defaults to fullname template)
+  name: ""
+  # -- (object) Annotations for the ServiceAccount
+  annotations: {}
+  # -- (bool) Automount API credentials for the ServiceAccount
+  automountServiceAccountToken: false
+
+service:
+  # -- (string) Service type
+  type: ClusterIP
+  # -- (int) Service port
+  port: 9975
+  # -- (string) Traffic distribution policy (PreferClose, etc.)
+  trafficDistribution: ""
+
+serviceMonitor:
+  # -- (bool) Enable ServiceMonitor for Prometheus Operator (requires monitoring.coreos.com/v1 CRD)
+  enabled: true
+  # -- (string) Scrape interval
+  interval: 60s
+  # -- (string) Scrape timeout
+  scrapeTimeout: 30s
+  # -- (object) Additional labels for ServiceMonitor
+  labels: {}
+  # -- (object) Additional annotations for ServiceMonitor
+  annotations: {}
+  # -- (list) Metric relabeling rules applied after scrape
+  metricRelabelings: []
+    # - sourceLabels: [__name__]
+    #   regex: "snowflake_table_.*"
+    #   action: drop
+
+prometheusRules:
+  # -- (bool) Enable PrometheusRule for Prometheus Operator (requires monitoring.coreos.com/v1 CRD)
+  enabled: false
+  # -- (string) Namespace override for PrometheusRule
+  namespace: ""
+  # -- (object) Additional labels for PrometheusRule
+  labels: {}
+  # -- (list) Alerting rules
+  # @default -- See `values.yaml`
+  rules: []
+    # - alert: SnowflakeExporterDown
+    #   expr: snowflake_up == 0
+    #   for: 10m
+    #   labels:
+    #     severity: warning
+    #   annotations:
+    #     summary: "Snowflake metrics collection failing"
+
+# -- (object) snowflake-exporter config (mounted as ConfigMap)
+config:
+  snowflake:
+    # -- (string) Snowflake account identifier (e.g. xy12345.ap-northeast-2.aws)
+    account: ""
+    # -- (string) Role for query execution. Ignored at auth time (PAT carries identity) but used in the SQL API request body
+    role: ""
+    # -- (string) Warehouse used to run ACCOUNT_USAGE queries
+    warehouse: ""
+    # -- (string) Database (default SNOWFLAKE which contains ACCOUNT_USAGE schema)
+    database: "SNOWFLAKE"
+    # -- (int) HTTP request timeout in seconds for Snowflake SQL API v2 calls
+    requestTimeoutSeconds: 60
+  collection:
+    # -- (int) How often to re-query Snowflake in seconds. Set >= 300s to limit warehouse cost.
+    intervalSeconds: 300
+    # -- (bool) Skip the deleted-tables storage query (expensive on large accounts)
+    excludeDeletedTables: false
+    # -- (bool) Emit per-pipe / per-task / per-materialized-view serverless credit metrics. Off by default — cardinality scales with the number of pipes/tasks/MVs.
+    enableServerlessDetail: false
+    # -- (int) Server-side statement timeout per query in seconds
+    queryTimeoutSeconds: 120
+  logging:
+    # -- (string) Log level (trace, debug, info, warn, error)
+    level: "info"
+    # -- (string) Log format (json or text)
+    format: "json"
+
+# -- (object) Snowflake Programmatic Access Token (PAT). Create with `ALTER USER <user> ADD PROGRAMMATIC ACCESS TOKEN ...` — the user binding and role restriction are set at PAT creation time.
+auth:
+  # -- (bool) Create the Secret containing the PAT. Disable if managing the Secret externally (e.g. External Secrets Operator)
+  createSecret: true
+  # -- (string) Existing Secret name to consume instead of creating one
+  existingSecret: ""
+  # -- (string) Secret key that holds the PAT string
+  tokenSecretKey: "token"
+  # -- (string) Raw PAT value (used only when createSecret is true). Prefer external secret management for production.
+  token: ""
+
+# -- (list) Container resize policy for in-place resource updates (requires InPlacePodVerticalScaling feature gate)
+# @default -- See `values.yaml`
+resizePolicy:
+  - resourceName: cpu
+    restartPolicy: NotRequired
+  - resourceName: memory
+    restartPolicy: RestartContainer
+
+resources:
+  requests:
+    # -- (string) CPU request
+    cpu: 20m
+    # -- (string) Memory request
+    memory: 32Mi
+  limits:
+    # -- (string) Memory limit
+    memory: 96Mi
+
+# -- (string) Priority class name for the pod
+priorityClassName: ""
+
+# -- (object) Pod-level security context
+# @default -- See `values.yaml`
+podSecurityContext:
+  runAsNonRoot: true
+  runAsUser: 65532
+  runAsGroup: 65532
+  fsGroup: 65532
+  seccompProfile:
+    type: RuntimeDefault
+
+# -- (object) Container-level security context
+# @default -- See `values.yaml`
+securityContext:
+  allowPrivilegeEscalation: false
+  readOnlyRootFilesystem: true
+  capabilities:
+    drop:
+      - ALL
+
+pdb:
+  # -- (bool) Enable PodDisruptionBudget
+  enabled: false
+  # -- (int) Maximum number of pods that can be unavailable during disruption
+  maxUnavailable: 1
+  # -- (string) Unhealthy pod eviction policy (IfReady or AlwaysAllow)
+  unhealthyPodEvictionPolicy: IfReady
+
+# -- (object) Node selector
+nodeSelector: {}
+# -- (list) Tolerations
+tolerations: []
+# -- (object) Affinity rules
+affinity: {}
+# -- (list) Topology spread constraints
+topologySpreadConstraints: []
+
+# -- (list) Extra Kubernetes objects to deploy with tpl support
+extraObjects: []
+  # - apiVersion: v1
+  #   kind: ConfigMap
+  #   metadata:
+  #     name: "{{ include \"snowflake-exporter.fullname\" . }}-extra"
+  #   data:
+  #     key: value

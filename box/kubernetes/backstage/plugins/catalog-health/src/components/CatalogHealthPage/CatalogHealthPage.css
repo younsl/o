@@ -1,0 +1,362 @@
+.coverage-stat-card {
+  padding: 16px;
+  border-radius: 8px;
+  background: var(--bui-color-background-elevation-1, #1e1e1e);
+  border: 1px solid var(--bui-color-border-default, #333);
+}
+
+.coverage-stat-value {
+  font-size: 2rem;
+  font-weight: 700;
+  line-height: 1;
+  font-variant-numeric: tabular-nums;
+}
+
+.coverage-progress-bar {
+  width: 100%;
+  height: 22px;
+  border-radius: 4px;
+  background: var(--bui-color-background-elevation-2, #2a2a2a);
+  display: flex;
+  overflow: hidden;
+}
+
+.coverage-progress-fill {
+  height: 100%;
+  border-radius: 4px 0 0 4px;
+  transition: width 0.5s ease;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 0;
+  overflow: hidden;
+}
+
+.coverage-progress-label {
+  font-size: 0.7rem;
+  font-weight: 700;
+  color: #fff;
+  white-space: nowrap;
+}
+
+.coverage-progress-unfilled {
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 0;
+  overflow: hidden;
+}
+
+.coverage-progress-label-remaining {
+  font-size: 0.7rem;
+  font-weight: 700;
+  color: var(--bui-color-text-secondary, #888);
+  white-space: nowrap;
+}
+
+.coverage-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.85rem;
+}
+
+.coverage-table th {
+  text-align: left;
+  padding: 8px 12px;
+  border-bottom: 2px solid var(--bui-color-border-default, #444);
+  font-weight: 600;
+  font-size: 0.75rem;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  color: var(--bui-color-text-secondary, #aaa);
+}
+
+.coverage-table td {
+  padding: 6px 12px;
+  border-bottom: 1px solid var(--bui-color-border-default, #333);
+  vertical-align: middle;
+}
+
+.coverage-table tbody tr:hover {
+  background: var(--bui-color-background-elevation-1, #1e1e1e);
+}
+
+.coverage-badge {
+  display: inline-block;
+  padding: 1px 8px;
+  border-radius: 4px;
+  font-size: 0.7rem;
+  font-weight: 700;
+}
+
+.coverage-badge-yes {
+  background: #10b98133;
+  color: #10b981;
+}
+
+.coverage-badge-no {
+  background: #ef444433;
+  color: #ef4444;
+}
+
+.coverage-badge-archived {
+  background: #6b728033;
+  color: #6b7280;
+}
+
+.coverage-section-box {
+  background: var(--bui-color-background-elevation-1, #1e1e1e);
+  border: 1px solid var(--bui-color-border-default, #333);
+  border-radius: 8px;
+}
+
+.coverage-empty {
+  text-align: center;
+  padding: 40px 20px;
+}
+
+.coverage-group-bar {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.coverage-group-bar-track {
+  flex: 1;
+  height: 6px;
+  border-radius: 3px;
+  background: var(--bui-color-background-elevation-2, #2a2a2a);
+  overflow: hidden;
+}
+
+.coverage-group-bar-fill {
+  height: 100%;
+  border-radius: 3px;
+  transition: width 0.3s ease;
+}
+
+.coverage-filter-bar {
+  display: flex;
+  align-items: flex-end;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.coverage-ignored-toggle {
+  height: 32px;
+  padding: 0 12px;
+  border-radius: 6px;
+  border: 1px solid var(--bui-color-border-default, #444);
+  background: var(--bui-color-background-elevation-2, #2a2a2a);
+  color: #888;
+  font-size: 0.75rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background-color 0.15s, color 0.15s;
+  white-space: nowrap;
+}
+
+.coverage-ignored-toggle:hover {
+  background: #3a3a3a;
+}
+
+.coverage-ignored-toggle-active {
+  background: #f59e0b22;
+  color: #f59e0b;
+  border-color: #f59e0b44;
+}
+
+.coverage-row-ignored {
+  opacity: 0.5;
+}
+
+.coverage-ignored-badge {
+  display: inline-block;
+  padding: 1px 6px;
+  border-radius: 4px;
+  font-size: 0.6rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  background: #f59e0b22;
+  color: #f59e0b;
+  border: 1px solid #f59e0b44;
+}
+
+.coverage-action-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border-radius: 6px;
+  border: 1px solid var(--bui-color-border-default, #444);
+  background: var(--bui-color-background-elevation-2, #2a2a2a);
+  color: #888;
+  cursor: pointer;
+  transition: background-color 0.15s, color 0.15s;
+  text-decoration: none;
+  padding: 0;
+}
+
+.coverage-action-icon:hover {
+  background: #3a3a3a;
+  color: #ccc;
+}
+
+.coverage-action-icon:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.coverage-action-icon-active {
+  background: #f59e0b22;
+  color: #f59e0b;
+  border-color: #f59e0b44;
+}
+
+.coverage-action-icon-active:hover {
+  background: #f59e0b33;
+  color: #f59e0b;
+}
+
+
+.coverage-count-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 20px;
+  height: 20px;
+  padding: 0 6px;
+  border-radius: 10px;
+  font-size: 0.75rem;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  background: var(--bui-color-text-accent, #90caf9);
+  color: var(--bui-color-bg-default, #121212);
+}
+
+.coverage-count-badge-muted {
+  background-color: rgba(128, 128, 128, 0.25);
+  color: rgba(255, 255, 255, 0.7);
+}
+
+.coverage-expand-row {
+  position: relative;
+  background: #1a1a1a;
+  border-top: 1px solid #2a2a2a;
+  padding: 10px 16px;
+}
+
+.coverage-copy-btn {
+  position: absolute;
+  top: 8px;
+  right: 12px;
+  padding: 6px 16px;
+  border-radius: 6px;
+  border: 1px solid #444;
+  background: #2a2a2a;
+  color: #9a9a9a;
+  font-size: 0.8rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.coverage-copy-btn:hover {
+  background: #333;
+  color: #d4d4d4;
+}
+
+.coverage-expand-pre {
+  margin: 0;
+  font-family: 'SF Mono', 'Fira Code', monospace;
+  font-size: 0.7rem;
+  line-height: 1.5;
+  color: #d4d4d4;
+  white-space: pre;
+  tab-size: 2;
+  counter-reset: line;
+}
+
+.coverage-expand-line::before {
+  counter-increment: line;
+  content: attr(data-line);
+  display: inline-block;
+  width: 2.5em;
+  text-align: right;
+  margin-right: 12px;
+  color: var(--bui-color-text-secondary, #555);
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+.yaml-key {
+  color: #569cd6;
+}
+
+.yaml-colon {
+  color: #9a9a9a;
+}
+
+.yaml-string {
+  color: #6a9955;
+}
+
+.yaml-bool {
+  color: #c586c0;
+}
+
+.yaml-number {
+  color: #b5cea8;
+}
+
+.yaml-comment {
+  color: #4a4a4a;
+  font-style: italic;
+}
+
+.yaml-dash {
+  color: #9a9a9a;
+}
+
+.coverage-integration-badge {
+  display: inline-flex !important;
+  align-items: center !important;
+  gap: 6px !important;
+  padding: 2px 10px !important;
+  border-radius: 12px !important;
+  font-size: 11px !important;
+  font-weight: 600 !important;
+  letter-spacing: 0.3px !important;
+  cursor: default !important;
+}
+
+.coverage-integration-badge::before {
+  content: '';
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.coverage-integration-connected {
+  background-color: rgba(34, 197, 94, 0.12) !important;
+  color: #22c55e !important;
+  border: 1px solid rgba(34, 197, 94, 0.3) !important;
+}
+
+.coverage-integration-connected::before {
+  background-color: #22c55e;
+}
+
+.coverage-integration-disconnected {
+  background-color: rgba(156, 163, 175, 0.12) !important;
+  color: #9ca3af !important;
+  border: 1px solid rgba(156, 163, 175, 0.3) !important;
+}
+
+.coverage-integration-disconnected::before {
+  background-color: #9ca3af;
+}
+

@@ -1,0 +1,203 @@
+# -- (int) Number of replicas to run.
+replicaCount: 1
+
+# -- (int) Number of old ReplicaSets to retain for rollback.
+revisionHistoryLimit: 10
+
+image:
+  # -- (string) Container image registry host. Empty = no prefix (use local Docker daemon / OCI default).
+  # Examples: "ghcr.io", "docker.io", "123456789012.dkr.ecr.us-east-1.amazonaws.com".
+  registry: ghcr.io
+  # -- (string) Image repository path (without the registry prefix).
+  repository: younsl/aws-health-event-notifier
+  # -- (string) Image pull policy.
+  pullPolicy: IfNotPresent
+  # -- (string) Image tag. Defaults to `.Chart.AppVersion` if empty.
+  tag: ""
+
+# -- (list) Image pull secrets for private registries.
+imagePullSecrets: []
+
+# -- (string) Override the resource name (truncated to 63 chars).
+nameOverride: ""
+# -- (string) Override the fullname template result (truncated to 63 chars).
+fullnameOverride: ""
+
+serviceAccount:
+  # -- (bool) Whether to create a ServiceAccount.
+  create: true
+  # -- (string) ServiceAccount name. Defaults to the fullname template if empty.
+  name: ""
+  # -- (object) Annotations to add to the ServiceAccount (e.g., IRSA role ARN).
+  annotations: {}
+  # -- (bool) Automount API credentials for the ServiceAccount.
+  automountServiceAccountToken: true
+
+# -- (object) Container resource requests and limits.
+resources:
+  limits:
+    memory: 80Mi
+  requests:
+    cpu: 20m
+    memory: 30Mi
+
+# -- (list) In-place resize policies for container resources.
+resizePolicy:
+  - resourceName: cpu
+    restartPolicy: NotRequired
+  - resourceName: memory
+    restartPolicy: RestartContainer
+
+# -- (object) Container security context (locked-down by default).
+securityContext:
+  runAsNonRoot: true
+  runAsUser: 65532
+  readOnlyRootFilesystem: true
+  allowPrivilegeEscalation: false
+  capabilities:
+    drop:
+      - ALL
+
+# -- (object) Pod security context.
+podSecurityContext:
+  seccompProfile:
+    type: RuntimeDefault
+
+service:
+  # -- (string) Service type. Only exposes the admin (health + metrics) port.
+  type: ClusterIP
+  # -- (int) Admin port exposed by the Service.
+  adminPort: 8081
+  # -- (object) Annotations to add to the Service.
+  annotations: {}
+  # -- (string) Traffic routing preference (e.g., `PreferClose` for topology-aware routing). Empty omits the field.
+  trafficDistribution: ""
+
+# Polling daemon configuration (pull model — pod queries AWS Health API directly).
+poller:
+  # -- (int) Poll interval in seconds.
+  intervalSeconds: 60
+  # -- (int) On cold start, fetch events updated within this many seconds.
+  initialLookbackSeconds: 3600
+  # -- (bool) On cold start, populate dedup without sending. Prevents replay floods on restart.
+  coldStartSuppress: true
+  # -- (string) Locale passed to `DescribeEventDetails` (AWS accepts en, ja, zh — not en_US).
+  eventLocale: en
+  # -- (list) Reminder offsets in hours before `startTime`. A reminder fires once
+  # per `(eventArn, offset)` when `startTime - now <= offset`. Reminders only fire
+  # for events that have an `endTime` set (i.e., scheduled-window events).
+  # Empty list disables reminders.
+  reminderOffsetsHours:
+    - 24
+    # - 72   # 3 days ahead
+    # - 1    # 1 hour ahead
+
+# The notifier always emits a Kubernetes Event (involvedObject = its own Pod,
+# resolved via the Downward API) in addition to the Slack alarm.
+rbac:
+  # -- (bool) Create a Role + RoleBinding granting create/patch on Events.
+  # Disable to manage the RBAC yourself (the SA still needs those verbs).
+  create: true
+
+podDisruptionBudget:
+  # -- (bool) Whether to create a PodDisruptionBudget.
+  enabled: true
+  # -- (int) Maximum number of pods that can be unavailable during disruption.
+  maxUnavailable: 1
+  # -- (string) Eviction policy for unhealthy pods. One of `IfHealthyBudget` or `AlwaysAllow`.
+  unhealthyPodEvictionPolicy: IfHealthyBudget
+
+serviceMonitor:
+  # -- (bool) Whether to create a ServiceMonitor for Prometheus Operator scraping.
+  enabled: false
+  # -- (string) Scrape interval.
+  interval: 30s
+  # -- (string) Scrape timeout. Empty uses Prometheus global default.
+  scrapeTimeout: ""
+  # -- (object) Additional labels to add to the ServiceMonitor resource.
+  additionalLabels: {}
+
+slack:
+  # -- (string) Slack Incoming Webhook URL. Required when slack.existingSecret is empty.
+  webhookUrl: ""
+  # -- (string) Name of an existing Secret with the webhook URL. Takes precedence over webhookUrl when set.
+  existingSecret: ""
+  # -- (string) Key inside the existing Secret that holds the URL.
+  existingSecretKey: webhook-url
+  # -- (string) Default Slack channel override (optional; webhook URL channel wins when empty).
+  channel: ""
+  # -- (string) Username shown in Slack messages.
+  username: "AWS Health Event Notifier"
+  # -- (string) Emoji used as bot avatar.
+  iconEmoji: ":cloud:"
+  # -- (int) Slack request timeout in seconds.
+  timeoutSeconds: 10
+
+logging:
+  # -- (string) Log level filter (e.g., info, debug, aws_health_event_notifier=debug).
+  level: info
+  # -- (bool) Emit logs as JSON.
+  json: true
+
+# In-process filtering applied AFTER EventBridge has already routed events here.
+# Use it for fine-grained dedupe / quieting per environment without changing the
+# EventBridge rule. Empty allow list = allow everything. Deny always wins.
+filter:
+  # -- (list) Allowed `eventTypeCategory` values. Empty = allow all.
+  # One of: issue, scheduledChange, accountNotification, investigation, securityNotification.
+  allowCategories: []
+    # - issue
+    # - scheduledChange
+    # - securityNotification
+  # -- (list) Denied `eventTypeCategory` values (wins over allow).
+  denyCategories: []
+    # - accountNotification
+  # -- (list) Allowed AWS service codes (case-insensitive). Empty = allow all.
+  allowServices: []
+    # - EC2
+    # - RDS
+    # - EKS
+    # - KAFKA 
+    # - ELASTICACHE
+    # - VPN      # Site-to-Site VPN
+  # -- (list) Denied AWS service codes (wins over allow).
+  denyServices: []
+    # - HEALTH   # meta events from the Health service itself
+    # - KAFKA    # silence MSK chatter in dev
+    # - VPN      # silence VPN tunnel maintenance notifications
+
+# -- (object) Extra environment variables to inject into the pod.
+extraEnv: {}
+
+# -- (object) Node selector for pod scheduling.
+nodeSelector: {}
+# -- (list) Tolerations for pod scheduling.
+tolerations: []
+# -- (object) Affinity rules for pod scheduling.
+affinity: {}
+
+# -- (list) Topology spread constraints.
+topologySpreadConstraints: []
+
+# Arbitrary additional manifests rendered alongside the chart. Each entry is
+# passed through `tpl` with the chart's root context, so you can reference
+# `{{ include "ahen.fullname" . }}`, `.Release.Namespace`, `.Values.*`, etc.
+# -- (list) Extra Kubernetes manifests to apply with the release.
+extraObjects: []
+  # - apiVersion: networking.k8s.io/v1
+  #   kind: NetworkPolicy
+  #   metadata:
+  #     name: '{{ include "ahen.fullname" . }}-egress'
+  #     namespace: '{{ .Release.Namespace }}'
+  #   spec:
+  #     podSelector:
+  #       matchLabels:
+  #         app.kubernetes.io/name: '{{ include "ahen.name" . }}'
+  #         app.kubernetes.io/instance: '{{ .Release.Name }}'
+  #     policyTypes: [Egress]
+  #     egress:
+  #       - to:
+  #           - namespaceSelector: {}
+  #         ports:
+  #           - protocol: TCP
+  #             port: 443

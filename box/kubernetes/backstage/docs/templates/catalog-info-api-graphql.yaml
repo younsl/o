@@ -1,0 +1,41 @@
+# ==============================================================================
+# Backstage Catalog Info - GraphQL Example
+# ==============================================================================
+# Use this template for GraphQL APIs
+# ==============================================================================
+
+apiVersion: backstage.io/v1alpha1
+kind: API
+metadata:
+  name: user-graphql-api
+  title: User GraphQL API
+  description: |
+    GraphQL API for user queries and mutations.
+    Supports user profile, preferences, and relationships.
+  annotations:
+    gitlab.com/project-slug: my-group/user-gateway
+  tags:
+    - graphql
+    - frontend
+spec:
+  type: graphql
+  lifecycle: production
+  owner: team-platform
+  definition:
+    $text: ./schema.graphql
+
+---
+apiVersion: backstage.io/v1alpha1
+kind: Component
+metadata:
+  name: user-gateway
+  title: User Gateway
+  description: GraphQL gateway for user data
+  annotations:
+    gitlab.com/project-slug: my-group/user-gateway
+spec:
+  type: service
+  lifecycle: production
+  owner: team-platform
+  providesApis:
+    - user-graphql-api

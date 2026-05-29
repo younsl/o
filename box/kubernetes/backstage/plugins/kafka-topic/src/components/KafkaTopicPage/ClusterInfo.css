@@ -1,0 +1,62 @@
+/* Broker box */
+.kafka-cluster-broker {
+  display: flex;
+  flex-direction: column;
+  gap: var(--bui-space-2);
+  padding: var(--bui-space-3);
+  border-radius: var(--bui-radius-2);
+  background: rgba(128, 128, 128, 0.08);
+  border: 1px solid rgba(128, 128, 128, 0.12);
+}
+
+.kafka-cluster-broker-offline {
+  border-color: rgba(244, 67, 54, 0.4);
+  border-style: dashed;
+  background: rgba(244, 67, 54, 0.05);
+}
+
+/* Status dot */
+.kafka-cluster-status-dot {
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.kafka-cluster-status-online {
+  background-color: #4caf50;
+}
+
+.kafka-cluster-status-offline {
+  background-color: #f44336;
+}
+
+/* Badge */
+.kafka-cluster-badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 1px 6px;
+  border-radius: 4px;
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.5px;
+}
+
+.kafka-cluster-badge-controller {
+  background: rgba(79, 143, 247, 0.15);
+  color: #6ea8fe;
+}
+
+.kafka-cluster-badge-offline {
+  background: rgba(244, 67, 54, 0.15);
+  color: #f44336;
+}
+
+/* Broker address */
+.kafka-cluster-address {
+  font-family: var(--bui-font-family-mono, monospace);
+  font-size: 12px;
+  color: rgba(255, 255, 255, 0.7);
+  word-break: break-all;
+}

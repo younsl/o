@@ -1,0 +1,136 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "ahen.fullname" . }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "ahen.labels" . | nindent 4 }}
+spec:
+  replicas: {{ .Values.replicaCount }}
+  revisionHistoryLImit: {{ .Values.revisionHistoryLimit }}
+  selector:
+    matchLabels:
+      {{- include "ahen.selectorLabels" . | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "ahen.selectorLabels" . | nindent 8 }}
+    spec:
+      serviceAccountName: {{ include "ahen.serviceAccountName" . }}
+      {{- with .Values.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      securityContext:
+        {{- toYaml .Values.podSecurityContext | nindent 8 }}
+      containers:
+        - name: notifier
+          image: {{ include "ahen.image" . | quote }}
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          args:
+            - run
+            - --admin-addr=0.0.0.0:8081
+          env:
+            - name: POD_NAME
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.name
+            - name: POD_NAMESPACE
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.namespace
+            - name: POD_UID
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.uid
+            - name: LOG_LEVEL
+              value: {{ .Values.logging.level | quote }}
+            - name: LOG_JSON
+              value: {{ .Values.logging.json | quote }}
+            - name: SLACK_USERNAME
+              value: {{ .Values.slack.username | quote }}
+            - name: SLACK_ICON_EMOJI
+              value: {{ .Values.slack.iconEmoji | quote }}
+            - name: SLACK_TIMEOUT_SECS
+              value: {{ .Values.slack.timeoutSeconds | quote }}
+            - name: POLL_INTERVAL_SECS
+              value: {{ .Values.poller.intervalSeconds | quote }}
+            - name: INITIAL_LOOKBACK_SECS
+              value: {{ .Values.poller.initialLookbackSeconds | quote }}
+            - name: COLD_START_SUPPRESS
+              value: {{ .Values.poller.coldStartSuppress | quote }}
+            - name: EVENT_LOCALE
+              value: {{ .Values.poller.eventLocale | quote }}
+            {{- with .Values.poller.reminderOffsetsHours }}
+            - name: REMINDER_OFFSETS_HOURS
+              value: {{ join "," . | quote }}
+            {{- end }}
+            {{- with .Values.slack.channel }}
+            - name: SLACK_CHANNEL
+              value: {{ . | quote }}
+            {{- end }}
+            - name: SLACK_WEBHOOK_URL
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "ahen.slackSecretName" . }}
+                  key: {{ include "ahen.slackSecretKey" . }}
+            {{- with .Values.filter.allowCategories }}
+            - name: ALLOW_CATEGORIES
+              value: {{ join "," . | quote }}
+            {{- end }}
+            {{- with .Values.filter.denyCategories }}
+            - name: DENY_CATEGORIES
+              value: {{ join "," . | quote }}
+            {{- end }}
+            {{- with .Values.filter.allowServices }}
+            - name: ALLOW_SERVICES
+              value: {{ join "," . | quote }}
+            {{- end }}
+            {{- with .Values.filter.denyServices }}
+            - name: DENY_SERVICES
+              value: {{ join "," . | quote }}
+            {{- end }}
+            {{- range $k, $v := .Values.extraEnv }}
+            - name: {{ $k }}
+              value: {{ $v | quote }}
+            {{- end }}
+          ports:
+            - name: admin
+              containerPort: 8081
+              protocol: TCP
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: admin
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          readinessProbe:
+            httpGet:
+              path: /readyz
+              port: admin
+            initialDelaySeconds: 3
+            periodSeconds: 10
+          resources:
+            {{- toYaml .Values.resources | nindent 12 }}
+          {{- with .Values.resizePolicy }}
+          resizePolicy:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          securityContext:
+            {{- toYaml .Values.securityContext | nindent 12 }}
+      {{- with .Values.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.affinity }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.topologySpreadConstraints }}
+      topologySpreadConstraints:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}

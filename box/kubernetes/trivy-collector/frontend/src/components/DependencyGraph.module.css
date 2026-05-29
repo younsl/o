@@ -1,0 +1,126 @@
+.container {
+    display: flex;
+    flex-direction: column;
+}
+
+.container.hidden {
+    display: none;
+}
+
+.dependencyGraph {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.pieContainer {
+    display: flex;
+    align-items: center;
+    gap: 24px;
+}
+
+.pieChart {
+    flex-shrink: 0;
+}
+
+.pieSlice {
+    transition: opacity 0.2s ease;
+    cursor: pointer;
+}
+
+.pieSlice:hover {
+    opacity: 0.8;
+}
+
+.pieLegend {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+}
+
+.pieLegendItem {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 12px;
+}
+
+.pieLegendColor {
+    width: 12px;
+    height: 12px;
+    border-radius: 2px;
+    flex-shrink: 0;
+}
+
+.pieLegendLabel {
+    color: var(--text-secondary);
+    min-width: 100px;
+}
+
+.pieLegendValue {
+    color: var(--text-primary);
+    font-weight: 500;
+    font-variant-numeric: tabular-nums;
+}
+
+.pieTotalCount {
+    font-size: 20px;
+    font-weight: 600;
+    fill: var(--text-primary);
+}
+
+.pieTotalLabel {
+    font-size: 10px;
+    fill: var(--text-secondary);
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+.graphControls {
+    display: flex;
+    gap: 4px;
+}
+
+.graphBtn {
+    width: 28px;
+    height: 28px;
+    border: 1px solid var(--border);
+    background-color: var(--bg-tertiary);
+    color: var(--text-primary);
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 14px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: background-color 0.2s;
+}
+
+.graphBtn:hover {
+    background-color: var(--bg-hover);
+}
+
+.cytoscapeContainer {
+    width: 100%;
+    height: 400px;
+    background-color: #161616;
+}
+
+.poweredBy {
+    font-size: 10px;
+    font-weight: 500;
+    color: var(--text-muted);
+    text-transform: none;
+    letter-spacing: normal;
+    margin-left: 8px;
+    padding: 2px 6px;
+    background-color: var(--bg-tertiary);
+    border-radius: 4px;
+    text-decoration: none;
+    transition: background-color 0.2s ease, color 0.2s ease;
+}
+
+.poweredBy:hover {
+    background-color: var(--accent);
+    color: #fff;
+}

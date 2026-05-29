@@ -1,0 +1,55 @@
+# ==============================================================================
+# Backstage Catalog Info - OpenAPI Example
+# ==============================================================================
+# Place this file at the root of your GitLab repository.
+# Backstage will auto-discover it within 30 minutes.
+#
+# Required: API spec file (openapi.yaml or swagger.json) in your repo
+# ==============================================================================
+
+apiVersion: backstage.io/v1alpha1
+kind: API
+metadata:
+  name: my-service-api              # Unique identifier (lowercase, hyphens only)
+  title: My Service API             # Display name in Backstage UI
+  description: |
+    REST API for My Service.
+    Provides endpoints for user management and data processing.
+  annotations:
+    # GitLab project URL (auto-populated by discovery)
+    gitlab.com/project-slug: my-group/my-service
+  tags:
+    - rest
+    - backend
+  links:
+    - url: https://gitlab.example.com/my-group/my-service
+      title: GitLab Repository
+      icon: gitlab
+spec:
+  type: openapi                     # API type: openapi, asyncapi, graphql, grpc
+  lifecycle: production             # development, staging, production, deprecated
+  owner: team-backend               # Team or user that owns this API
+  system: my-system                 # Optional: parent system
+  definition:
+    $text: ./openapi.yaml           # Path to API spec file (relative to this file)
+
+---
+# Optional: Define the component that provides this API
+apiVersion: backstage.io/v1alpha1
+kind: Component
+metadata:
+  name: my-service
+  title: My Service
+  description: Backend service providing REST API
+  annotations:
+    gitlab.com/project-slug: my-group/my-service
+  tags:
+    - java
+    - spring-boot
+spec:
+  type: service
+  lifecycle: production
+  owner: team-backend
+  system: my-system
+  providesApis:
+    - my-service-api                # Reference to the API above

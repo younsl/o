@@ -1,0 +1,26 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "snowflake-exporter.fullname" . }}
+  labels:
+    {{- include "snowflake-exporter.labels" . | nindent 4 }}
+data:
+  config.yaml: |
+    server:
+      listen_address: "0.0.0.0:9975"
+      metrics_path: "/metrics"
+    snowflake:
+      account: {{ .Values.config.snowflake.account | quote }}
+      role: {{ .Values.config.snowflake.role | quote }}
+      warehouse: {{ .Values.config.snowflake.warehouse | quote }}
+      database: {{ .Values.config.snowflake.database | quote }}
+      token_path: "/etc/snowflake-exporter/auth/{{ .Values.auth.tokenSecretKey }}"
+      request_timeout_seconds: {{ .Values.config.snowflake.requestTimeoutSeconds }}
+    collection:
+      interval_seconds: {{ .Values.config.collection.intervalSeconds }}
+      exclude_deleted_tables: {{ .Values.config.collection.excludeDeletedTables }}
+      enable_serverless_detail: {{ .Values.config.collection.enableServerlessDetail }}
+      query_timeout_seconds: {{ .Values.config.collection.queryTimeoutSeconds }}
+    logging:
+      level: {{ .Values.config.logging.level | quote }}
+      format: {{ .Values.config.logging.format | quote }}

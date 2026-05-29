@@ -1,0 +1,26 @@
+apiVersion: v2
+name: aws-health-event-notifier
+description: Receives AWS Health events and posts them to Slack
+type: application
+deprecated: false
+version: 0.1.0
+appVersion: "0.1.0"
+home: https://github.com/younsl/o
+sources:
+  - https://github.com/younsl/o/tree/main/box/kubernetes/aws-health-event-notifier
+maintainers:
+  - name: younsl
+    email: cysl@kakao.com
+    url: https://github.com/younsl
+keywords:
+  - aws
+  - aws-health
+  - slack
+  - notifier
+  - webhook
+  - observability
+annotations:
+  artifacthub.io/changes: |
+    - kind: added
+      description: "Initial release of aws-health-event-notifier Helm chart"
+  artifacthub.io/license: MIT

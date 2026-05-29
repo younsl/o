@@ -1,0 +1,93 @@
+[package]
+name = "aws-health-event-notifier"
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.95"
+authors = ["younsl <cysl@kakao.com>"]
+license = "MIT"
+description = "Receives AWS Health events and posts them to a notification channel (Slack)"
+readme = "README.md"
+repository = "https://github.com/younsl/o"
+
+[[bin]]
+name = "aws-health-event-notifier"
+path = "src/main.rs"
+
+[dependencies]
+# Async runtime
+tokio = { version = "1.41", features = ["macros", "rt-multi-thread", "signal", "net", "time", "sync"] }
+
+# Admin HTTP server (healthz / readyz / metrics)
+axum = { version = "0.8", features = ["tokio", "json"] }
+tower = "0.5"
+tower-http = { version = "0.6", features = ["trace", "timeout"] }
+
+# HTTP client (Slack)
+reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls"] }
+
+# AWS SDK
+aws-config = { version = "1.8", features = ["behavior-version-latest"] }
+aws-sdk-health = "1.97"
+aws-sdk-iam = "1.97"
+aws-sdk-sts = "1.97"
+aws-smithy-types = "1.2"
+
+# Kubernetes client (emit a K8s Event alongside each published notification)
+kube = { version = "3.1", default-features = false, features = ["client", "runtime", "rustls-tls"] }
+k8s-openapi = { version = "0.27", features = ["latest"] }
+
+# Pin the process-wide rustls crypto provider. Both `ring` (reqwest/kube) and
+# `aws-lc-rs` (AWS SDK) get linked, so rustls 0.23 cannot auto-pick a default
+# and panics; we install one explicitly in `main`.
+rustls = { version = "0.23", default-features = false, features = ["aws-lc-rs"] }
+
+# Serialization
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+
+# Date handling
+chrono = { version = "0.4", default-features = false, features = ["serde", "clock"] }
+
+# Config / CLI
+clap = { version = "4.5", features = ["derive", "env"] }
+dialoguer = "0.11"
+
+# Error handling
+anyhow = "1.0"
+thiserror = "2.0"
+
+# Logging
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter", "json"] }
+
+# Metrics
+prometheus-client = "0.23"
+
+# Secrets
+secrecy = "0.10"
+
+[build-dependencies]
+vergen-gix = { version = "9.1", features = ["build", "rustc"] }
+
+[dev-dependencies]
+# HTTP mocking for the Slack webhook client.
+wiremock = "0.6"
+# Replay HTTP transport for mocking the AWS Health SDK without real calls.
+aws-smithy-runtime = { version = "1", features = ["test-util", "client"] }
+aws-smithy-types = { version = "1.2", features = ["test-util"] }
+http = "1"
+
+[lints.rust]
+unsafe_code = "forbid"
+
+[lints.clippy]
+all = "warn"
+pedantic = "warn"
+nursery = "warn"
+
+[profile.release]
+opt-level = "z"    # optimize for binary size; this is an I/O-bound service
+lto = true         # link-time optimization across crates
+codegen-units = 1  # better LTO + smaller code at the cost of build time
+strip = true       # drop symbols from the static binary
+panic = "abort"    # remove unwinding tables
