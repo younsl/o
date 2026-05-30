@@ -422,15 +422,6 @@ Container images are published to [GitHub Container Registry (GHCR)](https://doc
 
 MIT
 
-## Contributing
-
-Contributions are welcome! Please ensure:
-
-- Code is formatted with `cargo fmt`
-- Linter passes with `cargo clippy`
-- Tests pass with `cargo test`
-- Commits follow [conventional commits](https://www.conventionalcommits.org/) format
-
 ## Author
 
 younsl
