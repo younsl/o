@@ -1,0 +1,96 @@
+<mxfile host="app.diagrams.net" agent="claude-code" version="24.0.0">
+  <diagram id="snowflake-exporter-arch" name="Architecture">
+    <mxGraphModel dx="1100" dy="760" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="1100" pageHeight="720" math="0" shadow="0">
+      <root>
+        <mxCell id="0" />
+        <mxCell id="1" parent="0" />
+
+        <!-- Snowflake (external) -->
+        <mxCell id="snowflake" value="&lt;b&gt;Snowflake&lt;/b&gt;&#10;SQL API v2&#10;ACCOUNT_USAGE views" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#E6F6FD;strokeColor=#29B5E8;fontColor=#0B4F6C;fontSize=12;verticalAlign=middle;arcSize=12;" vertex="1" parent="1">
+          <mxGeometry x="40" y="300" width="170" height="100" as="geometry" />
+        </mxCell>
+
+        <!-- Kubernetes cluster boundary -->
+        <mxCell id="cluster" value="Kubernetes cluster" style="rounded=1;whiteSpace=wrap;html=1;fillColor=none;strokeColor=#326CE5;dashed=1;dashPattern=8 4;verticalAlign=top;fontColor=#326CE5;fontSize=14;fontStyle=1;align=left;spacingLeft=14;spacingTop=8;arcSize=4;" vertex="1" parent="1">
+          <mxGeometry x="300" y="60" width="760" height="600" as="geometry" />
+        </mxCell>
+
+        <!-- monitoring namespace -->
+        <mxCell id="ns" value="namespace: monitoring" style="rounded=1;whiteSpace=wrap;html=1;fillColor=none;strokeColor=#9DA5B4;dashed=1;dashPattern=6 4;verticalAlign=top;fontColor=#5A6472;fontSize=12;fontStyle=2;align=left;spacingLeft=12;spacingTop=6;arcSize=3;" vertex="1" parent="1">
+          <mxGeometry x="340" y="110" width="680" height="510" as="geometry" />
+        </mxCell>
+
+        <!-- ConfigMap -->
+        <mxCell id="cm" value="&lt;b&gt;ConfigMap&lt;/b&gt;&#10;config.yaml" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFF2CC;strokeColor=#D6B656;fontColor=#7F6000;fontSize=11;arcSize=12;" vertex="1" parent="1">
+          <mxGeometry x="370" y="170" width="150" height="60" as="geometry" />
+        </mxCell>
+
+        <!-- Secret -->
+        <mxCell id="secret" value="&lt;b&gt;Secret&lt;/b&gt;&#10;PAT token" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFF2CC;strokeColor=#D6B656;fontColor=#7F6000;fontSize=11;arcSize=12;" vertex="1" parent="1">
+          <mxGeometry x="370" y="320" width="150" height="60" as="geometry" />
+        </mxCell>
+
+        <!-- Deployment / Pod -->
+        <mxCell id="deploy" value="Deployment (replicas: 1)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=none;strokeColor=#82B366;verticalAlign=top;fontColor=#4F7942;fontSize=11;fontStyle=1;align=left;spacingLeft=10;spacingTop=6;arcSize=6;" vertex="1" parent="1">
+          <mxGeometry x="600" y="160" width="220" height="170" as="geometry" />
+        </mxCell>
+        <mxCell id="pod" value="&lt;b&gt;Pod: snowflake-exporter&lt;/b&gt;&#10;&#10;HTTP :9975&#10;/metrics  /healthz  /readyz" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#D5E8D4;strokeColor=#82B366;fontColor=#2D4A22;fontSize=11;arcSize=10;verticalAlign=middle;" vertex="1" parent="1">
+          <mxGeometry x="620" y="200" width="180" height="110" as="geometry" />
+        </mxCell>
+
+        <!-- Service -->
+        <mxCell id="svc" value="&lt;b&gt;Service&lt;/b&gt;&#10;:9975 → metrics" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#DAE8FC;strokeColor=#6C8EBF;fontColor=#1A3C6E;fontSize=11;arcSize=12;" vertex="1" parent="1">
+          <mxGeometry x="630" y="400" width="160" height="60" as="geometry" />
+        </mxCell>
+
+        <!-- ServiceMonitor -->
+        <mxCell id="sm" value="&lt;b&gt;ServiceMonitor&lt;/b&gt;&#10;scrape interval 60s" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#E1D5E7;strokeColor=#9673A6;fontColor=#4B2E5E;fontSize=11;arcSize=12;" vertex="1" parent="1">
+          <mxGeometry x="630" y="510" width="160" height="60" as="geometry" />
+        </mxCell>
+
+        <!-- Prometheus -->
+        <mxCell id="prom" value="&lt;b&gt;Prometheus&lt;/b&gt;&#10;Operator" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFE6CC;strokeColor=#D79B00;fontColor=#7A4F00;fontSize=11;arcSize=12;" vertex="1" parent="1">
+          <mxGeometry x="870" y="455" width="120" height="60" as="geometry" />
+        </mxCell>
+
+        <!-- Edges -->
+        <!-- ConfigMap mount -->
+        <mxCell id="e_cm" value="mount" style="endArrow=block;html=1;rounded=1;strokeColor=#D6B656;fontColor=#7F6000;fontSize=10;" edge="1" parent="1" source="cm" target="pod">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <!-- Secret mount -->
+        <mxCell id="e_secret" value="mount (PAT)" style="endArrow=block;html=1;rounded=1;strokeColor=#D6B656;fontColor=#7F6000;fontSize=10;" edge="1" parent="1" source="secret" target="pod">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <!-- Pod -> Snowflake -->
+        <mxCell id="e_query" value="HTTPS query&#10;ACCOUNT_USAGE&#10;(PAT auth, every 300s)" style="endArrow=block;startArrow=none;html=1;rounded=1;strokeColor=#29B5E8;fontColor=#0B4F6C;fontSize=10;exitX=0;exitY=0.5;exitDx=0;exitDy=0;" edge="1" parent="1" source="pod" target="snowflake">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="240" y="255" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <!-- Service -> Pod -->
+        <mxCell id="e_svc" value="selector" style="endArrow=block;html=1;rounded=1;strokeColor=#6C8EBF;fontColor=#1A3C6E;fontSize=10;" edge="1" parent="1" source="svc" target="pod">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <!-- ServiceMonitor -> Service -->
+        <mxCell id="e_sm" value="selects" style="endArrow=block;html=1;rounded=1;strokeColor=#9673A6;fontColor=#4B2E5E;fontSize=10;" edge="1" parent="1" source="sm" target="svc">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <!-- ServiceMonitor -> Prometheus (discovery) -->
+        <mxCell id="e_disc" value="discovers" style="endArrow=block;html=1;rounded=1;strokeColor=#9673A6;fontColor=#4B2E5E;fontSize=10;dashed=1;" edge="1" parent="1" source="sm" target="prom">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <!-- Prometheus -> Service (scrape) -->
+        <mxCell id="e_scrape" value="scrape /metrics" style="endArrow=block;html=1;rounded=1;strokeColor=#D79B00;fontColor=#7A4F00;fontSize=10;exitX=0.5;exitY=0;exitDx=0;exitDy=0;entryX=1;entryY=0.5;entryDx=0;entryDy=0;" edge="1" parent="1" source="prom" target="svc">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="930" y="430" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+      </root>
+    </mxGraphModel>
+  </diagram>
+</mxfile>

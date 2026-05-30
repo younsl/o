@@ -14,6 +14,16 @@ on a `/metrics` endpoint.
 
 Inspired by [grafana/snowflake-prometheus-exporter](https://github.com/grafana/snowflake-prometheus-exporter).
 
+## Architecture
+
+![Architecture](./docs/assets/architecture.png)
+
+The exporter runs as a single-replica Deployment in the `monitoring` namespace.
+It mounts its config from a ConfigMap and the Snowflake PAT from a Secret, then
+periodically queries `ACCOUNT_USAGE` views over the Snowflake SQL API v2 and
+exposes the results on `/metrics`. A ServiceMonitor lets Prometheus discover the
+Service and scrape metrics on a fixed interval.
+
 ## Highlights
 
 - Rust 1.95.0 (edition 2024), async Tokio runtime
