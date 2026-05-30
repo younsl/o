@@ -4,15 +4,15 @@
 [![Rust](https://img.shields.io/badge/rust-1.95.0-black?style=flat-square&logo=rust&logoColor=white)](https://www.rust-lang.org/)
 [![GitHub license](https://img.shields.io/github/license/younsl/o?style=flat-square&color=black)](https://github.com/younsl/o/blob/main/LICENSE)
 
-ElastiCache snapshot backup to S3 automation - Rust-based container application.
+[ElastiCache](https://docs.aws.amazon.com/AmazonElastiCache/latest/dg/WhatIs.html) snapshot backup to [S3](https://docs.aws.amazon.com/AmazonS3/latest/userguide/Welcome.html) automation - Rust-based container application.
 
 ## Overview
 
-This tool automates the process of creating ElastiCache snapshots and exporting them to S3 buckets. It's designed to run as a Kubernetes CronJob for scheduled backups.
+This tool automates the process of creating ElastiCache snapshots and exporting them to S3 buckets. It's designed to run as a [Kubernetes CronJob](https://kubernetes.io/docs/concepts/workloads/controllers/cron-jobs/) for scheduled backups.
 
 ## Background
 
-AWS ElastiCache supports manual snapshot creation and one-time S3 exports, but lacks native cron-based scheduling for recurring backups. While automatic snapshots can be retained for up to 35 days, there's no built-in way to regularly export them to S3 or manage retention policies across both ElastiCache snapshots and S3 backups. Additionally, source snapshots remain in ElastiCache after S3 export, requiring manual cleanup to avoid storage costs. This tool addresses these limitations by providing automated scheduling, S3 export, and snapshot cleanup in a single Kubernetes CronJob.
+AWS ElastiCache supports manual snapshot creation and one-time S3 exports, but lacks native cron-based scheduling for recurring backups. While [automatic snapshots](https://docs.aws.amazon.com/AmazonElastiCache/latest/dg/backups-automatic.html) can be retained for up to 35 days, there's no built-in way to regularly export them to S3 or manage retention policies across both ElastiCache snapshots and S3 backups. Additionally, source snapshots remain in ElastiCache after S3 export, requiring manual cleanup to avoid storage costs. This tool addresses these limitations by providing automated scheduling, S3 export, and snapshot cleanup in a single Kubernetes CronJob.
 
 ## Quick Start
 
@@ -43,9 +43,9 @@ kubectl logs -l app.kubernetes.io/name=elasticache-backup --tail=50
 - Automatic cleanup of source snapshots
 - Configurable timeouts and retry intervals
 - Structured JSON logging for CloudWatch/Loki integration
-- IRSA support for AWS authentication
+- [IRSA](https://docs.aws.amazon.com/eks/latest/userguide/iam-roles-for-service-accounts.html) support for AWS authentication
 - Multi-architecture container images
-- Helm chart for easy deployment
+- [Helm](https://helm.sh/) chart for easy deployment
 
 ## Architecture
 
@@ -83,14 +83,14 @@ elasticache-backup/
 
 ## Prerequisites
 
-- AWS ElastiCache cluster (Redis)
+- AWS ElastiCache cluster ([Redis](https://redis.io/))
 - S3 bucket for storing snapshots
 - Kubernetes cluster with IRSA enabled
-- IAM role with required permissions
+- [IAM role](https://docs.aws.amazon.com/IAM/latest/UserGuide/id_roles.html) with required permissions
 
 ### Required IAM Permissions
 
-The CronJob pod requires an IAM role with the following permissions. This policy follows the **Principle of Least Privilege**, granting only the minimum permissions required for backup operations (e.g., excludes `s3:ListAllMyBuckets` as the tool operates on a specific bucket).
+The CronJob pod requires an IAM role with the following permissions. This policy follows the **[Principle of Least Privilege](https://docs.aws.amazon.com/IAM/latest/UserGuide/best-practices.html#grant-least-privilege)**, granting only the minimum permissions required for backup operations (e.g., excludes `s3:ListAllMyBuckets` as the tool operates on a specific bucket).
 
 ```json
 {
@@ -364,9 +364,9 @@ The retention feature automatically manages S3 snapshot count by:
 
 The application outputs structured JSON logs that can be ingested by:
 
-- **CloudWatch Logs** (via Fluent Bit)
-- **Loki** (via Promtail)
-- **Elasticsearch** (via Filebeat)
+- **[CloudWatch Logs](https://docs.aws.amazon.com/AmazonCloudWatch/latest/logs/WhatIsCloudWatchLogs.html)** (via [Fluent Bit](https://github.com/fluent/fluent-bit))
+- **[Loki](https://github.com/grafana/loki)** (via [Promtail](https://grafana.com/docs/loki/latest/send-data/promtail/))
+- **[Elasticsearch](https://github.com/elastic/elasticsearch)** (via [Filebeat](https://github.com/elastic/beats/tree/main/filebeat))
 
 Example log entry:
 
@@ -414,7 +414,7 @@ git push origin elasticache-backup/0.1.0
 # 3. Creates GitHub release with installation instructions
 ```
 
-Container images are published to GitHub Container Registry (GHCR):
+Container images are published to [GitHub Container Registry (GHCR)](https://docs.github.com/en/packages/working-with-a-github-packages-registry/working-with-the-container-registry):
 - `ghcr.io/younsl/elasticache-backup:0.1.0` (versioned tag)
 - `ghcr.io/younsl/elasticache-backup:latest` (latest tag)
 
@@ -429,7 +429,7 @@ Contributions are welcome! Please ensure:
 - Code is formatted with `cargo fmt`
 - Linter passes with `cargo clippy`
 - Tests pass with `cargo test`
-- Commits follow conventional commits format
+- Commits follow [conventional commits](https://www.conventionalcommits.org/) format
 
 ## Author
 
