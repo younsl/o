@@ -1,5 +1,5 @@
 # Build stage
-FROM rust:1.95.0-alpine AS builder
+FROM rust:1.96.0-alpine AS builder
 
 LABEL maintainer="younsl"
 LABEL description="Redis console TUI for managing multiple Redis clusters"
@@ -32,8 +32,11 @@ RUN touch src/main.rs && \
 # Runtime stage
 FROM alpine:3.23 AS runtime
 
-LABEL maintainer="younsl"
-LABEL description="Redis console TUI for managing multiple Redis clusters"
+LABEL org.opencontainers.image.title="redis-console" \
+      org.opencontainers.image.description="Interactive CLI for managing multiple Redis clusters" \
+      org.opencontainers.image.version="0.1.0" \
+      org.opencontainers.image.licenses="MIT" \
+      org.opencontainers.image.base.name="alpine:3.23"
 
 # Install runtime dependencies
 RUN apk add --no-cache ca-certificates

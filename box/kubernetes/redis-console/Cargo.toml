@@ -2,7 +2,7 @@
 name = "redis-console"
 version = "0.1.0"
 edition = "2024"
-rust-version = "1.95.0"
+rust-version = "1.96.0"
 authors = ["younsl"]
 description = "Interactive CLI for managing multiple Redis clusters"
 license = "MIT"
