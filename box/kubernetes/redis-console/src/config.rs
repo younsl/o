@@ -209,4 +209,54 @@ mod tests {
         assert!(!debug_str.contains("supersecret"));
         assert!(debug_str.contains("***"));
     }
+
+    #[test]
+    fn load_from_file_parses_yaml_and_defaults() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("config.yaml");
+        std::fs::write(
+            &path,
+            "clusters:\n  - alias: prod\n    host: redis.example.com\n  - alias: staging\n    host: 10.0.0.1\n    port: 6380\n    tls: true\naws_region: ap-northeast-2\n",
+        )
+        .unwrap();
+
+        let config = Config::load_from_file(&path).unwrap();
+        assert_eq!(config.clusters.len(), 2);
+        // Missing port falls back to the default.
+        assert_eq!(config.clusters[0].port, 6379);
+        assert_eq!(config.clusters[1].port, 6380);
+        assert!(config.clusters[1].tls);
+        assert_eq!(config.aws_region.as_deref(), Some("ap-northeast-2"));
+        assert!(matches!(config.source, ConfigSource::File(_)));
+        assert!(config.source_description().starts_with("file:"));
+    }
+
+    #[test]
+    fn load_from_file_missing_returns_error() {
+        let path = PathBuf::from("/nonexistent/redis-console/config.yaml");
+        assert!(Config::load_from_file(&path).is_err());
+    }
+
+    #[test]
+    fn load_from_file_invalid_yaml_returns_error() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("bad.yaml");
+        std::fs::write(&path, "clusters: : not valid : yaml :::\n").unwrap();
+        assert!(Config::load_from_file(&path).is_err());
+    }
+
+    #[test]
+    fn empty_source_description() {
+        let config = Config {
+            clusters: Vec::new(),
+            aws_region: None,
+            source: ConfigSource::Empty,
+        };
+        assert_eq!(config.source_description(), "empty (no config file found)");
+    }
+
+    #[test]
+    fn default_port_is_redis_default() {
+        assert_eq!(default_port(), 6379);
+    }
 }

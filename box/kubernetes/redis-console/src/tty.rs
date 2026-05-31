@@ -35,3 +35,15 @@ pub fn tty_write(text: &str) -> io::Result<()> {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn writeln_never_errors_regardless_of_tty() {
+        // Whether or not /dev/tty is available, both helpers return Ok.
+        assert!(tty_writeln("hello from test").is_ok());
+        assert!(tty_write("partial").is_ok());
+    }
+}
