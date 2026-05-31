@@ -2,7 +2,7 @@
 
 [![Container Image](https://img.shields.io/badge/ghcr.io-younsl%2Fgss-000000?style=flat-square&logo=github&logoColor=white)](https://github.com/younsl/o/pkgs/container/gss)
 [![Helm Chart](https://img.shields.io/badge/helm_chart-ghcr.io%2Fyounsl%2Fcharts%2Fgss-000000?style=flat-square&logo=helm&logoColor=white)](https://github.com/younsl/o/pkgs/container/charts%2Fgss)
-[![Rust Version](https://img.shields.io/badge/rust-1.95.0-000000?style=flat-square&logo=rust&logoColor=white)](https://www.rust-lang.org/)
+[![Rust Version](https://img.shields.io/badge/rust-1.96.0-000000?style=flat-square&logo=rust&logoColor=white)](https://www.rust-lang.org/)
 [![License](https://img.shields.io/github/license/younsl/o?style=flat-square&color=black&logo=github&logoColor=white)](https://github.com/younsl/o/blob/main/box/kubernetes/gss/LICENSE)
 
 > _GSS stands for GHES(GitHub Enterprise Server) Schedule Scanner._
@@ -35,7 +35,7 @@ The scanner is designed for high performance with async/concurrent scanning capa
 
 ### Prerequisites
 
-- Rust 1.93+ (2024 edition)
+- Rust 1.96+ (2024 edition)
 - GitHub Personal Access Token with `repo` and `workflow` scopes
 - Access to GitHub Enterprise Server instance
 

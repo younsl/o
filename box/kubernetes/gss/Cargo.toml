@@ -2,7 +2,7 @@
 name = "ghes-schedule-scanner"
 version = "0.6.1"
 edition = "2024"
-rust-version = "1.95.0"
+rust-version = "1.96.0"
 authors = ["Younsung Lee <cysl@kakao.com>"]
 description = "Kubernetes add-on for monitoring and analyzing CI/CD scheduled workflows in GitHub Enterprise Server"
 license = "Apache-2.0"
