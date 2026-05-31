@@ -227,3 +227,191 @@ pub async fn cleanup(client: &ElastiCacheClient, snapshot_name: &str) {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use aws_sdk_elasticache::Client;
+    use aws_sdk_elasticache::operation::create_snapshot::{
+        CreateSnapshotError, CreateSnapshotOutput,
+    };
+    use aws_sdk_elasticache::operation::delete_snapshot::DeleteSnapshotOutput;
+    use aws_sdk_elasticache::operation::describe_snapshots::{
+        DescribeSnapshotsError, DescribeSnapshotsOutput,
+    };
+    use aws_sdk_elasticache::types::Snapshot;
+    use aws_sdk_elasticache::types::error::{CacheClusterNotFoundFault, SnapshotNotFoundFault};
+    use aws_smithy_mocks::{RuleMode, mock, mock_client};
+
+    fn snap(status: &str) -> Snapshot {
+        Snapshot::builder()
+            .snapshot_status(status)
+            .arn("arn:aws:elasticache:test")
+            .cache_node_type("cache.t3.micro")
+            .engine("redis")
+            .engine_version("7.0")
+            .build()
+    }
+
+    #[tokio::test]
+    async fn test_create_snapshot_ok() {
+        let rule = mock!(Client::create_snapshot).then_output(|| {
+            CreateSnapshotOutput::builder()
+                .snapshot(snap("creating"))
+                .build()
+        });
+        let client = mock_client!(aws_sdk_elasticache, RuleMode::MatchAny, &[&rule]);
+        let name = create_snapshot(&client, "my-cluster").await.unwrap();
+        assert!(name.starts_with("my-cluster-"));
+    }
+
+    #[tokio::test]
+    async fn test_create_snapshot_with_tz_env() {
+        unsafe {
+            std::env::set_var("TZ_OFFSET_HOURS", "0");
+        }
+        let rule =
+            mock!(Client::create_snapshot).then_output(|| CreateSnapshotOutput::builder().build());
+        let client = mock_client!(aws_sdk_elasticache, RuleMode::MatchAny, &[&rule]);
+        let name = create_snapshot(&client, "c").await.unwrap();
+        assert!(name.starts_with("c-"));
+        unsafe {
+            std::env::remove_var("TZ_OFFSET_HOURS");
+        }
+    }
+
+    #[tokio::test]
+    async fn test_create_snapshot_error() {
+        let rule = mock!(Client::create_snapshot).then_error(|| {
+            CreateSnapshotError::CacheClusterNotFoundFault(
+                CacheClusterNotFoundFault::builder().build(),
+            )
+        });
+        let client = mock_client!(aws_sdk_elasticache, RuleMode::MatchAny, &[&rule]);
+        assert!(create_snapshot(&client, "c").await.is_err());
+    }
+
+    #[tokio::test]
+    async fn test_wait_for_completion_available() {
+        let rule = mock!(Client::describe_snapshots).then_output(|| {
+            DescribeSnapshotsOutput::builder()
+                .snapshots(snap("available"))
+                .build()
+        });
+        let client = mock_client!(aws_sdk_elasticache, RuleMode::MatchAny, &[&rule]);
+        let s = wait_for_completion(&client, "snap", 30, 1).await.unwrap();
+        assert_eq!(s.snapshot_status(), Some("available"));
+    }
+
+    #[tokio::test]
+    async fn test_wait_for_completion_failed() {
+        let rule = mock!(Client::describe_snapshots).then_output(|| {
+            DescribeSnapshotsOutput::builder()
+                .snapshots(snap("failed"))
+                .build()
+        });
+        let client = mock_client!(aws_sdk_elasticache, RuleMode::MatchAny, &[&rule]);
+        assert!(wait_for_completion(&client, "snap", 30, 1).await.is_err());
+    }
+
+    #[tokio::test]
+    async fn test_wait_for_completion_empty() {
+        let rule = mock!(Client::describe_snapshots)
+            .then_output(|| DescribeSnapshotsOutput::builder().build());
+        let client = mock_client!(aws_sdk_elasticache, RuleMode::MatchAny, &[&rule]);
+        assert!(wait_for_completion(&client, "snap", 30, 1).await.is_err());
+    }
+
+    #[tokio::test]
+    async fn test_wait_for_completion_timeout() {
+        let rule = mock!(Client::describe_snapshots).then_output(|| {
+            DescribeSnapshotsOutput::builder()
+                .snapshots(snap("creating"))
+                .build()
+        });
+        let client = mock_client!(aws_sdk_elasticache, RuleMode::MatchAny, &[&rule]);
+        let err = wait_for_completion(&client, "snap", 0, 1)
+            .await
+            .unwrap_err();
+        assert!(err.to_string().contains("timeout"));
+    }
+
+    #[tokio::test]
+    async fn test_cleanup_export_suffix_early_return() {
+        // No rules needed; should early-return before any API call.
+        let client = mock_client!(aws_sdk_elasticache, RuleMode::MatchAny, &[]);
+        cleanup(&client, "snap-s3-export").await;
+    }
+
+    #[tokio::test]
+    async fn test_cleanup_deletable() {
+        let describe = mock!(Client::describe_snapshots).then_output(|| {
+            DescribeSnapshotsOutput::builder()
+                .snapshots(snap("available"))
+                .build()
+        });
+        let delete =
+            mock!(Client::delete_snapshot).then_output(|| DeleteSnapshotOutput::builder().build());
+        let client = mock_client!(
+            aws_sdk_elasticache,
+            RuleMode::MatchAny,
+            &[&describe, &delete]
+        );
+        cleanup(&client, "snap").await;
+    }
+
+    #[tokio::test]
+    async fn test_cleanup_not_deletable() {
+        let describe = mock!(Client::describe_snapshots).then_output(|| {
+            DescribeSnapshotsOutput::builder()
+                .snapshots(snap("creating"))
+                .build()
+        });
+        let client = mock_client!(aws_sdk_elasticache, RuleMode::MatchAny, &[&describe]);
+        cleanup(&client, "snap").await;
+    }
+
+    #[tokio::test]
+    async fn test_cleanup_not_found() {
+        let describe = mock!(Client::describe_snapshots)
+            .then_output(|| DescribeSnapshotsOutput::builder().build());
+        let client = mock_client!(aws_sdk_elasticache, RuleMode::MatchAny, &[&describe]);
+        cleanup(&client, "snap").await;
+    }
+
+    #[tokio::test]
+    async fn test_cleanup_describe_error() {
+        // describe fails -> warning logged, then proceeds to delete.
+        let describe = mock!(Client::describe_snapshots).then_error(|| {
+            DescribeSnapshotsError::SnapshotNotFoundFault(SnapshotNotFoundFault::builder().build())
+        });
+        let delete =
+            mock!(Client::delete_snapshot).then_output(|| DeleteSnapshotOutput::builder().build());
+        let client = mock_client!(
+            aws_sdk_elasticache,
+            RuleMode::MatchAny,
+            &[&describe, &delete]
+        );
+        cleanup(&client, "snap").await;
+    }
+
+    #[tokio::test]
+    async fn test_cleanup_delete_error() {
+        let describe = mock!(Client::describe_snapshots).then_output(|| {
+            DescribeSnapshotsOutput::builder()
+                .snapshots(snap("failed"))
+                .build()
+        });
+        let delete = mock!(Client::delete_snapshot).then_error(|| {
+            aws_sdk_elasticache::operation::delete_snapshot::DeleteSnapshotError::SnapshotNotFoundFault(
+                SnapshotNotFoundFault::builder().build(),
+            )
+        });
+        let client = mock_client!(
+            aws_sdk_elasticache,
+            RuleMode::MatchAny,
+            &[&describe, &delete]
+        );
+        cleanup(&client, "snap").await;
+    }
+}

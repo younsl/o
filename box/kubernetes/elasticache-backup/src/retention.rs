@@ -210,11 +210,140 @@ pub async fn cleanup_old_snapshots(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use aws_sdk_s3::Client;
+    use aws_sdk_s3::operation::delete_object::DeleteObjectOutput;
+    use aws_sdk_s3::operation::list_objects_v2::ListObjectsV2Output;
+    use aws_sdk_s3::types::Object;
+    use aws_smithy_mocks::{RuleMode, mock, mock_client};
+    use aws_smithy_types::DateTime;
 
-    #[test]
-    fn test_retention_disabled_when_zero() {
-        // This is a unit test placeholder
-        // In a real scenario, you would mock the S3 client
-        assert_eq!(0, 0);
+    fn obj(key: &str, secs: i64) -> Object {
+        Object::builder()
+            .key(key)
+            .last_modified(DateTime::from_secs(secs))
+            .size(1024)
+            .build()
+    }
+
+    #[tokio::test]
+    async fn test_retention_zero_early_return() {
+        let client = mock_client!(aws_sdk_s3, RuleMode::MatchAny, &[]);
+        let deleted = cleanup_old_snapshots(&client, "bucket", "cluster", 0)
+            .await
+            .unwrap();
+        assert_eq!(deleted, 0);
+    }
+
+    #[tokio::test]
+    async fn test_retention_empty_bucket() {
+        let list = mock!(Client::list_objects_v2)
+            .then_output(|| ListObjectsV2Output::builder().is_truncated(false).build());
+        let client = mock_client!(aws_sdk_s3, RuleMode::MatchAny, &[&list]);
+        let deleted = cleanup_old_snapshots(&client, "bucket", "cluster", 3)
+            .await
+            .unwrap();
+        assert_eq!(deleted, 0);
+    }
+
+    #[tokio::test]
+    async fn test_retention_all_within_retention() {
+        let list = mock!(Client::list_objects_v2).then_output(|| {
+            ListObjectsV2Output::builder()
+                .contents(obj("cluster-1", 100))
+                .contents(obj("cluster-2", 200))
+                .is_truncated(false)
+                .build()
+        });
+        let client = mock_client!(aws_sdk_s3, RuleMode::MatchAny, &[&list]);
+        let deleted = cleanup_old_snapshots(&client, "bucket", "cluster", 5)
+            .await
+            .unwrap();
+        assert_eq!(deleted, 0);
+    }
+
+    #[tokio::test]
+    async fn test_retention_deletes_excess() {
+        let list = mock!(Client::list_objects_v2).then_output(|| {
+            ListObjectsV2Output::builder()
+                .contents(obj("cluster-1", 100))
+                .contents(obj("cluster-2", 200))
+                .contents(obj("cluster-3", 300))
+                .is_truncated(false)
+                .build()
+        });
+        // retention 1 => 2 objects deleted
+        let delete =
+            mock!(Client::delete_object).then_output(|| DeleteObjectOutput::builder().build());
+        let client = mock_client!(aws_sdk_s3, RuleMode::MatchAny, &[&list, &delete]);
+        let deleted = cleanup_old_snapshots(&client, "bucket", "cluster", 1)
+            .await
+            .unwrap();
+        assert_eq!(deleted, 2);
+    }
+
+    #[tokio::test]
+    async fn test_retention_pagination() {
+        // First page truncated, second page final.
+        let page1 = mock!(Client::list_objects_v2)
+            .match_requests(|req| req.continuation_token().is_none())
+            .then_output(|| {
+                ListObjectsV2Output::builder()
+                    .contents(obj("cluster-1", 100))
+                    .contents(obj("cluster-2", 200))
+                    .is_truncated(true)
+                    .next_continuation_token("token-2")
+                    .build()
+            });
+        let page2 = mock!(Client::list_objects_v2)
+            .match_requests(|req| req.continuation_token() == Some("token-2"))
+            .then_output(|| {
+                ListObjectsV2Output::builder()
+                    .contents(obj("cluster-3", 300))
+                    .is_truncated(false)
+                    .build()
+            });
+        let delete =
+            mock!(Client::delete_object).then_output(|| DeleteObjectOutput::builder().build());
+        let client = mock_client!(aws_sdk_s3, RuleMode::MatchAny, &[&page1, &page2, &delete]);
+        // 3 total, retention 1 => 2 deleted
+        let deleted = cleanup_old_snapshots(&client, "bucket", "cluster", 1)
+            .await
+            .unwrap();
+        assert_eq!(deleted, 2);
+    }
+
+    #[tokio::test]
+    async fn test_retention_delete_failure() {
+        let list = mock!(Client::list_objects_v2).then_output(|| {
+            ListObjectsV2Output::builder()
+                .contents(obj("cluster-1", 100))
+                .contents(obj("cluster-2", 200))
+                .is_truncated(false)
+                .build()
+        });
+        // Delete fails with HTTP 500 -> counted as failed, not deleted.
+        let delete = mock!(Client::delete_object)
+            .sequence()
+            .http_status(500, None)
+            .build();
+        let client = mock_client!(aws_sdk_s3, RuleMode::MatchAny, &[&list, &delete]);
+        let deleted = cleanup_old_snapshots(&client, "bucket", "cluster", 1)
+            .await
+            .unwrap();
+        assert_eq!(deleted, 0);
+    }
+
+    #[tokio::test]
+    async fn test_retention_list_error() {
+        let list = mock!(Client::list_objects_v2)
+            .sequence()
+            .http_status(500, None)
+            .build();
+        let client = mock_client!(aws_sdk_s3, RuleMode::MatchAny, &[&list]);
+        assert!(
+            cleanup_old_snapshots(&client, "bucket", "cluster", 1)
+                .await
+                .is_err()
+        );
     }
 }

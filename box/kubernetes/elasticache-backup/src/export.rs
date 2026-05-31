@@ -160,3 +160,109 @@ pub async fn wait_for_completion(
         tokio::time::sleep(Duration::from_secs(check_interval)).await;
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use aws_sdk_elasticache::Client;
+    use aws_sdk_elasticache::operation::copy_snapshot::{CopySnapshotError, CopySnapshotOutput};
+    use aws_sdk_elasticache::operation::describe_snapshots::DescribeSnapshotsOutput;
+    use aws_sdk_elasticache::types::Snapshot;
+    use aws_sdk_elasticache::types::error::SnapshotNotFoundFault;
+    use aws_smithy_mocks::{RuleMode, mock, mock_client};
+
+    fn snap(status: &str) -> Snapshot {
+        Snapshot::builder()
+            .snapshot_status(status)
+            .arn("arn:aws:elasticache:test")
+            .build()
+    }
+
+    #[tokio::test]
+    async fn test_export_to_s3_ok() {
+        let describe = mock!(Client::describe_snapshots).then_output(|| {
+            DescribeSnapshotsOutput::builder()
+                .snapshots(snap("available"))
+                .build()
+        });
+        let copy = mock!(Client::copy_snapshot).then_output(|| {
+            CopySnapshotOutput::builder()
+                .snapshot(snap("copying"))
+                .build()
+        });
+        let client = mock_client!(aws_sdk_elasticache, RuleMode::MatchAny, &[&describe, &copy]);
+        let (target, location) = export_to_s3(&client, "snap", "my-bucket").await.unwrap();
+        assert_eq!(target, "snap-s3-export");
+        assert_eq!(location, "s3://my-bucket/snap-s3-export");
+    }
+
+    #[tokio::test]
+    async fn test_export_to_s3_describe_error_then_copy() {
+        // describe fails (warning), copy still proceeds.
+        let describe = mock!(Client::describe_snapshots).then_error(|| {
+            aws_sdk_elasticache::operation::describe_snapshots::DescribeSnapshotsError::SnapshotNotFoundFault(
+                SnapshotNotFoundFault::builder().build(),
+            )
+        });
+        let copy =
+            mock!(Client::copy_snapshot).then_output(|| CopySnapshotOutput::builder().build());
+        let client = mock_client!(aws_sdk_elasticache, RuleMode::MatchAny, &[&describe, &copy]);
+        let (target, _) = export_to_s3(&client, "snap", "b").await.unwrap();
+        assert_eq!(target, "snap-s3-export");
+    }
+
+    #[tokio::test]
+    async fn test_export_to_s3_copy_error() {
+        let describe = mock!(Client::describe_snapshots)
+            .then_output(|| DescribeSnapshotsOutput::builder().build());
+        let copy = mock!(Client::copy_snapshot).then_error(|| {
+            CopySnapshotError::SnapshotNotFoundFault(SnapshotNotFoundFault::builder().build())
+        });
+        let client = mock_client!(aws_sdk_elasticache, RuleMode::MatchAny, &[&describe, &copy]);
+        assert!(export_to_s3(&client, "snap", "b").await.is_err());
+    }
+
+    #[tokio::test]
+    async fn test_wait_for_completion_available() {
+        let rule = mock!(Client::describe_snapshots).then_output(|| {
+            DescribeSnapshotsOutput::builder()
+                .snapshots(snap("available"))
+                .build()
+        });
+        let client = mock_client!(aws_sdk_elasticache, RuleMode::MatchAny, &[&rule]);
+        wait_for_completion(&client, "snap", 30, 1).await.unwrap();
+    }
+
+    #[tokio::test]
+    async fn test_wait_for_completion_failed() {
+        let rule = mock!(Client::describe_snapshots).then_output(|| {
+            DescribeSnapshotsOutput::builder()
+                .snapshots(snap("failed"))
+                .build()
+        });
+        let client = mock_client!(aws_sdk_elasticache, RuleMode::MatchAny, &[&rule]);
+        assert!(wait_for_completion(&client, "snap", 30, 1).await.is_err());
+    }
+
+    #[tokio::test]
+    async fn test_wait_for_completion_empty() {
+        let rule = mock!(Client::describe_snapshots)
+            .then_output(|| DescribeSnapshotsOutput::builder().build());
+        let client = mock_client!(aws_sdk_elasticache, RuleMode::MatchAny, &[&rule]);
+        assert!(wait_for_completion(&client, "snap", 30, 1).await.is_err());
+    }
+
+    #[tokio::test]
+    async fn test_wait_for_completion_timeout() {
+        let rule = mock!(Client::describe_snapshots).then_output(|| {
+            DescribeSnapshotsOutput::builder()
+                .snapshots(snap("copying"))
+                .build()
+        });
+        let client = mock_client!(aws_sdk_elasticache, RuleMode::MatchAny, &[&rule]);
+        let err = wait_for_completion(&client, "snap", 0, 1)
+            .await
+            .unwrap_err();
+        assert!(err.to_string().contains("timeout"));
+    }
+}

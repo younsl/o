@@ -44,3 +44,8 @@ opt-level = 3
 lto = "thin"
 codegen-units = 16
 strip = true
+
+[dev-dependencies]
+aws-sdk-elasticache = { version = "1.98", features = ["test-util"] }
+aws-sdk-s3 = { version = "1.121", features = ["test-util"] }
+aws-smithy-mocks = "0.2"
