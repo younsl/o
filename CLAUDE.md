@@ -601,6 +601,8 @@ Triggered automatically when the `org.opencontainers.image.version` label in a D
 # - trivy-collector                   (Rust scratch+zigbuild)       — _release-rust-scratch-containers.yml
 # - gss                               (Rust scratch+zigbuild)       — _release-rust-scratch-containers.yml
 # - kuo                               (Rust scratch+zigbuild)       — _release-rust-scratch-containers.yml
+# - elasticache-backup                (Rust alpine in-Docker)       — _release-rust-containers.yml
+# - redis-console                     (Rust alpine in-Docker)       — _release-rust-containers.yml
 ```
 
 ### Other releases (tag-based)
@@ -608,10 +610,6 @@ Triggered automatically when the `org.opencontainers.image.version` label in a D
 ```bash
 # CLI tool releases (pattern: {tool}/x.y.z)
 git tag ij/1.0.0 && git push --tags
-
-# Kubernetes container image releases (pattern: {container}/x.y.z)
-git tag elasticache-backup/1.0.0 && git push --tags
-git tag redis-console/1.0.0 && git push --tags
 
 # Helm chart releases (pattern: {chart}/charts/x.y.z)
 git tag elasticache-backup/charts/1.0.0 && git push --tags
@@ -624,7 +622,7 @@ git tag grafana-dashboards/charts/1.0.0 && git push --tags
 # Available workflows:
 # - release-containers.yml                   (Unified containers release: backstage, logstash — version label trigger)
 # - release-rust-cli.yml                     (Rust CLI release: ij)
-# - _release-rust-containers.yml             (Unified Rust container release: elasticache-backup, redis-console — tag trigger)
+# - _release-rust-containers.yml             (Unified Rust container release: elasticache-backup, redis-console — version label trigger)
 # - _release-rust-scratch-containers.yml     (Unified Rust scratch+zigbuild container release: aurora-database-insights-exporter, filesystem-cleaner, gss, trivy-collector, kuo — version label trigger)
 # - release-helm-chart.yml                   (Unified Helm chart release to OCI registry)
 # - clean-workflow-runs.yml                  (Maintenance: cleanup old workflow runs)

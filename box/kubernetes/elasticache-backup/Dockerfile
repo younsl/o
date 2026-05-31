@@ -25,6 +25,12 @@ RUN cargo build --release
 # Runtime stage - Minimal Alpine (multi-arch)
 FROM alpine:3.23 AS runtime
 
+LABEL org.opencontainers.image.title="elasticache-backup" \
+      org.opencontainers.image.description="ElastiCache snapshot backup to S3 automation" \
+      org.opencontainers.image.version="0.1.0" \
+      org.opencontainers.image.licenses="MIT" \
+      org.opencontainers.image.base.name="alpine:3.23"
+
 # Install only essential runtime dependencies
 RUN apk add --no-cache \
     ca-certificates && \
