@@ -226,7 +226,7 @@ Accessible via `--version` flag (shows short version) or `--long-version` (shows
 Pre-built static binary packaged into a `scratch` image:
 
 1. **Build** (in CI or via `make docker-build`):
-   - Rust **1.95.0** toolchain with `cargo-zigbuild`
+   - Rust **1.96.0** toolchain with `cargo-zigbuild`
    - Target: `x86_64-unknown-linux-musl` / `aarch64-unknown-linux-musl`
    - Release profile: `opt-level = "z"`, `lto = true`, `strip = true`, `panic = "abort"`, `codegen-units = 1`
 

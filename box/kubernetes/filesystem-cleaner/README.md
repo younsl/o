@@ -1,7 +1,7 @@
 # filesystem-cleaner
 
 [![GitHub Container Registry](https://img.shields.io/badge/ghcr.io-younsl%2Ffilesystem--cleaner-000000?style=flat-square&logo=github&logoColor=white)](https://github.com/younsl/o/pkgs/container/filesystem-cleaner)
-[![Rust](https://img.shields.io/badge/rust-1.95.0-000000?style=flat-square&logo=rust&logoColor=white)](./Cargo.toml)
+[![Rust](https://img.shields.io/badge/rust-1.96.0-000000?style=flat-square&logo=rust&logoColor=white)](./Cargo.toml)
 
 A lightweight [Rust](https://github.com/rust-lang/rust)-based container image for automatic filesystem cleanup in [Kubernetes](https://kubernetes.io/docs/concepts/overview/) environments. Designed as a [sidecar container](https://kubernetes.io/docs/concepts/workloads/pods/sidecar-containers/) or [init container](https://kubernetes.io/docs/concepts/workloads/pods/init-containers/), it monitors disk usage and intelligently removes files to prevent storage exhaustion. Particularly useful for GitHub Actions self-hosted runners, CI/CD pipelines, and any workloads that generate temporary files requiring periodic cleanup.
 
