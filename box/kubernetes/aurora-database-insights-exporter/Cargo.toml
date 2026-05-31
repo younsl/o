@@ -2,7 +2,7 @@
 name = "aurora-database-insights-exporter"
 version = "0.1.0"
 edition = "2024"
-rust-version = "1.95.0"
+rust-version = "1.96.0"
 authors = ["younsl <cysl@kakao.com>"]
 description = "Prometheus exporter for AWS Aurora MySQL Database Insights (Performance Insights) metrics"
 license = "MIT"
