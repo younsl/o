@@ -1,7 +1,7 @@
 # elasticache-backup
 
 [![GitHub Container Registry](https://img.shields.io/badge/ghcr.io-elasticache--backup-black?style=flat-square&logo=docker&logoColor=white)](https://github.com/younsl/o/pkgs/container/elasticache-backup)
-[![Rust](https://img.shields.io/badge/rust-1.95.0-black?style=flat-square&logo=rust&logoColor=white)](https://www.rust-lang.org/)
+[![Rust](https://img.shields.io/badge/rust-1.96.0-black?style=flat-square&logo=rust&logoColor=white)](https://www.rust-lang.org/)
 [![GitHub license](https://img.shields.io/github/license/younsl/o?style=flat-square&color=black)](https://github.com/younsl/o/blob/main/LICENSE)
 
 [ElastiCache](https://docs.aws.amazon.com/AmazonElastiCache/latest/dg/WhatIs.html) snapshot backup to [S3](https://docs.aws.amazon.com/AmazonS3/latest/userguide/Welcome.html) automation - Rust-based container application.
@@ -75,7 +75,7 @@ elasticache-backup/
 │       ├── Chart.yaml
 │       ├── values.yaml
 │       └── templates/
-├── Dockerfile          # Multi-stage build (Rust 1.93 + Alpine 3.22)
+├── Dockerfile          # Multi-stage build (Rust 1.96 + Alpine 3.23)
 ├── Cargo.toml          # Rust dependencies
 ├── Makefile            # Build automation
 └── README.md           # This file

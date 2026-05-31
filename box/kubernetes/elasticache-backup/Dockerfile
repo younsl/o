@@ -1,5 +1,5 @@
 # Build stage - Alpine with musl for multi-arch support
-FROM --platform=$BUILDPLATFORM rust:1.95.0-alpine AS builder
+FROM --platform=$BUILDPLATFORM rust:1.96.0-alpine AS builder
 
 # Build arguments for cross-compilation
 ARG TARGETPLATFORM
