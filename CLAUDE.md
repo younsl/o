@@ -601,7 +601,7 @@ Triggered automatically when the `org.opencontainers.image.version` label in a D
 # - trivy-collector                   (Rust scratch+zigbuild)       — _release-rust-scratch-containers.yml
 # - gss                               (Rust scratch+zigbuild)       — _release-rust-scratch-containers.yml
 # - kuo                               (Rust scratch+zigbuild)       — _release-rust-scratch-containers.yml
-# - elasticache-backup                (Rust alpine in-Docker)       — _release-rust-containers.yml
+# - elasticache-backup                (Rust scratch+zigbuild)       — _release-rust-scratch-containers.yml
 # - redis-console                     (Rust alpine in-Docker)       — _release-rust-containers.yml
 ```
 
@@ -622,8 +622,8 @@ git tag grafana-dashboards/charts/1.0.0 && git push --tags
 # Available workflows:
 # - release-containers.yml                   (Unified containers release: backstage, logstash — version label trigger)
 # - release-rust-cli.yml                     (Rust CLI release: ij)
-# - _release-rust-containers.yml             (Unified Rust container release: elasticache-backup, redis-console — version label trigger)
-# - _release-rust-scratch-containers.yml     (Unified Rust scratch+zigbuild container release: aurora-database-insights-exporter, filesystem-cleaner, gss, trivy-collector, kuo — version label trigger)
+# - _release-rust-containers.yml             (Unified Rust container release: redis-console — version label trigger)
+# - _release-rust-scratch-containers.yml     (Unified Rust scratch+zigbuild container release: aurora-database-insights-exporter, elasticache-backup, filesystem-cleaner, gss, trivy-collector, kuo — version label trigger)
 # - release-helm-chart.yml                   (Unified Helm chart release to OCI registry)
 # - clean-workflow-runs.yml                  (Maintenance: cleanup old workflow runs)
 ```

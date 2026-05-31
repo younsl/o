@@ -7,6 +7,7 @@ on:
     paths:
       - 'box/kubernetes/aurora-database-insights-exporter/Dockerfile'
       - 'box/kubernetes/aws-health-event-notifier/Dockerfile'
+      - 'box/kubernetes/elasticache-backup/Dockerfile'
       - 'box/kubernetes/filesystem-cleaner/Dockerfile'
       - 'box/kubernetes/gss/Dockerfile'
       - 'box/kubernetes/trivy-collector/Dockerfile'
@@ -21,6 +22,7 @@ on:
         options:
           - aurora-database-insights-exporter
           - aws-health-event-notifier
+          - elasticache-backup
           - filesystem-cleaner
           - gss
           - trivy-collector
@@ -74,6 +76,7 @@ jobs:
           PROJECTS=(
             "aurora-database-insights-exporter:aurora-database-insights-exporter:adie:false"
             "aws-health-event-notifier:aws-health-event-notifier:aws-health-event-notifier:false"
+            "elasticache-backup:elasticache-backup:elasticache-backup:false"
             "filesystem-cleaner:filesystem-cleaner:filesystem-cleaner:false"
             "gss:gss:ghes-schedule-scanner:false"
             "trivy-collector:trivy-collector:trivy-collector:true"

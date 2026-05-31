@@ -1,48 +1,18 @@
-# Build stage - Alpine with musl for multi-arch support
-FROM --platform=$BUILDPLATFORM rust:1.96.0-alpine AS builder
+# Statically linked binary built via GitHub Actions cross-compilation (cargo-zigbuild)
+FROM alpine:3.23 AS certs
+RUN apk add --no-cache ca-certificates
 
-# Build arguments for cross-compilation
-ARG TARGETPLATFORM
-ARG BUILDPLATFORM
-
-WORKDIR /app
-
-# Install build dependencies for musl
-RUN apk add --no-cache \
-    musl-dev \
-    pkgconfig \
-    openssl-dev \
-    openssl-libs-static
-
-# Copy source files
-COPY Cargo.toml Cargo.lock* ./
-COPY src ./src
-
-# Build for the target platform
-# rust:1.95.0-alpine already has the correct musl toolchain for the native arch
-RUN cargo build --release
-
-# Runtime stage - Minimal Alpine (multi-arch)
-FROM alpine:3.23 AS runtime
+FROM scratch AS runtime
 
 LABEL org.opencontainers.image.title="elasticache-backup" \
       org.opencontainers.image.description="ElastiCache snapshot backup to S3 automation" \
       org.opencontainers.image.version="0.1.0" \
       org.opencontainers.image.licenses="MIT" \
-      org.opencontainers.image.base.name="alpine:3.23"
+      org.opencontainers.image.base.name="scratch" \
+      org.opencontainers.image.deprecated="false"
 
-# Install only essential runtime dependencies
-RUN apk add --no-cache \
-    ca-certificates && \
-    rm -rf /var/cache/apk/*
-
-# Create non-root user
-RUN adduser -D -u 1000 -s /bin/sh appuser
-
-# Copy binary from builder
-COPY --from=builder /app/target/release/elasticache-backup /usr/local/bin/elasticache-backup
-
-# Switch to non-root user
-USER appuser
-
-ENTRYPOINT ["/usr/local/bin/elasticache-backup"]
+ARG TARGETARCH
+COPY --from=certs /etc/ssl/certs/ca-certificates.crt /etc/ssl/certs/
+COPY --chmod=755 elasticache-backup-linux-${TARGETARCH} /app/elasticache-backup
+USER 65532:65532
+ENTRYPOINT ["/app/elasticache-backup"]

@@ -5,7 +5,6 @@ on:
   push:
     branches: [main]
     paths:
-      - 'box/kubernetes/elasticache-backup/Dockerfile'
       - 'box/kubernetes/redis-console/Dockerfile'
   workflow_dispatch:
     inputs:
@@ -14,7 +13,6 @@ on:
         required: true
         type: choice
         options:
-          - elasticache-backup
           - redis-console
 
 jobs:
@@ -61,7 +59,6 @@ jobs:
 
           # project_name:project_dir
           PROJECTS=(
-            "elasticache-backup:elasticache-backup"
             "redis-console:redis-console"
           )
 
