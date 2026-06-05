@@ -192,7 +192,7 @@ Base path: `/api/opencost-backend/`
 
 ## Database
 
-Six tables with 3NF-normalized schema. See [OpenCost ERD](opencost-erd.md) for full schema details.
+Six tables with 3NF-normalized schema. See [OpenCost ERD](erd.md) for full schema details.
 
 | Table | Purpose |
 |-------|---------|

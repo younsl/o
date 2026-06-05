@@ -103,7 +103,7 @@ helm install backstage backstage/backstage \
 
 ## With Keycloak OIDC
 
-See [Keycloak OIDC](keycloak-oidc.md) for authentication configuration.
+See [Keycloak OIDC](plugins/auth-backend-module-oidc-provider/overview.md) for authentication configuration.
 
 Add to `extraEnvVars`:
 

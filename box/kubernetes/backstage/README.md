@@ -20,12 +20,17 @@ Authentication is Keycloak OIDC only. Guest login is disabled.
 
 - [Installation](docs/installation.md)
 - [Plugins](docs/plugins.md)
-- [Keycloak OIDC](docs/keycloak-oidc.md)
-- [GitLab Discovery](docs/gitlab-discovery.md)
-- [GitLab CI/CD](docs/gitlab-cicd.md)
-- [GitLab API Discovery](docs/gitlab-api-discovery.md)
-- [IAM User Audit](docs/iam-user-audit.md)
-- [Kafka Topic](docs/kafka-topic.md)
-- [OpenCost](docs/opencost.md)
-- [OpenCost ERD](docs/opencost-erd.md)
 - [Helm Chart](docs/helm-chart.md)
+
+### Plugin Docs
+
+- [Keycloak OIDC](docs/plugins/auth-backend-module-oidc-provider/overview.md)
+- [GitLab Discovery](docs/plugins/catalog-backend-module-gitlab/discovery.md)
+- [GitLab API Discovery](docs/plugins/catalog-backend-module-gitlab/api-discovery.md)
+- [GitLab CI/CD](docs/plugins/gitlab/overview.md)
+- [IAM User Audit](docs/plugins/iam-user-audit/overview.md)
+- [Kafka Topic](docs/plugins/kafka-topic/overview.md)
+- [OpenCost](docs/plugins/opencost/overview.md)
+- [OpenCost ERD](docs/plugins/opencost/erd.md)
+- [Grafana Dashboard Map ERD](docs/plugins/grafana-dashboard-map/erd.md)
+- [OpenSearch Account](docs/plugins/opensearch-account/overview.md)
