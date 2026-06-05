@@ -12,6 +12,7 @@ app:
     opencost: true
     grafanaDashboardMap: true
     gitlabTokenAudit: true
+    opensearchAccount: true
   platforms:
     - name: Grafana
       category: Observability
@@ -247,6 +248,19 @@ grafanaDashboardMap:
   url: https://grafana.example.com
   apiToken: ${GRAFANA_API_TOKEN}
   cacheTtlSeconds: 60
+
+opensearchAccount:
+  # -- (string) OpenSearch base URL exposing the Security API
+  endpoint: ${OPENSEARCH_ENDPOINT}
+  # -- (string) Admin user for the Security API
+  username: ${OPENSEARCH_ADMIN_USERNAME}
+  # -- (string) Admin password for the Security API
+  password: ${OPENSEARCH_ADMIN_PASSWORD}
+  # -- (bool) Require admin approval before create/delete is executed
+  requiresApproval: true
+  tls:
+    # -- (bool) Reject invalid/self-signed certs. Set false for self-signed clusters
+    rejectUnauthorized: true
 
 gitlabTokenAudit:
   # -- (bool) Enable the GitLab Token Audit plugin

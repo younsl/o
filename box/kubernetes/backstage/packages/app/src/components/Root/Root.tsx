@@ -15,6 +15,7 @@ import StorageIcon from '@material-ui/icons/Storage';
 import AttachMoneyIcon from '@material-ui/icons/AttachMoney';
 import FindInPageIcon from '@material-ui/icons/FindInPage';
 import DashboardIcon from '@material-ui/icons/Dashboard';
+import VpnKeyIcon from '@material-ui/icons/VpnKey';
 import { siApachekafka, siArgo, siGitlab, siKubernetes } from 'simple-icons';
 import { createIcon } from '@dweber019/backstage-plugin-simple-icons';
 
@@ -408,6 +409,7 @@ export const Root = ({ children }: PropsWithChildren<{}>) => {
   const opencostEnabled = config.getOptionalBoolean('app.plugins.opencost') ?? true;
   const grafanaDashboardMapEnabled = config.getOptionalBoolean('app.plugins.grafanaDashboardMap') ?? true;
   const gitlabTokenAuditEnabled = config.getOptionalBoolean('app.plugins.gitlabTokenAudit') ?? true;
+  const opensearchAccountEnabled = config.getOptionalBoolean('app.plugins.opensearchAccount') ?? true;
 
   return (
   <SidebarPage>
@@ -442,6 +444,9 @@ export const Root = ({ children }: PropsWithChildren<{}>) => {
           <SidebarItem icon={AttachMoneyIcon} to="cost-report" text="Cost Report" />
         )}
         {iamUserAuditEnabled && <IamAuditSidebarItem />}
+        {opensearchAccountEnabled && (
+          <SidebarItem icon={VpnKeyIcon} to="opensearch" text="OpenSearch" />
+        )}
         {s3LogExtractEnabled && <S3LogExtractSidebarItem />}
       </FoldableSection>
 

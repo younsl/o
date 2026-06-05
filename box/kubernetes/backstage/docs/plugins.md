@@ -43,6 +43,7 @@ Most custom plugins ship as `<name>` (frontend) plus `<name>-backend` (backend).
 | S3 Log Extract | `s3-log-extract` | Custom | S3-based Java log extraction with approval workflow |
 | Grafana Dashboard Map | `grafana-dashboard-map` | Custom | Map Grafana dashboards onto a system architecture diagram |
 | GitLab Token Audit | `gitlab-token-audit` | Custom | Audit GitLab personal/project/group access tokens with expiry alerts via Slack webhook |
+| OpenSearch | `opensearch-account` | Custom | Self-service OpenSearch Security internal user create/list/delete/modify with admin approval, RBAC, and audit trail |
 | TechDocs | [`@backstage/plugin-techdocs`](https://www.npmjs.com/package/@backstage/plugin-techdocs) | Native | Markdown-based technical documentation |
 | Scaffolder | [`@backstage/plugin-scaffolder`](https://www.npmjs.com/package/@backstage/plugin-scaffolder) | Native | Template-based project creation |
 | Search | [`@backstage/plugin-search`](https://www.npmjs.com/package/@backstage/plugin-search) | Native | Full-text search across catalog |

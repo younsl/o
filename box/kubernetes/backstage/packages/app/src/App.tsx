@@ -46,6 +46,11 @@ import { CatalogHealthPage, GenerateCatalogInfoPage } from '@internal/plugin-cat
 import { KafkaTopicPage } from '@internal/plugin-kafka-topic';
 import { OpenCostPage, CostAdjustPage } from '@internal/plugin-opencost';
 import { GrafanaDashboardMapPage } from '@internal/plugin-grafana-dashboard-map';
+import {
+  OpenSearchAccountPage,
+  OpenSearchAccountCreatePage,
+  OpenSearchAccountApprovalsPage,
+} from '@internal/plugin-opensearch-account';
 import { GitlabTokenAuditPage } from '@internal/plugin-gitlab-token-audit';
 import { BuiThemerPage } from '@backstage/plugin-mui-to-bui';
 import { BuildInfoSettings } from './components/settings/AboutSettings';
@@ -132,6 +137,9 @@ const routes = (
     <Route path="/cost-report" element={<OpenCostPage />} />
     <Route path="/cost-report/custom-export" element={<CostAdjustPage />} />
     <Route path="/grafana-dashboard-map" element={<GrafanaDashboardMapPage />} />
+    <Route path="/opensearch" element={<OpenSearchAccountPage />} />
+    <Route path="/opensearch/create" element={<OpenSearchAccountCreatePage />} />
+    <Route path="/opensearch/approvals" element={<OpenSearchAccountApprovalsPage />} />
     <Route path="/gitlab-token-audit/*" element={<GitlabTokenAuditPage />} />
     <Route path="/mui-to-bui" element={<BuiThemerPage />} />
     <Route path="/settings" element={<UserSettingsPage />}>

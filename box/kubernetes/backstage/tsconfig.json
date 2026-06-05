@@ -73,6 +73,12 @@
       "path": "plugins/opencost-backend"
     },
     {
+      "path": "plugins/opensearch-account"
+    },
+    {
+      "path": "plugins/opensearch-account-backend"
+    },
+    {
       "path": "plugins/s3-log-extract"
     },
     {

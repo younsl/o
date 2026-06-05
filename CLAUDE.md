@@ -488,7 +488,7 @@ make push          # Push to ghcr.io/younsl/backstage
 - **Kafka**: Self-service topic creation with approval workflow
 - **Slack**: Notifications via incoming webhooks and bot token
 
-**Custom Plugins** (8 frontend + 8 backend):
+**Custom Plugins** (9 frontend + 9 backend):
 
 | Plugin | Purpose |
 |--------|---------|
@@ -500,6 +500,7 @@ make push          # Push to ghcr.io/younsl/backstage
 | opencost | Multi-cluster K8s cost visualization |
 | s3-log-extract | S3-based Java log extraction with approval |
 | grafana-dashboard-map | Browse Grafana folders/dashboards with sidebar count badge |
+| opensearch-account | Self-service OpenSearch Security internal-user create/list/delete with approval |
 
 **Architecture**: Monolithic (backend serves bundled frontend on port 7007), 3-stage Docker build, Helm-deployable via official Backstage chart
 
