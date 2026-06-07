@@ -29,9 +29,9 @@ to an opaque SSM runbook, so each action has clear ownership and granular logs.
 
 Operation mechanism. The Deployment runs one or more Pods; only the leader runs
 the reconcile loop and drives EC2 and SSM, while standby Pods take over if the
-leader fails. Editable source: [architecture.drawio](docs/architecture.drawio).
+leader fails. Editable source: [architecture.drawio](docs/assets/architecture.drawio).
 
-![Architecture](docs/architecture.svg)
+![Architecture](docs/assets/architecture.svg)
 
 ## How it works
 
@@ -104,9 +104,11 @@ so extra replicas stand by and only the leader reconciles. This avoids concurren
 
 ## IAM
 
-Attach this policy to the addon's IRSA role. `Describe*` actions do not support
-resource-level permissions and require `"*"`; `ec2:ModifyVolume` is scoped to
-volumes and `ssm:SendCommand` to the managed document and instances.
+Attach this policy to the addon's IAM role. The role is mapped to the addon's
+ServiceAccount through an EKS Pod Identity association (see Installation).
+`Describe*` actions do not support resource-level permissions and require `"*"`;
+`ec2:ModifyVolume` is scoped to volumes and `ssm:SendCommand` to the managed
+document and instances.
 
 ```json
 {
@@ -167,16 +169,61 @@ make lint           # gofmt check + go vet
 make docker-build   # multi-arch image (linux/amd64, linux/arm64)
 ```
 
-## Deploy
+## Installation
+
+### Prerequisites
+
+Before installing, set up AWS authentication. The addon authenticates to AWS
+through [EKS Pod Identity][pod-identity], so the following must already exist:
+
+1. An IAM role with the policy from the [IAM](#iam) section attached, and a
+   trust policy that allows the `pods.eks.amazonaws.com` service principal.
+2. The [EKS Pod Identity Agent][pod-identity-agent] add-on installed on the
+   cluster.
+3. An [EKS Pod Identity association][pod-identity-assoc] that maps the role to
+   the addon's ServiceAccount (`external-ebs-autoresizer` in the `kube-system`
+   namespace by default). Create it after the chart is installed, or pre-create
+   the ServiceAccount and reuse it.
+
+With Pod Identity the role mapping lives in the association, so no
+`eks.amazonaws.com/role-arn` annotation is needed on the ServiceAccount.
+
+[pod-identity]: https://docs.aws.amazon.com/eks/latest/userguide/pod-identities.html
+[pod-identity-agent]: https://docs.aws.amazon.com/eks/latest/userguide/pod-id-agent-setup.html
+[pod-identity-assoc]: https://docs.aws.amazon.com/eks/latest/userguide/pod-id-association.html
+
+### Install
+
+The recommended way to install is the Helm chart published as an OCI artifact on
+GHCR. Installing into the `kube-system` namespace is recommended, since this is a
+cluster-level addon.
+
+```bash
+helm install external-ebs-autoresizer \
+  oci://ghcr.io/younsl/charts/external-ebs-autoresizer \
+  --namespace kube-system \
+  --set config.region=ap-northeast-2 \
+  --set config.tagFilters=Environment=production
+```
+
+List available chart versions with [crane](https://github.com/google/go-containerregistry/blob/main/cmd/crane/README.md):
+
+```bash
+crane ls ghcr.io/younsl/charts/external-ebs-autoresizer
+```
+
+To install from a local checkout instead, point Helm at the chart directory:
 
 ```bash
 helm install external-ebs-autoresizer ./charts/external-ebs-autoresizer \
-  --namespace external-ebs-autoresizer --create-namespace \
+  --namespace kube-system \
   --set config.region=ap-northeast-2 \
-  --set config.tagFilters=Environment=production \
-  --set serviceAccount.annotations."eks\.amazonaws\.com/role-arn"=arn:aws:iam::123456789012:role/external-ebs-autoresizer
+  --set config.tagFilters=Environment=production
 ```
 
 Observability:
 - `/healthz`, `/readyz` on `:8080`
 - Prometheus `/metrics` on `:8081`
+
+See [docs/metrics.md](docs/metrics.md) for the full list of exposed metrics,
+their labels, and example PromQL queries.
