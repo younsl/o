@@ -36,7 +36,7 @@ type Clients struct {
 	PollInterval time.Duration
 }
 
-const defaultPollInterval = 3 * time.Second
+const defaultPollInterval = 1 * time.Second
 
 func (c *Clients) pollInterval() time.Duration {
 	if c.PollInterval > 0 {

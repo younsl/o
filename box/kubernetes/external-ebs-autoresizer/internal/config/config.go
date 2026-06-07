@@ -31,6 +31,12 @@ type Config struct {
 	ExcludeEKSNodes bool
 	// ReconcileInterval is how often the control loop scans instances.
 	ReconcileInterval time.Duration
+	// ReconcileConcurrency bounds how many instances are reconciled in parallel
+	// within a single pass. Defaults to 10.
+	ReconcileConcurrency int
+	// SSMPollInterval is the delay between status polls for SSM command
+	// invocations and EBS volume modifications. Defaults to 1s.
+	SSMPollInterval time.Duration
 	// UsageThresholdPercent triggers a resize when root usage reaches it.
 	UsageThresholdPercent int
 	// GrowPercent is how much to grow the EBS volume relative to current size.
@@ -80,10 +86,16 @@ func Load(args []string) (*Config, error) {
 	if err != nil {
 		return nil, err
 	}
+	ssmPollInterval, err := getEnvDuration("SSM_POLL_INTERVAL", time.Second)
+	if err != nil {
+		return nil, err
+	}
 
 	c := &Config{
 		Region:                getEnv("AWS_REGION", ""),
 		ReconcileInterval:     reconcileInterval,
+		ReconcileConcurrency:  getEnvInt("RECONCILE_CONCURRENCY", 10),
+		SSMPollInterval:       ssmPollInterval,
 		UsageThresholdPercent: getEnvInt("USAGE_THRESHOLD_PERCENT", 80),
 		GrowPercent:           getEnvInt("GROW_PERCENT", 10),
 		MaxVolumeSizeGiB:      getEnvInt("MAX_VOLUME_SIZE_GIB", 1000),
@@ -108,6 +120,8 @@ func Load(args []string) (*Config, error) {
 	fs.StringVar(&tagFilters, "tag-filters", getEnv("TAG_FILTERS", ""), "Comma-separated Key=Value tag filters; empty scans all instances")
 	fs.BoolVar(&c.ExcludeEKSNodes, "exclude-eks-nodes", c.ExcludeEKSNodes, "Exclude EKS cluster nodes (managed node groups, self-managed, Karpenter)")
 	fs.DurationVar(&c.ReconcileInterval, "reconcile-interval", c.ReconcileInterval, "Reconcile loop interval")
+	fs.IntVar(&c.ReconcileConcurrency, "reconcile-concurrency", c.ReconcileConcurrency, "Max instances reconciled in parallel per pass")
+	fs.DurationVar(&c.SSMPollInterval, "ssm-poll-interval", c.SSMPollInterval, "Delay between SSM command and volume modification status polls")
 	fs.IntVar(&c.UsageThresholdPercent, "usage-threshold-percent", c.UsageThresholdPercent, "Root usage percent that triggers a resize")
 	fs.IntVar(&c.GrowPercent, "grow-percent", c.GrowPercent, "EBS growth percent")
 	fs.IntVar(&c.MaxVolumeSizeGiB, "max-volume-size-gib", c.MaxVolumeSizeGiB, "Maximum volume size in GiB")
@@ -149,6 +163,12 @@ func (c *Config) validate() error {
 	}
 	if c.ReconcileInterval <= 0 {
 		return fmt.Errorf("RECONCILE_INTERVAL must be greater than 0, got %s", c.ReconcileInterval)
+	}
+	if c.ReconcileConcurrency <= 0 {
+		return fmt.Errorf("RECONCILE_CONCURRENCY must be greater than 0, got %d", c.ReconcileConcurrency)
+	}
+	if c.SSMPollInterval <= 0 {
+		return fmt.Errorf("SSM_POLL_INTERVAL must be greater than 0, got %s", c.SSMPollInterval)
 	}
 	return nil
 }

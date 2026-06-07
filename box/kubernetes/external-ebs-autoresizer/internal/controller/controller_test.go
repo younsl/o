@@ -24,9 +24,9 @@ func TestRunReconcilesImmediatelyThenStops(t *testing.T) {
 		cancel()
 	}()
 
-	Run(ctx, 40*time.Millisecond, func(context.Context) error {
+	Run(ctx, 40*time.Millisecond, func(context.Context) (int, error) {
 		calls.Add(1)
-		return nil
+		return 0, nil
 	}, discardLogger())
 
 	// Immediate pass (1) plus at least one tick.
@@ -43,9 +43,9 @@ func TestRunContinuesAfterError(t *testing.T) {
 		cancel()
 	}()
 
-	Run(ctx, 40*time.Millisecond, func(context.Context) error {
+	Run(ctx, 40*time.Millisecond, func(context.Context) (int, error) {
 		calls.Add(1)
-		return errors.New("transient")
+		return 0, errors.New("transient")
 	}, discardLogger())
 
 	if got := calls.Load(); got < 2 {
@@ -60,9 +60,9 @@ func TestRunStopsOnCancelledContext(t *testing.T) {
 	var calls atomic.Int32
 	done := make(chan struct{})
 	go func() {
-		Run(ctx, time.Hour, func(context.Context) error {
+		Run(ctx, time.Hour, func(context.Context) (int, error) {
 			calls.Add(1)
-			return nil
+			return 0, nil
 		}, discardLogger())
 		close(done)
 	}()

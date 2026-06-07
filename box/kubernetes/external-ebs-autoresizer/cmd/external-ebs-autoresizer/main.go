@@ -43,6 +43,7 @@ func main() {
 		logger.Error("failed to initialize AWS clients", "error", err)
 		os.Exit(1)
 	}
+	clients.PollInterval = cfg.SSMPollInterval
 
 	metrics := observability.NewMetrics()
 	health := observability.NewHealth()
@@ -79,7 +80,7 @@ func main() {
 	health.SetReady(true)
 
 	runLoop := func(ctx context.Context) {
-		controller.Run(ctx, cfg.ReconcileInterval, func(ctx context.Context) error {
+		controller.Run(ctx, cfg.ReconcileInterval, func(ctx context.Context) (int, error) {
 			metrics.ObserveReconcile()
 			return rsz.Reconcile(ctx)
 		}, logger)

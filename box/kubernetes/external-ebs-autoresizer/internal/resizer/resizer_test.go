@@ -166,8 +166,12 @@ func TestReconcileBelowThreshold(t *testing.T) {
 	rec := &fakeRecorder{}
 	r := newResizer(t, baseConfig(), ec2, ssm, rec)
 
-	if err := r.Reconcile(context.Background()); err != nil {
+	n, err := r.Reconcile(context.Background())
+	if err != nil {
 		t.Fatalf("Reconcile error: %v", err)
+	}
+	if n != 1 {
+		t.Errorf("Reconcile returned %d instances, want 1", n)
 	}
 	if len(ec2.modifyCalls) != 0 {
 		t.Errorf("ModifyVolume called %d times, want 0", len(ec2.modifyCalls))
@@ -180,7 +184,7 @@ func TestReconcileTriggersResize(t *testing.T) {
 	rec := &fakeRecorder{}
 	r := newResizer(t, baseConfig(), ec2, ssm, rec)
 
-	if err := r.Reconcile(context.Background()); err != nil {
+	if _, err := r.Reconcile(context.Background()); err != nil {
 		t.Fatalf("Reconcile error: %v", err)
 	}
 	if len(ec2.modifyCalls) != 1 || ec2.modifyCalls[0] != 110 {
@@ -198,7 +202,7 @@ func TestReconcileDryRun(t *testing.T) {
 	ssm := &fakeSSM{usage: 95}
 	r := newResizer(t, cfg, ec2, ssm, &fakeRecorder{})
 
-	if err := r.Reconcile(context.Background()); err != nil {
+	if _, err := r.Reconcile(context.Background()); err != nil {
 		t.Fatalf("Reconcile error: %v", err)
 	}
 	if len(ec2.modifyCalls) != 0 {
@@ -213,7 +217,7 @@ func TestReconcileCooldownSkips(t *testing.T) {
 	}
 	r := newResizer(t, baseConfig(), ec2, &fakeSSM{usage: 90}, &fakeRecorder{})
 
-	if err := r.Reconcile(context.Background()); err != nil {
+	if _, err := r.Reconcile(context.Background()); err != nil {
 		t.Fatalf("Reconcile error: %v", err)
 	}
 	if len(ec2.modifyCalls) != 0 {
@@ -228,7 +232,7 @@ func TestReconcileInProgressSkips(t *testing.T) {
 	}
 	r := newResizer(t, baseConfig(), ec2, &fakeSSM{usage: 90}, &fakeRecorder{})
 
-	if err := r.Reconcile(context.Background()); err != nil {
+	if _, err := r.Reconcile(context.Background()); err != nil {
 		t.Fatalf("Reconcile error: %v", err)
 	}
 	if len(ec2.modifyCalls) != 0 {
@@ -242,7 +246,7 @@ func TestReconcileMaxSizeSkips(t *testing.T) {
 	ec2 := &fakeEC2{instances: []awsx.Instance{sampleInstance()}}
 	r := newResizer(t, cfg, ec2, &fakeSSM{usage: 90}, &fakeRecorder{})
 
-	if err := r.Reconcile(context.Background()); err != nil {
+	if _, err := r.Reconcile(context.Background()); err != nil {
 		t.Fatalf("Reconcile error: %v", err)
 	}
 	if len(ec2.modifyCalls) != 0 {
@@ -256,7 +260,7 @@ func TestReconcileNoRootVolume(t *testing.T) {
 	ec2 := &fakeEC2{instances: []awsx.Instance{inst}}
 	r := newResizer(t, baseConfig(), ec2, &fakeSSM{usage: 90}, &fakeRecorder{})
 
-	if err := r.Reconcile(context.Background()); err != nil {
+	if _, err := r.Reconcile(context.Background()); err != nil {
 		t.Fatalf("Reconcile error: %v", err)
 	}
 	if len(ec2.modifyCalls) != 0 {
@@ -269,7 +273,7 @@ func TestReconcileDiscoverError(t *testing.T) {
 	rec := &fakeRecorder{}
 	r := newResizer(t, baseConfig(), ec2, &fakeSSM{}, rec)
 
-	if err := r.Reconcile(context.Background()); err == nil {
+	if _, err := r.Reconcile(context.Background()); err == nil {
 		t.Error("Reconcile = nil error, want discover error")
 	}
 	if len(rec.errors) != 1 || rec.errors[0] != "discover" {
@@ -282,7 +286,7 @@ func TestReconcileModifyError(t *testing.T) {
 	rec := &fakeRecorder{}
 	r := newResizer(t, baseConfig(), ec2, &fakeSSM{usage: 90}, rec)
 
-	if err := r.Reconcile(context.Background()); err != nil {
+	if _, err := r.Reconcile(context.Background()); err != nil {
 		t.Fatalf("Reconcile should swallow per-instance error, got %v", err)
 	}
 	if rec.resizeFail != 1 {
@@ -307,7 +311,7 @@ func TestReconcileEmitsStartedAndCompletedEvents(t *testing.T) {
 	ev := &fakeEmitter{}
 	r := New(baseConfig(), ec2, &fakeSSM{usage: 85}, &fakeRecorder{}, ev, discardLogger())
 
-	if err := r.Reconcile(context.Background()); err != nil {
+	if _, err := r.Reconcile(context.Background()); err != nil {
 		t.Fatalf("Reconcile error: %v", err)
 	}
 	want := []string{reasonResizeStarted, reasonResizeCompleted}
@@ -321,7 +325,7 @@ func TestReconcileEmitsFailedEvent(t *testing.T) {
 	ev := &fakeEmitter{}
 	r := New(baseConfig(), ec2, &fakeSSM{usage: 90}, &fakeRecorder{}, ev, discardLogger())
 
-	if err := r.Reconcile(context.Background()); err != nil {
+	if _, err := r.Reconcile(context.Background()); err != nil {
 		t.Fatalf("Reconcile should swallow per-instance error, got %v", err)
 	}
 	want := []string{reasonResizeStarted, reasonResizeFailed}
@@ -337,7 +341,7 @@ func TestReconcileDryRunEmitsNoEvents(t *testing.T) {
 	ev := &fakeEmitter{}
 	r := New(cfg, ec2, &fakeSSM{usage: 95}, &fakeRecorder{}, ev, discardLogger())
 
-	if err := r.Reconcile(context.Background()); err != nil {
+	if _, err := r.Reconcile(context.Background()); err != nil {
 		t.Fatalf("Reconcile error: %v", err)
 	}
 	if len(ev.reasons) != 0 {

@@ -71,10 +71,12 @@ commands as a non-root user.
 | `TAG_FILTERS` | (empty) | `Key=Value,Key2=Value2`, selects target instances; empty scans all instances in the account/region |
 | `EXCLUDE_EKS_NODES` | `true` | Exclude EKS cluster nodes (managed node groups, self-managed, Karpenter) |
 | `RECONCILE_INTERVAL` | `5m` | Loop interval (Go duration: h, m, s; e.g. `30s`, `5m`, `1h`, `1h30m`) |
+| `RECONCILE_CONCURRENCY` | `10` | Max instances reconciled in parallel per pass |
 | `USAGE_THRESHOLD_PERCENT` | `80` | Usage that triggers a resize |
 | `GROW_PERCENT` | `10` | Growth percent per resize |
 | `MAX_VOLUME_SIZE_GIB` | `1000` | Safety ceiling |
 | `SSM_COMMAND_TIMEOUT` | `5m` | SSM command poll timeout |
+| `SSM_POLL_INTERVAL` | `1s` | Delay between SSM command and volume modification status polls |
 | `VOLUME_MODIFY_TIMEOUT` | `10m` | ModifyVolume optimizing wait timeout |
 | `DRY_RUN` | `false` | Measure and decide only |
 | `LEADER_ELECT` | `true` | Enable leader election for HA; requires in-cluster config |

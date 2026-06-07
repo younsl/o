@@ -9,10 +9,12 @@ data:
   TAG_FILTERS: {{ .Values.config.tagFilters | quote }}
   EXCLUDE_EKS_NODES: {{ .Values.config.excludeEKSNodes | quote }}
   RECONCILE_INTERVAL: {{ .Values.config.reconcileInterval | quote }}
+  RECONCILE_CONCURRENCY: {{ .Values.config.reconcileConcurrency | quote }}
   USAGE_THRESHOLD_PERCENT: {{ .Values.config.usageThresholdPercent | quote }}
   GROW_PERCENT: {{ .Values.config.growPercent | quote }}
   MAX_VOLUME_SIZE_GIB: {{ .Values.config.maxVolumeSizeGiB | quote }}
   SSM_COMMAND_TIMEOUT: {{ .Values.config.ssmCommandTimeout | quote }}
+  SSM_POLL_INTERVAL: {{ .Values.config.ssmPollInterval | quote }}
   VOLUME_MODIFY_TIMEOUT: {{ .Values.config.volumeModifyTimeout | quote }}
   DRY_RUN: {{ .Values.config.dryRun | quote }}
   LEADER_ELECT: {{ if (include "external-ebs-autoresizer.leaderElectEnabled" .) }}"true"{{ else }}"false"{{ end }}

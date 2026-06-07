@@ -89,10 +89,12 @@ The following table lists the configurable parameters and their default values.
 | config.tagFilters | string | `""` | Comma-separated Key=Value tag filters selecting target instances; empty scans every instance in the account/region |
 | config.excludeEKSNodes | bool | `true` | Exclude EKS cluster nodes (managed node groups, self-managed, Karpenter) so only standalone EC2 instances are managed |
 | config.reconcileInterval | string | `"5m"` | Reconcile loop interval as a Go duration; supports h, m, s and combinations (e.g. 30s, 5m, 1h, 1h30m) |
+| config.reconcileConcurrency | int | `10` | Max instances reconciled in parallel per pass |
 | config.usageThresholdPercent | int | `80` | Root filesystem usage percent that triggers a resize |
 | config.growPercent | int | `10` | EBS volume growth percent per resize |
 | config.maxVolumeSizeGiB | int | `1000` | Maximum volume size in GiB; resizes that would exceed it are skipped |
 | config.ssmCommandTimeout | string | `"5m"` | SSM command poll timeout as a Go duration |
+| config.ssmPollInterval | string | `"1s"` | Delay between SSM command and volume modification status polls as a Go duration |
 | config.volumeModifyTimeout | string | `"10m"` | ModifyVolume optimizing-wait timeout as a Go duration |
 | config.dryRun | bool | `false` | Measure and decide only, never modify resources |
 | config.logLevel | string | `"info"` | Log level: debug, info, warn, error |

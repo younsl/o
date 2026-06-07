@@ -8,6 +8,7 @@ import (
 	"log/slog"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/younsl/o/box/kubernetes/external-ebs-autoresizer/internal/awsx"
@@ -80,9 +81,10 @@ func (r *Resizer) emit(eventType, reason, messageFmt string, args ...any) {
 	}
 }
 
-// Reconcile discovers all target instances and processes each one. Per-instance
-// failures are logged and counted but do not abort the pass.
-func (r *Resizer) Reconcile(ctx context.Context) error {
+// Reconcile discovers all target instances and processes each one, returning
+// the number of instances discovered. Per-instance failures are logged and
+// counted but do not abort the pass.
+func (r *Resizer) Reconcile(ctx context.Context) (int, error) {
 	filters := make([]awsx.TagFilter, len(r.cfg.TagFilters))
 	for i, f := range r.cfg.TagFilters {
 		filters[i] = awsx.TagFilter{Key: f.Key, Value: f.Value}
@@ -91,19 +93,33 @@ func (r *Resizer) Reconcile(ctx context.Context) error {
 	instances, err := r.ec2.DescribeTargetInstances(ctx, filters, r.cfg.ExcludeEKSNodes)
 	if err != nil {
 		r.rec.ObserveError("discover")
-		return fmt.Errorf("discover instances: %w", err)
+		return 0, fmt.Errorf("discover instances: %w", err)
 	}
 	r.logger.Info("discovered target instances", "count", len(instances))
 
+	// Reconcile instances concurrently with a bounded worker pool. Each instance
+	// targets an independent EBS volume, so parallelism is safe; the semaphore
+	// caps in-flight SSM/EC2 calls to stay within API rate limits. Per-instance
+	// failures are logged and counted but never abort the pass.
+	concurrency := max(r.cfg.ReconcileConcurrency, 1)
+	sem := make(chan struct{}, concurrency)
+	var wg sync.WaitGroup
 	for _, inst := range instances {
 		if ctx.Err() != nil {
-			return ctx.Err()
+			break
 		}
-		if err := r.reconcileInstance(ctx, inst); err != nil {
-			r.logger.Error("instance reconcile failed", "instance", inst.ID, "name", inst.Name, "error", err)
-		}
+		sem <- struct{}{}
+		wg.Add(1)
+		go func(inst awsx.Instance) {
+			defer wg.Done()
+			defer func() { <-sem }()
+			if err := r.reconcileInstance(ctx, inst); err != nil {
+				r.logger.Error("instance reconcile failed", "instance", inst.ID, "name", inst.Name, "error", err)
+			}
+		}(inst)
 	}
-	return nil
+	wg.Wait()
+	return len(instances), ctx.Err()
 }
 
 func (r *Resizer) reconcileInstance(ctx context.Context, inst awsx.Instance) error {
@@ -121,7 +137,7 @@ func (r *Resizer) reconcileInstance(ctx context.Context, inst awsx.Instance) err
 		return fmt.Errorf("measure usage: %w", err)
 	}
 	r.rec.ObserveUsage(inst.ID, inst.RootDeviceName, inst.RootVolumeID, inst.Name, float64(usage))
-	log.Info("measured root usage", "usage_percent", usage, "threshold_percent", r.cfg.UsageThresholdPercent)
+	log.Debug("measured root usage", "usage_percent", usage, "threshold_percent", r.cfg.UsageThresholdPercent)
 
 	// 2. Decide.
 	if usage < r.cfg.UsageThresholdPercent {

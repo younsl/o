@@ -39,6 +39,8 @@ config:
   excludeEKSNodes: true
   # -- (string) Reconcile loop interval as a Go duration; supports h, m, s and combinations (e.g. 30s, 5m, 1h, 1h30m)
   reconcileInterval: "5m"
+  # -- (int) Max instances reconciled in parallel per pass
+  reconcileConcurrency: 10
   # -- (int) Root filesystem usage percent that triggers a resize
   usageThresholdPercent: 80
   # -- (int) EBS volume growth percent per resize
@@ -47,6 +49,8 @@ config:
   maxVolumeSizeGiB: 1000
   # -- (string) SSM command poll timeout as a Go duration
   ssmCommandTimeout: "5m"
+  # -- (string) Delay between SSM command and volume modification status polls as a Go duration
+  ssmPollInterval: "1s"
   # -- (string) ModifyVolume optimizing-wait timeout as a Go duration
   volumeModifyTimeout: "10m"
   # -- (bool) Measure and decide only, never modify resources
