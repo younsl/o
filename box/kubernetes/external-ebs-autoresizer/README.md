@@ -66,7 +66,7 @@ commands as a non-root user.
 |----------|---------|-------------|
 | `AWS_REGION` | (required) | Target region |
 | `TAG_FILTERS` | (required) | `Key=Value,Key2=Value2`, selects target instances |
-| `RECONCILE_INTERVAL` | `5m` | Loop interval (Go duration) |
+| `RECONCILE_INTERVAL` | `5m` | Loop interval (Go duration: h, m, s; e.g. `30s`, `5m`, `1h`, `1h30m`) |
 | `USAGE_THRESHOLD_PERCENT` | `80` | Usage that triggers a resize |
 | `GROW_PERCENT` | `10` | Growth percent per resize |
 | `MAX_VOLUME_SIZE_GIB` | `1000` | Safety ceiling |

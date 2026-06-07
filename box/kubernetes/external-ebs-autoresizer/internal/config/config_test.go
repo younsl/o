@@ -69,6 +69,45 @@ func TestLoadEnvOverrides(t *testing.T) {
 	}
 }
 
+func TestLoadReconcileIntervalUnits(t *testing.T) {
+	cases := map[string]time.Duration{
+		"30s":      30 * time.Second,
+		"5m":       5 * time.Minute,
+		"1h":       time.Hour,
+		"1h30m":    90 * time.Minute,
+		"2h15m30s": 2*time.Hour + 15*time.Minute + 30*time.Second,
+	}
+	for in, want := range cases {
+		t.Run(in, func(t *testing.T) {
+			t.Setenv("AWS_REGION", "ap-northeast-2")
+			t.Setenv("TAG_FILTERS", "App=web")
+			t.Setenv("RECONCILE_INTERVAL", in)
+
+			c, err := Load(nil)
+			if err != nil {
+				t.Fatalf("Load returned error: %v", err)
+			}
+			if c.ReconcileInterval != want {
+				t.Errorf("ReconcileInterval = %s, want %s", c.ReconcileInterval, want)
+			}
+		})
+	}
+}
+
+func TestLoadInvalidDurationFails(t *testing.T) {
+	for _, bad := range []string{"1hour", "5min", "300", "abc", ""} {
+		t.Run(bad, func(t *testing.T) {
+			t.Setenv("AWS_REGION", "ap-northeast-2")
+			t.Setenv("TAG_FILTERS", "App=web")
+			t.Setenv("RECONCILE_INTERVAL", bad)
+
+			if _, err := Load(nil); err == nil {
+				t.Errorf("Load with RECONCILE_INTERVAL=%q = nil error, want failure", bad)
+			}
+		})
+	}
+}
+
 func TestLoadFlagOverridesEnv(t *testing.T) {
 	t.Setenv("AWS_REGION", "us-east-1")
 	t.Setenv("TAG_FILTERS", "App=web")

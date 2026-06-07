@@ -87,7 +87,7 @@ The following table lists the configurable parameters and their default values.
 | strategy.rollingUpdate.maxUnavailable | string|int | `"25%"` | Max Pods unavailable during an update |
 | config.region | string | `""` | AWS region to operate in (required) |
 | config.tagFilters | string | `""` | Comma-separated Key=Value tag filters selecting target instances (required) |
-| config.reconcileInterval | string | `"5m"` | Reconcile loop interval as a Go duration |
+| config.reconcileInterval | string | `"5m"` | Reconcile loop interval as a Go duration; supports h, m, s and combinations (e.g. 30s, 5m, 1h, 1h30m) |
 | config.usageThresholdPercent | int | `80` | Root filesystem usage percent that triggers a resize |
 | config.growPercent | int | `10` | EBS volume growth percent per resize |
 | config.maxVolumeSizeGiB | int | `1000` | Maximum volume size in GiB; resizes that would exceed it are skipped |

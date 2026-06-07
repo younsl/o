@@ -62,14 +62,27 @@ type Config struct {
 // Load reads configuration from environment variables, applies flag overrides
 // from args, validates the result, and returns it.
 func Load(args []string) (*Config, error) {
+	reconcileInterval, err := getEnvDuration("RECONCILE_INTERVAL", 5*time.Minute)
+	if err != nil {
+		return nil, err
+	}
+	ssmCommandTimeout, err := getEnvDuration("SSM_COMMAND_TIMEOUT", 5*time.Minute)
+	if err != nil {
+		return nil, err
+	}
+	volumeModifyTimeout, err := getEnvDuration("VOLUME_MODIFY_TIMEOUT", 10*time.Minute)
+	if err != nil {
+		return nil, err
+	}
+
 	c := &Config{
 		Region:                getEnv("AWS_REGION", ""),
-		ReconcileInterval:     getEnvDuration("RECONCILE_INTERVAL", 5*time.Minute),
+		ReconcileInterval:     reconcileInterval,
 		UsageThresholdPercent: getEnvInt("USAGE_THRESHOLD_PERCENT", 80),
 		GrowPercent:           getEnvInt("GROW_PERCENT", 10),
 		MaxVolumeSizeGiB:      getEnvInt("MAX_VOLUME_SIZE_GIB", 1000),
-		SSMCommandTimeout:     getEnvDuration("SSM_COMMAND_TIMEOUT", 5*time.Minute),
-		VolumeModifyTimeout:   getEnvDuration("VOLUME_MODIFY_TIMEOUT", 10*time.Minute),
+		SSMCommandTimeout:     ssmCommandTimeout,
+		VolumeModifyTimeout:   volumeModifyTimeout,
 		DryRun:                getEnvBool("DRY_RUN", false),
 		HealthPort:            getEnvInt("HEALTH_PORT", 8080),
 		MetricsPort:           getEnvInt("METRICS_PORT", 8081),
@@ -183,11 +196,18 @@ func getEnvBool(key string, fallback bool) bool {
 	return fallback
 }
 
-func getEnvDuration(key string, fallback time.Duration) time.Duration {
-	if v, ok := os.LookupEnv(key); ok {
-		if d, err := time.ParseDuration(strings.TrimSpace(v)); err == nil {
-			return d
-		}
+// getEnvDuration parses a Go duration from the environment. An invalid value is
+// a hard error rather than a silent fallback, so misconfiguration (e.g. "1hour",
+// "5min", or a unitless "300") fails at startup instead of running with the
+// default interval.
+func getEnvDuration(key string, fallback time.Duration) (time.Duration, error) {
+	v, ok := os.LookupEnv(key)
+	if !ok {
+		return fallback, nil
 	}
-	return fallback
+	d, err := time.ParseDuration(strings.TrimSpace(v))
+	if err != nil {
+		return 0, fmt.Errorf("invalid %s %q: must be a Go duration such as 30s, 5m, 1h, 1h30m", key, v)
+	}
+	return d, nil
 }
