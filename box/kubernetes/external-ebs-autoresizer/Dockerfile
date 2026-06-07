@@ -20,7 +20,7 @@ RUN apk add --no-cache ca-certificates
 FROM scratch AS runtime
 
 LABEL org.opencontainers.image.title="external-ebs-autoresizer" \
-      org.opencontainers.image.description="Auto-expands the root ext4 filesystem of standalone EC2 instances via EBS ModifyVolume and SSM" \
+      org.opencontainers.image.description="Auto-expands the root filesystem (ext2/3/4 or XFS) of standalone EC2 instances via EBS ModifyVolume and SSM" \
       org.opencontainers.image.version="0.1.0" \
       org.opencontainers.image.licenses="Apache-2.0" \
       org.opencontainers.image.base.name="scratch" \

@@ -1,6 +1,9 @@
 #!/bin/sh
-# Grow the root partition and extend its ext4 filesystem in place.
-# Handles both Nitro (nvme0n1p1) and Xen (xvda1) device naming.
+# Grow the root partition and extend its filesystem in place.
+# Handles both Nitro (nvme0n1p1) and Xen (xvda1) device naming, and both
+# ext2/3/4 (resize2fs) and XFS (xfs_growfs) root filesystems. Amazon Linux 2
+# and 2023 default to XFS, where resize2fs fails with "Bad magic number in
+# super-block".
 #
 # Invoked via SSM Run Command (AWS-RunShellScript), which the SSM Agent runs as
 # root by default (unlike interactive Session Manager, which uses ssm-user).
@@ -31,11 +34,25 @@ if [ -z "$partnum" ]; then
 	exit 1
 fi
 
-echo "root part=$part disk=$disk partnum=$partnum"
+fstype=$(findmnt -no FSTYPE /)
+echo "root part=$part disk=$disk partnum=$partnum fstype=$fstype"
 
 # growpart is non-zero when the partition is already at max size; tolerate that.
 $SUDO growpart "$disk" "$partnum" || echo "growpart reported no change"
-$SUDO resize2fs "$part"
+
+# resize2fs takes the partition device; xfs_growfs takes the mountpoint.
+case "$fstype" in
+ext2 | ext3 | ext4)
+	$SUDO resize2fs "$part"
+	;;
+xfs)
+	$SUDO xfs_growfs /
+	;;
+*)
+	echo "unsupported root filesystem type: $fstype" >&2
+	exit 1
+	;;
+esac
 
 echo "after:"
 df -h /

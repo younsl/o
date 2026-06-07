@@ -5,9 +5,9 @@
 [![Go](https://img.shields.io/badge/go-1.26.4-black?style=flat-square&logo=go&logoColor=white)](https://go.dev/)
 [![GitHub license](https://img.shields.io/github/license/younsl/o?style=flat-square&color=black)](https://github.com/younsl/o/blob/main/LICENSE)
 
-Automatically grows the [root ext4 filesystem][ebs-extend-fs] of **standalone
-EC2 instances** (EC2 outside the Kubernetes cluster, not EKS nodes) when disk
-usage crosses a threshold.
+Automatically grows the [root filesystem][ebs-extend-fs] (ext2/3/4 or XFS) of
+**standalone EC2 instances** (EC2 outside the Kubernetes cluster, not EKS nodes)
+when disk usage crosses a threshold.
 
 It runs as a long-lived Deployment inside EKS and scans instances on an interval.
 By default it considers every running instance in its account and region,

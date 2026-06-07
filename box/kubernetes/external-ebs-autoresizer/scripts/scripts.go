@@ -10,7 +10,8 @@ import _ "embed"
 //go:embed measure-rootfs.sh
 var MeasureRootFS string
 
-// ResizeRootFS grows the root partition and extends the ext4 filesystem.
+// ResizeRootFS grows the root partition and extends the filesystem
+// (ext2/3/4 via resize2fs, XFS via xfs_growfs).
 //
 //go:embed resize-rootfs.sh
 var ResizeRootFS string

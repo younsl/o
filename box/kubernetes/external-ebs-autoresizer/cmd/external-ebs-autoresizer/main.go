@@ -1,6 +1,6 @@
 // Command external-ebs-autoresizer continuously watches tagged standalone EC2
-// instances and grows their root EBS volume and ext4 filesystem when usage
-// crosses a threshold.
+// instances and grows their root EBS volume and filesystem (ext2/3/4 or XFS)
+// when usage crosses a threshold.
 package main
 
 import (
