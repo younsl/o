@@ -22,21 +22,20 @@
           <mxGeometry x="86" y="200" width="170" height="150" as="geometry"/>
         </mxCell>
 
-        <mxCell id="ssm" value="SSM RunShellScript&#10;measure-rootfs.sh&#10;resize-rootfs.sh" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffe9c7;strokeColor=#d97706;" vertex="1" parent="1">
-          <mxGeometry x="660" y="110" width="330" height="80" as="geometry"/>
+        <mxCell id="ec2" value="EC2 instance  •  standalone, tag-filtered" style="rounded=1;dashed=1;whiteSpace=wrap;html=1;fillColor=#fff3df;strokeColor=#d97706;verticalAlign=top;align=left;spacingLeft=14;spacingTop=8;fontStyle=1;fontColor=#9a5a08;" vertex="1" parent="1">
+          <mxGeometry x="650" y="110" width="350" height="354" as="geometry"/>
         </mxCell>
-        <mxCell id="ec2" value="EC2 instances&#10;tag-filtered, standalone" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffe9c7;strokeColor=#d97706;" vertex="1" parent="1">
-          <mxGeometry x="660" y="250" width="330" height="92" as="geometry"/>
+        <mxCell id="ssm" value="SSM Agent (runs as root)&#10;executes via RunShellScript:&#10;measure-rootfs.sh  (df)&#10;resize-rootfs.sh  (growpart + resize2fs)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffe9c7;strokeColor=#d97706;verticalAlign=top;spacingTop=10;" vertex="1" parent="1">
+          <mxGeometry x="672" y="160" width="306" height="120" as="geometry"/>
         </mxCell>
-        <mxCell id="ebs" value="EBS root volume&#10;grown by ModifyVolume" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffe9c7;strokeColor=#d97706;" vertex="1" parent="1">
-          <mxGeometry x="660" y="392" width="330" height="72" as="geometry"/>
+        <mxCell id="ebs" value="EBS root volume&#10;grown by ModifyVolume, extended in place" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffe9c7;strokeColor=#d97706;" vertex="1" parent="1">
+          <mxGeometry x="672" y="334" width="306" height="100" as="geometry"/>
         </mxCell>
 
         <mxCell id="e1" value="leader election" style="endArrow=block;html=1;dashed=1;fontSize=11;" edge="1" parent="1" source="standby" target="leader"><mxGeometry relative="1" as="geometry"/></mxCell>
-        <mxCell id="e2" value="RunShellScript" style="endArrow=block;html=1;fontSize=11;" edge="1" parent="1" source="leader" target="ssm"><mxGeometry relative="1" as="geometry"/></mxCell>
-        <mxCell id="e3" value="Describe / ModifyVolume" style="endArrow=block;html=1;fontSize=11;" edge="1" parent="1" source="leader" target="ec2"><mxGeometry relative="1" as="geometry"/></mxCell>
-        <mxCell id="e4" value="growpart + resize2fs" style="endArrow=block;html=1;fontSize=11;" edge="1" parent="1" source="ssm" target="ec2"><mxGeometry relative="1" as="geometry"/></mxCell>
-        <mxCell id="e5" value="root volume" style="endArrow=block;html=1;fontSize=11;" edge="1" parent="1" source="ec2" target="ebs"><mxGeometry relative="1" as="geometry"/></mxCell>
+        <mxCell id="e2" value="ssm:SendCommand&#10;(RunShellScript)" style="endArrow=block;html=1;fontSize=11;" edge="1" parent="1" source="leader" target="ssm"><mxGeometry relative="1" as="geometry"/></mxCell>
+        <mxCell id="e3" value="ec2:Describe / ModifyVolume" style="endArrow=block;html=1;fontSize=11;" edge="1" parent="1" source="leader" target="ebs"><mxGeometry relative="1" as="geometry"/></mxCell>
+        <mxCell id="e4" value="growpart + resize2fs" style="endArrow=block;html=1;fontSize=11;" edge="1" parent="1" source="ssm" target="ebs"><mxGeometry relative="1" as="geometry"/></mxCell>
       </root>
     </mxGraphModel>
   </diagram>
