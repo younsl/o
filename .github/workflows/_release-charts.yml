@@ -79,7 +79,7 @@ jobs:
         run: |
           CANDIDATES='${{ steps.detect.outputs.candidates }}'
           INCLUDES="[]"
-          ENCODED_TOKEN=$(echo -n "${{ secrets.GITHUB_TOKEN }}" | base64)
+          ENCODED_TOKEN=$(echo -n "${{ secrets.GITHUB_TOKEN }}" | base64 -w0)
 
           for row in $(echo "${CANDIDATES}" | jq -r '.[] | @base64'); do
             NAME=$(echo "${row}" | base64 -d | jq -r '.chart_name')
@@ -88,8 +88,8 @@ jobs:
 
             APP_VERSION=$(echo "${row}" | base64 -d | jq -r '.app_version')
 
-            TAGS=$(curl -s -H "Authorization: Bearer ${ENCODED_TOKEN}" \
-              "https://${REGISTRY}/v2/younsl/charts/${NAME}/tags/list")
+            TAGS=$(curl -sf -H "Authorization: Bearer ${ENCODED_TOKEN}" \
+              "https://${REGISTRY}/v2/younsl/charts/${NAME}/tags/list" 2>/dev/null || echo '{"tags":[]}')
             if echo "${TAGS}" | jq -e --arg TAG "${VERSION}" '.tags // [] | index($TAG)' > /dev/null 2>&1; then
               echo "Skip ${NAME}:${VERSION} (already exists)"
             else
