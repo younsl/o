@@ -8,6 +8,7 @@ import (
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/service/ec2"
 	ec2types "github.com/aws/aws-sdk-go-v2/service/ec2/types"
+	"github.com/aws/smithy-go"
 )
 
 type fakeEC2SDK struct {
@@ -15,6 +16,7 @@ type fakeEC2SDK struct {
 	describeVolumes       *ec2.DescribeVolumesOutput
 	modifications         *ec2.DescribeVolumesModificationsOutput
 	modificationsSequence []*ec2.DescribeVolumesModificationsOutput
+	modificationsErr      error
 	modifyInput           *ec2.ModifyVolumeInput
 	modCallIdx            int
 }
@@ -30,6 +32,9 @@ func (f *fakeEC2SDK) ModifyVolume(_ context.Context, in *ec2.ModifyVolumeInput, 
 	return &ec2.ModifyVolumeOutput{}, nil
 }
 func (f *fakeEC2SDK) DescribeVolumesModifications(context.Context, *ec2.DescribeVolumesModificationsInput, ...func(*ec2.Options)) (*ec2.DescribeVolumesModificationsOutput, error) {
+	if f.modificationsErr != nil {
+		return nil, f.modificationsErr
+	}
 	if len(f.modificationsSequence) > 0 {
 		out := f.modificationsSequence[f.modCallIdx]
 		if f.modCallIdx < len(f.modificationsSequence)-1 {
@@ -139,6 +144,33 @@ func TestDescribeLastModificationNone(t *testing.T) {
 	}
 	if m != nil {
 		t.Errorf("got %+v, want nil for no modifications", m)
+	}
+}
+
+// A volume that has never been modified makes EC2 return
+// InvalidVolumeModification.NotFound; it must be treated as "no modification",
+// not as a reconcile failure.
+func TestDescribeLastModificationNotFound(t *testing.T) {
+	c := &Clients{EC2: &fakeEC2SDK{modificationsErr: &smithy.GenericAPIError{
+		Code:    "InvalidVolumeModification.NotFound",
+		Message: "Modification for volume 'vol-1' does not exist.",
+	}}}
+	m, err := c.DescribeLastModification(context.Background(), "vol-1")
+	if err != nil {
+		t.Fatalf("got error %v, want nil for never-modified volume", err)
+	}
+	if m != nil {
+		t.Errorf("got %+v, want nil for never-modified volume", m)
+	}
+}
+
+func TestDescribeLastModificationOtherError(t *testing.T) {
+	c := &Clients{EC2: &fakeEC2SDK{modificationsErr: &smithy.GenericAPIError{
+		Code:    "UnauthorizedOperation",
+		Message: "not allowed",
+	}}}
+	if _, err := c.DescribeLastModification(context.Background(), "vol-1"); err == nil {
+		t.Error("got nil error, want failure for non-NotFound API error")
 	}
 }
 

@@ -10,6 +10,7 @@ import (
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/service/ec2"
 	ec2types "github.com/aws/aws-sdk-go-v2/service/ec2/types"
+	"github.com/aws/smithy-go"
 )
 
 // TagFilter is a single EC2 tag key/value pair used to scope discovery.
@@ -134,6 +135,14 @@ func (c *Clients) DescribeLastModification(ctx context.Context, volumeID string)
 		VolumeIds: []string{volumeID},
 	})
 	if err != nil {
+		// A volume that has never been modified has no modification history, and
+		// EC2 signals this with an InvalidVolumeModification.NotFound error rather
+		// than an empty result. Treat it as "no modification" so a never-resized
+		// volume is not stuck failing the cooldown check.
+		var apiErr smithy.APIError
+		if errors.As(err, &apiErr) && apiErr.ErrorCode() == "InvalidVolumeModification.NotFound" {
+			return nil, nil
+		}
 		return nil, fmt.Errorf("describe volume modifications %s: %w", volumeID, err)
 	}
 	if len(out.VolumesModifications) == 0 {

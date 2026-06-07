@@ -7,6 +7,7 @@ require (
 	github.com/aws/aws-sdk-go-v2/config v1.32.23
 	github.com/aws/aws-sdk-go-v2/service/ec2 v1.305.2
 	github.com/aws/aws-sdk-go-v2/service/ssm v1.69.2
+	github.com/aws/smithy-go v1.27.1
 	github.com/prometheus/client_golang v1.23.2
 	k8s.io/api v0.36.1
 	k8s.io/apimachinery v0.36.1
@@ -25,7 +26,6 @@ require (
 	github.com/aws/aws-sdk-go-v2/service/sso v1.31.2 // indirect
 	github.com/aws/aws-sdk-go-v2/service/ssooidc v1.36.5 // indirect
 	github.com/aws/aws-sdk-go-v2/service/sts v1.43.2 // indirect
-	github.com/aws/smithy-go v1.27.1 // indirect
 	github.com/beorn7/perks v1.0.1 // indirect
 	github.com/cespare/xxhash/v2 v2.3.0 // indirect
 	github.com/davecgh/go-spew v1.1.2-0.20180830191138-d8f796af33cc // indirect
