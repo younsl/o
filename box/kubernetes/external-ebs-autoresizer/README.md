@@ -9,11 +9,14 @@ Automatically grows the [root ext4 filesystem][ebs-extend-fs] of **standalone
 EC2 instances** (EC2 outside the Kubernetes cluster, not EKS nodes) when disk
 usage crosses a threshold.
 
-It runs as a long-lived Deployment inside EKS, scans tagged instances on an
-interval, and for each instance over the threshold it [grows the root EBS
-volume][ebs-modify] and [extends the filesystem][ebs-extend-fs] in place. Every
-step is driven and logged by the addon itself rather than delegated to an opaque
-SSM runbook, so each action has clear ownership and granular logs.
+It runs as a long-lived Deployment inside EKS and scans instances on an interval.
+By default it considers every running instance in its account and region,
+excluding EKS cluster nodes (managed node groups, self-managed nodes, and
+Karpenter nodes) so it only ever touches standalone EC2. Set `TAG_FILTERS` to
+narrow the candidate set further. For each instance over the threshold it [grows
+the root EBS volume][ebs-modify] and [extends the filesystem][ebs-extend-fs] in
+place. Every step is driven and logged by the addon itself rather than delegated
+to an opaque SSM runbook, so each action has clear ownership and granular logs.
 
 [ebs-modify]: https://docs.aws.amazon.com/ebs/latest/userguide/requesting-ebs-volume-modifications.html
 [ebs-modify-reqs]: https://docs.aws.amazon.com/ebs/latest/userguide/modify-volume-requirements.html
@@ -65,7 +68,8 @@ commands as a non-root user.
 | Variable | Default | Description |
 |----------|---------|-------------|
 | `AWS_REGION` | (required) | Target region |
-| `TAG_FILTERS` | (required) | `Key=Value,Key2=Value2`, selects target instances |
+| `TAG_FILTERS` | (empty) | `Key=Value,Key2=Value2`, selects target instances; empty scans all instances in the account/region |
+| `EXCLUDE_EKS_NODES` | `true` | Exclude EKS cluster nodes (managed node groups, self-managed, Karpenter) |
 | `RECONCILE_INTERVAL` | `5m` | Loop interval (Go duration: h, m, s; e.g. `30s`, `5m`, `1h`, `1h30m`) |
 | `USAGE_THRESHOLD_PERCENT` | `80` | Usage that triggers a resize |
 | `GROW_PERCENT` | `10` | Growth percent per resize |

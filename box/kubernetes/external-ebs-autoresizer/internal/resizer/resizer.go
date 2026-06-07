@@ -23,7 +23,7 @@ const modificationCooldown = 6 * time.Hour
 
 // EC2API is the subset of EC2 operations the resizer depends on.
 type EC2API interface {
-	DescribeTargetInstances(ctx context.Context, filters []awsx.TagFilter) ([]awsx.Instance, error)
+	DescribeTargetInstances(ctx context.Context, filters []awsx.TagFilter, excludeEKSNodes bool) ([]awsx.Instance, error)
 	ModifyVolume(ctx context.Context, volumeID string, sizeGiB int32) error
 	DescribeLastModification(ctx context.Context, volumeID string) (*awsx.VolumeModification, error)
 	WaitForModification(ctx context.Context, volumeID string, timeout time.Duration) error
@@ -88,7 +88,7 @@ func (r *Resizer) Reconcile(ctx context.Context) error {
 		filters[i] = awsx.TagFilter{Key: f.Key, Value: f.Value}
 	}
 
-	instances, err := r.ec2.DescribeTargetInstances(ctx, filters)
+	instances, err := r.ec2.DescribeTargetInstances(ctx, filters, r.cfg.ExcludeEKSNodes)
 	if err != nil {
 		r.rec.ObserveError("discover")
 		return fmt.Errorf("discover instances: %w", err)

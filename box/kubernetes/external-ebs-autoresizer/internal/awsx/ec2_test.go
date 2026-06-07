@@ -61,7 +61,7 @@ func TestDescribeTargetInstances(t *testing.T) {
 	}
 	c := &Clients{EC2: fake}
 
-	got, err := c.DescribeTargetInstances(context.Background(), []TagFilter{{Key: "App", Value: "web"}})
+	got, err := c.DescribeTargetInstances(context.Background(), []TagFilter{{Key: "App", Value: "web"}}, true)
 	if err != nil {
 		t.Fatalf("DescribeTargetInstances error: %v", err)
 	}
@@ -71,6 +71,52 @@ func TestDescribeTargetInstances(t *testing.T) {
 	inst := got[0]
 	if inst.ID != "i-1" || inst.Name != "web" || inst.RootVolumeID != "vol-1" || inst.RootVolumeSizeGiB != 100 {
 		t.Errorf("instance = %+v, unexpected fields", inst)
+	}
+}
+
+func TestDescribeTargetInstancesExcludesEKSNodes(t *testing.T) {
+	tagged := func(id string, tags ...ec2types.Tag) ec2types.Instance {
+		return ec2types.Instance{
+			InstanceId:     aws.String(id),
+			RootDeviceName: aws.String("/dev/xvda"),
+			Tags:           tags,
+			BlockDeviceMappings: []ec2types.InstanceBlockDeviceMapping{{
+				DeviceName: aws.String("/dev/xvda"),
+				Ebs:        &ec2types.EbsInstanceBlockDevice{VolumeId: aws.String("vol-" + id)},
+			}},
+		}
+	}
+	tag := func(k, v string) ec2types.Tag { return ec2types.Tag{Key: aws.String(k), Value: aws.String(v)} }
+
+	fake := &fakeEC2SDK{
+		describeInstances: &ec2.DescribeInstancesOutput{
+			Reservations: []ec2types.Reservation{{
+				Instances: []ec2types.Instance{
+					tagged("standalone", tag("Name", "app")),
+					tagged("mng", tag("eks:cluster-name", "prod")),
+					tagged("self", tag("kubernetes.io/cluster/prod", "owned")),
+					tagged("karpenter", tag("karpenter.sh/nodepool", "default")),
+				},
+			}},
+		},
+		describeVolumes: &ec2.DescribeVolumesOutput{Volumes: []ec2types.Volume{{Size: aws.Int32(50)}}},
+	}
+	c := &Clients{EC2: fake}
+
+	got, err := c.DescribeTargetInstances(context.Background(), nil, true)
+	if err != nil {
+		t.Fatalf("DescribeTargetInstances error: %v", err)
+	}
+	if len(got) != 1 || got[0].ID != "standalone" {
+		t.Fatalf("got %+v, want only the standalone instance", got)
+	}
+
+	got, err = c.DescribeTargetInstances(context.Background(), nil, false)
+	if err != nil {
+		t.Fatalf("DescribeTargetInstances error: %v", err)
+	}
+	if len(got) != 4 {
+		t.Errorf("got %d instances with exclusion off, want 4", len(got))
 	}
 }
 

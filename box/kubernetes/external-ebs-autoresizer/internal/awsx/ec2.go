@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
@@ -18,8 +19,11 @@ type TagFilter struct {
 }
 
 // DescribeTargetInstances returns running instances matching every tag filter,
-// resolving each instance's root EBS volume ID and current size.
-func (c *Clients) DescribeTargetInstances(ctx context.Context, filters []TagFilter) ([]Instance, error) {
+// resolving each instance's root EBS volume ID and current size. When filters is
+// empty every running instance in the account/region is a candidate. When
+// excludeEKSNodes is true, instances that belong to an EKS cluster are dropped so
+// only standalone EC2 instances remain.
+func (c *Clients) DescribeTargetInstances(ctx context.Context, filters []TagFilter, excludeEKSNodes bool) ([]Instance, error) {
 	ec2Filters := []ec2types.Filter{{
 		Name:   aws.String("instance-state-name"),
 		Values: []string{"running"},
@@ -40,6 +44,9 @@ func (c *Clients) DescribeTargetInstances(ctx context.Context, filters []TagFilt
 		}
 		for _, res := range page.Reservations {
 			for _, inst := range res.Instances {
+				if excludeEKSNodes && isEKSNode(inst) {
+					continue
+				}
 				instances = append(instances, newInstance(inst))
 			}
 		}
@@ -74,6 +81,27 @@ func newInstance(inst ec2types.Instance) Instance {
 		}
 	}
 	return out
+}
+
+// isEKSNode reports whether an instance belongs to an EKS cluster, based on the
+// tags AWS and Karpenter attach to cluster nodes:
+//   - eks:cluster-name / aws:eks:cluster-name: EKS managed node groups
+//   - kubernetes.io/cluster/<name>: any instance joined to a cluster (managed,
+//     self-managed, or Karpenter-provisioned)
+//   - karpenter.sh/*: Karpenter-provisioned nodes
+func isEKSNode(inst ec2types.Instance) bool {
+	for _, tag := range inst.Tags {
+		key := aws.ToString(tag.Key)
+		switch {
+		case key == "eks:cluster-name", key == "aws:eks:cluster-name":
+			return true
+		case strings.HasPrefix(key, "kubernetes.io/cluster/"):
+			return true
+		case strings.HasPrefix(key, "karpenter.sh/"):
+			return true
+		}
+	}
+	return false
 }
 
 func (c *Clients) volumeSize(ctx context.Context, volumeID string) (int32, error) {

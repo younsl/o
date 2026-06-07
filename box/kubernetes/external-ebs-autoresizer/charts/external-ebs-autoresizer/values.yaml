@@ -33,8 +33,10 @@ strategy:
 config:
   # -- (string) AWS region to operate in (required)
   region: ""
-  # -- (string) Comma-separated Key=Value tag filters selecting target instances (required)
+  # -- (string) Comma-separated Key=Value tag filters selecting target instances; empty scans every instance in the account/region
   tagFilters: ""
+  # -- (bool) Exclude EKS cluster nodes (managed node groups, self-managed, Karpenter) so only standalone EC2 instances are managed
+  excludeEKSNodes: true
   # -- (string) Reconcile loop interval as a Go duration; supports h, m, s and combinations (e.g. 30s, 5m, 1h, 1h30m)
   reconcileInterval: "5m"
   # -- (int) Root filesystem usage percent that triggers a resize

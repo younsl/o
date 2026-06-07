@@ -62,7 +62,7 @@ type fakeEC2 struct {
 	describeErr error
 }
 
-func (f *fakeEC2) DescribeTargetInstances(_ context.Context, _ []awsx.TagFilter) ([]awsx.Instance, error) {
+func (f *fakeEC2) DescribeTargetInstances(_ context.Context, _ []awsx.TagFilter, _ bool) ([]awsx.Instance, error) {
 	return f.instances, f.describeErr
 }
 func (f *fakeEC2) ModifyVolume(_ context.Context, _ string, sizeGiB int32) error {

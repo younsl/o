@@ -21,8 +21,14 @@ type TagFilter struct {
 type Config struct {
 	// Region is the AWS region to operate in.
 	Region string
-	// TagFilters selects which standalone EC2 instances are managed.
+	// TagFilters selects which standalone EC2 instances are managed. When empty,
+	// every running instance in the account/region is a candidate (subject to
+	// ExcludeEKSNodes).
 	TagFilters []TagFilter
+	// ExcludeEKSNodes drops instances that belong to an EKS cluster (managed node
+	// groups, self-managed nodes, and Karpenter nodes) from the candidate set, so
+	// the addon only ever touches standalone EC2 instances.
+	ExcludeEKSNodes bool
 	// ReconcileInterval is how often the control loop scans instances.
 	ReconcileInterval time.Duration
 	// UsageThresholdPercent triggers a resize when root usage reaches it.
@@ -81,6 +87,7 @@ func Load(args []string) (*Config, error) {
 		UsageThresholdPercent: getEnvInt("USAGE_THRESHOLD_PERCENT", 80),
 		GrowPercent:           getEnvInt("GROW_PERCENT", 10),
 		MaxVolumeSizeGiB:      getEnvInt("MAX_VOLUME_SIZE_GIB", 1000),
+		ExcludeEKSNodes:       getEnvBool("EXCLUDE_EKS_NODES", true),
 		SSMCommandTimeout:     ssmCommandTimeout,
 		VolumeModifyTimeout:   volumeModifyTimeout,
 		DryRun:                getEnvBool("DRY_RUN", false),
@@ -98,7 +105,8 @@ func Load(args []string) (*Config, error) {
 	var tagFilters string
 	fs := flag.NewFlagSet("external-ebs-autoresizer", flag.ContinueOnError)
 	fs.StringVar(&c.Region, "region", c.Region, "AWS region")
-	fs.StringVar(&tagFilters, "tag-filters", getEnv("TAG_FILTERS", ""), "Comma-separated Key=Value tag filters")
+	fs.StringVar(&tagFilters, "tag-filters", getEnv("TAG_FILTERS", ""), "Comma-separated Key=Value tag filters; empty scans all instances")
+	fs.BoolVar(&c.ExcludeEKSNodes, "exclude-eks-nodes", c.ExcludeEKSNodes, "Exclude EKS cluster nodes (managed node groups, self-managed, Karpenter)")
 	fs.DurationVar(&c.ReconcileInterval, "reconcile-interval", c.ReconcileInterval, "Reconcile loop interval")
 	fs.IntVar(&c.UsageThresholdPercent, "usage-threshold-percent", c.UsageThresholdPercent, "Root usage percent that triggers a resize")
 	fs.IntVar(&c.GrowPercent, "grow-percent", c.GrowPercent, "EBS growth percent")
@@ -129,9 +137,6 @@ func Load(args []string) (*Config, error) {
 func (c *Config) validate() error {
 	if c.Region == "" {
 		return fmt.Errorf("AWS_REGION is required")
-	}
-	if len(c.TagFilters) == 0 {
-		return fmt.Errorf("TAG_FILTERS is required (at least one Key=Value)")
 	}
 	if c.UsageThresholdPercent < 0 || c.UsageThresholdPercent > 100 {
 		return fmt.Errorf("USAGE_THRESHOLD_PERCENT must be between 0 and 100, got %d", c.UsageThresholdPercent)

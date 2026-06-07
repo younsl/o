@@ -86,7 +86,8 @@ The following table lists the configurable parameters and their default values.
 | strategy.rollingUpdate.maxSurge | string|int | `"25%"` | Max Pods created above desired count during an update |
 | strategy.rollingUpdate.maxUnavailable | string|int | `"25%"` | Max Pods unavailable during an update |
 | config.region | string | `""` | AWS region to operate in (required) |
-| config.tagFilters | string | `""` | Comma-separated Key=Value tag filters selecting target instances (required) |
+| config.tagFilters | string | `""` | Comma-separated Key=Value tag filters selecting target instances; empty scans every instance in the account/region |
+| config.excludeEKSNodes | bool | `true` | Exclude EKS cluster nodes (managed node groups, self-managed, Karpenter) so only standalone EC2 instances are managed |
 | config.reconcileInterval | string | `"5m"` | Reconcile loop interval as a Go duration; supports h, m, s and combinations (e.g. 30s, 5m, 1h, 1h30m) |
 | config.usageThresholdPercent | int | `80` | Root filesystem usage percent that triggers a resize |
 | config.growPercent | int | `10` | EBS volume growth percent per resize |

@@ -28,11 +28,26 @@ func TestLoadDefaults(t *testing.T) {
 	if len(c.TagFilters) != 1 || c.TagFilters[0].Key != "Environment" || c.TagFilters[0].Value != "production" {
 		t.Errorf("TagFilters = %+v, want [{Environment production}]", c.TagFilters)
 	}
+	if !c.ExcludeEKSNodes {
+		t.Error("ExcludeEKSNodes = false, want true by default")
+	}
 	if !c.LeaderElect {
 		t.Error("LeaderElect = false, want true by default")
 	}
 	if c.LeaseName != "external-ebs-autoresizer" {
 		t.Errorf("LeaseName = %q, want external-ebs-autoresizer", c.LeaseName)
+	}
+}
+
+func TestLoadAllowsEmptyTagFilters(t *testing.T) {
+	t.Setenv("AWS_REGION", "ap-northeast-2")
+
+	c, err := Load(nil)
+	if err != nil {
+		t.Fatalf("Load returned error: %v", err)
+	}
+	if len(c.TagFilters) != 0 {
+		t.Errorf("TagFilters = %+v, want empty (scan all instances)", c.TagFilters)
 	}
 }
 
@@ -130,7 +145,6 @@ func TestLoadValidationErrors(t *testing.T) {
 		env  map[string]string
 	}{
 		{"missing region", map[string]string{"TAG_FILTERS": "A=b"}},
-		{"missing tag filters", map[string]string{"AWS_REGION": "r"}},
 		{"bad threshold", map[string]string{"AWS_REGION": "r", "TAG_FILTERS": "A=b", "USAGE_THRESHOLD_PERCENT": "200"}},
 		{"bad grow", map[string]string{"AWS_REGION": "r", "TAG_FILTERS": "A=b", "GROW_PERCENT": "0"}},
 	}
