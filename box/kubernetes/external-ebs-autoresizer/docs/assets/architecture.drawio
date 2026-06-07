@@ -1,41 +1,45 @@
 <mxfile host="app.diagrams.net" type="device">
   <diagram name="k8s-mechanism" id="ebs-autoresizer-k8s">
-    <mxGraphModel dx="1040" dy="500" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageWidth="1040" pageHeight="500" math="0" shadow="0">
+    <mxGraphModel dx="800" dy="360" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageWidth="800" pageHeight="360" math="0" shadow="0" background="#ffffff">
       <root>
         <mxCell id="0"/>
         <mxCell id="1" parent="0"/>
 
-        <mxCell id="k8s" value="Kubernetes cluster" style="rounded=1;dashed=1;fillColor=#f4f8ff;strokeColor=#326ce5;verticalAlign=top;align=left;spacingLeft=14;spacingTop=8;fontStyle=1;fontSize=14;fontColor=#326ce5;" vertex="1" parent="1">
-          <mxGeometry x="20" y="40" width="560" height="430" as="geometry"/>
+        <mxCell id="k8s" value="Kubernetes cluster" style="rounded=1;dashed=1;fillColor=#ffffff;strokeColor=#111111;verticalAlign=top;align=left;spacingLeft=14;spacingTop=8;fontStyle=1;fontSize=14;fontColor=#111111;" vertex="1" parent="1">
+          <mxGeometry x="20" y="40" width="390" height="300" as="geometry"/>
         </mxCell>
-        <mxCell id="aws" value="AWS" style="rounded=1;dashed=1;fillColor=#fff8ee;strokeColor=#d97706;verticalAlign=top;align=left;spacingLeft=14;spacingTop=8;fontStyle=1;fontSize=14;fontColor=#d97706;" vertex="1" parent="1">
-          <mxGeometry x="620" y="40" width="400" height="430" as="geometry"/>
-        </mxCell>
-
-        <mxCell id="deploy" value="Deployment  •  RollingUpdate, replicas=N" style="rounded=1;dashed=1;whiteSpace=wrap;html=1;fillColor=#eef3ff;strokeColor=#326ce5;verticalAlign=top;align=left;spacingLeft=14;spacingTop=8;fontStyle=1;fontColor=#2a4a8a;" vertex="1" parent="1">
-          <mxGeometry x="56" y="110" width="464" height="320" as="geometry"/>
-        </mxCell>
-        <mxCell id="leader" value="Pod (leader)&#10;reconcile loop every 5m:&#10;discover &#8594; measure &#8594; ModifyVolume &#8594; wait &#8594; resize &#8594; verify" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#326ce5;strokeWidth=2;verticalAlign=top;spacingTop=10;" vertex="1" parent="1">
-          <mxGeometry x="330" y="160" width="190" height="230" as="geometry"/>
-        </mxCell>
-        <mxCell id="standby" value="Pod (standby)&#10;no reconcile" style="rounded=1;whiteSpace=wrap;html=1;dashed=1;fillColor=#f5f7fa;strokeColor=#8a94a6;" vertex="1" parent="1">
-          <mxGeometry x="86" y="200" width="170" height="150" as="geometry"/>
+        <mxCell id="aws" value="AWS" style="rounded=1;dashed=1;fillColor=#ffffff;strokeColor=#111111;verticalAlign=top;align=left;spacingLeft=14;spacingTop=8;fontStyle=1;fontSize=14;fontColor=#111111;" vertex="1" parent="1">
+          <mxGeometry x="470" y="40" width="300" height="300" as="geometry"/>
         </mxCell>
 
-        <mxCell id="ec2" value="EC2 instance  •  standalone, tag-filtered" style="rounded=1;dashed=1;whiteSpace=wrap;html=1;fillColor=#fff3df;strokeColor=#d97706;verticalAlign=top;align=left;spacingLeft=14;spacingTop=8;fontStyle=1;fontColor=#9a5a08;" vertex="1" parent="1">
-          <mxGeometry x="650" y="110" width="350" height="354" as="geometry"/>
+        <mxCell id="deploy" value="Deployment (replicas=N)" style="rounded=1;dashed=1;whiteSpace=wrap;html=1;fillColor=#f6f6f6;strokeColor=#111111;verticalAlign=top;align=left;spacingLeft=14;spacingTop=8;fontStyle=1;fontColor=#333333;" vertex="1" parent="1">
+          <mxGeometry x="44" y="80" width="346" height="230" as="geometry"/>
         </mxCell>
-        <mxCell id="ssm" value="SSM Agent (runs as root)&#10;executes via RunShellScript:&#10;measure-rootfs.sh  (df)&#10;resize-rootfs.sh  (growpart + resize2fs)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffe9c7;strokeColor=#d97706;verticalAlign=top;spacingTop=10;" vertex="1" parent="1">
-          <mxGeometry x="672" y="160" width="306" height="120" as="geometry"/>
+        <mxCell id="leader" value="Pod (leader)&#10;reconcile every 5m" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#111111;strokeColor=#111111;strokeWidth=2;fontColor=#ffffff;" vertex="1" parent="1">
+          <mxGeometry x="250" y="104" width="120" height="196" as="geometry"/>
         </mxCell>
-        <mxCell id="ebs" value="EBS root volume&#10;grown by ModifyVolume, extended in place" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffe9c7;strokeColor=#d97706;" vertex="1" parent="1">
-          <mxGeometry x="672" y="334" width="306" height="100" as="geometry"/>
+        <mxCell id="standby" value="Pod (standby)" style="rounded=1;whiteSpace=wrap;html=1;dashed=1;fillColor=#dddddd;strokeColor=#999999;fontColor=#555555;" vertex="1" parent="1">
+          <mxGeometry x="64" y="120" width="120" height="80" as="geometry"/>
         </mxCell>
 
-        <mxCell id="e1" value="leader election" style="endArrow=block;html=1;dashed=1;fontSize=11;" edge="1" parent="1" source="standby" target="leader"><mxGeometry relative="1" as="geometry"/></mxCell>
-        <mxCell id="e2" value="ssm:SendCommand&#10;(RunShellScript)" style="endArrow=block;html=1;fontSize=11;" edge="1" parent="1" source="leader" target="ssm"><mxGeometry relative="1" as="geometry"/></mxCell>
-        <mxCell id="e3" value="ec2:Describe / ModifyVolume" style="endArrow=block;html=1;fontSize=11;" edge="1" parent="1" source="leader" target="ebs"><mxGeometry relative="1" as="geometry"/></mxCell>
-        <mxCell id="e4" value="growpart + resize2fs" style="endArrow=block;html=1;fontSize=11;" edge="1" parent="1" source="ssm" target="ebs"><mxGeometry relative="1" as="geometry"/></mxCell>
+        <mxCell id="iam" value="IAM Role" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#111111;strokeColor=#111111;fontColor=#ffffff;" vertex="1" parent="1">
+          <mxGeometry x="510" y="92" width="230" height="40" as="geometry"/>
+        </mxCell>
+        <mxCell id="ec2" value="EC2 instance (standalone)" style="rounded=1;dashed=1;whiteSpace=wrap;html=1;fillColor=#f6f6f6;strokeColor=#111111;verticalAlign=top;align=left;spacingLeft=14;spacingTop=8;fontStyle=1;fontColor=#333333;" vertex="1" parent="1">
+          <mxGeometry x="494" y="150" width="262" height="176" as="geometry"/>
+        </mxCell>
+        <mxCell id="ssm" value="SSM Agent" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#111111;strokeColor=#111111;fontColor=#ffffff;" vertex="1" parent="1">
+          <mxGeometry x="510" y="184" width="230" height="44" as="geometry"/>
+        </mxCell>
+        <mxCell id="ebs" value="EBS root volume" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#111111;strokeColor=#111111;fontColor=#ffffff;" vertex="1" parent="1">
+          <mxGeometry x="510" y="268" width="230" height="44" as="geometry"/>
+        </mxCell>
+
+        <mxCell id="e1" value="leader election" style="edgeStyle=orthogonalEdgeStyle;rounded=0;endArrow=block;html=1;dashed=1;fontSize=10;strokeColor=#111111;fontColor=#333333;labelBackgroundColor=#ffffff;verticalAlign=bottom;exitX=1;exitY=0.5;exitDx=0;exitDy=0;entryX=0;entryY=0.2857;entryDx=0;entryDy=0;" edge="1" parent="1" source="standby" target="leader"><mxGeometry relative="1" as="geometry"><mxPoint x="0" y="-22" as="offset"/></mxGeometry></mxCell>
+        <mxCell id="e0" value="IRSA or EKS Pod Identity" style="edgeStyle=orthogonalEdgeStyle;rounded=0;endArrow=block;html=1;fontSize=10;strokeColor=#111111;fontColor=#333333;labelBackgroundColor=#ffffff;verticalAlign=bottom;exitX=1;exitY=0.0408;exitDx=0;exitDy=0;entryX=0;entryY=0.5;entryDx=0;entryDy=0;" edge="1" parent="1" source="leader" target="iam"><mxGeometry relative="1" as="geometry"><mxPoint x="0" y="-8" as="offset"/></mxGeometry></mxCell>
+        <mxCell id="e2" value="ssm:SendCommand" style="edgeStyle=orthogonalEdgeStyle;rounded=0;endArrow=block;html=1;fontSize=10;strokeColor=#111111;fontColor=#333333;labelBackgroundColor=#ffffff;verticalAlign=bottom;exitX=1;exitY=0.5204;exitDx=0;exitDy=0;entryX=0;entryY=0.5;entryDx=0;entryDy=0;" edge="1" parent="1" source="leader" target="ssm"><mxGeometry relative="1" as="geometry"><mxPoint x="0" y="-8" as="offset"/></mxGeometry></mxCell>
+        <mxCell id="e3" value="ec2:Describe / ModifyVolume" style="edgeStyle=orthogonalEdgeStyle;rounded=0;endArrow=block;html=1;fontSize=10;strokeColor=#111111;fontColor=#333333;labelBackgroundColor=#ffffff;verticalAlign=bottom;exitX=1;exitY=0.949;exitDx=0;exitDy=0;entryX=0;entryY=0.5;entryDx=0;entryDy=0;" edge="1" parent="1" source="leader" target="ebs"><mxGeometry relative="1" as="geometry"><mxPoint x="0" y="-8" as="offset"/></mxGeometry></mxCell>
+        <mxCell id="e4" value="growpart + resize2fs" style="edgeStyle=orthogonalEdgeStyle;rounded=0;endArrow=block;html=1;fontSize=10;strokeColor=#111111;fontColor=#333333;labelBackgroundColor=#ffffff;align=left;exitX=0.5;exitY=1;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;" edge="1" parent="1" source="ssm" target="ebs"><mxGeometry relative="1" as="geometry"><mxPoint x="10" y="0" as="offset"/></mxGeometry></mxCell>
       </root>
     </mxGraphModel>
   </diagram>
