@@ -17,7 +17,7 @@ func TestMetricsObservations(t *testing.T) {
 	m.ObserveResize(true)
 	m.ObserveError("measure")
 	m.ObserveReconcile()
-	m.ObserveUsage("i-1", 73)
+	m.ObserveUsage("i-1", "/dev/xvda", "vol-1", "web-1", 73)
 
 	if got := testutil.ToFloat64(m.resizeTotal.WithLabelValues("success")); got != 2 {
 		t.Errorf("resize success = %v, want 2", got)
@@ -31,7 +31,7 @@ func TestMetricsObservations(t *testing.T) {
 	if got := testutil.ToFloat64(m.reconcileTotal); got != 1 {
 		t.Errorf("reconcile total = %v, want 1", got)
 	}
-	if got := testutil.ToFloat64(m.usage.WithLabelValues("i-1")); got != 73 {
+	if got := testutil.ToFloat64(m.usage.WithLabelValues("i-1", "/dev/xvda", "vol-1", "web-1")); got != 73 {
 		t.Errorf("usage = %v, want 73", got)
 	}
 }

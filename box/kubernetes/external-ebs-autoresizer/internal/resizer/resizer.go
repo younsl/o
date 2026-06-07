@@ -36,7 +36,7 @@ type SSMAPI interface {
 
 // Recorder receives metrics observations. observability.Metrics implements it.
 type Recorder interface {
-	ObserveUsage(instanceID string, percent float64)
+	ObserveUsage(instanceID, device, volumeID, name string, percent float64)
 	ObserveResize(success bool)
 	ObserveError(stage string)
 }
@@ -120,7 +120,7 @@ func (r *Resizer) reconcileInstance(ctx context.Context, inst awsx.Instance) err
 		r.rec.ObserveError("measure")
 		return fmt.Errorf("measure usage: %w", err)
 	}
-	r.rec.ObserveUsage(inst.ID, float64(usage))
+	r.rec.ObserveUsage(inst.ID, inst.RootDeviceName, inst.RootVolumeID, inst.Name, float64(usage))
 	log.Info("measured root usage", "usage_percent", usage, "threshold_percent", r.cfg.UsageThresholdPercent)
 
 	// 2. Decide.

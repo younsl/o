@@ -30,7 +30,7 @@ func NewMetrics() *Metrics {
 		usage: prometheus.NewGaugeVec(prometheus.GaugeOpts{
 			Name: "external_ebs_autoresizer_root_usage_percent",
 			Help: "Most recently measured root filesystem usage percent per instance.",
-		}, []string{"instance_id"}),
+		}, []string{"instance_id", "device", "volume_id", "name"}),
 		resizeTotal: prometheus.NewCounterVec(prometheus.CounterOpts{
 			Name: "external_ebs_autoresizer_resize_total",
 			Help: "Total resize attempts by result.",
@@ -49,8 +49,8 @@ func NewMetrics() *Metrics {
 }
 
 // ObserveUsage records the latest measured usage for an instance.
-func (m *Metrics) ObserveUsage(instanceID string, percent float64) {
-	m.usage.WithLabelValues(instanceID).Set(percent)
+func (m *Metrics) ObserveUsage(instanceID, device, volumeID, name string, percent float64) {
+	m.usage.WithLabelValues(instanceID, device, volumeID, name).Set(percent)
 }
 
 // ObserveResize counts a resize attempt by outcome.

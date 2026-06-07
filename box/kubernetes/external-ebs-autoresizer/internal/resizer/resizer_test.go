@@ -118,7 +118,7 @@ type fakeRecorder struct {
 	errors        []string
 }
 
-func (r *fakeRecorder) ObserveUsage(string, float64) {}
+func (r *fakeRecorder) ObserveUsage(string, string, string, string, float64) {}
 func (r *fakeRecorder) ObserveResize(success bool) {
 	if success {
 		r.resizeSuccess++
