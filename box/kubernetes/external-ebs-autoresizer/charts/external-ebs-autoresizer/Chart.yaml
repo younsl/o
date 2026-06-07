@@ -1,0 +1,19 @@
+apiVersion: v2
+name: external-ebs-autoresizer
+description: Auto-expands the root ext4 filesystem of standalone EC2 instances via EBS ModifyVolume and SSM
+type: application
+version: 0.1.0
+appVersion: "0.1.0"
+keywords:
+  - aws
+  - ec2
+  - ebs
+  - autoscaling
+  - ssm
+home: https://github.com/younsl/o
+sources:
+  - https://github.com/younsl/o/tree/main/box/kubernetes/external-ebs-autoresizer
+maintainers:
+  - name: younsl
+    email: cysl@kakao.com
+    url: https://github.com/younsl

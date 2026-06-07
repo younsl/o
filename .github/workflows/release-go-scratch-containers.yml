@@ -1,0 +1,213 @@
+name: Release Go Scratch Containers
+run-name: "📦 Release go scratch containers (version label change)"
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'box/kubernetes/external-ebs-autoresizer/Dockerfile'
+  workflow_dispatch:
+    inputs:
+      project:
+        description: "Project to release"
+        required: true
+        type: choice
+        options:
+          - external-ebs-autoresizer
+
+env:
+  GO_VERSION: "1.26.4"
+  COVERAGE_MIN: "70"
+
+jobs:
+  # ---------------------------------------------------------------------------
+  # Detect: extract version from Dockerfile label, check GHCR for duplicates,
+  # emit dynamic matrices for downstream jobs.
+  # ---------------------------------------------------------------------------
+  detect:
+    runs-on: ubuntu-24.04
+    permissions:
+      packages: read
+    outputs:
+      has_releases: ${{ steps.gen.outputs.has_releases }}
+      test_matrix: ${{ steps.gen.outputs.test_matrix }}
+      docker_matrix: ${{ steps.gen.outputs.docker_matrix }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Generate release matrices
+        id: gen
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          SELECTED: ${{ inputs.project }}
+        run: |
+          set -euo pipefail
+
+          extract_version() {
+            grep -oP 'org\.opencontainers\.image\.version="\K[^"]+' "$1" || echo ""
+          }
+
+          check_ghcr() {
+            local image="$1" version="$2"
+            local token tags
+            token=$(echo -n "${GH_TOKEN}" | base64)
+            tags=$(curl -sf -H "Authorization: Bearer ${token}" \
+              "https://ghcr.io/v2/${image}/tags/list" 2>/dev/null || echo '{"tags":[]}')
+            if echo "${tags}" | jq -e --arg v "${version}" '.tags // [] | index($v)' > /dev/null 2>&1; then
+              echo "exists"
+            else
+              echo "new"
+            fi
+          }
+
+          # project_name:project_dir
+          PROJECTS=(
+            "external-ebs-autoresizer:external-ebs-autoresizer"
+          )
+
+          TEST_JSON="[]"
+          DOCKER_JSON="[]"
+
+          for entry in "${PROJECTS[@]}"; do
+            IFS=':' read -r project project_dir <<< "${entry}"
+            dockerfile="box/kubernetes/${project_dir}/Dockerfile"
+
+            if [[ -n "${SELECTED}" && "${SELECTED}" != "${project}" ]]; then
+              continue
+            fi
+            if [[ ! -f "${dockerfile}" ]]; then
+              echo "::warning::${dockerfile} not found, skipping"
+              continue
+            fi
+
+            version=$(extract_version "${dockerfile}")
+            if [[ -z "${version}" ]]; then
+              echo "::error::org.opencontainers.image.version not found in ${dockerfile}"
+              continue
+            fi
+
+            status=$(check_ghcr "younsl/${project}" "${version}")
+            if [[ "${status}" == "exists" ]]; then
+              echo "✅ ${project}:${version} already exists on GHCR — skip"
+              continue
+            fi
+            echo "🆕 ${project}:${version} not found on GHCR — will release"
+
+            base_dir="box/kubernetes/${project_dir}"
+            TEST_JSON=$(echo "${TEST_JSON}" | jq -c \
+              --arg project "${project}" --arg base "${base_dir}" \
+              '. + [{project: $project, base_dir: $base}]')
+            DOCKER_JSON=$(echo "${DOCKER_JSON}" | jq -c \
+              --arg project "${project}" --arg base "${base_dir}" \
+              --arg image "younsl/${project}" --arg version "${version}" \
+              '. + [{project: $project, base_dir: $base, image: $image, version: $version}]')
+          done
+
+          HAS_RELEASES="false"
+          if [[ "$(echo "${TEST_JSON}" | jq 'length')" -gt 0 ]]; then
+            HAS_RELEASES="true"
+          fi
+
+          echo "has_releases=${HAS_RELEASES}" >> "$GITHUB_OUTPUT"
+          echo "test_matrix={\"include\":${TEST_JSON}}" >> "$GITHUB_OUTPUT"
+          echo "docker_matrix={\"include\":${DOCKER_JSON}}" >> "$GITHUB_OUTPUT"
+
+  # ---------------------------------------------------------------------------
+  # Test: gofmt check, go vet, race tests, coverage gate (70% minimum)
+  # ---------------------------------------------------------------------------
+  test:
+    needs: detect
+    if: needs.detect.outputs.has_releases == 'true'
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJson(needs.detect.outputs.test_matrix) }}
+    defaults:
+      run:
+        working-directory: ${{ matrix.base_dir }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Setup Go
+        uses: actions/setup-go@v6
+        with:
+          go-version: ${{ env.GO_VERSION }}
+          cache-dependency-path: ${{ matrix.base_dir }}/go.sum
+
+      - name: Check formatting
+        run: |
+          unformatted=$(gofmt -l .)
+          if [ -n "$unformatted" ]; then
+            echo "::error::gofmt needed for:"; echo "$unformatted"; exit 1
+          fi
+
+      - name: Vet
+        run: go vet ./...
+
+      - name: Test with race detector and coverage
+        run: |
+          go test -race -coverprofile=cover.out ./...
+          total=$(go tool cover -func=cover.out | awk '/^total:/ {gsub("%","",$3); print $3}')
+          echo "total coverage: ${total}% (min ${COVERAGE_MIN}%)"
+          awk "BEGIN { exit !(${total} >= ${COVERAGE_MIN}) }" || { echo "::error::coverage below ${COVERAGE_MIN}%"; exit 1; }
+
+  # ---------------------------------------------------------------------------
+  # Build & push Docker image (scratch, multiarch). Cross-compilation happens
+  # inside the builder stage, so no QEMU is needed for the Go build.
+  # ---------------------------------------------------------------------------
+  build-docker:
+    needs: [detect, test]
+    if: needs.detect.outputs.has_releases == 'true'
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+      packages: write
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJson(needs.detect.outputs.docker_matrix) }}
+    env:
+      REGISTRY: ghcr.io
+      IMAGE_NAME: ${{ matrix.image }}
+      VERSION: ${{ matrix.version }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v4
+
+      - name: Login to Container Registry
+        uses: docker/login-action@v4
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Extract metadata
+        id: meta
+        uses: docker/metadata-action@v6
+        with:
+          images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
+          tags: |
+            type=raw,value=${{ env.VERSION }}
+            type=raw,value=latest
+
+      - name: Build and push Docker image
+        uses: docker/build-push-action@v7
+        with:
+          context: ${{ matrix.base_dir }}
+          platforms: linux/amd64,linux/arm64
+          push: true
+          build-args: |
+            VERSION=${{ matrix.version }}
+            COMMIT=${{ github.sha }}
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          provenance: false
+          sbom: false
+          cache-from: type=gha
+          cache-to: type=gha,mode=max

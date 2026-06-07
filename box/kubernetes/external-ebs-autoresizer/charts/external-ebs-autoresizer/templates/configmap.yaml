@@ -1,0 +1,20 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "external-ebs-autoresizer.fullname" . }}
+  labels:
+    {{- include "external-ebs-autoresizer.labels" . | nindent 4 }}
+data:
+  AWS_REGION: {{ .Values.config.region | quote }}
+  TAG_FILTERS: {{ .Values.config.tagFilters | quote }}
+  RECONCILE_INTERVAL: {{ .Values.config.reconcileInterval | quote }}
+  USAGE_THRESHOLD_PERCENT: {{ .Values.config.usageThresholdPercent | quote }}
+  GROW_PERCENT: {{ .Values.config.growPercent | quote }}
+  MAX_VOLUME_SIZE_GIB: {{ .Values.config.maxVolumeSizeGiB | quote }}
+  SSM_COMMAND_TIMEOUT: {{ .Values.config.ssmCommandTimeout | quote }}
+  VOLUME_MODIFY_TIMEOUT: {{ .Values.config.volumeModifyTimeout | quote }}
+  DRY_RUN: {{ .Values.config.dryRun | quote }}
+  LEADER_ELECT: {{ if (include "external-ebs-autoresizer.leaderElectEnabled" .) }}"true"{{ else }}"false"{{ end }}
+  LEASE_NAME: {{ include "external-ebs-autoresizer.fullname" . | quote }}
+  LOG_LEVEL: {{ .Values.config.logLevel | quote }}
+  LOG_FORMAT: {{ .Values.config.logFormat | quote }}

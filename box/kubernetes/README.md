@@ -11,6 +11,8 @@
 
 Go is Kubernetes' default language, but these small, long-running operators and exporters optimize for different axes: image size, memory, and crash behavior at 3am. Statically linked scratch images land at 5–15MB against Go's typical 30–80MB, and binaries idle around 5–10MB RSS — meaningful once the same workload fans out across a DaemonSet or parallel CronJobs. The type system removes an entire class of incidents: Option makes nil pointer panics structurally impossible, Result turns ignored errors into compile errors. No GC pauses plus Tokio's structured cancellation make SIGTERM handling deterministic, so controllers shut down cleanly instead of leaking a reconcile mid-flight.
 
+Exception: `external-ebs-autoresizer` is written in Go (1.26.4), still on scratch and multi-arch. It is the one Go addon here, kept that way for the maturity of the AWS SDK for Go around EC2 and SSM.
+
 ## Implementation Details
 
 - All Rust container images are based on [scratch](https://hub.docker.com/_/scratch) with statically linked binaries built via [cargo-zigbuild](https://github.com/rust-cross/cargo-zigbuild) for simplified cross-compilation, minimal attack surface and image size.

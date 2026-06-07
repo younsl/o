@@ -1,0 +1,18 @@
+{{ include "external-ebs-autoresizer.fullname" . }} is deployed.
+
+Watching instances in region {{ .Values.config.region | default "(unset!)" }}
+matching tags: {{ .Values.config.tagFilters | default "(unset!)" }}
+Reconcile interval: {{ .Values.config.reconcileInterval }}
+Threshold: {{ .Values.config.usageThresholdPercent }}%   Grow: {{ .Values.config.growPercent }}%
+Dry run: {{ .Values.config.dryRun }}
+
+Check status:
+  kubectl -n {{ .Release.Namespace }} logs deploy/{{ include "external-ebs-autoresizer.fullname" . }} -f
+
+{{- if not .Values.serviceAccount.annotations }}
+
+WARNING: serviceAccount.annotations has no eks.amazonaws.com/role-arn set.
+The addon needs an IRSA role with ec2:DescribeInstances, ec2:DescribeVolumes,
+ec2:DescribeVolumesModifications, ec2:ModifyVolume, ssm:SendCommand,
+ssm:GetCommandInvocation, ssm:DescribeInstanceInformation.
+{{- end }}

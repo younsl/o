@@ -1,0 +1,163 @@
+image:
+  # -- (string) Container image registry
+  registry: ghcr.io/younsl
+  # -- (string) Container image repository
+  repository: external-ebs-autoresizer
+  # -- (string) Image tag; defaults to the chart appVersion when empty
+  tag: ""
+  # -- (string) Image pull policy
+  pullPolicy: IfNotPresent
+
+# -- (list) Image pull secrets for private registries
+imagePullSecrets: []
+# -- (string) Override the chart name
+nameOverride: ""
+# -- (string) Override the fully qualified release name
+fullnameOverride: ""
+
+# -- (int) Number of replicas. Setting this above 1 automatically enables leader election so only one replica reconciles.
+replicaCount: 1
+
+# -- (int) Number of old ReplicaSets to retain for rollback
+revisionHistoryLimit: 3
+
+# -- (object) Deployment update strategy
+strategy:
+  type: RollingUpdate
+  rollingUpdate:
+    # -- (string|int) Max Pods created above desired count during an update
+    maxSurge: 25%
+    # -- (string|int) Max Pods unavailable during an update
+    maxUnavailable: 25%
+
+config:
+  # -- (string) AWS region to operate in (required)
+  region: ""
+  # -- (string) Comma-separated Key=Value tag filters selecting target instances (required)
+  tagFilters: ""
+  # -- (string) Reconcile loop interval as a Go duration
+  reconcileInterval: "5m"
+  # -- (int) Root filesystem usage percent that triggers a resize
+  usageThresholdPercent: 80
+  # -- (int) EBS volume growth percent per resize
+  growPercent: 10
+  # -- (int) Maximum volume size in GiB; resizes that would exceed it are skipped
+  maxVolumeSizeGiB: 1000
+  # -- (string) SSM command poll timeout as a Go duration
+  ssmCommandTimeout: "5m"
+  # -- (string) ModifyVolume optimizing-wait timeout as a Go duration
+  volumeModifyTimeout: "10m"
+  # -- (bool) Measure and decide only, never modify resources
+  dryRun: false
+  # -- (string) Log level: debug, info, warn, error
+  logLevel: "info"
+  # -- (string) Log format: json or text
+  logFormat: "json"
+
+# -- (list) Additional environment variables for the container (raw EnvVar entries)
+extraEnv: []
+  # - name: HTTP_PROXY
+  #   value: http://proxy.example.com:3128
+  # - name: MY_SECRET
+  #   valueFrom:
+  #     secretKeyRef:
+  #       name: my-secret
+  #       key: token
+
+# -- (list) Additional envFrom sources for the container (configMapRef/secretRef entries)
+extraEnvFrom: []
+  # - secretRef:
+  #     name: extra-secret
+
+ports:
+  # -- (int) Port serving /healthz and /readyz
+  health: 8080
+  # -- (int) Port serving Prometheus /metrics
+  metrics: 8081
+
+rbac:
+  # -- (bool) Create the Role and RoleBinding granting create/patch on Events for Kubernetes Event publishing
+  create: true
+
+serviceAccount:
+  # -- (bool) Create a ServiceAccount
+  create: true
+  # -- (string) ServiceAccount name; defaults to the chart fullname when empty
+  name: ""
+  # -- (object) ServiceAccount annotations, e.g. the IRSA role ARN
+  annotations: {}
+    # eks.amazonaws.com/role-arn: arn:aws:iam::123456789012:role/external-ebs-autoresizer
+  # -- (bool) Automount the ServiceAccount token
+  automountServiceAccountToken: true
+  # -- (list) Image pull secrets attached to the ServiceAccount, injected into Pods that use it
+  imagePullSecrets: []
+
+service:
+  # -- (bool) Create a Service exposing health and metrics ports
+  enabled: true
+  # -- (string) Service type
+  type: ClusterIP
+  # -- (string) Traffic distribution preference, e.g. PreferClose (requires Kubernetes 1.31+); empty omits the field
+  trafficDistribution: ""
+
+serviceMonitor:
+  # -- (bool) Create a Prometheus Operator ServiceMonitor
+  enabled: false
+  # -- (string) Scrape interval
+  interval: 30s
+  # -- (string) Scrape timeout
+  scrapeTimeout: 10s
+  # -- (object) Extra labels for the ServiceMonitor
+  labels: {}
+
+# -- (object) Pod resource requests and limits
+resources:
+  requests:
+    cpu: 25m
+    memory: 64Mi
+  limits:
+    memory: 128Mi
+
+# -- (list) Container resize policy for in-place vertical scaling (requires Kubernetes 1.27+); empty omits the field
+resizePolicy:
+  - resourceName: cpu
+    restartPolicy: NotRequired
+  - resourceName: memory
+    restartPolicy: NotRequired
+
+# -- (object) Extra annotations for the pod
+podAnnotations: {}
+# -- (object) Extra labels for the pod
+podLabels: {}
+
+# -- (object) Pod-level security context
+podSecurityContext:
+  runAsNonRoot: true
+  runAsUser: 65532
+  runAsGroup: 65532
+  fsGroup: 65532
+  seccompProfile:
+    type: RuntimeDefault
+
+# -- (object) Container-level security context
+securityContext:
+  allowPrivilegeEscalation: false
+  readOnlyRootFilesystem: true
+  capabilities:
+    drop:
+      - ALL
+
+# -- (object) Node selector for pod scheduling
+nodeSelector: {}
+# -- (list) Tolerations for pod scheduling
+tolerations: []
+# -- (object) Affinity rules for pod scheduling
+affinity: {}
+
+# -- (string) Pod DNS policy, e.g. ClusterFirst or None; empty omits the field
+dnsPolicy: ""
+# -- (object) Pod DNS config (used with dnsPolicy None); empty omits the field
+dnsConfig: {}
+
+# -- (list) Additional Kubernetes manifests rendered verbatim
+extraObjects: []
