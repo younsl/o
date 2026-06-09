@@ -84,6 +84,11 @@ commands as a non-root user.
 | `POD_NAME` / `POD_NAMESPACE` / `POD_UID` | (downward API) | Identify the Pod for Kubernetes Events and leader election |
 | `HEALTH_PORT` / `METRICS_PORT` | `8080` / `8081` | Probe and metrics ports |
 | `LOG_LEVEL` / `LOG_FORMAT` | `info` / `json` | Logging |
+| `ALERTMANAGER_ENABLED` | `false` | Enable Alertmanager alerting (requires `ALERTMANAGER_URL`) |
+| `ALERTMANAGER_URL` | (empty) | Alertmanager v2 base URL (e.g. `http://alertmanager:9093`); required when enabled |
+| `ALERTMANAGER_TIMEOUT` | `5s` | Timeout for each alert POST |
+| `ALERTMANAGER_LABELS` | (empty) | `Key=Value,Key2=Value2` static labels merged into every alert for routing |
+| `ALERTMANAGER_NOTIFY_ON` | `success` | Which resize outcomes to alert: `all`, `success`, or `failure` |
 
 All variables have an equivalent `--flag` override.
 
@@ -94,6 +99,25 @@ Each resize attempt emits an Event on the controller's own Pod (`ResizeStarted`,
 `kubectl -n <namespace> get events`. The Pod reference is built from the downward
 API, so the controller only needs create/patch on Events, granted by the chart's
 Role and RoleBinding.
+
+## Alertmanager
+
+Set `ALERTMANAGER_ENABLED=true` and `ALERTMANAGER_URL` to push alerts to an
+Alertmanager v2 endpoint (`POST /api/v2/alerts`) on each resize. A completed
+resize sends an `info` alert
+`EBSRootVolumeAutoresizeCompleted`; a failed resize sends a `warning` alert
+`EBSRootVolumeAutoresizeFailed`. Resize-start is not alerted to avoid noise.
+
+`ALERTMANAGER_NOTIFY_ON` selects which outcomes are sent: `success` (default,
+completed only), `failure` (failed only), or `all`.
+
+Alerts are sent with only a `startsAt` timestamp, so Alertmanager auto-resolves
+them after its configured `resolve_timeout`: each resize is a one-shot event, not
+a long-lived firing alert. Every alert carries `instance_id`, `instance_name`,
+`volume_id`, and `device` labels, plus any static labels from
+`ALERTMANAGER_LABELS` (e.g. `cluster=prod`) for routing, and a `summary`
+annotation. Delivery is best-effort: a failed POST is logged and never blocks or
+fails a reconcile.
 
 ## High availability
 

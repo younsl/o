@@ -21,3 +21,8 @@ data:
   LEASE_NAME: {{ include "external-ebs-autoresizer.fullname" . | quote }}
   LOG_LEVEL: {{ .Values.config.logLevel | quote }}
   LOG_FORMAT: {{ .Values.config.logFormat | quote }}
+  ALERTMANAGER_ENABLED: {{ .Values.config.alertmanager.enabled | quote }}
+  ALERTMANAGER_URL: {{ .Values.config.alertmanager.url | quote }}
+  ALERTMANAGER_TIMEOUT: {{ .Values.config.alertmanager.timeout | quote }}
+  ALERTMANAGER_LABELS: {{ .Values.config.alertmanager.labels | quote }}
+  ALERTMANAGER_NOTIFY_ON: {{ .Values.config.alertmanager.notifyOn | quote }}

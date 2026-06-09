@@ -69,7 +69,28 @@ type Config struct {
 	LeaderElect bool
 	// LeaseName is the coordination.k8s.io Lease used as the leader-election lock.
 	LeaseName string
+	// AlertmanagerEnabled turns on alert notifications. When false (default),
+	// alerting is disabled regardless of the other Alertmanager settings.
+	AlertmanagerEnabled bool
+	// AlertmanagerURL is the base URL of an Alertmanager v2 endpoint (e.g.
+	// http://alertmanager:9093). Required when AlertmanagerEnabled is true.
+	AlertmanagerURL string
+	// AlertmanagerTimeout bounds each alert POST. Defaults to 5s.
+	AlertmanagerTimeout time.Duration
+	// AlertmanagerLabels are static labels merged into every alert for routing
+	// (e.g. cluster=prod). Parsed from "Key=Value,Key2=Value2".
+	AlertmanagerLabels map[string]string
+	// AlertmanagerNotifyOn selects which resize outcomes are alerted: "all",
+	// "success" (default), or "failure".
+	AlertmanagerNotifyOn string
 }
+
+// Alertmanager notify-on policy values.
+const (
+	NotifyOnAll     = "all"
+	NotifyOnSuccess = "success"
+	NotifyOnFailure = "failure"
+)
 
 // Load reads configuration from environment variables, applies flag overrides
 // from args, validates the result, and returns it.
@@ -87,6 +108,10 @@ func Load(args []string) (*Config, error) {
 		return nil, err
 	}
 	ssmPollInterval, err := getEnvDuration("SSM_POLL_INTERVAL", time.Second)
+	if err != nil {
+		return nil, err
+	}
+	alertmanagerTimeout, err := getEnvDuration("ALERTMANAGER_TIMEOUT", 5*time.Second)
 	if err != nil {
 		return nil, err
 	}
@@ -112,9 +137,14 @@ func Load(args []string) (*Config, error) {
 		LeaseName:             getEnv("LEASE_NAME", "external-ebs-autoresizer"),
 		LogLevel:              getEnv("LOG_LEVEL", "info"),
 		LogFormat:             getEnv("LOG_FORMAT", "json"),
+		AlertmanagerEnabled:   getEnvBool("ALERTMANAGER_ENABLED", false),
+		AlertmanagerURL:       getEnv("ALERTMANAGER_URL", ""),
+		AlertmanagerTimeout:   alertmanagerTimeout,
+		AlertmanagerNotifyOn:  getEnv("ALERTMANAGER_NOTIFY_ON", NotifyOnSuccess),
 	}
 
 	var tagFilters string
+	var alertmanagerLabels string
 	fs := flag.NewFlagSet("external-ebs-autoresizer", flag.ContinueOnError)
 	fs.StringVar(&c.Region, "region", c.Region, "AWS region")
 	fs.StringVar(&tagFilters, "tag-filters", getEnv("TAG_FILTERS", ""), "Comma-separated Key=Value tag filters; empty scans all instances")
@@ -132,6 +162,11 @@ func Load(args []string) (*Config, error) {
 	fs.StringVar(&c.LeaseName, "lease-name", c.LeaseName, "Lease name used as the leader-election lock")
 	fs.StringVar(&c.LogLevel, "log-level", c.LogLevel, "Log level: debug, info, warn, error")
 	fs.StringVar(&c.LogFormat, "log-format", c.LogFormat, "Log format: json or text")
+	fs.BoolVar(&c.AlertmanagerEnabled, "alertmanager-enabled", c.AlertmanagerEnabled, "Enable Alertmanager alerting (requires alertmanager-url)")
+	fs.StringVar(&c.AlertmanagerURL, "alertmanager-url", c.AlertmanagerURL, "Alertmanager v2 base URL (e.g. http://alertmanager:9093)")
+	fs.DurationVar(&c.AlertmanagerTimeout, "alertmanager-timeout", c.AlertmanagerTimeout, "Timeout for each Alertmanager POST")
+	fs.StringVar(&alertmanagerLabels, "alertmanager-labels", getEnv("ALERTMANAGER_LABELS", ""), "Comma-separated Key=Value static labels merged into every alert for routing")
+	fs.StringVar(&c.AlertmanagerNotifyOn, "alertmanager-notify-on", c.AlertmanagerNotifyOn, "Which resize outcomes to alert: all, success, or failure")
 	if err := fs.Parse(args); err != nil {
 		return nil, err
 	}
@@ -141,6 +176,15 @@ func Load(args []string) (*Config, error) {
 		return nil, err
 	}
 	c.TagFilters = filters
+
+	alertLabels, err := parseTagFilters(alertmanagerLabels)
+	if err != nil {
+		return nil, fmt.Errorf("invalid ALERTMANAGER_LABELS: %w", err)
+	}
+	c.AlertmanagerLabels = make(map[string]string, len(alertLabels))
+	for _, l := range alertLabels {
+		c.AlertmanagerLabels[l.Key] = l.Value
+	}
 
 	if err := c.validate(); err != nil {
 		return nil, err
@@ -169,6 +213,14 @@ func (c *Config) validate() error {
 	}
 	if c.SSMPollInterval <= 0 {
 		return fmt.Errorf("SSM_POLL_INTERVAL must be greater than 0, got %s", c.SSMPollInterval)
+	}
+	switch c.AlertmanagerNotifyOn {
+	case NotifyOnAll, NotifyOnSuccess, NotifyOnFailure:
+	default:
+		return fmt.Errorf("ALERTMANAGER_NOTIFY_ON must be one of %s, %s, %s, got %q", NotifyOnAll, NotifyOnSuccess, NotifyOnFailure, c.AlertmanagerNotifyOn)
+	}
+	if c.AlertmanagerEnabled && c.AlertmanagerURL == "" {
+		return fmt.Errorf("ALERTMANAGER_URL is required when ALERTMANAGER_ENABLED is true")
 	}
 	return nil
 }

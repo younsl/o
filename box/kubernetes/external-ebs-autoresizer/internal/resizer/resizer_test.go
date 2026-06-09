@@ -5,6 +5,7 @@ import (
 	"errors"
 	"io"
 	"log/slog"
+	"strings"
 	"testing"
 	"time"
 
@@ -137,6 +138,21 @@ func (e *fakeEmitter) Eventf(_, reason, _ string, _ ...any) {
 	e.reasons = append(e.reasons, reason)
 }
 
+// fakeNotifier records the alertname/severity of each alert it receives.
+type fakeNotifier struct {
+	alertnames      []string
+	severities      []string
+	lastLabels      map[string]string
+	lastDescription string
+}
+
+func (n *fakeNotifier) Notify(_ context.Context, severity, alertname, _, description string, labels map[string]string, _ time.Time) {
+	n.alertnames = append(n.alertnames, alertname)
+	n.severities = append(n.severities, severity)
+	n.lastLabels = labels
+	n.lastDescription = description
+}
+
 func baseConfig() *config.Config {
 	return &config.Config{
 		TagFilters:            []config.TagFilter{{Key: "App", Value: "web"}},
@@ -157,7 +173,7 @@ func sampleInstance() awsx.Instance {
 
 func newResizer(t *testing.T, cfg *config.Config, ec2 EC2API, ssm SSMAPI, rec Recorder) *Resizer {
 	t.Helper()
-	return New(cfg, ec2, ssm, rec, nil, discardLogger())
+	return New(cfg, ec2, ssm, rec, nil, nil, discardLogger())
 }
 
 func TestReconcileBelowThreshold(t *testing.T) {
@@ -309,7 +325,7 @@ func reasonsEqual(got, want []string) bool {
 func TestReconcileEmitsStartedAndCompletedEvents(t *testing.T) {
 	ec2 := &fakeEC2{instances: []awsx.Instance{sampleInstance()}}
 	ev := &fakeEmitter{}
-	r := New(baseConfig(), ec2, &fakeSSM{usage: 85}, &fakeRecorder{}, ev, discardLogger())
+	r := New(baseConfig(), ec2, &fakeSSM{usage: 85}, &fakeRecorder{}, ev, nil, discardLogger())
 
 	if _, err := r.Reconcile(context.Background()); err != nil {
 		t.Fatalf("Reconcile error: %v", err)
@@ -323,7 +339,7 @@ func TestReconcileEmitsStartedAndCompletedEvents(t *testing.T) {
 func TestReconcileEmitsFailedEvent(t *testing.T) {
 	ec2 := &fakeEC2{instances: []awsx.Instance{sampleInstance()}, modifyErr: errors.New("nope")}
 	ev := &fakeEmitter{}
-	r := New(baseConfig(), ec2, &fakeSSM{usage: 90}, &fakeRecorder{}, ev, discardLogger())
+	r := New(baseConfig(), ec2, &fakeSSM{usage: 90}, &fakeRecorder{}, ev, nil, discardLogger())
 
 	if _, err := r.Reconcile(context.Background()); err != nil {
 		t.Fatalf("Reconcile should swallow per-instance error, got %v", err)
@@ -334,12 +350,102 @@ func TestReconcileEmitsFailedEvent(t *testing.T) {
 	}
 }
 
+func TestReconcileSendsCompletedAlert(t *testing.T) {
+	ec2 := &fakeEC2{instances: []awsx.Instance{sampleInstance()}}
+	n := &fakeNotifier{}
+	r := New(baseConfig(), ec2, &fakeSSM{usage: 85}, &fakeRecorder{}, nil, n, discardLogger())
+
+	if _, err := r.Reconcile(context.Background()); err != nil {
+		t.Fatalf("Reconcile error: %v", err)
+	}
+	if len(n.alertnames) != 1 || n.alertnames[0] != alertResizeCompleted {
+		t.Errorf("alertnames = %v, want [%s]", n.alertnames, alertResizeCompleted)
+	}
+	if len(n.severities) != 1 || n.severities[0] != severityInfo {
+		t.Errorf("severities = %v, want [%s]", n.severities, severityInfo)
+	}
+	if n.lastLabels["instance_id"] != "i-123" || n.lastLabels["volume_id"] != "vol-123" {
+		t.Errorf("alert labels = %v, missing instance_id/volume_id", n.lastLabels)
+	}
+	// Description must be a sentence carrying the instance ID, device, new size,
+	// and usage. The fake SSM reports a constant usage, so before and after match.
+	for _, want := range []string{"i-123", "/dev/xvda", "110 GiB", "85%"} {
+		if !strings.Contains(n.lastDescription, want) {
+			t.Errorf("description %q missing %q", n.lastDescription, want)
+		}
+	}
+	if strings.Contains(n.lastDescription, "->") {
+		t.Errorf("description %q must be a sentence, not use arrows", n.lastDescription)
+	}
+}
+
+func TestReconcileSendsFailedAlert(t *testing.T) {
+	ec2 := &fakeEC2{instances: []awsx.Instance{sampleInstance()}, modifyErr: errors.New("nope")}
+	n := &fakeNotifier{}
+	r := New(baseConfig(), ec2, &fakeSSM{usage: 90}, &fakeRecorder{}, nil, n, discardLogger())
+
+	if _, err := r.Reconcile(context.Background()); err != nil {
+		t.Fatalf("Reconcile should swallow per-instance error, got %v", err)
+	}
+	if len(n.alertnames) != 1 || n.alertnames[0] != alertResizeFailed {
+		t.Errorf("alertnames = %v, want [%s]", n.alertnames, alertResizeFailed)
+	}
+	if len(n.severities) != 1 || n.severities[0] != severityWarning {
+		t.Errorf("severities = %v, want [%s]", n.severities, severityWarning)
+	}
+}
+
+func TestReconcileNotifyOnFailureSuppressesSuccess(t *testing.T) {
+	cfg := baseConfig()
+	cfg.AlertmanagerNotifyOn = config.NotifyOnFailure
+	ec2 := &fakeEC2{instances: []awsx.Instance{sampleInstance()}}
+	n := &fakeNotifier{}
+	r := New(cfg, ec2, &fakeSSM{usage: 85}, &fakeRecorder{}, nil, n, discardLogger())
+
+	if _, err := r.Reconcile(context.Background()); err != nil {
+		t.Fatalf("Reconcile error: %v", err)
+	}
+	if len(n.alertnames) != 0 {
+		t.Errorf("notify-on=failure sent success alert: %v", n.alertnames)
+	}
+}
+
+func TestReconcileNotifyOnSuccessSuppressesFailure(t *testing.T) {
+	cfg := baseConfig()
+	cfg.AlertmanagerNotifyOn = config.NotifyOnSuccess
+	ec2 := &fakeEC2{instances: []awsx.Instance{sampleInstance()}, modifyErr: errors.New("nope")}
+	n := &fakeNotifier{}
+	r := New(cfg, ec2, &fakeSSM{usage: 90}, &fakeRecorder{}, nil, n, discardLogger())
+
+	if _, err := r.Reconcile(context.Background()); err != nil {
+		t.Fatalf("Reconcile should swallow per-instance error, got %v", err)
+	}
+	if len(n.alertnames) != 0 {
+		t.Errorf("notify-on=success sent failure alert: %v", n.alertnames)
+	}
+}
+
+func TestReconcileDryRunSendsNoAlerts(t *testing.T) {
+	cfg := baseConfig()
+	cfg.DryRun = true
+	ec2 := &fakeEC2{instances: []awsx.Instance{sampleInstance()}}
+	n := &fakeNotifier{}
+	r := New(cfg, ec2, &fakeSSM{usage: 95}, &fakeRecorder{}, nil, n, discardLogger())
+
+	if _, err := r.Reconcile(context.Background()); err != nil {
+		t.Fatalf("Reconcile error: %v", err)
+	}
+	if len(n.alertnames) != 0 {
+		t.Errorf("dry-run sent alerts: %v", n.alertnames)
+	}
+}
+
 func TestReconcileDryRunEmitsNoEvents(t *testing.T) {
 	cfg := baseConfig()
 	cfg.DryRun = true
 	ec2 := &fakeEC2{instances: []awsx.Instance{sampleInstance()}}
 	ev := &fakeEmitter{}
-	r := New(cfg, ec2, &fakeSSM{usage: 95}, &fakeRecorder{}, ev, discardLogger())
+	r := New(cfg, ec2, &fakeSSM{usage: 95}, &fakeRecorder{}, ev, nil, discardLogger())
 
 	if _, err := r.Reconcile(context.Background()); err != nil {
 		t.Fatalf("Reconcile error: %v", err)

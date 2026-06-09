@@ -37,6 +37,35 @@ func TestLoadDefaults(t *testing.T) {
 	if c.LeaseName != "external-ebs-autoresizer" {
 		t.Errorf("LeaseName = %q, want external-ebs-autoresizer", c.LeaseName)
 	}
+	if c.AlertmanagerEnabled {
+		t.Error("AlertmanagerEnabled = true, want false by default")
+	}
+	if c.AlertmanagerURL != "" {
+		t.Errorf("AlertmanagerURL = %q, want empty (alerting disabled by default)", c.AlertmanagerURL)
+	}
+	if c.AlertmanagerTimeout != 5*time.Second {
+		t.Errorf("AlertmanagerTimeout = %s, want 5s", c.AlertmanagerTimeout)
+	}
+	if c.AlertmanagerNotifyOn != NotifyOnSuccess {
+		t.Errorf("AlertmanagerNotifyOn = %q, want %q", c.AlertmanagerNotifyOn, NotifyOnSuccess)
+	}
+}
+
+func TestLoadAlertmanagerLabels(t *testing.T) {
+	t.Setenv("AWS_REGION", "ap-northeast-2")
+	t.Setenv("ALERTMANAGER_URL", "http://alertmanager:9093")
+	t.Setenv("ALERTMANAGER_LABELS", "cluster=prod, env=production")
+
+	c, err := Load(nil)
+	if err != nil {
+		t.Fatalf("Load returned error: %v", err)
+	}
+	if c.AlertmanagerURL != "http://alertmanager:9093" {
+		t.Errorf("AlertmanagerURL = %q", c.AlertmanagerURL)
+	}
+	if c.AlertmanagerLabels["cluster"] != "prod" || c.AlertmanagerLabels["env"] != "production" {
+		t.Errorf("AlertmanagerLabels = %v, want cluster=prod env=production", c.AlertmanagerLabels)
+	}
 }
 
 func TestLoadAllowsEmptyTagFilters(t *testing.T) {
@@ -147,6 +176,8 @@ func TestLoadValidationErrors(t *testing.T) {
 		{"missing region", map[string]string{"TAG_FILTERS": "A=b"}},
 		{"bad threshold", map[string]string{"AWS_REGION": "r", "TAG_FILTERS": "A=b", "USAGE_THRESHOLD_PERCENT": "200"}},
 		{"bad grow", map[string]string{"AWS_REGION": "r", "TAG_FILTERS": "A=b", "GROW_PERCENT": "0"}},
+		{"bad notify-on", map[string]string{"AWS_REGION": "r", "ALERTMANAGER_NOTIFY_ON": "sometimes"}},
+		{"enabled without url", map[string]string{"AWS_REGION": "r", "ALERTMANAGER_ENABLED": "true"}},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

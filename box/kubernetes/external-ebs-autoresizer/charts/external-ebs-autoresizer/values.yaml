@@ -59,6 +59,17 @@ config:
   logLevel: "info"
   # -- (string) Log format: json or text
   logFormat: "json"
+  alertmanager:
+    # -- (bool) Enable Alertmanager alerting on resize outcomes; requires url when true
+    enabled: false
+    # -- (string) Alertmanager v2 base URL, e.g. http://alertmanager-operated.monitoring:9093; required when enabled
+    url: ""
+    # -- (string) Timeout for each Alertmanager POST as a Go duration
+    timeout: "5s"
+    # -- (string) Comma-separated Key=Value static labels merged into every alert for routing (e.g. cluster=prod,env=production)
+    labels: ""
+    # -- (string) Which resize outcomes to alert: all, success, or failure
+    notifyOn: "success"
 
 # -- (list) Additional environment variables for the container (raw EnvVar entries)
 extraEnv: []

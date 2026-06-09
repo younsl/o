@@ -49,6 +49,24 @@ type EventEmitter interface {
 	Eventf(eventType, reason, messageFmt string, args ...any)
 }
 
+// AlertNotifier sends alerts about resize operations to an external sink such
+// as Alertmanager. alertmanager.Client implements it. A nil AlertNotifier
+// disables alerting (e.g. when no Alertmanager URL is configured or during
+// tests). labels carry per-alert identifying labels (instance_id, volume_id,
+// device, instance_name); startsAt is the alert's start time.
+type AlertNotifier interface {
+	Notify(ctx context.Context, severity, alertname, summary, description string, labels map[string]string, startsAt time.Time)
+}
+
+// Alert severities and names used for the alerts sent per resize operation.
+const (
+	severityWarning = "warning"
+	severityInfo    = "info"
+
+	alertResizeFailed    = "EBSRootVolumeAutoresizeFailed"
+	alertResizeCompleted = "EBSRootVolumeAutoresizeCompleted"
+)
+
 // Event types and reasons used for the Kubernetes Events emitted per instance.
 const (
 	eventTypeNormal  = "Normal"
@@ -61,17 +79,19 @@ const (
 
 // Resizer holds dependencies for one reconcile pass.
 type Resizer struct {
-	cfg    *config.Config
-	ec2    EC2API
-	ssm    SSMAPI
-	rec    Recorder
-	events EventEmitter
-	logger *slog.Logger
+	cfg      *config.Config
+	ec2      EC2API
+	ssm      SSMAPI
+	rec      Recorder
+	events   EventEmitter
+	notifier AlertNotifier
+	logger   *slog.Logger
 }
 
-// New constructs a Resizer. events may be nil to disable Kubernetes Events.
-func New(cfg *config.Config, ec2 EC2API, ssm SSMAPI, rec Recorder, events EventEmitter, logger *slog.Logger) *Resizer {
-	return &Resizer{cfg: cfg, ec2: ec2, ssm: ssm, rec: rec, events: events, logger: logger}
+// New constructs a Resizer. events may be nil to disable Kubernetes Events;
+// notifier may be nil to disable Alertmanager alerting.
+func New(cfg *config.Config, ec2 EC2API, ssm SSMAPI, rec Recorder, events EventEmitter, notifier AlertNotifier, logger *slog.Logger) *Resizer {
+	return &Resizer{cfg: cfg, ec2: ec2, ssm: ssm, rec: rec, events: events, notifier: notifier, logger: logger}
 }
 
 // emit publishes a Kubernetes Event when an emitter is configured.
@@ -79,6 +99,44 @@ func (r *Resizer) emit(eventType, reason, messageFmt string, args ...any) {
 	if r.events != nil {
 		r.events.Eventf(eventType, reason, messageFmt, args...)
 	}
+}
+
+// notify sends an alert when a notifier is configured and the resize outcome
+// matches the configured notify-on policy. severityInfo marks a success and
+// severityWarning marks a failure.
+func (r *Resizer) notify(ctx context.Context, severity, alertname, summary, description string, labels map[string]string, startsAt time.Time) {
+	if r.notifier == nil {
+		return
+	}
+	switch r.cfg.AlertmanagerNotifyOn {
+	case config.NotifyOnSuccess:
+		if severity != severityInfo {
+			return
+		}
+	case config.NotifyOnFailure:
+		if severity != severityWarning {
+			return
+		}
+	}
+	r.notifier.Notify(ctx, severity, alertname, summary, description, labels, startsAt)
+}
+
+// alertLabels builds the identifying labels attached to alerts for an instance.
+func alertLabels(inst awsx.Instance) map[string]string {
+	return map[string]string{
+		"instance_id":   inst.ID,
+		"instance_name": inst.Name,
+		"volume_id":     inst.RootVolumeID,
+		"device":        inst.RootDeviceName,
+	}
+}
+
+// failureDescription builds the alert description for a failed resize as a
+// sentence. The volume is not resized on failure, so only the pre-resize usage
+// is reported alongside the failing instance, device, and reason.
+func failureDescription(inst awsx.Instance, usage int, reason string) string {
+	return fmt.Sprintf("Instance %s (%s) device %s failed to autoresize at %d%% root filesystem usage. Cause: %s.",
+		inst.ID, inst.Name, inst.RootDeviceName, usage, reason)
 }
 
 // Reconcile discovers all target instances and processes each one, returning
@@ -180,6 +238,10 @@ func (r *Resizer) reconcileInstance(ctx context.Context, inst awsx.Instance) err
 		r.rec.ObserveResize(false)
 		r.emit(eventTypeWarning, reasonResizeFailed,
 			"ModifyVolume failed for volume %s (device %s on instance %s): %v", inst.RootVolumeID, inst.RootDeviceName, inst.ID, err)
+		r.notify(ctx, severityWarning, alertResizeFailed,
+			"EBS root volume autoresize failed",
+			failureDescription(inst, usage, fmt.Sprintf("ModifyVolume failed: %v", err)),
+			alertLabels(inst), start)
 		return fmt.Errorf("modify volume: %w", err)
 	}
 	log.Info("requested volume modification")
@@ -190,6 +252,10 @@ func (r *Resizer) reconcileInstance(ctx context.Context, inst awsx.Instance) err
 		r.rec.ObserveResize(false)
 		r.emit(eventTypeWarning, reasonResizeFailed,
 			"Volume %s (device %s on instance %s) did not reach optimizing: %v", inst.RootVolumeID, inst.RootDeviceName, inst.ID, err)
+		r.notify(ctx, severityWarning, alertResizeFailed,
+			"EBS root volume autoresize failed",
+			failureDescription(inst, usage, fmt.Sprintf("volume did not reach optimizing: %v", err)),
+			alertLabels(inst), start)
 		return fmt.Errorf("wait for modification: %w", err)
 	}
 	log.Info("volume modification optimizing", "elapsed", time.Since(start).String())
@@ -201,6 +267,10 @@ func (r *Resizer) reconcileInstance(ctx context.Context, inst awsx.Instance) err
 		r.rec.ObserveResize(false)
 		r.emit(eventTypeWarning, reasonResizeFailed,
 			"Resize of root filesystem on device %s failed on instance %s (volume %s now %d GiB): %v", inst.RootDeviceName, inst.ID, inst.RootVolumeID, target, err)
+		r.notify(ctx, severityWarning, alertResizeFailed,
+			"EBS root volume autoresize failed",
+			failureDescription(inst, usage, fmt.Sprintf("filesystem resize failed: %v", err)),
+			alertLabels(inst), start)
 		return fmt.Errorf("resize filesystem: %w", err)
 	}
 	log.Info("filesystem resize completed", "stdout", strings.TrimSpace(res.Stdout))
@@ -216,6 +286,11 @@ func (r *Resizer) reconcileInstance(ctx context.Context, inst awsx.Instance) err
 	r.emit(eventTypeNormal, reasonResizeCompleted,
 		"Resized root filesystem on device %s of instance %s (%s) to %d GiB in %s. Disk usage changed from %d%% to %d%%",
 		inst.RootDeviceName, inst.Name, inst.ID, target, time.Since(start).Round(time.Second), usage, after)
+	r.notify(ctx, severityInfo, alertResizeCompleted,
+		"EBS root volume autoresize completed",
+		fmt.Sprintf("Instance %s (%s) device %s was autoresized to %d GiB. Root filesystem usage changed from %d%% to %d%%.",
+			inst.ID, inst.Name, inst.RootDeviceName, target, usage, after),
+		alertLabels(inst), start)
 	return nil
 }
 

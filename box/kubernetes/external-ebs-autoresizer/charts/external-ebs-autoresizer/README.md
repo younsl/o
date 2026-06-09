@@ -99,6 +99,11 @@ The following table lists the configurable parameters and their default values.
 | config.dryRun | bool | `false` | Measure and decide only, never modify resources |
 | config.logLevel | string | `"info"` | Log level: debug, info, warn, error |
 | config.logFormat | string | `"json"` | Log format: json or text |
+| config.alertmanager.enabled | bool | `false` | Enable Alertmanager alerting on resize outcomes; requires url when true |
+| config.alertmanager.url | string | `""` | Alertmanager v2 base URL, e.g. http://alertmanager-operated.monitoring:9093; required when enabled |
+| config.alertmanager.timeout | string | `"5s"` | Timeout for each Alertmanager POST as a Go duration |
+| config.alertmanager.labels | string | `""` | Comma-separated Key=Value static labels merged into every alert for routing (e.g. cluster=prod,env=production) |
+| config.alertmanager.notifyOn | string | `"success"` | Which resize outcomes to alert: all, success, or failure |
 | extraEnv | list | `[]` | Additional environment variables for the container (raw EnvVar entries) |
 | extraEnvFrom | list | `[]` | Additional envFrom sources for the container (configMapRef/secretRef entries) |
 | ports.health | int | `8080` | Port serving /healthz and /readyz |

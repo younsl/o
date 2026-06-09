@@ -11,6 +11,7 @@ import (
 	"strings"
 	"syscall"
 
+	"github.com/younsl/o/box/kubernetes/external-ebs-autoresizer/internal/alertmanager"
 	"github.com/younsl/o/box/kubernetes/external-ebs-autoresizer/internal/awsx"
 	"github.com/younsl/o/box/kubernetes/external-ebs-autoresizer/internal/config"
 	"github.com/younsl/o/box/kubernetes/external-ebs-autoresizer/internal/controller"
@@ -65,6 +66,17 @@ func main() {
 		logger.Info("POD_NAME unset; Kubernetes Event publishing disabled")
 	}
 
+	// Alertmanager alerting about resize attempts. Disabled unless explicitly
+	// enabled. Keep the interface nil (not a typed nil) when disabled so the
+	// resizer's nil check works.
+	var notifier resizer.AlertNotifier
+	if cfg.AlertmanagerEnabled {
+		notifier = alertmanager.New(cfg.AlertmanagerURL, cfg.AlertmanagerTimeout, cfg.AlertmanagerLabels, logger)
+		logger.Info("Alertmanager alerting enabled", "url", cfg.AlertmanagerURL, "notify_on", cfg.AlertmanagerNotifyOn)
+	} else {
+		logger.Info("Alertmanager alerting disabled")
+	}
+
 	go func() {
 		if err := health.Serve(ctx, cfg.HealthPort); err != nil {
 			logger.Error("health server failed", "error", err)
@@ -76,7 +88,7 @@ func main() {
 		}
 	}()
 
-	rsz := resizer.New(cfg, clients, clients, metrics, emitter, logger)
+	rsz := resizer.New(cfg, clients, clients, metrics, emitter, notifier, logger)
 	health.SetReady(true)
 
 	runLoop := func(ctx context.Context) {
