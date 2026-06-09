@@ -1,6 +1,6 @@
 # external-ebs-autoresizer
 
-![Version: 0.1.0](https://img.shields.io/badge/Version-0.1.0-informational?style=flat-square) ![Type: application](https://img.shields.io/badge/Type-application-informational?style=flat-square) ![AppVersion: 0.1.0](https://img.shields.io/badge/AppVersion-0.1.0-informational?style=flat-square)
+![Version: 0.2.0](https://img.shields.io/badge/Version-0.2.0-informational?style=flat-square) ![Type: application](https://img.shields.io/badge/Type-application-informational?style=flat-square) ![AppVersion: 0.2.0](https://img.shields.io/badge/AppVersion-0.2.0-informational?style=flat-square)
 
 Auto-expands the root filesystem (ext2/3/4 or XFS) of standalone EC2 instances via EBS ModifyVolume and SSM
 
@@ -39,7 +39,7 @@ helm install external-ebs-autoresizer oci://ghcr.io/younsl/charts/external-ebs-a
 Install a specific version:
 
 ```console
-helm install external-ebs-autoresizer oci://ghcr.io/younsl/charts/external-ebs-autoresizer --version 0.1.0
+helm install external-ebs-autoresizer oci://ghcr.io/younsl/charts/external-ebs-autoresizer --version 0.2.0
 ```
 
 ### Install from local chart
@@ -47,7 +47,7 @@ helm install external-ebs-autoresizer oci://ghcr.io/younsl/charts/external-ebs-a
 Download external-ebs-autoresizer chart and install from local directory:
 
 ```console
-helm pull oci://ghcr.io/younsl/charts/external-ebs-autoresizer --untar --version 0.1.0
+helm pull oci://ghcr.io/younsl/charts/external-ebs-autoresizer --untar --version 0.2.0
 helm install external-ebs-autoresizer ./external-ebs-autoresizer
 ```
 
