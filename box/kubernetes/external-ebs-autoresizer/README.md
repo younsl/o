@@ -250,4 +250,6 @@ Observability:
 - Prometheus `/metrics` on `:8081`
 
 See [docs/metrics.md](docs/metrics.md) for the full list of exposed metrics,
-their labels, and example PromQL queries.
+their labels, and example PromQL queries. See
+[docs/alerting.md](docs/alerting.md) for how alerts are pushed to Alertmanager,
+including alert types, labels, the notify-on policy, and routing examples.
