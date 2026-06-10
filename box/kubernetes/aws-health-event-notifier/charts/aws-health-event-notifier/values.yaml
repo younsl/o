@@ -139,9 +139,11 @@ logging:
   # -- (bool) Emit logs as JSON.
   json: true
 
-# In-process filtering applied AFTER EventBridge has already routed events here.
-# Use it for fine-grained dedupe / quieting per environment without changing the
-# EventBridge rule. Empty allow list = allow everything. Deny always wins.
+# In-process filtering applied to events fetched from the AWS Health API.
+# All filter settings below are rendered into a dedicated ConfigMap
+# (<fullname>-filter) and injected via envFrom; a checksum annotation on the
+# Deployment rolls the pods whenever the filter configuration changes.
+# Empty allow list = allow everything. Deny always wins.
 filter:
   # -- (list) Allowed `eventTypeCategory` values. Empty = allow all.
   # One of: issue, scheduledChange, accountNotification, investigation, securityNotification.
@@ -165,6 +167,16 @@ filter:
     # - HEALTH   # meta events from the Health service itself
     # - KAFKA    # silence MSK chatter in dev
     # - VPN      # silence VPN tunnel maintenance notifications
+  # -- (list) Allowed `SERVICE/EVENT_TYPE_CODE` pairs (case-insensitive).
+  # Empty = allow all.
+  allowEventCodes: []
+    # - EC2/AWS_EC2_INSTANCE_RETIREMENT
+  # -- (list) Denied `SERVICE/EVENT_TYPE_CODE` pairs (wins over allow).
+  # Use this to silence one noisy event type while keeping the rest of its
+  # service, e.g. drop VPN redundancy-loss blips but still receive VPN
+  # maintenance.
+  denyEventCodes: []
+    # - VPN/AWS_VPN_REDUNDANCY_LOSS
 
 # -- (object) Extra environment variables to inject into the pod.
 extraEnv: {}

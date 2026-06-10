@@ -23,7 +23,7 @@ The daemon exposes metrics at `GET /metrics` on the admin port
 ## Label values
 
 - `outcome`: `ok` | `error`.
-- `reason` (drop cause): `deny_category` | `deny_service` | `category_not_allowed` | `service_not_allowed` | `cold_start_suppressed`.
+- `reason` (drop cause): `deny_category` | `deny_service` | `deny_event_code` | `category_not_allowed` | `service_not_allowed` | `event_code_not_allowed` | `cold_start_suppressed`.
 - `offset_hours`: the reminder offset that fired (e.g. `24`), from `REMINDER_OFFSETS_HOURS`.
 
 ## Notes

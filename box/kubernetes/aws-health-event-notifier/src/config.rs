@@ -105,6 +105,17 @@ pub struct RunArgs {
     #[arg(long, env = "DENY_SERVICES", value_delimiter = ',', num_args = 0..)]
     pub deny_services: Vec<String>,
 
+    /// Comma-separated `SERVICE/EVENT_TYPE_CODE` pairs to allow
+    /// (case-insensitive). Empty = allow all.
+    #[arg(long, env = "ALLOW_EVENT_CODES", value_delimiter = ',', num_args = 0..)]
+    pub allow_event_codes: Vec<String>,
+
+    /// Comma-separated `SERVICE/EVENT_TYPE_CODE` pairs to deny (wins over
+    /// allow). Drops a specific event type without denying its whole service,
+    /// e.g. `VPN/AWS_VPN_REDUNDANCY_LOSS` while still receiving other VPN events.
+    #[arg(long, env = "DENY_EVENT_CODES", value_delimiter = ',', num_args = 0..)]
+    pub deny_event_codes: Vec<String>,
+
     /// Reminder offsets in hours before `startTime`. Each event whose
     /// `startTime - now` crosses one of these thresholds triggers a Slack
     /// reminder (separate from the initial notification). Empty disables.

@@ -355,8 +355,14 @@ mod tests {
 
     #[test]
     fn minimal_event_is_filterable() {
-        let f = EventFilter::new(&[], &[], &["EC2".into()], &[]);
+        let f = EventFilter::new(&[], &[], &["EC2".into()], &[], &[], &[]);
         assert!(f.evaluate(&minimal_event(&summary())).is_allowed());
+    }
+
+    #[test]
+    fn minimal_event_carries_event_code_for_filtering() {
+        let f = EventFilter::new(&[], &[], &[], &[], &[], &["EC2/CODE".into()]);
+        assert!(!f.evaluate(&minimal_event(&summary())).is_allowed());
     }
 
     mod cycle {
@@ -470,7 +476,7 @@ mod tests {
                 metrics.clone(),
             );
             // Deny the EC2 service so the hydrated event is dropped before publish.
-            let filter = EventFilter::new(&[], &[], &[], &["EC2".into()]);
+            let filter = EventFilter::new(&[], &[], &[], &["EC2".into()], &[], &[]);
             let p = Poller::new(
                 HealthClient::from_client(client, "en"),
                 notifier,

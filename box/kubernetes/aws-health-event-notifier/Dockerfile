@@ -6,7 +6,7 @@ FROM scratch AS runtime
 
 LABEL org.opencontainers.image.title="aws-health-event-notifier" \
       org.opencontainers.image.description="Receives AWS Health events and posts them to Slack" \
-      org.opencontainers.image.version="0.1.0" \
+      org.opencontainers.image.version="0.2.0" \
       org.opencontainers.image.licenses="MIT" \
       org.opencontainers.image.base.name="scratch" \
       org.opencontainers.image.deprecated="false"

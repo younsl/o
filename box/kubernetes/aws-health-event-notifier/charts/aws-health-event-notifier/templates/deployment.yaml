@@ -13,6 +13,9 @@ spec:
       {{- include "ahen.selectorLabels" . | nindent 6 }}
   template:
     metadata:
+      annotations:
+        # Roll the pods whenever the filter ConfigMap content changes.
+        checksum/filter-config: {{ include (print $.Template.BasePath "/configmap.yaml") . | sha256sum }}
       labels:
         {{- include "ahen.selectorLabels" . | nindent 8 }}
     spec:
@@ -30,6 +33,11 @@ spec:
           args:
             - run
             - --admin-addr=0.0.0.0:8081
+          envFrom:
+            # All filter settings (ALLOW_/DENY_ categories, services, event
+            # codes) are managed via this ConfigMap.
+            - configMapRef:
+                name: {{ include "ahen.fullname" . }}-filter
           env:
             - name: POD_NAME
               valueFrom:
@@ -74,22 +82,6 @@ spec:
                 secretKeyRef:
                   name: {{ include "ahen.slackSecretName" . }}
                   key: {{ include "ahen.slackSecretKey" . }}
-            {{- with .Values.filter.allowCategories }}
-            - name: ALLOW_CATEGORIES
-              value: {{ join "," . | quote }}
-            {{- end }}
-            {{- with .Values.filter.denyCategories }}
-            - name: DENY_CATEGORIES
-              value: {{ join "," . | quote }}
-            {{- end }}
-            {{- with .Values.filter.allowServices }}
-            - name: ALLOW_SERVICES
-              value: {{ join "," . | quote }}
-            {{- end }}
-            {{- with .Values.filter.denyServices }}
-            - name: DENY_SERVICES
-              value: {{ join "," . | quote }}
-            {{- end }}
             {{- range $k, $v := .Values.extraEnv }}
             - name: {{ $k }}
               value: {{ $v | quote }}

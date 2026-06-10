@@ -298,6 +298,44 @@ impl HealthClient {
         Ok(out)
     }
 
+    /// Look up which of the given `eventTypeCode` values exist in the AWS
+    /// Health catalog. Returns the matching entries as canonical
+    /// `SERVICE/EVENT_TYPE_CODE` pairs so callers can validate that a
+    /// configured code actually belongs to the service it was written under.
+    pub async fn lookup_event_type_codes(
+        &self,
+        codes: &[String],
+    ) -> anyhow::Result<HashSet<String>> {
+        if codes.is_empty() {
+            return Ok(HashSet::new());
+        }
+        let mut builder = EventTypeFilter::builder();
+        for c in codes.iter().filter(|c| !c.is_empty()) {
+            builder = builder.event_type_codes(c.clone());
+        }
+        let mut stream = self
+            .client
+            .describe_event_types()
+            .filter(builder.build())
+            .into_paginator()
+            .items()
+            .send();
+
+        let mut out = HashSet::new();
+        while let Some(item) = stream.next().await {
+            let et = item.context("describe_event_types page failed")?;
+            if let (Some(service), Some(code)) = (et.service, et.code) {
+                out.insert(format!("{service}/{code}"));
+            }
+        }
+        debug!(
+            queried = codes.len(),
+            matched = out.len(),
+            "looked up event type codes"
+        );
+        Ok(out)
+    }
+
     async fn list_affected(&self, arn: &str) -> anyhow::Result<Vec<AffectedEntity>> {
         let filter = aws_sdk_health::types::EntityFilter::builder()
             .event_arns(arn.to_string())
@@ -488,6 +526,26 @@ mod tests {
             .unwrap();
         assert!(out.contains("EC2"));
         assert!(out.contains("RDS"));
+    }
+
+    #[tokio::test]
+    async fn lookup_event_type_codes_collects_service_code_pairs() {
+        let body = r#"{"eventTypes":[{"service":"VPN","code":"AWS_VPN_REDUNDANCY_LOSS"}]}"#;
+        let (client, _h) = replay_client(vec![body.into()]);
+        let hc = HealthClient::from_client(client, "en");
+        let out = hc
+            .lookup_event_type_codes(&["AWS_VPN_REDUNDANCY_LOSS".into()])
+            .await
+            .unwrap();
+        assert!(out.contains("VPN/AWS_VPN_REDUNDANCY_LOSS"));
+    }
+
+    #[tokio::test]
+    async fn lookup_event_type_codes_empty_input_skips_call() {
+        let (client, _h) = replay_client(vec![]);
+        let hc = HealthClient::from_client(client, "en");
+        let out = hc.lookup_event_type_codes(&[]).await.unwrap();
+        assert!(out.is_empty());
     }
 
     #[tokio::test]

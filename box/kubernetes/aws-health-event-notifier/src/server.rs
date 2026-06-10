@@ -10,7 +10,7 @@ use tokio::task::JoinSet;
 use crate::aws::account::AccountIdentity;
 use crate::aws::health::HealthClient;
 use crate::config::{RunArgs, SlackArgs};
-use crate::filter::{EventFilter, validate_filters};
+use crate::filter::{Catalogs, EventFilter, ServiceEventCode, validate_filters};
 use crate::k8s::client::{K8sEventClient, PodIdentity};
 use crate::notify::{Notifier, SlackOpts};
 use crate::observability::metrics::Metrics;
@@ -31,12 +31,16 @@ pub async fn run(slack_cfg: SlackArgs, run_cfg: RunArgs) -> anyhow::Result<()> {
         &run_cfg.deny_categories,
         &run_cfg.allow_services,
         &run_cfg.deny_services,
+        &run_cfg.allow_event_codes,
+        &run_cfg.deny_event_codes,
     );
     tracing::info!(
         allow_categories = ?run_cfg.allow_categories,
         deny_categories = ?run_cfg.deny_categories,
         allow_services = ?run_cfg.allow_services,
         deny_services = ?run_cfg.deny_services,
+        allow_event_codes = ?run_cfg.allow_event_codes,
+        deny_event_codes = ?run_cfg.deny_event_codes,
         "filter configured"
     );
 
@@ -125,36 +129,60 @@ pub async fn run(slack_cfg: SlackArgs, run_cfg: RunArgs) -> anyhow::Result<()> {
 }
 
 async fn validate_against_catalog(aws: &HealthClient, run_cfg: &RunArgs) -> anyhow::Result<()> {
-    // Query only the service codes the user actually configured, instead of
-    // paginating the full AWS Health catalog (thousands of event types).
-    let mut to_query: Vec<String> = run_cfg
+    // Query only the service codes and event type codes the user actually
+    // configured, instead of paginating the full AWS Health catalog
+    // (thousands of event types).
+    let mut services_to_query: Vec<String> = run_cfg
         .allow_services
         .iter()
         .chain(run_cfg.deny_services.iter())
         .filter(|s| !s.trim().is_empty())
         .map(|s| s.trim().to_string())
         .collect();
-    to_query.sort();
-    to_query.dedup();
+    services_to_query.sort();
+    services_to_query.dedup();
+
+    // Event-code entries are `SERVICE/EVENT_TYPE_CODE` pairs; the catalog
+    // query takes the code part only. Malformed entries are skipped here and
+    // rejected by `validate_filters` below.
+    let mut codes_to_query: Vec<String> = run_cfg
+        .allow_event_codes
+        .iter()
+        .chain(run_cfg.deny_event_codes.iter())
+        .filter_map(|c| ServiceEventCode::parse(c))
+        .map(|p| p.code)
+        .collect();
+    codes_to_query.sort();
+    codes_to_query.dedup();
 
     let started = std::time::Instant::now();
-    let service_catalog = aws
-        .lookup_service_codes(&to_query)
-        .await
-        .context("failed to look up AWS Health service codes for filter validation")?;
+    let catalogs = Catalogs {
+        services: aws
+            .lookup_service_codes(&services_to_query)
+            .await
+            .context("failed to look up AWS Health service codes for filter validation")?,
+        event_codes: aws
+            .lookup_event_type_codes(&codes_to_query)
+            .await
+            .context("failed to look up AWS Health event type codes for filter validation")?,
+    };
     let elapsed_ms = started.elapsed().as_millis();
     let report = validate_filters(
         &run_cfg.allow_categories,
         &run_cfg.deny_categories,
         &run_cfg.allow_services,
         &run_cfg.deny_services,
-        &service_catalog,
+        &run_cfg.allow_event_codes,
+        &run_cfg.deny_event_codes,
+        &catalogs,
     );
 
     tracing::info!(
         elapsed_ms,
-        queried_count = to_query.len(),
-        catalog_size = service_catalog.len(),
+        queried_service_count = services_to_query.len(),
+        queried_event_code_count = codes_to_query.len(),
+        service_catalog_size = catalogs.services.len(),
+        event_code_catalog_size = catalogs.event_codes.len(),
         allow_services_valid_count = report.allow_services.valid.len(),
         allow_services_valid = ?report.allow_services.valid,
         allow_services_invalid_count = report.allow_services.invalid.len(),
@@ -163,7 +191,15 @@ async fn validate_against_catalog(aws: &HealthClient, run_cfg: &RunArgs) -> anyh
         deny_services_valid = ?report.deny_services.valid,
         deny_services_invalid_count = report.deny_services.invalid.len(),
         deny_services_invalid = ?report.deny_services.invalid,
-        "filter service validation result"
+        allow_event_codes_valid_count = report.allow_event_codes.valid.len(),
+        allow_event_codes_valid = ?report.allow_event_codes.valid,
+        allow_event_codes_invalid_count = report.allow_event_codes.invalid.len(),
+        allow_event_codes_invalid = ?report.allow_event_codes.invalid,
+        deny_event_codes_valid_count = report.deny_event_codes.valid.len(),
+        deny_event_codes_valid = ?report.deny_event_codes.valid,
+        deny_event_codes_invalid_count = report.deny_event_codes.invalid.len(),
+        deny_event_codes_invalid = ?report.deny_event_codes.invalid,
+        "filter validation result"
     );
 
     if !report.is_ok() {
@@ -171,10 +207,10 @@ async fn validate_against_catalog(aws: &HealthClient, run_cfg: &RunArgs) -> anyh
         tracing::error!(
             invalid_count = invalid.len(),
             invalid = ?invalid,
-            "filter validation failed: unknown service codes detected, please check service codes again; aborting startup"
+            "filter validation failed: unknown service codes or event type codes detected, please check them again; aborting startup"
         );
         anyhow::bail!(
-            "filter validation failed: {} unknown value(s): {}; please check service codes again",
+            "filter validation failed: {} unknown value(s): {}; please check service codes and event type codes again",
             invalid.len(),
             invalid.join(", ")
         );

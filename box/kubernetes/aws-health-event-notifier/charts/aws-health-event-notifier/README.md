@@ -1,6 +1,6 @@
 # aws-health-event-notifier
 
-![Version: 0.1.0](https://img.shields.io/badge/Version-0.1.0-informational?style=flat-square) ![Type: application](https://img.shields.io/badge/Type-application-informational?style=flat-square) ![AppVersion: 0.1.0](https://img.shields.io/badge/AppVersion-0.1.0-informational?style=flat-square)
+![Version: 0.2.0](https://img.shields.io/badge/Version-0.2.0-informational?style=flat-square) ![Type: application](https://img.shields.io/badge/Type-application-informational?style=flat-square) ![AppVersion: 0.2.0](https://img.shields.io/badge/AppVersion-0.2.0-informational?style=flat-square)
 
 Receives AWS Health events and posts them to Slack
 
@@ -39,7 +39,7 @@ helm install aws-health-event-notifier oci://ghcr.io/younsl/charts/aws-health-ev
 Install a specific version:
 
 ```console
-helm install aws-health-event-notifier oci://ghcr.io/younsl/charts/aws-health-event-notifier --version 0.1.0
+helm install aws-health-event-notifier oci://ghcr.io/younsl/charts/aws-health-event-notifier --version 0.2.0
 ```
 
 ### Install from local chart
@@ -47,7 +47,7 @@ helm install aws-health-event-notifier oci://ghcr.io/younsl/charts/aws-health-ev
 Download aws-health-event-notifier chart and install from local directory:
 
 ```console
-helm pull oci://ghcr.io/younsl/charts/aws-health-event-notifier --untar --version 0.1.0
+helm pull oci://ghcr.io/younsl/charts/aws-health-event-notifier --untar --version 0.2.0
 helm install aws-health-event-notifier ./aws-health-event-notifier
 ```
 
@@ -120,6 +120,8 @@ The following table lists the configurable parameters and their default values.
 | filter.denyCategories | list | `[]` | Denied `eventTypeCategory` values (wins over allow). |
 | filter.allowServices | list | `[]` | Allowed AWS service codes (case-insensitive). Empty = allow all. |
 | filter.denyServices | list | `[]` | Denied AWS service codes (wins over allow). |
+| filter.allowEventCodes | list | `[]` | Allowed `SERVICE/EVENT_TYPE_CODE` pairs (case-insensitive). Empty = allow all. |
+| filter.denyEventCodes | list | `[]` | Denied `SERVICE/EVENT_TYPE_CODE` pairs (wins over allow). Use this to silence one noisy event type while keeping the rest of its service, e.g. drop VPN redundancy-loss blips but still receive VPN maintenance. |
 | extraEnv | object | `{}` | Extra environment variables to inject into the pod. |
 | nodeSelector | object | `{}` | Node selector for pod scheduling. |
 | tolerations | list | `[]` | Tolerations for pod scheduling. |

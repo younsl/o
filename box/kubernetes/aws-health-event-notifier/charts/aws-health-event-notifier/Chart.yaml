@@ -3,8 +3,8 @@ name: aws-health-event-notifier
 description: Receives AWS Health events and posts them to Slack
 type: application
 deprecated: false
-version: 0.1.0
-appVersion: "0.1.0"
+version: 0.2.0
+appVersion: "0.2.0"
 home: https://github.com/younsl/o
 sources:
   - https://github.com/younsl/o/tree/main/box/kubernetes/aws-health-event-notifier
@@ -22,5 +22,7 @@ keywords:
 annotations:
   artifacthub.io/changes: |
     - kind: added
-      description: "Initial release of aws-health-event-notifier Helm chart"
+      description: "Event-type-code filters as SERVICE/EVENT_TYPE_CODE pairs (filter.allowEventCodes, filter.denyEventCodes)"
+    - kind: changed
+      description: "All filter settings moved to a dedicated ConfigMap injected via envFrom, with checksum-based pod rollout on change"
   artifacthub.io/license: MIT
