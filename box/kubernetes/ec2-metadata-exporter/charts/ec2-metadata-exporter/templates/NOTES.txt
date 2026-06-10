@@ -8,7 +8,7 @@ Check status:
 
 Query metrics:
   kubectl -n {{ .Release.Namespace }} port-forward svc/{{ include "ec2-metadata-exporter.fullname" . }} {{ .Values.ports.metrics }}
-  curl -s localhost:{{ .Values.ports.metrics }}/metrics | grep ec2_instance_info
+  curl -s localhost:{{ .Values.ports.metrics }}/metrics | grep ec2_metadata_instance_info
 
 {{- if not .Values.serviceAccount.annotations }}
 

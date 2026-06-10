@@ -8,16 +8,16 @@ and shipped as a statically linked binary on a scratch image.
 
 | Metric | Type | Description |
 |--------|------|-------------|
-| `ec2_instance_info{instance_id, name, private_ip, state}` | Gauge | Always 1. One series per non-terminated instance with a private IP. |
-| `ec2_metadata_exporter_instances` | Gauge | Instance count from the last successful scrape. |
-| `ec2_metadata_exporter_scrape_errors_total` | Counter | EC2 API scrape failures. |
-| `ec2_metadata_exporter_scrape_duration_seconds` | Gauge | Duration of the last scrape. |
-| `ec2_metadata_exporter_last_scrape_success_timestamp_seconds` | Gauge | Unix time of the last successful scrape. |
+| `ec2_metadata_instance_info{instance_id, name, private_ip, instance_type, availability_zone, state}` | Gauge | Always 1. One series per non-terminated instance with a private IP. |
+| `ec2_metadata_instances` | Gauge | Instance count from the last successful scrape. |
+| `ec2_metadata_scrape_errors_total` | Counter | EC2 API scrape failures. |
+| `ec2_metadata_scrape_duration_seconds` | Gauge | Duration of the last scrape. |
+| `ec2_metadata_last_scrape_success_timestamp_seconds` | Gauge | Unix time of the last successful scrape. |
 
 Example output:
 
 ```
-ec2_instance_info{instance_id="i-0abc123",name="web-1",private_ip="10.0.1.10",state="running"} 1
+ec2_metadata_instance_info{instance_id="i-0abc123",name="web-1",private_ip="10.0.1.10",instance_type="m5.large",availability_zone="ap-northeast-2a",state="running"} 1
 ```
 
 The info gauge is fully reset on every refresh, so terminated instances drop
@@ -66,7 +66,7 @@ docker run --rm -p 8081:8081 \
   -e AWS_ACCESS_KEY_ID -e AWS_SECRET_ACCESS_KEY -e AWS_SESSION_TOKEN \
   ghcr.io/younsl/ec2-metadata-exporter:latest
 
-curl -s localhost:8081/metrics | grep ec2_instance_info
+curl -s localhost:8081/metrics | grep ec2_metadata_instance_info
 ```
 
 ## Helm

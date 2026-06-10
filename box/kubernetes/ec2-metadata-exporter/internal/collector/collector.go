@@ -15,10 +15,12 @@ import (
 
 // Instance is the subset of EC2 instance data the exporter publishes.
 type Instance struct {
-	ID        string
-	Name      string
-	PrivateIP string
-	State     string
+	ID               string
+	Name             string
+	PrivateIP        string
+	InstanceType     string
+	AvailabilityZone string
+	State            string
 }
 
 // Collector polls EC2 and keeps the metric registry in sync with the latest
@@ -43,23 +45,23 @@ func New(client ec2.DescribeInstancesAPIClient, logger *slog.Logger) *Collector 
 		logger:   logger,
 		registry: prometheus.NewRegistry(),
 		info: prometheus.NewGaugeVec(prometheus.GaugeOpts{
-			Name: "ec2_instance_info",
-			Help: "EC2 instance metadata. Value is always 1; labels carry the private IP and Name tag.",
-		}, []string{"instance_id", "name", "private_ip", "state"}),
+			Name: "ec2_metadata_instance_info",
+			Help: "EC2 instance metadata. Value is always 1; labels carry the private IP, Name tag, instance type, and availability zone.",
+		}, []string{"instance_id", "name", "private_ip", "instance_type", "availability_zone", "state"}),
 		instances: prometheus.NewGauge(prometheus.GaugeOpts{
-			Name: "ec2_metadata_exporter_instances",
+			Name: "ec2_metadata_instances",
 			Help: "Number of EC2 instances observed in the last successful scrape.",
 		}),
 		scrapeErrors: prometheus.NewCounter(prometheus.CounterOpts{
-			Name: "ec2_metadata_exporter_scrape_errors_total",
+			Name: "ec2_metadata_scrape_errors_total",
 			Help: "Total EC2 API scrape failures.",
 		}),
 		scrapeDuration: prometheus.NewGauge(prometheus.GaugeOpts{
-			Name: "ec2_metadata_exporter_scrape_duration_seconds",
+			Name: "ec2_metadata_scrape_duration_seconds",
 			Help: "Duration of the last EC2 API scrape.",
 		}),
 		lastSuccess: prometheus.NewGauge(prometheus.GaugeOpts{
-			Name: "ec2_metadata_exporter_last_scrape_success_timestamp_seconds",
+			Name: "ec2_metadata_last_scrape_success_timestamp_seconds",
 			Help: "Unix timestamp of the last successful EC2 API scrape.",
 		}),
 	}
@@ -99,7 +101,7 @@ func (c *Collector) refresh(ctx context.Context) {
 
 	c.info.Reset()
 	for _, inst := range instances {
-		c.info.WithLabelValues(inst.ID, inst.Name, inst.PrivateIP, inst.State).Set(1)
+		c.info.WithLabelValues(inst.ID, inst.Name, inst.PrivateIP, inst.InstanceType, inst.AvailabilityZone, inst.State).Set(1)
 	}
 	c.instances.Set(float64(len(instances)))
 	c.lastSuccess.SetToCurrentTime()
@@ -129,15 +131,24 @@ func (c *Collector) describeAll(ctx context.Context) ([]Instance, error) {
 					continue
 				}
 				instances = append(instances, Instance{
-					ID:        aws.ToString(inst.InstanceId),
-					Name:      nameTag(inst.Tags),
-					PrivateIP: aws.ToString(inst.PrivateIpAddress),
-					State:     string(inst.State.Name),
+					ID:               aws.ToString(inst.InstanceId),
+					Name:             nameTag(inst.Tags),
+					PrivateIP:        aws.ToString(inst.PrivateIpAddress),
+					InstanceType:     string(inst.InstanceType),
+					AvailabilityZone: availabilityZone(inst.Placement),
+					State:            string(inst.State.Name),
 				})
 			}
 		}
 	}
 	return instances, nil
+}
+
+func availabilityZone(placement *ec2types.Placement) string {
+	if placement == nil {
+		return ""
+	}
+	return aws.ToString(placement.AvailabilityZone)
 }
 
 func nameTag(tags []ec2types.Tag) string {

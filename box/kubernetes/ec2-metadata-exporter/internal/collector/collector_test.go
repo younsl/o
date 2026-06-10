@@ -35,8 +35,10 @@ func testLogger() *slog.Logger {
 
 func instance(id, name, privateIP string, state ec2types.InstanceStateName) ec2types.Instance {
 	inst := ec2types.Instance{
-		InstanceId: aws.String(id),
-		State:      &ec2types.InstanceState{Name: state},
+		InstanceId:   aws.String(id),
+		InstanceType: ec2types.InstanceTypeM5Large,
+		Placement:    &ec2types.Placement{AvailabilityZone: aws.String("ap-northeast-2a")},
+		State:        &ec2types.InstanceState{Name: state},
 	}
 	if privateIP != "" {
 		inst.PrivateIpAddress = aws.String(privateIP)
@@ -71,10 +73,10 @@ func TestRefreshPublishesInstanceInfo(t *testing.T) {
 	if got := testutil.ToFloat64(c.instances); got != 2 {
 		t.Fatalf("instances gauge = %v, want 2", got)
 	}
-	if got := testutil.ToFloat64(c.info.WithLabelValues("i-aaa", "web-1", "10.0.1.10", "running")); got != 1 {
+	if got := testutil.ToFloat64(c.info.WithLabelValues("i-aaa", "web-1", "10.0.1.10", "m5.large", "ap-northeast-2a", "running")); got != 1 {
 		t.Fatalf("info{i-aaa} = %v, want 1", got)
 	}
-	if got := testutil.ToFloat64(c.info.WithLabelValues("i-bbb", "", "10.0.1.11", "stopped")); got != 1 {
+	if got := testutil.ToFloat64(c.info.WithLabelValues("i-bbb", "", "10.0.1.11", "m5.large", "ap-northeast-2a", "stopped")); got != 1 {
 		t.Fatalf("info{i-bbb} = %v, want 1", got)
 	}
 	if got := testutil.CollectAndCount(c.info); got != 2 {
@@ -98,7 +100,7 @@ func TestRefreshResetsRemovedInstances(t *testing.T) {
 	if got := testutil.CollectAndCount(c.info); got != 1 {
 		t.Fatalf("info series count = %v, want 1 after reset", got)
 	}
-	if got := testutil.ToFloat64(c.info.WithLabelValues("i-new", "new", "10.0.0.2", "running")); got != 1 {
+	if got := testutil.ToFloat64(c.info.WithLabelValues("i-new", "new", "10.0.0.2", "m5.large", "ap-northeast-2a", "running")); got != 1 {
 		t.Fatalf("info{i-new} = %v, want 1", got)
 	}
 }
@@ -128,6 +130,16 @@ func TestRunStopsOnContextCancel(t *testing.T) {
 	case <-done:
 	case <-time.After(5 * time.Second):
 		t.Fatal("Run did not stop after context cancel")
+	}
+}
+
+func TestAvailabilityZone(t *testing.T) {
+	if got := availabilityZone(nil); got != "" {
+		t.Fatalf("availabilityZone(nil) = %q, want empty", got)
+	}
+	p := &ec2types.Placement{AvailabilityZone: aws.String("ap-northeast-2c")}
+	if got := availabilityZone(p); got != "ap-northeast-2c" {
+		t.Fatalf("availabilityZone = %q, want ap-northeast-2c", got)
 	}
 }
 
