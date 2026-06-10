@@ -584,7 +584,7 @@ helm install grafana-dashboards oci://ghcr.io/younsl/charts/grafana-dashboards
 
 ## Release Workflow
 
-### Container images (release-containers.yml)
+### Container images (version label trigger)
 
 Triggered automatically when the `org.opencontainers.image.version` label in a Dockerfile changes on push to `main`:
 
@@ -598,35 +598,45 @@ Triggered automatically when the `org.opencontainers.image.version` label in a D
 # - backstage                         (Node.js, amd64)              — release-containers.yml
 # - logstash-with-opensearch-plugin   (JVM, amd64)                  — release-containers.yml
 # - aurora-database-insights-exporter (Rust scratch+zigbuild)       — _release-rust-scratch-containers.yml
+# - aws-health-event-notifier         (Rust scratch+zigbuild)       — _release-rust-scratch-containers.yml
 # - filesystem-cleaner                (Rust scratch+zigbuild)       — _release-rust-scratch-containers.yml
 # - trivy-collector                   (Rust scratch+zigbuild)       — _release-rust-scratch-containers.yml
 # - gss                               (Rust scratch+zigbuild)       — _release-rust-scratch-containers.yml
 # - kuo                               (Rust scratch+zigbuild)       — _release-rust-scratch-containers.yml
 # - elasticache-backup                (Rust scratch+zigbuild)       — _release-rust-scratch-containers.yml
 # - redis-console                     (Rust alpine in-Docker)       — _release-rust-containers.yml
+# - external-ebs-autoresizer          (Go scratch)                  — release-go-scratch-containers.yml
 ```
 
-### Other releases (tag-based)
+### Helm charts (Chart.yaml version trigger)
+
+Charts are NOT tag-based. `_release-charts.yml` triggers on push to `main` when
+any `box/kubernetes/**/Chart.yaml` changes, and releases the chart to
+`ghcr.io/younsl/charts/{chart}` if that version doesn't already exist on GHCR:
 
 ```bash
-# CLI tool releases (pattern: {tool}/x.y.z)
+# To release a chart, bump `version` in Chart.yaml and push to main.
+# No git tag is required.
+```
+
+### CLI tools (tag-based)
+
+```bash
+# CLI tool releases (pattern: {tool}/x.y.z) — release-rust-cli.yml
 git tag ij/1.0.0 && git push --tags
+```
 
-# Helm chart releases (pattern: {chart}/charts/x.y.z)
-git tag elasticache-backup/charts/1.0.0 && git push --tags
-git tag redis-console/charts/1.0.0 && git push --tags
-git tag kuo/charts/1.0.0 && git push --tags
-git tag trivy-collector/charts/1.0.0 && git push --tags
-git tag gss/charts/1.0.0 && git push --tags
-git tag grafana-dashboards/charts/1.0.0 && git push --tags
+### Workflow inventory
 
-# Available workflows:
-# - release-containers.yml                   (Unified containers release: backstage, logstash — version label trigger)
-# - release-rust-cli.yml                     (Rust CLI release: ij)
-# - _release-rust-containers.yml             (Unified Rust container release: redis-console — version label trigger)
-# - _release-rust-scratch-containers.yml     (Unified Rust scratch+zigbuild container release: aurora-database-insights-exporter, elasticache-backup, filesystem-cleaner, gss, trivy-collector, kuo — version label trigger)
-# - release-helm-chart.yml                   (Unified Helm chart release to OCI registry)
+```bash
+# - release-containers.yml                   (backstage, logstash — version label trigger)
+# - _release-rust-containers.yml             (redis-console — version label trigger)
+# - _release-rust-scratch-containers.yml     (Rust scratch+zigbuild containers — version label trigger)
+# - release-go-scratch-containers.yml        (external-ebs-autoresizer — version label trigger)
+# - _release-charts.yml                      (All Helm charts to OCI registry — Chart.yaml change trigger)
+# - _release-rust-cli.yml                    (Rust CLI release: ij — tag trigger)
 # - clean-workflow-runs.yml                  (Maintenance: cleanup old workflow runs)
+# - deploy-blog.yml                          (Blog deployment to GitHub Pages)
 ```
 
 ## Testing Guidelines
