@@ -1,0 +1,19 @@
+apiVersion: v2
+name: ec2-metadata-exporter
+description: Prometheus exporter that publishes every EC2 instance's private IP and Name tag via the DescribeInstances API
+type: application
+version: 0.1.0
+appVersion: "0.1.0"
+keywords:
+  - aws
+  - ec2
+  - prometheus
+  - exporter
+  - metrics
+home: https://github.com/younsl/o
+sources:
+  - https://github.com/younsl/o/tree/main/box/kubernetes/ec2-metadata-exporter
+maintainers:
+  - name: younsl
+    email: cysl@kakao.com
+    url: https://github.com/younsl

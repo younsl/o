@@ -6,6 +6,7 @@ on:
     branches: [main]
     paths:
       - 'box/kubernetes/external-ebs-autoresizer/Dockerfile'
+      - 'box/kubernetes/ec2-metadata-exporter/Dockerfile'
   workflow_dispatch:
     inputs:
       project:
@@ -14,6 +15,7 @@ on:
         type: choice
         options:
           - external-ebs-autoresizer
+          - ec2-metadata-exporter
 
 env:
   GO_VERSION: "1.26.4"
@@ -64,6 +66,7 @@ jobs:
           # project_name:project_dir
           PROJECTS=(
             "external-ebs-autoresizer:external-ebs-autoresizer"
+            "ec2-metadata-exporter:ec2-metadata-exporter"
           )
 
           TEST_JSON="[]"

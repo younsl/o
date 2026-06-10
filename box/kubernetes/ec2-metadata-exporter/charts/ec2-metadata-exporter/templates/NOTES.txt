@@ -1,0 +1,17 @@
+{{ include "ec2-metadata-exporter.fullname" . }} is deployed.
+
+Region: {{ .Values.config.region | default "(SDK default chain)" }}
+Scrape interval: {{ .Values.config.scrapeInterval }}
+
+Check status:
+  kubectl -n {{ .Release.Namespace }} logs deploy/{{ include "ec2-metadata-exporter.fullname" . }} -f
+
+Query metrics:
+  kubectl -n {{ .Release.Namespace }} port-forward svc/{{ include "ec2-metadata-exporter.fullname" . }} {{ .Values.ports.metrics }}
+  curl -s localhost:{{ .Values.ports.metrics }}/metrics | grep ec2_instance_info
+
+{{- if not .Values.serviceAccount.annotations }}
+
+WARNING: serviceAccount.annotations has no eks.amazonaws.com/role-arn set.
+The exporter needs an IRSA role with ec2:DescribeInstances.
+{{- end }}
