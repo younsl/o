@@ -42,6 +42,7 @@ Most custom plugins ship as `<name>` (frontend) plus `<name>-backend` (backend).
 | Feature | Plugin | Description |
 |---------|--------|-------------|
 | GitLab CI/CD | [`@immobiliarelabs/backstage-plugin-gitlab`](https://www.npmjs.com/package/@immobiliarelabs/backstage-plugin-gitlab) | View pipelines, MRs, releases, README on Entity page |
+| Keycloak Catalog Sync | [`@backstage-community/plugin-catalog-backend-module-keycloak`](https://www.npmjs.com/package/@backstage-community/plugin-catalog-backend-module-keycloak) | Sync Keycloak users/groups into the Backstage catalog |
 | SonarQube | [`@backstage-community/plugin-sonarqube`](https://www.npmjs.com/package/@backstage-community/plugin-sonarqube) | Code quality metrics with auto annotation injection |
 | Simple Icons | [`@dweber019/backstage-plugin-simple-icons`](https://www.npmjs.com/package/@dweber019/backstage-plugin-simple-icons) | Brand icons from [simpleicons.org](https://simpleicons.org/) |
 
