@@ -18,6 +18,7 @@ backend.add(import('@backstage/plugin-auth-backend-module-guest-provider'));
 backend.add(import('@backstage/plugin-auth-backend-module-oidc-provider'));
 
 backend.add(import('@backstage/plugin-catalog-backend'));
+backend.add(import('@backstage-community/plugin-catalog-backend-module-keycloak'));
 backend.add(import('@backstage/plugin-catalog-backend-module-scaffolder-entity-model'));
 
 if (!disableGitlab) {

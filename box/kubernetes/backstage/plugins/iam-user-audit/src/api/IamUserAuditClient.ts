@@ -137,6 +137,9 @@ export class IamUserAuditClient implements IamUserAuditApi {
     title: string;
     image48: string;
     email: string;
+    lookupEmail?: string;
+    recipientSource?: 'owner-tag' | 'iam-user-name' | 'email-domain';
+    ownerRef?: string | null;
   }> {
     const baseUrl = await this.getBaseUrl();
     const response = await this.fetchApi.fetch(

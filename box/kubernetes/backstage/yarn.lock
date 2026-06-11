@@ -3298,6 +3298,25 @@ __metadata:
   languageName: node
   linkType: hard
 
+"@backstage-community/plugin-catalog-backend-module-keycloak@npm:^3.19.3":
+  version: 3.19.3
+  resolution: "@backstage-community/plugin-catalog-backend-module-keycloak@npm:3.19.3"
+  dependencies:
+    "@backstage/backend-plugin-api": "npm:^1.8.0"
+    "@backstage/catalog-model": "npm:^1.7.7"
+    "@backstage/errors": "npm:^1.2.7"
+    "@backstage/plugin-catalog-backend-module-logs": "npm:^0.1.20"
+    "@backstage/plugin-catalog-node": "npm:^2.1.0"
+    "@keycloak/keycloak-admin-client": "npm:26.6.1"
+    "@opentelemetry/api": "npm:^1.9.0"
+    jsonwebtoken: "npm:^9.0.0"
+    lodash: "npm:^4.17.21"
+    p-limit: "npm:^6.1.0"
+    uuid: "npm:^13.0.0"
+  checksum: 10c0/1a485aff08e1fef68bd25bc615b78f603c11b6adab7b47eb3f70e8b5d9a45689198eb66cfa090119ac9563ea54db380f2cc13a75bb8a8a08cf7581171228970f
+  languageName: node
+  linkType: hard
+
 "@backstage-community/plugin-sonarqube-backend@npm:^1.1.0":
   version: 1.1.0
   resolution: "@backstage-community/plugin-sonarqube-backend@npm:1.1.0"
@@ -3631,6 +3650,21 @@ __metadata:
     lodash: "npm:^4.17.21"
     uri-template: "npm:^2.0.0"
   checksum: 10c0/997d4eaa144d5f951d6185c938cb12a270b6050023013cfff4284833b822fa9be58c10a81815b872fa91ce3b9d3aed6757c5cc4c3e8f2e00ab7c31eee690f7fc
+  languageName: node
+  linkType: hard
+
+"@backstage/catalog-client@npm:^1.15.2":
+  version: 1.15.2
+  resolution: "@backstage/catalog-client@npm:1.15.2"
+  dependencies:
+    "@backstage/catalog-model": "npm:^1.9.0"
+    "@backstage/errors": "npm:^1.3.1"
+    "@backstage/filter-predicates": "npm:^0.1.3"
+    "@backstage/plugin-catalog-common": "npm:^1.1.10"
+    cross-fetch: "npm:^4.0.0"
+    lodash: "npm:^4.17.21"
+    uri-template: "npm:^2.0.0"
+  checksum: 10c0/a0b032f67aebb463db8d51b12f117e09cf8227511a5856777209a90a2fed09de8063d7a1a6d8a53b118420e54c63c5eea035feaaa3195b6d2a12687a11fb39dd
   languageName: node
   linkType: hard
 
@@ -5589,6 +5623,17 @@ __metadata:
   languageName: node
   linkType: hard
 
+"@backstage/plugin-catalog-backend-module-logs@npm:^0.1.20":
+  version: 0.1.22
+  resolution: "@backstage/plugin-catalog-backend-module-logs@npm:0.1.22"
+  dependencies:
+    "@backstage/backend-plugin-api": "npm:^1.9.1"
+    "@backstage/plugin-catalog-backend": "npm:^3.7.0"
+    "@backstage/plugin-events-node": "npm:^0.4.22"
+  checksum: 10c0/11c80469f472e19d4be526bcace28748528c3b58376bc4725771dc18a6d63690b74eb0758cfcbe4a1818192e618194479857ac3f23c49ecd41195eea10f53e14
+  languageName: node
+  linkType: hard
+
 "@backstage/plugin-catalog-backend-module-scaffolder-entity-model@npm:^0.2.20":
   version: 0.2.20
   resolution: "@backstage/plugin-catalog-backend-module-scaffolder-entity-model@npm:0.2.20"
@@ -5641,6 +5686,48 @@ __metadata:
     zod: "npm:^3.25.76 || ^4.0.0"
     zod-validation-error: "npm:^4.0.2"
   checksum: 10c0/d68fc711a2a97c644445ad1234408585f483ca41884d1fba55b73e9526ba44a3c81d3df8b4be2d18f61154e8172363183add94aaae8b31dd5e6de47864412239
+  languageName: node
+  linkType: hard
+
+"@backstage/plugin-catalog-backend@npm:^3.7.1":
+  version: 3.7.1
+  resolution: "@backstage/plugin-catalog-backend@npm:3.7.1"
+  dependencies:
+    "@backstage/backend-openapi-utils": "npm:^0.6.9"
+    "@backstage/backend-plugin-api": "npm:^1.9.1"
+    "@backstage/catalog-client": "npm:^1.15.2"
+    "@backstage/catalog-model": "npm:^1.9.0"
+    "@backstage/config": "npm:^1.3.8"
+    "@backstage/errors": "npm:^1.3.1"
+    "@backstage/filter-predicates": "npm:^0.1.3"
+    "@backstage/integration": "npm:^2.0.2"
+    "@backstage/plugin-catalog-common": "npm:^1.1.10"
+    "@backstage/plugin-catalog-node": "npm:^2.2.1"
+    "@backstage/plugin-events-node": "npm:^0.4.22"
+    "@backstage/plugin-permission-common": "npm:^0.9.9"
+    "@backstage/plugin-permission-node": "npm:^0.11.0"
+    "@backstage/types": "npm:^1.2.2"
+    "@opentelemetry/api": "npm:^1.9.0"
+    ajv: "npm:^8.10.0"
+    ajv-errors: "npm:^3.0.0"
+    codeowners-utils: "npm:^1.0.2"
+    core-js: "npm:^3.6.5"
+    express: "npm:^4.22.0"
+    fast-json-stable-stringify: "npm:^2.1.0"
+    fs-extra: "npm:^11.2.0"
+    git-url-parse: "npm:^15.0.0"
+    glob: "npm:^13.0.0"
+    knex: "npm:^3.0.0"
+    lodash: "npm:^4.17.21"
+    luxon: "npm:^3.0.0"
+    minimatch: "npm:^10.2.1"
+    p-limit: "npm:^3.0.2"
+    prom-client: "npm:^15.0.0"
+    yaml: "npm:^2.0.0"
+    yn: "npm:^4.0.0"
+    zod: "npm:^3.25.76 || ^4.0.0"
+    zod-validation-error: "npm:^4.0.2"
+  checksum: 10c0/6b7911d49a199a0f3a78a8b5651cebb10c73499448ea32f5fded0bed48d640aed3bf2a0a8f4ff47a68f318900b557cf7abe8f8a127d6d7a14b1a34222d75c8ad
   languageName: node
   linkType: hard
 
@@ -8677,7 +8764,7 @@ __metadata:
   version: 0.0.0-use.local
   resolution: "@internal/plugin-grafana-dashboard-map-backend@workspace:plugins/grafana-dashboard-map-backend"
   dependencies:
-    "@backstage/backend-defaults": "npm:^0.17.1"
+    "@backstage/backend-defaults": "npm:^0.17.2"
     "@backstage/backend-plugin-api": "npm:^1.9.1"
     "@backstage/cli": "npm:^0.36.2"
     "@backstage/config": "npm:^1.3.8"
@@ -8722,6 +8809,7 @@ __metadata:
     "@aws-sdk/client-iam": "npm:^3.700.0"
     "@aws-sdk/client-sts": "npm:^3.700.0"
     "@backstage/backend-plugin-api": "npm:^1.9.1"
+    "@backstage/catalog-client": "npm:^1.15.2"
     "@backstage/catalog-model": "npm:^1.9.0"
     "@backstage/cli": "npm:^0.36.2"
     "@backstage/config": "npm:^1.3.8"
@@ -8795,9 +8883,9 @@ __metadata:
   version: 0.0.0-use.local
   resolution: "@internal/plugin-openapi-registry-backend@workspace:plugins/openapi-registry-backend"
   dependencies:
-    "@backstage/backend-defaults": "npm:^0.17.1"
+    "@backstage/backend-defaults": "npm:^0.17.2"
     "@backstage/backend-plugin-api": "npm:^1.9.1"
-    "@backstage/catalog-client": "npm:^1.15.1"
+    "@backstage/catalog-client": "npm:^1.15.2"
     "@backstage/catalog-model": "npm:^1.9.0"
     "@backstage/cli": "npm:^0.36.2"
     "@backstage/config": "npm:^1.3.8"
@@ -9759,6 +9847,22 @@ __metadata:
   languageName: node
   linkType: hard
 
+"@keycloak/keycloak-admin-client@npm:26.6.1":
+  version: 26.6.1
+  resolution: "@keycloak/keycloak-admin-client@npm:26.6.1"
+  dependencies:
+    "@microsoft/kiota-abstractions": "npm:^1.0.0-preview.86"
+    "@microsoft/kiota-http-fetchlibrary": "npm:^1.0.0-preview.80"
+    "@microsoft/kiota-serialization-form": "npm:^1.0.0-preview.74"
+    "@microsoft/kiota-serialization-json": "npm:^1.0.0-preview.86"
+    "@microsoft/kiota-serialization-multipart": "npm:^1.0.0-preview.67"
+    "@microsoft/kiota-serialization-text": "npm:^1.0.0-preview.79"
+    camelize-ts: "npm:^3.0.0"
+    url-template: "npm:^3.1.1"
+  checksum: 10c0/f6c58456f480122f5a168d2ab14bfdeae41da4becebaae258eebce3dc19f1a8ce25d8b019f2571526a7d3e0b35f66de91925a203e1d79d55eca4e67d623bf9b3
+  languageName: node
+  linkType: hard
+
 "@keyv/memcache@npm:^2.0.1":
   version: 2.0.2
   resolution: "@keyv/memcache@npm:2.0.2"
@@ -10080,6 +10184,69 @@ __metadata:
   version: 2.0.1
   resolution: "@microsoft/fetch-event-source@npm:2.0.1"
   checksum: 10c0/38c69e9b9990e6cee715c7bbfa2752f943b42575acadb36facf19bb831f1520c469f854277439154258e0e1dc8650cc85038230d1f451e3f6b62e8faeaa1126c
+  languageName: node
+  linkType: hard
+
+"@microsoft/kiota-abstractions@npm:^1.0.0-preview.102, @microsoft/kiota-abstractions@npm:^1.0.0-preview.86":
+  version: 1.0.0-preview.102
+  resolution: "@microsoft/kiota-abstractions@npm:1.0.0-preview.102"
+  dependencies:
+    "@opentelemetry/api": "npm:^1.7.0"
+    "@std-uritemplate/std-uritemplate": "npm:^2.0.0"
+    tinyduration: "npm:^3.3.0"
+    tslib: "npm:^2.6.2"
+  checksum: 10c0/f4b6c1ff81ef1ba0c4882aadee63a54a2ec0e94b47ee048c73bbc8027b9a4bb15688d3a3956f101ef9428c8907cbd4829abfca4fcf6410733003912a75ef9df0
+  languageName: node
+  linkType: hard
+
+"@microsoft/kiota-http-fetchlibrary@npm:^1.0.0-preview.80":
+  version: 1.0.0-preview.102
+  resolution: "@microsoft/kiota-http-fetchlibrary@npm:1.0.0-preview.102"
+  dependencies:
+    "@microsoft/kiota-abstractions": "npm:^1.0.0-preview.102"
+    "@opentelemetry/api": "npm:^1.7.0"
+    tslib: "npm:^2.6.2"
+  checksum: 10c0/5f762f45513b660a755859900ab4be2073cb468acdc3d5df0691f3112dc41fe10c21067c7a3e20dfaa76b16021bee4b39945af1aafeeea6b378882128c0d76bf
+  languageName: node
+  linkType: hard
+
+"@microsoft/kiota-serialization-form@npm:^1.0.0-preview.74":
+  version: 1.0.0-preview.102
+  resolution: "@microsoft/kiota-serialization-form@npm:1.0.0-preview.102"
+  dependencies:
+    "@microsoft/kiota-abstractions": "npm:^1.0.0-preview.102"
+    tslib: "npm:^2.6.2"
+  checksum: 10c0/e8a258a25794e2f724d8e03b6db7146a892407ab4444b8c5d0cfdd9d731e0ddfb98c7c443371dcba1c285058d75e56b969b3f218cceff3757a23bf8dab8d6d13
+  languageName: node
+  linkType: hard
+
+"@microsoft/kiota-serialization-json@npm:^1.0.0-preview.86":
+  version: 1.0.0-preview.102
+  resolution: "@microsoft/kiota-serialization-json@npm:1.0.0-preview.102"
+  dependencies:
+    "@microsoft/kiota-abstractions": "npm:^1.0.0-preview.102"
+    tslib: "npm:^2.6.2"
+  checksum: 10c0/a3a3ad80ad0a10d337a789f81809cb65c583dc568f02bd01a5a5c9c8107ee2747f8d3c7371d2bdcfd8c89620bc0c5e18da0b0aa2765d3db2f86ad213e3523b4a
+  languageName: node
+  linkType: hard
+
+"@microsoft/kiota-serialization-multipart@npm:^1.0.0-preview.67":
+  version: 1.0.0-preview.102
+  resolution: "@microsoft/kiota-serialization-multipart@npm:1.0.0-preview.102"
+  dependencies:
+    "@microsoft/kiota-abstractions": "npm:^1.0.0-preview.102"
+    tslib: "npm:^2.6.2"
+  checksum: 10c0/b8a10043630242f7481e10f2c89391b960ea9ba2462eb999e1426996c4516b9e83717096807ec0943c53b33c11fe4670ba14bd683e1268c6b16216a70159d359
+  languageName: node
+  linkType: hard
+
+"@microsoft/kiota-serialization-text@npm:^1.0.0-preview.79":
+  version: 1.0.0-preview.102
+  resolution: "@microsoft/kiota-serialization-text@npm:1.0.0-preview.102"
+  dependencies:
+    "@microsoft/kiota-abstractions": "npm:^1.0.0-preview.102"
+    tslib: "npm:^2.6.2"
+  checksum: 10c0/61f8ddd2e00a19249332c0545817d8996a2d2d979226123d5eebb56721bf955ed6a12f4149d315f061397996274887d1b21b94264de946d0ef7d5ab0e266f935
   languageName: node
   linkType: hard
 
@@ -11155,6 +11322,13 @@ __metadata:
   version: 1.9.0
   resolution: "@opentelemetry/api@npm:1.9.0"
   checksum: 10c0/9aae2fe6e8a3a3eeb6c1fdef78e1939cf05a0f37f8a4fae4d6bf2e09eb1e06f966ece85805626e01ba5fab48072b94f19b835449e58b6d26720ee19a58298add
+  languageName: node
+  linkType: hard
+
+"@opentelemetry/api@npm:^1.7.0":
+  version: 1.9.1
+  resolution: "@opentelemetry/api@npm:1.9.1"
+  checksum: 10c0/c608485fc8b5a91e1f7e05e843b45b509307456b31cd2ad365933d90813e40ebfedf179f1451c762037e82d7c76aa8500e95d2da3609f640a1206cde5322cd14
   languageName: node
   linkType: hard
 
@@ -16464,6 +16638,13 @@ __metadata:
   languageName: node
   linkType: hard
 
+"@std-uritemplate/std-uritemplate@npm:^2.0.0":
+  version: 2.0.10
+  resolution: "@std-uritemplate/std-uritemplate@npm:2.0.10"
+  checksum: 10c0/a167152e7a34308e85f2272dc6ef0cf1c99170b7d19a552f1d015306570b2a915062a72823abc66530dc403176406e1240420c630c19e4d49323cf2e371c9350
+  languageName: node
+  linkType: hard
+
 "@stoplight/better-ajv-errors@npm:1.0.3":
   version: 1.0.3
   resolution: "@stoplight/better-ajv-errors@npm:1.0.3"
@@ -20022,15 +20203,16 @@ __metadata:
   version: 0.0.0-use.local
   resolution: "backend@workspace:packages/backend"
   dependencies:
+    "@backstage-community/plugin-catalog-backend-module-keycloak": "npm:^3.19.3"
     "@backstage-community/plugin-sonarqube-backend": "npm:^1.1.0"
-    "@backstage/backend-defaults": "npm:^0.17.1"
+    "@backstage/backend-defaults": "npm:^0.17.2"
     "@backstage/backend-plugin-api": "npm:^1.9.1"
     "@backstage/cli": "npm:^0.36.2"
     "@backstage/plugin-app-backend": "npm:^0.5.14"
     "@backstage/plugin-auth-backend": "npm:^0.29.0"
     "@backstage/plugin-auth-backend-module-guest-provider": "npm:^0.2.19"
     "@backstage/plugin-auth-backend-module-oidc-provider": "npm:^0.4.16"
-    "@backstage/plugin-catalog-backend": "npm:^3.7.0"
+    "@backstage/plugin-catalog-backend": "npm:^3.7.1"
     "@backstage/plugin-catalog-backend-module-gitlab": "npm:^0.8.3"
     "@backstage/plugin-catalog-backend-module-gitlab-org": "npm:^0.2.21"
     "@backstage/plugin-catalog-backend-module-scaffolder-entity-model": "npm:^0.2.20"
@@ -20827,6 +21009,13 @@ __metadata:
   version: 6.3.0
   resolution: "camelcase@npm:6.3.0"
   checksum: 10c0/0d701658219bd3116d12da3eab31acddb3f9440790c0792e0d398f0a520a6a4058018e546862b6fba89d7ae990efaeb97da71e1913e9ebf5a8b5621a3d55c710
+  languageName: node
+  linkType: hard
+
+"camelize-ts@npm:^3.0.0":
+  version: 3.0.0
+  resolution: "camelize-ts@npm:3.0.0"
+  checksum: 10c0/879a7a84a1c889eb71b46ad5933107324eeeda0b713367aebe22356e25039636b5ce2f460ff4f302621e3d3ed8b6b0f2bcd8baee5218a8a38ff2b71d2c2a0522
   languageName: node
   linkType: hard
 
@@ -31688,6 +31877,15 @@ __metadata:
   languageName: node
   linkType: hard
 
+"p-limit@npm:^6.1.0":
+  version: 6.2.0
+  resolution: "p-limit@npm:6.2.0"
+  dependencies:
+    yocto-queue: "npm:^1.1.1"
+  checksum: 10c0/448bf55a1776ca1444594d53b3c731e68cdca00d44a6c8df06a2f6e506d5bbd540ebb57b05280f8c8bff992a630ed782a69612473f769a7473495d19e2270166
+  languageName: node
+  linkType: hard
+
 "p-locate@npm:^3.0.0":
   version: 3.0.0
   resolution: "p-locate@npm:3.0.0"
@@ -37046,6 +37244,13 @@ __metadata:
   languageName: node
   linkType: hard
 
+"tinyduration@npm:^3.3.0":
+  version: 3.4.1
+  resolution: "tinyduration@npm:3.4.1"
+  checksum: 10c0/06f0fbf5658c92a07d900208bb0bafad30a4c61cc914fdd72edeb5f02ce9f728eebd986da43b115f2b00d6dde06242a107c018e834db2d3a5ddca37b293a61ba
+  languageName: node
+  linkType: hard
+
 "tinyglobby@npm:^0.2.11, tinyglobby@npm:^0.2.12, tinyglobby@npm:^0.2.15, tinyglobby@npm:^0.2.9":
   version: 0.2.15
   resolution: "tinyglobby@npm:0.2.15"
@@ -38009,6 +38214,13 @@ __metadata:
   languageName: node
   linkType: hard
 
+"url-template@npm:^3.1.1":
+  version: 3.1.1
+  resolution: "url-template@npm:3.1.1"
+  checksum: 10c0/0947f4978665ced04bb0fe456f8a60ca4e1db283ce36da15193ee52c4a5461633dc9b5116ef8cf34bae4a31285ac6e7079f309badf211fe8bd1428d6ac56d28a
+  languageName: node
+  linkType: hard
+
 "url@npm:^0.11.4":
   version: 0.11.4
   resolution: "url@npm:0.11.4"
@@ -38172,6 +38384,15 @@ __metadata:
   bin:
     uuid: dist/esm/bin/uuid
   checksum: 10c0/34aa51b9874ae398c2b799c88a127701408cd581ee89ec3baa53509dd8728cbb25826f2a038f9465f8b7be446f0fbf11558862965b18d21c993684297628d4d3
+  languageName: node
+  linkType: hard
+
+"uuid@npm:^13.0.0":
+  version: 13.0.2
+  resolution: "uuid@npm:13.0.2"
+  bin:
+    uuid: dist-node/bin/uuid
+  checksum: 10c0/32c7ee84fa7c7966cc09b3a1514a752a8e2f609f15c00033fbaedc0255d577d1877b839f11ee537f37e587bbc620bbb98c3b3a1482931b8ed47d79497cd7a7cd
   languageName: node
   linkType: hard
 
@@ -39153,6 +39374,13 @@ __metadata:
   version: 0.1.0
   resolution: "yocto-queue@npm:0.1.0"
   checksum: 10c0/dceb44c28578b31641e13695d200d34ec4ab3966a5729814d5445b194933c096b7ced71494ce53a0e8820685d1d010df8b2422e5bf2cdea7e469d97ffbea306f
+  languageName: node
+  linkType: hard
+
+"yocto-queue@npm:^1.1.1":
+  version: 1.2.2
+  resolution: "yocto-queue@npm:1.2.2"
+  checksum: 10c0/36d4793e9cf7060f9da543baf67c55e354f4862c8d3d34de1a1b1d7c382d44171315cc54abf84d8900b8113d742b830108a1434f4898fb244f9b7e8426d4b8f5
   languageName: node
   linkType: hard
 

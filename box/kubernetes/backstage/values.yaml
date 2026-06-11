@@ -11,7 +11,8 @@
 #   kubectl create secret generic backstage-secrets -n backstage \
 #     --from-literal=GITLAB_TOKEN=glpat-xxxxxxxxxxxx \
 #     --from-literal=SONARQUBE_TOKEN=squ_xxxxxxxxxxxx \
-#     --from-literal=POSTGRES_PASSWORD=your-password
+#     --from-literal=POSTGRES_PASSWORD=your-password \
+#     --from-literal=KEYCLOAK_CATALOG_CLIENT_SECRET=your-client-secret
 # ==============================================================================
 
 backstage:
@@ -29,6 +30,17 @@ backstage:
         secretKeyRef:
           name: backstage-secrets
           key: GITLAB_TOKEN
+    - name: KEYCLOAK_BASE_URL
+      value: "https://keycloak.example.com"
+    - name: KEYCLOAK_REALM
+      value: "my-realm"
+    - name: KEYCLOAK_CATALOG_CLIENT_ID
+      value: "your-keycloak-catalog-client-id"
+    - name: KEYCLOAK_CATALOG_CLIENT_SECRET
+      valueFrom:
+        secretKeyRef:
+          name: backstage-secrets
+          key: KEYCLOAK_CATALOG_CLIENT_SECRET
     - name: POSTGRES_HOST
       value: "{{ .Release.Name }}-postgresql"
     - name: POSTGRES_PORT
@@ -125,6 +137,21 @@ backstage:
                 hours: 1
               timeout:
                 minutes: 5
+        keycloakOrg:
+          yourProviderId:
+            baseUrl: ${KEYCLOAK_BASE_URL}
+            loginRealm: ${KEYCLOAK_REALM}
+            realm: ${KEYCLOAK_REALM}
+            clientId: ${KEYCLOAK_CATALOG_CLIENT_ID}
+            clientSecret: ${KEYCLOAK_CATALOG_CLIENT_SECRET}
+            briefRepresentation: false
+            schedule:
+              frequency:
+                minutes: 30
+              timeout:
+                minutes: 3
+              initialDelay:
+                seconds: 30
       locations:
         - type: file
           target: /app/templates/register-component/template.yaml

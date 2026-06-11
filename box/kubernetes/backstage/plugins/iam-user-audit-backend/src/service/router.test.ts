@@ -24,19 +24,47 @@ const mockStore = {
   updateStatus: jest.fn(),
 };
 
+const mockWarningDmStore = {
+  getLastDmMap: jest.fn().mockResolvedValue({}),
+  recordDm: jest.fn().mockResolvedValue(undefined),
+};
+
+const mockMutedUserStore = {
+  list: jest.fn().mockResolvedValue([]),
+  listUserNames: jest.fn().mockResolvedValue(new Set<string>()),
+  add: jest.fn(),
+  remove: jest.fn(),
+};
+
 const mockIamUserService = {
   resetLoginProfile: jest.fn().mockResolvedValue(undefined),
 };
 
 const mockSlackNotifier = {
+  healthCheck: jest.fn().mockResolvedValue({
+    webhook: { configured: false },
+    bot: { configured: false, valid: false },
+    checkedAt: '2024-01-01T00:00:00Z',
+  }),
+  checkSlackUser: jest.fn().mockResolvedValue(false),
+  lookupSlackUser: jest.fn().mockResolvedValue(null),
   notifyPasswordResetRequest: jest.fn().mockResolvedValue(undefined),
   notifyPasswordResetReview: jest.fn().mockResolvedValue(undefined),
+  sendStatusDm: jest.fn().mockResolvedValue(undefined),
   sendPasswordDm: jest.fn().mockResolvedValue(undefined),
   sendRejectionDm: jest.fn().mockResolvedValue(undefined),
 };
 
 const mockHttpAuth = {
   credentials: jest.fn(),
+};
+
+const mockUserInfo = {
+  getUserInfo: jest.fn(),
+};
+
+const mockOwnerResolver = {
+  resolveSlackRecipient: jest.fn(),
 };
 
 function makeUser(name: string, inactiveDays = 0): IamUserResponse {
@@ -75,6 +103,10 @@ function setAuth(userRef: string) {
   mockHttpAuth.credentials.mockResolvedValue({
     principal: { userEntityRef: userRef },
   });
+  mockUserInfo.getUserInfo.mockResolvedValue({
+    userEntityRef: userRef,
+    ownershipEntityRefs: [userRef],
+  });
 }
 
 function setUnauthenticated() {
@@ -95,9 +127,13 @@ async function createTestApp(configOverrides: Record<string, any> = {}) {
     logger: mockLogger,
     config,
     store: mockStore as any,
+    warningDmStore: mockWarningDmStore as any,
+    mutedUserStore: mockMutedUserStore as any,
     iamUserService: mockIamUserService as any,
     slackNotifier: mockSlackNotifier as any,
     httpAuth: mockHttpAuth as any,
+    userInfo: mockUserInfo as any,
+    ownerResolver: mockOwnerResolver as any,
   });
 
   const app = express();
@@ -116,10 +152,21 @@ describe('iam-user-audit-backend router', () => {
     jest.clearAllMocks();
     mockSlackNotifier.notifyPasswordResetRequest.mockResolvedValue(undefined);
     mockSlackNotifier.notifyPasswordResetReview.mockResolvedValue(undefined);
+    mockSlackNotifier.checkSlackUser.mockResolvedValue(false);
+    mockSlackNotifier.lookupSlackUser.mockResolvedValue(null);
+    mockSlackNotifier.sendStatusDm.mockResolvedValue(undefined);
     mockSlackNotifier.sendPasswordDm.mockResolvedValue(undefined);
     mockSlackNotifier.sendRejectionDm.mockResolvedValue(undefined);
     mockIamUserService.resetLoginProfile.mockResolvedValue(undefined);
     mockStore.listRequests.mockResolvedValue([]);
+    mockWarningDmStore.getLastDmMap.mockResolvedValue({});
+    mockWarningDmStore.recordDm.mockResolvedValue(undefined);
+    mockMutedUserStore.list.mockResolvedValue([]);
+    mockMutedUserStore.listUserNames.mockResolvedValue(new Set<string>());
+    mockOwnerResolver.resolveSlackRecipient.mockImplementation(async (user: IamUserResponse) => ({
+      email: user.userName.includes('@') ? user.userName : `${user.userName}@example.com`,
+      source: user.userName.includes('@') ? 'iam-user-name' : 'email-domain',
+    }));
     mockCache.getUsers.mockReturnValue([]);
   });
 
@@ -172,6 +219,28 @@ describe('iam-user-audit-backend router', () => {
       expect(res.status).toBe(200);
       expect(res.body).toHaveLength(1);
       expect(res.body[0].userName).toBe('johndoe');
+    });
+
+    it('includes IAM users delegated by owner tag for regular user', async () => {
+      setAuth('user:default/younsung.lee');
+      mockUserInfo.getUserInfo.mockResolvedValue({
+        userEntityRef: 'user:default/younsung.lee',
+        ownershipEntityRefs: ['user:default/younsung.lee'],
+      });
+      mockCache.getUsers.mockReturnValue([
+        makeUser('johndoe', 100),
+        {
+          ...makeUser('vendor-support-01', 120),
+          ownerRef: 'user:default/younsung.lee',
+          ownerSource: 'iam-user-tag',
+          ownerTagKey: 'iam-user-audit.plugins.backstage.io/owner',
+        },
+      ]);
+
+      const res = await request(app).get('/users');
+      expect(res.status).toBe(200);
+      expect(res.body).toHaveLength(1);
+      expect(res.body[0].userName).toBe('vendor-support-01');
     });
 
     it('returns 403 when unauthenticated', async () => {
@@ -444,6 +513,65 @@ describe('iam-user-audit-backend router', () => {
 
       const res = await request(app).get('/password-reset/admin-status');
       expect(res.body).toEqual({ isAdmin: false });
+    });
+  });
+
+  describe('owner delegated Slack recipients', () => {
+    it('checks Slack users using delegated owner email when owner tag exists', async () => {
+      setAuth('user:default/admin');
+      const user = {
+        ...makeUser('vendor-support-01', 120),
+        ownerRef: 'user:default/younsung.lee',
+        ownerSource: 'iam-user-tag' as const,
+        ownerTagKey: 'iam-user-audit.plugins.backstage.io/owner',
+      };
+      mockCache.getUsers.mockReturnValue([user]);
+      mockOwnerResolver.resolveSlackRecipient.mockResolvedValue({
+        email: 'younsung.lee@example.com',
+        source: 'owner-tag',
+        ownerRef: 'user:default/younsung.lee',
+      });
+      mockSlackNotifier.checkSlackUser.mockResolvedValue(true);
+
+      const res = await request(app)
+        .post('/admin/check-slack-users')
+        .send({ userNames: ['vendor-support-01'] });
+
+      expect(res.status).toBe(200);
+      expect(res.body).toEqual({ 'vendor-support-01': true });
+      expect(mockOwnerResolver.resolveSlackRecipient).toHaveBeenCalledWith(user);
+      expect(mockSlackNotifier.checkSlackUser).toHaveBeenCalledWith(
+        'younsung.lee@example.com',
+      );
+    });
+
+    it('sends manual status DMs to delegated owner email', async () => {
+      setAuth('user:default/admin');
+      const user = {
+        ...makeUser('vendor-support-01', 120),
+        ownerRef: 'user:default/younsung.lee',
+        ownerSource: 'iam-user-tag' as const,
+        ownerTagKey: 'iam-user-audit.plugins.backstage.io/owner',
+      };
+      mockCache.getUsers.mockReturnValue([user]);
+      mockOwnerResolver.resolveSlackRecipient.mockResolvedValue({
+        email: 'younsung.lee@example.com',
+        source: 'owner-tag',
+        ownerRef: 'user:default/younsung.lee',
+      });
+
+      const res = await request(app)
+        .post('/admin/notify-user')
+        .send({ userName: 'vendor-support-01', message: 'Please check IAM access' });
+
+      expect(res.status).toBe(200);
+      expect(mockSlackNotifier.sendStatusDm).toHaveBeenCalledWith(
+        'younsung.lee@example.com',
+        user,
+        120,
+        'user:default/admin',
+        'Please check IAM access',
+      );
     });
   });
 });

@@ -9,6 +9,9 @@ export interface IamUserResponse {
   userName: string;
   userId: string;
   arn: string;
+  ownerRef?: string | null;
+  ownerSource?: 'iam-user-tag' | null;
+  ownerTagKey?: string | null;
   createDate: string;
   passwordLastUsed: string | null;
   lastActivity: string | null;

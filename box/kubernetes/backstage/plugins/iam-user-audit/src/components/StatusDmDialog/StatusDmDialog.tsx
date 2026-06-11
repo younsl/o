@@ -11,6 +11,9 @@ interface SlackUserInfo {
   title: string;
   image48: string;
   email: string;
+  lookupEmail?: string;
+  recipientSource?: 'owner-tag' | 'iam-user-name' | 'email-domain';
+  ownerRef?: string | null;
 }
 
 interface StatusDmDialogProps {
@@ -119,6 +122,11 @@ export const StatusDmDialog = ({
                   {slackUser.email}
                   {slackUser.title && ` · ${slackUser.title}`}
                 </Text>
+                {slackUser.recipientSource === 'owner-tag' && (
+                  <Text variant="body-x-small" color="success">
+                    Sent to delegated owner {slackUser.ownerRef}
+                  </Text>
+                )}
               </Flex>
             </Flex>
           ) : (

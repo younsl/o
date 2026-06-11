@@ -4,18 +4,24 @@ import {
   ListAccessKeysCommand,
   GetAccessKeyLastUsedCommand,
   GetLoginProfileCommand,
+  ListUserTagsCommand,
   UpdateLoginProfileCommand,
 } from '@aws-sdk/client-iam';
 import { STSClient, AssumeRoleCommand } from '@aws-sdk/client-sts';
 import { Config } from '@backstage/config';
 import { LoggerService } from '@backstage/backend-plugin-api';
 import { IamUserResponse, AccessKeyInfo } from './types';
+import {
+  IAM_USER_OWNER_TAG_KEY,
+  normalizeOwnerRef,
+} from './IamUserOwnerResolver';
 
 export class IamUserService {
   private client: IAMClient;
   private readonly config: Config;
   private readonly logger: LoggerService;
   private credentialExpiry: Date | null = null;
+  private userTagWarningLogged = false;
 
   constructor(options: { config: Config; logger: LoggerService }) {
     this.config = options.config;
@@ -83,6 +89,7 @@ export class IamUserService {
       try {
         const accessKeys = await this.getAccessKeysForUser(user.UserName!);
         const hasConsoleAccess = await this.hasLoginProfile(user.UserName!);
+        const ownerRef = await this.getTaggedOwnerRef(user.UserName!);
 
         const activityDates: Date[] = [];
 
@@ -109,6 +116,9 @@ export class IamUserService {
           userName: user.UserName!,
           userId: user.UserId!,
           arn: user.Arn!,
+          ownerRef,
+          ownerSource: ownerRef ? 'iam-user-tag' : null,
+          ownerTagKey: ownerRef ? IAM_USER_OWNER_TAG_KEY : null,
           createDate: user.CreateDate!.toISOString(),
           passwordLastUsed: user.PasswordLastUsed?.toISOString() ?? null,
           lastActivity: lastActivity?.toISOString() ?? null,
@@ -178,6 +188,45 @@ export class IamUserService {
     }
 
     return keys;
+  }
+
+  private async getTaggedOwnerRef(userName: string): Promise<string | null> {
+    try {
+      let marker: string | undefined;
+      do {
+        const response = await this.client.send(
+          new ListUserTagsCommand({
+            UserName: userName,
+            Marker: marker,
+            MaxItems: 100,
+          }),
+        );
+
+        const tag = response.Tags?.find(
+          t => t.Key === IAM_USER_OWNER_TAG_KEY,
+        );
+        const ownerRef = tag?.Value ? normalizeOwnerRef(tag.Value) : null;
+        if (ownerRef) {
+          return ownerRef;
+        }
+        if (tag?.Value) {
+          this.logger.warn(
+            `Ignoring invalid IAM owner tag for user ${userName}: ${tag.Value}`,
+          );
+        }
+
+        marker = response.IsTruncated ? response.Marker : undefined;
+      } while (marker);
+    } catch (error) {
+      if (!this.userTagWarningLogged) {
+        this.logger.warn(
+          `Failed to list IAM user tags; delegated owner mapping is disabled until permission/config is fixed: ${error}`,
+        );
+        this.userTagWarningLogged = true;
+      }
+    }
+
+    return null;
   }
 
   async resetLoginProfile(

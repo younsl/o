@@ -2,6 +2,7 @@ import {
   coreServices,
   createBackendPlugin,
 } from '@backstage/backend-plugin-api';
+import { CatalogClient } from '@backstage/catalog-client';
 import { createRouter } from './service/router';
 import { IamUserService } from './service/IamUserService';
 import { SlackNotifier } from './service/SlackNotifier';
@@ -9,6 +10,7 @@ import { IamUserCache } from './service/IamUserCache';
 import { PasswordResetStore } from './service/PasswordResetStore';
 import { WarningDmStore } from './service/WarningDmStore';
 import { MutedUserStore } from './service/MutedUserStore';
+import { IamUserOwnerResolver } from './service/IamUserOwnerResolver';
 import { parseExpression } from 'cron-parser';
 
 export const iamUserAuditPlugin = createBackendPlugin({
@@ -22,6 +24,9 @@ export const iamUserAuditPlugin = createBackendPlugin({
         scheduler: coreServices.scheduler,
         database: coreServices.database,
         httpAuth: coreServices.httpAuth,
+        userInfo: coreServices.userInfo,
+        discovery: coreServices.discovery,
+        auth: coreServices.auth,
       },
       async init({
         httpRouter,
@@ -30,6 +35,9 @@ export const iamUserAuditPlugin = createBackendPlugin({
         scheduler,
         database,
         httpAuth,
+        userInfo,
+        discovery,
+        auth,
       }) {
         const enabled =
           config.getOptionalBoolean('app.plugins.iamUserAudit') ?? true;
@@ -46,6 +54,13 @@ export const iamUserAuditPlugin = createBackendPlugin({
           config.getOptionalNumber('iamUserAudit.inactiveDays') ?? 90;
         const iamUserService = new IamUserService({ config, logger });
         const slackNotifier = new SlackNotifier({ config, logger });
+        const catalogClient = new CatalogClient({ discoveryApi: discovery });
+        const ownerResolver = new IamUserOwnerResolver({
+          auth,
+          catalogClient,
+          config,
+          logger,
+        });
         const cache = new IamUserCache();
 
         // Initialize database stores
@@ -64,6 +79,8 @@ export const iamUserAuditPlugin = createBackendPlugin({
           iamUserService,
           slackNotifier,
           httpAuth,
+          userInfo,
+          ownerResolver,
         });
 
         httpRouter.use(router as any);
@@ -163,13 +180,6 @@ export const iamUserAuditPlugin = createBackendPlugin({
         if (botToken) {
           const warningDays =
             config.getOptionalNumber('iamUserAudit.warningDays') ?? 14;
-          const emailDomain = config.getOptionalString('iamUserAudit.slack.emailDomain') ?? '';
-
-          const deriveEmail = (userName: string): string => {
-            if (userName.includes('@')) return userName;
-            if (!emailDomain) return userName;
-            return `${userName}@${emailDomain}`;
-          };
 
           const warningCron =
             config.getOptionalString('iamUserAudit.schedule.warningCron') ??
@@ -208,13 +218,16 @@ export const iamUserAuditPlugin = createBackendPlugin({
                   const alreadySent = await warningDmStore.hasSuccessToday(user.userName);
                   if (alreadySent) continue;
 
-                  const email = deriveEmail(user.userName);
-                  const slackUser = await slackNotifier.lookupSlackUser(email);
+                  const recipient =
+                    await ownerResolver.resolveSlackRecipient(user);
+                  const slackUser = await slackNotifier.lookupSlackUser(
+                    recipient.email,
+                  );
                   if (!slackUser) continue;
 
                   try {
                     await slackNotifier.sendStatusDm(
-                      email,
+                      recipient.email,
                       user,
                       user.inactiveDays,
                       'system',
@@ -226,7 +239,7 @@ export const iamUserAuditPlugin = createBackendPlugin({
                       platform: 'slack',
                       status: 'success',
                     });
-                    logger.info(`[warning-dm] Sent warning DM to ${email} for ${user.userName} (${user.inactiveDays}d inactive)`);
+                    logger.info(`[warning-dm] Sent warning DM to ${recipient.email} for ${user.userName} (${user.inactiveDays}d inactive)`);
                   } catch (err) {
                     await warningDmStore.recordDm({
                       iamUserName: user.userName,
@@ -235,7 +248,7 @@ export const iamUserAuditPlugin = createBackendPlugin({
                       status: 'failed',
                       errorMessage: err instanceof Error ? err.message : String(err),
                     });
-                    logger.warn(`[warning-dm] Failed to send warning DM to ${email}: ${err}`);
+                    logger.warn(`[warning-dm] Failed to send warning DM to ${recipient.email}: ${err}`);
                   }
                 }
               } catch (error) {

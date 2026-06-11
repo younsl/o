@@ -4,6 +4,7 @@ import rateLimit from 'express-rate-limit';
 import {
   HttpAuthService,
   LoggerService,
+  UserInfoService,
 } from '@backstage/backend-plugin-api';
 import { parseEntityRef } from '@backstage/catalog-model';
 import { Config } from '@backstage/config';
@@ -13,6 +14,11 @@ import { SlackNotifier } from './SlackNotifier';
 import { PasswordResetStore } from './PasswordResetStore';
 import { WarningDmStore } from './WarningDmStore';
 import { MutedUserStore } from './MutedUserStore';
+import {
+  canManageIamUser,
+  IamUserIdentity,
+  IamUserOwnerResolver,
+} from './IamUserOwnerResolver';
 import {
   CreatePasswordResetInput,
   MuteUserInput,
@@ -29,6 +35,8 @@ export interface RouterOptions {
   iamUserService: IamUserService;
   slackNotifier: SlackNotifier;
   httpAuth: HttpAuthService;
+  userInfo: UserInfoService;
+  ownerResolver: IamUserOwnerResolver;
 }
 
 export async function createRouter(options: RouterOptions): Promise<Router> {
@@ -42,6 +50,8 @@ export async function createRouter(options: RouterOptions): Promise<Router> {
     iamUserService,
     slackNotifier,
     httpAuth,
+    userInfo,
+    ownerResolver,
   } = options;
 
   const admins = config.getOptionalStringArray('permission.admins') ?? [];
@@ -52,21 +62,38 @@ export async function createRouter(options: RouterOptions): Promise<Router> {
   // Helper: try to extract user identity from request.
   // In dev mode (dangerouslyDisableDefaultAuthPolicy), falls back to guest identity
   // so admin-gated routes can be properly tested.
-  async function tryGetUserRef(req: express.Request): Promise<string | undefined> {
+  async function tryGetUserIdentity(
+    req: express.Request,
+  ): Promise<IamUserIdentity | undefined> {
     try {
       const credentials = await httpAuth.credentials(req as any, { allow: ['user'] });
       const ref = credentials.principal.userEntityRef;
       logger.info(`[auth-debug] userRef=${ref}, isAdmin=${admins.includes(ref)}`);
-      return ref;
+      try {
+        const info = await userInfo.getUserInfo(credentials);
+        return {
+          userRef: info.userEntityRef,
+          ownershipEntityRefs: Array.from(
+            new Set([info.userEntityRef, ...info.ownershipEntityRefs]),
+          ),
+        };
+      } catch (infoError) {
+        logger.warn(`[auth-debug] userInfo failed, using userRef only: ${infoError}`);
+        return { userRef: ref, ownershipEntityRefs: [ref] };
+      }
     } catch (err) {
       if (isDevMode) {
         const guestRef = 'user:development/guest';
         logger.info(`[auth-debug] dev mode fallback: ${guestRef}`);
-        return guestRef;
+        return { userRef: guestRef, ownershipEntityRefs: [guestRef] };
       }
       logger.info(`[auth-debug] credentials failed: ${err}`);
       return undefined;
     }
+  }
+
+  async function tryGetUserRef(req: express.Request): Promise<string | undefined> {
+    return (await tryGetUserIdentity(req))?.userRef;
   }
 
   const router = Router();
@@ -143,7 +170,8 @@ export async function createRouter(options: RouterOptions): Promise<Router> {
   });
 
   router.get('/users', async (req, res) => {
-    const userRef = await tryGetUserRef(req);
+    const identity = await tryGetUserIdentity(req);
+    const userRef = identity?.userRef;
     const allUsers = cache.getUsers();
 
     // Admin or guest → return all users (guest skips IAM name matching)
@@ -162,7 +190,9 @@ export async function createRouter(options: RouterOptions): Promise<Router> {
     // Regular user → filter to own IAM user only
     const entityName = parseEntityRef(userRef).name.toLowerCase();
     const filtered = allUsers.filter(
-      u => u.userName.toLowerCase().split('@')[0] === entityName,
+      u =>
+        u.userName.toLowerCase().split('@')[0] === entityName ||
+        canManageIamUser(u, identity!),
     );
     res.json(filtered);
   });
@@ -385,14 +415,6 @@ export async function createRouter(options: RouterOptions): Promise<Router> {
     });
   });
 
-  const emailDomain = config.getOptionalString('iamUserAudit.slack.emailDomain') ?? '';
-
-  function deriveEmail(userName: string): string {
-    if (userName.includes('@')) return userName;
-    if (!emailDomain) return userName;
-    return `${userName}@${emailDomain}`;
-  }
-
   router.post('/admin/check-slack-users', async (req, res) => {
     try {
       const userRef = await tryGetUserRef(req);
@@ -408,9 +430,14 @@ export async function createRouter(options: RouterOptions): Promise<Router> {
       }
 
       const results: Record<string, boolean> = {};
+      const usersByName = new Map(cache.getUsers().map(u => [u.userName, u]));
       for (const userName of userNames) {
-        const email = deriveEmail(userName);
-        results[userName] = await slackNotifier.checkSlackUser(email);
+        const recipient = await ownerResolver.resolveSlackRecipient(
+          usersByName.get(userName) ?? { userName, ownerRef: null },
+        );
+        results[userName] = await slackNotifier.checkSlackUser(
+          recipient.email,
+        );
       }
 
       res.json(results);
@@ -436,14 +463,24 @@ export async function createRouter(options: RouterOptions): Promise<Router> {
         return;
       }
 
-      const email = deriveEmail(userName);
-      const slackUser = await slackNotifier.lookupSlackUser(email);
+      const user = cache.getUsers().find(u => u.userName === userName);
+      const recipient = await ownerResolver.resolveSlackRecipient(
+        user ?? { userName, ownerRef: null },
+      );
+      const slackUser = await slackNotifier.lookupSlackUser(recipient.email);
       if (!slackUser) {
-        res.status(404).json({ error: `Slack user not found for ${email}` });
+        res.status(404).json({
+          error: `Slack user not found for ${recipient.email}`,
+        });
         return;
       }
 
-      res.json(slackUser);
+      res.json({
+        ...slackUser,
+        lookupEmail: recipient.email,
+        recipientSource: recipient.source,
+        ownerRef: recipient.ownerRef ?? null,
+      });
     } catch (error) {
       logger.error(`Failed to lookup Slack user: ${error}`);
       res.status(500).json({
@@ -473,10 +510,10 @@ export async function createRouter(options: RouterOptions): Promise<Router> {
         return;
       }
 
-      const email = deriveEmail(input.userName);
+      const recipient = await ownerResolver.resolveSlackRecipient(user);
       try {
         await slackNotifier.sendStatusDm(
-          email,
+          recipient.email,
           user,
           user.inactiveDays,
           userRef,

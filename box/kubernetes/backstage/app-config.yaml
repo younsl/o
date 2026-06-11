@@ -103,6 +103,18 @@ catalog:
           frequency: { hours: 1 }
           timeout: { minutes: 5 }
           initialDelay: { seconds: 30 }
+    keycloakOrg:
+      yourProviderId:
+        baseUrl: ${KEYCLOAK_BASE_URL}
+        loginRealm: ${KEYCLOAK_REALM}
+        realm: ${KEYCLOAK_REALM}
+        clientId: ${KEYCLOAK_CATALOG_CLIENT_ID}
+        clientSecret: ${KEYCLOAK_CATALOG_CLIENT_SECRET}
+        briefRepresentation: false
+        schedule:
+          frequency: { minutes: 30 }
+          timeout: { minutes: 3 }
+          initialDelay: { seconds: 30 }
   locations:
     - type: file
       target: ../../templates/register-component/template.yaml

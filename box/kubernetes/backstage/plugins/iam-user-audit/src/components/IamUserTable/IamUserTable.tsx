@@ -255,6 +255,17 @@ export const IamUserTable = ({
                         {mutedMap[user.userName] && (
                           <span className="iam-muted-badge">Muted</span>
                         )}
+                        {user.ownerRef && (
+                          <TooltipTrigger delay={200}>
+                            <span className="iam-owner-badge">Managed</span>
+                            <Tooltip style={{ maxWidth: 320 }}>
+                              Delegated owner from IAM tag{' '}
+                              {user.ownerTagKey ??
+                                'iam-user-audit.plugins.backstage.io/owner'}:{' '}
+                              {user.ownerRef}
+                            </Tooltip>
+                          </TooltipTrigger>
+                        )}
                       </Flex>
                     </div>
 

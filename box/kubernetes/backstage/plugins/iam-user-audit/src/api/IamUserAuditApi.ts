@@ -28,6 +28,9 @@ export interface IamUserAuditApi {
     title: string;
     image48: string;
     email: string;
+    lookupEmail?: string;
+    recipientSource?: 'owner-tag' | 'iam-user-name' | 'email-domain';
+    ownerRef?: string | null;
   }>;
   sendStatusDm(userName: string, message: string): Promise<{ success: boolean }>;
   getWarningDmLogs(userNames: string[]): Promise<Record<string, WarningDmLog | null>>;
