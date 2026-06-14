@@ -5,6 +5,7 @@ import (
 	"errors"
 	"io"
 	"log/slog"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -153,6 +154,19 @@ func (n *fakeNotifier) Notify(_ context.Context, severity, alertname, _, descrip
 	n.lastDescription = description
 }
 
+// fakeAnnotator records the text/tags and region span of each annotation.
+type fakeAnnotator struct {
+	texts    []string
+	lastTags []string
+	regions  []bool // true when end is non-zero (region annotation)
+}
+
+func (a *fakeAnnotator) Annotate(_ context.Context, text string, tags []string, _, end time.Time) {
+	a.texts = append(a.texts, text)
+	a.lastTags = tags
+	a.regions = append(a.regions, !end.IsZero())
+}
+
 func baseConfig() *config.Config {
 	return &config.Config{
 		TagFilters:            []config.TagFilter{{Key: "App", Value: "web"}},
@@ -173,7 +187,7 @@ func sampleInstance() awsx.Instance {
 
 func newResizer(t *testing.T, cfg *config.Config, ec2 EC2API, ssm SSMAPI, rec Recorder) *Resizer {
 	t.Helper()
-	return New(cfg, ec2, ssm, rec, nil, nil, discardLogger())
+	return New(cfg, ec2, ssm, rec, nil, nil, nil, discardLogger())
 }
 
 func TestReconcileBelowThreshold(t *testing.T) {
@@ -325,7 +339,7 @@ func reasonsEqual(got, want []string) bool {
 func TestReconcileEmitsStartedAndCompletedEvents(t *testing.T) {
 	ec2 := &fakeEC2{instances: []awsx.Instance{sampleInstance()}}
 	ev := &fakeEmitter{}
-	r := New(baseConfig(), ec2, &fakeSSM{usage: 85}, &fakeRecorder{}, ev, nil, discardLogger())
+	r := New(baseConfig(), ec2, &fakeSSM{usage: 85}, &fakeRecorder{}, ev, nil, nil, discardLogger())
 
 	if _, err := r.Reconcile(context.Background()); err != nil {
 		t.Fatalf("Reconcile error: %v", err)
@@ -339,7 +353,7 @@ func TestReconcileEmitsStartedAndCompletedEvents(t *testing.T) {
 func TestReconcileEmitsFailedEvent(t *testing.T) {
 	ec2 := &fakeEC2{instances: []awsx.Instance{sampleInstance()}, modifyErr: errors.New("nope")}
 	ev := &fakeEmitter{}
-	r := New(baseConfig(), ec2, &fakeSSM{usage: 90}, &fakeRecorder{}, ev, nil, discardLogger())
+	r := New(baseConfig(), ec2, &fakeSSM{usage: 90}, &fakeRecorder{}, ev, nil, nil, discardLogger())
 
 	if _, err := r.Reconcile(context.Background()); err != nil {
 		t.Fatalf("Reconcile should swallow per-instance error, got %v", err)
@@ -353,7 +367,7 @@ func TestReconcileEmitsFailedEvent(t *testing.T) {
 func TestReconcileSendsCompletedAlert(t *testing.T) {
 	ec2 := &fakeEC2{instances: []awsx.Instance{sampleInstance()}}
 	n := &fakeNotifier{}
-	r := New(baseConfig(), ec2, &fakeSSM{usage: 85}, &fakeRecorder{}, nil, n, discardLogger())
+	r := New(baseConfig(), ec2, &fakeSSM{usage: 85}, &fakeRecorder{}, nil, n, nil, discardLogger())
 
 	if _, err := r.Reconcile(context.Background()); err != nil {
 		t.Fatalf("Reconcile error: %v", err)
@@ -382,7 +396,7 @@ func TestReconcileSendsCompletedAlert(t *testing.T) {
 func TestReconcileSendsFailedAlert(t *testing.T) {
 	ec2 := &fakeEC2{instances: []awsx.Instance{sampleInstance()}, modifyErr: errors.New("nope")}
 	n := &fakeNotifier{}
-	r := New(baseConfig(), ec2, &fakeSSM{usage: 90}, &fakeRecorder{}, nil, n, discardLogger())
+	r := New(baseConfig(), ec2, &fakeSSM{usage: 90}, &fakeRecorder{}, nil, n, nil, discardLogger())
 
 	if _, err := r.Reconcile(context.Background()); err != nil {
 		t.Fatalf("Reconcile should swallow per-instance error, got %v", err)
@@ -400,7 +414,7 @@ func TestReconcileNotifyOnFailureSuppressesSuccess(t *testing.T) {
 	cfg.AlertmanagerNotifyOn = config.NotifyOnFailure
 	ec2 := &fakeEC2{instances: []awsx.Instance{sampleInstance()}}
 	n := &fakeNotifier{}
-	r := New(cfg, ec2, &fakeSSM{usage: 85}, &fakeRecorder{}, nil, n, discardLogger())
+	r := New(cfg, ec2, &fakeSSM{usage: 85}, &fakeRecorder{}, nil, n, nil, discardLogger())
 
 	if _, err := r.Reconcile(context.Background()); err != nil {
 		t.Fatalf("Reconcile error: %v", err)
@@ -415,7 +429,7 @@ func TestReconcileNotifyOnSuccessSuppressesFailure(t *testing.T) {
 	cfg.AlertmanagerNotifyOn = config.NotifyOnSuccess
 	ec2 := &fakeEC2{instances: []awsx.Instance{sampleInstance()}, modifyErr: errors.New("nope")}
 	n := &fakeNotifier{}
-	r := New(cfg, ec2, &fakeSSM{usage: 90}, &fakeRecorder{}, nil, n, discardLogger())
+	r := New(cfg, ec2, &fakeSSM{usage: 90}, &fakeRecorder{}, nil, n, nil, discardLogger())
 
 	if _, err := r.Reconcile(context.Background()); err != nil {
 		t.Fatalf("Reconcile should swallow per-instance error, got %v", err)
@@ -430,7 +444,7 @@ func TestReconcileDryRunSendsNoAlerts(t *testing.T) {
 	cfg.DryRun = true
 	ec2 := &fakeEC2{instances: []awsx.Instance{sampleInstance()}}
 	n := &fakeNotifier{}
-	r := New(cfg, ec2, &fakeSSM{usage: 95}, &fakeRecorder{}, nil, n, discardLogger())
+	r := New(cfg, ec2, &fakeSSM{usage: 95}, &fakeRecorder{}, nil, n, nil, discardLogger())
 
 	if _, err := r.Reconcile(context.Background()); err != nil {
 		t.Fatalf("Reconcile error: %v", err)
@@ -445,12 +459,104 @@ func TestReconcileDryRunEmitsNoEvents(t *testing.T) {
 	cfg.DryRun = true
 	ec2 := &fakeEC2{instances: []awsx.Instance{sampleInstance()}}
 	ev := &fakeEmitter{}
-	r := New(cfg, ec2, &fakeSSM{usage: 95}, &fakeRecorder{}, ev, nil, discardLogger())
+	r := New(cfg, ec2, &fakeSSM{usage: 95}, &fakeRecorder{}, ev, nil, nil, discardLogger())
 
 	if _, err := r.Reconcile(context.Background()); err != nil {
 		t.Fatalf("Reconcile error: %v", err)
 	}
 	if len(ev.reasons) != 0 {
 		t.Errorf("dry-run emitted events: %v", ev.reasons)
+	}
+}
+
+func tagsContain(tags []string, want string) bool {
+	return slices.Contains(tags, want)
+}
+
+func TestReconcilePostsCompletedRegionAnnotation(t *testing.T) {
+	ec2 := &fakeEC2{instances: []awsx.Instance{sampleInstance()}}
+	a := &fakeAnnotator{}
+	r := New(baseConfig(), ec2, &fakeSSM{usage: 85}, &fakeRecorder{}, nil, nil, a, discardLogger())
+
+	if _, err := r.Reconcile(context.Background()); err != nil {
+		t.Fatalf("Reconcile error: %v", err)
+	}
+	if len(a.texts) != 1 {
+		t.Fatalf("got %d annotations, want 1", len(a.texts))
+	}
+	// A completed resize is a region annotation (non-zero end).
+	if !a.regions[0] {
+		t.Error("completed resize annotation must be a region (non-zero end)")
+	}
+	if !tagsContain(a.lastTags, "instance_id:i-123") || !tagsContain(a.lastTags, "volume_id:vol-123") {
+		t.Errorf("tags %v missing instance_id/volume_id", a.lastTags)
+	}
+	if !tagsContain(a.lastTags, "result:success") {
+		t.Errorf("tags %v missing result:success", a.lastTags)
+	}
+}
+
+func TestReconcilePostsFailedPointAnnotation(t *testing.T) {
+	ec2 := &fakeEC2{instances: []awsx.Instance{sampleInstance()}, modifyErr: errors.New("nope")}
+	a := &fakeAnnotator{}
+	r := New(baseConfig(), ec2, &fakeSSM{usage: 90}, &fakeRecorder{}, nil, nil, a, discardLogger())
+
+	if _, err := r.Reconcile(context.Background()); err != nil {
+		t.Fatalf("Reconcile should swallow per-instance error, got %v", err)
+	}
+	if len(a.texts) != 1 {
+		t.Fatalf("got %d annotations, want 1", len(a.texts))
+	}
+	// A failed resize is a point annotation (zero end).
+	if a.regions[0] {
+		t.Error("failed resize annotation must be a point (zero end)")
+	}
+	if !tagsContain(a.lastTags, "result:failure") {
+		t.Errorf("tags %v missing result:failure", a.lastTags)
+	}
+}
+
+func TestReconcileAnnotateOnFailureSuppressesSuccess(t *testing.T) {
+	cfg := baseConfig()
+	cfg.GrafanaAnnotateOn = config.AnnotateOnFailure
+	ec2 := &fakeEC2{instances: []awsx.Instance{sampleInstance()}}
+	a := &fakeAnnotator{}
+	r := New(cfg, ec2, &fakeSSM{usage: 85}, &fakeRecorder{}, nil, nil, a, discardLogger())
+
+	if _, err := r.Reconcile(context.Background()); err != nil {
+		t.Fatalf("Reconcile error: %v", err)
+	}
+	if len(a.texts) != 0 {
+		t.Errorf("annotate-on=failure posted success annotation: %v", a.texts)
+	}
+}
+
+func TestReconcileAnnotateOnSuccessSuppressesFailure(t *testing.T) {
+	cfg := baseConfig()
+	cfg.GrafanaAnnotateOn = config.AnnotateOnSuccess
+	ec2 := &fakeEC2{instances: []awsx.Instance{sampleInstance()}, modifyErr: errors.New("nope")}
+	a := &fakeAnnotator{}
+	r := New(cfg, ec2, &fakeSSM{usage: 90}, &fakeRecorder{}, nil, nil, a, discardLogger())
+
+	if _, err := r.Reconcile(context.Background()); err != nil {
+		t.Fatalf("Reconcile should swallow per-instance error, got %v", err)
+	}
+	if len(a.texts) != 0 {
+		t.Errorf("annotate-on=success posted failure annotation: %v", a.texts)
+	}
+}
+
+func TestReconcileDryRunPostsNoAnnotations(t *testing.T) {
+	cfg := baseConfig()
+	cfg.DryRun = true
+	ec2 := &fakeEC2{instances: []awsx.Instance{sampleInstance()}}
+	a := &fakeAnnotator{}
+	r := New(cfg, ec2, &fakeSSM{usage: 95}, &fakeRecorder{}, nil, nil, a, discardLogger())
+
+	if _, err := r.Reconcile(context.Background()); err != nil {
+		t.Fatalf("Reconcile error: %v", err)
+	}
+	if len(a.texts) != 0 {
+		t.Errorf("dry-run posted annotations: %v", a.texts)
 	}
 }

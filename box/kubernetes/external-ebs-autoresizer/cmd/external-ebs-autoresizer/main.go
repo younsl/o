@@ -16,6 +16,7 @@ import (
 	"github.com/younsl/o/box/kubernetes/external-ebs-autoresizer/internal/config"
 	"github.com/younsl/o/box/kubernetes/external-ebs-autoresizer/internal/controller"
 	"github.com/younsl/o/box/kubernetes/external-ebs-autoresizer/internal/events"
+	"github.com/younsl/o/box/kubernetes/external-ebs-autoresizer/internal/grafana"
 	"github.com/younsl/o/box/kubernetes/external-ebs-autoresizer/internal/leader"
 	"github.com/younsl/o/box/kubernetes/external-ebs-autoresizer/internal/observability"
 	"github.com/younsl/o/box/kubernetes/external-ebs-autoresizer/internal/resizer"
@@ -77,6 +78,17 @@ func main() {
 		logger.Info("Alertmanager alerting disabled")
 	}
 
+	// Grafana annotations about resize attempts. Disabled unless explicitly
+	// enabled. Keep the interface nil (not a typed nil) when disabled so the
+	// resizer's nil check works. The API token is never logged.
+	var annotator resizer.Annotator
+	if cfg.GrafanaAnnotationEnabled {
+		annotator = grafana.New(cfg.GrafanaURL, cfg.GrafanaAPIToken, cfg.GrafanaTimeout, cfg.GrafanaAnnotationTags, logger)
+		logger.Info("Grafana annotations enabled", "url", cfg.GrafanaURL, "annotate_on", cfg.GrafanaAnnotateOn, "tags", cfg.GrafanaAnnotationTags)
+	} else {
+		logger.Info("Grafana annotations disabled")
+	}
+
 	go func() {
 		if err := health.Serve(ctx, cfg.HealthPort); err != nil {
 			logger.Error("health server failed", "error", err)
@@ -88,7 +100,7 @@ func main() {
 		}
 	}()
 
-	rsz := resizer.New(cfg, clients, clients, metrics, emitter, notifier, logger)
+	rsz := resizer.New(cfg, clients, clients, metrics, emitter, notifier, annotator, logger)
 	health.SetReady(true)
 
 	runLoop := func(ctx context.Context) {

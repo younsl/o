@@ -104,6 +104,14 @@ The following table lists the configurable parameters and their default values.
 | config.alertmanager.timeout | string | `"5s"` | Timeout for each Alertmanager POST as a Go duration |
 | config.alertmanager.labels | string | `""` | Comma-separated Key=Value static labels merged into every alert for routing (e.g. cluster=prod,env=production) |
 | config.alertmanager.notifyOn | string | `"success"` | Which resize outcomes to alert: all, success, or failure |
+| config.grafanaAnnotation.enabled | bool | `false` | Enable Grafana annotations on resize outcomes; requires url and a token when true |
+| config.grafanaAnnotation.url | string | `"http://grafana.monitoring:3000"` | Grafana base URL; required when enabled |
+| config.grafanaAnnotation.timeout | string | `"5s"` | Timeout for each Grafana annotation POST as a Go duration |
+| config.grafanaAnnotation.tags | string | `"event:ebs-resize"` | Comma-separated base tags merged into every annotation and subscribed to by dashboards |
+| config.grafanaAnnotation.annotateOn | string | `"all"` | Which resize outcomes to annotate: all, success, or failure |
+| config.grafanaAnnotation.apiToken | string | `""` | Grafana service account token; ignored when existingSecret is set. Stored in a generated Secret. For production prefer existingSecret. |
+| config.grafanaAnnotation.existingSecret | string | `""` | Name of an existing Secret holding the Grafana token; takes precedence over apiToken |
+| config.grafanaAnnotation.existingSecretKey | string | `"token"` | Key within existingSecret (or the generated Secret) holding the token |
 | extraEnv | list | `[]` | Additional environment variables for the container (raw EnvVar entries) |
 | extraEnvFrom | list | `[]` | Additional envFrom sources for the container (configMapRef/secretRef entries) |
 | ports.health | int | `8080` | Port serving /healthz and /readyz |

@@ -25,6 +25,16 @@ to an opaque SSM runbook, so each action has clear ownership and granular logs.
 [ec2-modifyvolume]: https://docs.aws.amazon.com/AWSEC2/latest/APIReference/API_ModifyVolume.html
 [ssm-run-command]: https://docs.aws.amazon.com/systems-manager/latest/userguide/run-command.html
 
+## Features
+
+- Auto-grows the root EBS volume and extends the filesystem (ext2/3/4 or XFS) in place
+- Targets standalone EC2 only, excluding EKS cluster nodes by default
+- Tag-based instance filtering via `TAG_FILTERS`
+- Safety guards: max volume size and the AWS 6-hour modification cooldown
+- Dry-run mode to preview decisions without modifying anything
+- High availability via leader election when running multiple replicas
+- Observability: Prometheus metrics, Kubernetes Events, Alertmanager alerts, and Grafana annotations
+
 ## Architecture
 
 Operation mechanism. The Deployment runs one or more Pods; only the leader runs
@@ -118,6 +128,17 @@ a long-lived firing alert. Every alert carries `instance_id`, `instance_name`,
 `ALERTMANAGER_LABELS` (e.g. `cluster=prod`) for routing, and a `summary`
 annotation. Delivery is best-effort: a failed POST is logged and never blocks or
 fails a reconcile.
+
+## Grafana annotations
+
+Set `config.grafanaAnnotation.enabled=true` with a URL and service account token
+to mark each resize on Grafana dashboards (`POST /api/annotations`). An
+annotation is posted automatically when a resize **completes** (region
+annotation spanning its duration) or **fails** (point annotation); a resize that
+only starts is never annotated. `config.grafanaAnnotation.annotateOn` selects
+which outcomes are recorded: `all` (default), `success`, or `failure`. See
+[docs/grafana-annotations.md](docs/grafana-annotations.md) for tags, token setup,
+and dashboard query configuration.
 
 ## High availability
 
@@ -252,4 +273,6 @@ Observability:
 See [docs/metrics.md](docs/metrics.md) for the full list of exposed metrics,
 their labels, and example PromQL queries. See
 [docs/alerting.md](docs/alerting.md) for how alerts are pushed to Alertmanager,
-including alert types, labels, the notify-on policy, and routing examples.
+including alert types, labels, the notify-on policy, and routing examples. See
+[docs/grafana-annotations.md](docs/grafana-annotations.md) for marking resize
+events on Grafana dashboards.

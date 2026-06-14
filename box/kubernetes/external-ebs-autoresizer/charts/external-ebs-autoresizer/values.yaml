@@ -70,6 +70,23 @@ config:
     labels: ""
     # -- (string) Which resize outcomes to alert: all, success, or failure
     notifyOn: "success"
+  grafanaAnnotation:
+    # -- (bool) Enable Grafana annotations on resize outcomes; requires url and a token when true
+    enabled: false
+    # -- (string) Grafana base URL; required when enabled
+    url: "http://grafana.monitoring:3000"
+    # -- (string) Timeout for each Grafana annotation POST as a Go duration
+    timeout: "5s"
+    # -- (string) Comma-separated base tags merged into every annotation and subscribed to by dashboards
+    tags: "event:ebs-resize"
+    # -- (string) Which resize outcomes to annotate: all, success, or failure
+    annotateOn: "all"
+    # -- (string) Grafana service account token; ignored when existingSecret is set. Stored in a generated Secret. For production prefer existingSecret.
+    apiToken: ""
+    # -- (string) Name of an existing Secret holding the Grafana token; takes precedence over apiToken
+    existingSecret: ""
+    # -- (string) Key within existingSecret (or the generated Secret) holding the token
+    existingSecretKey: "token"
 
 # -- (list) Additional environment variables for the container (raw EnvVar entries)
 extraEnv: []

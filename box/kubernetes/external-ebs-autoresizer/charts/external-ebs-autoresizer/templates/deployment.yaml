@@ -59,6 +59,13 @@ spec:
               valueFrom:
                 fieldRef:
                   fieldPath: metadata.uid
+            {{- if .Values.config.grafanaAnnotation.enabled }}
+            - name: GRAFANA_API_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.config.grafanaAnnotation.existingSecret | default (printf "%s-grafana-annotation" (include "external-ebs-autoresizer.fullname" .)) }}
+                  key: {{ .Values.config.grafanaAnnotation.existingSecretKey }}
+            {{- end }}
             {{- with .Values.extraEnv }}
             {{- toYaml . | nindent 12 }}
             {{- end }}

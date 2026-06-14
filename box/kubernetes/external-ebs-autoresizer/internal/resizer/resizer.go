@@ -58,6 +58,15 @@ type AlertNotifier interface {
 	Notify(ctx context.Context, severity, alertname, summary, description string, labels map[string]string, startsAt time.Time)
 }
 
+// Annotator posts annotations about resize operations to a sink such as
+// Grafana. grafana.Client implements it. A nil Annotator disables annotating
+// (e.g. when no Grafana URL is configured or during tests). text is the marker
+// body; tags are per-annotation tags; start is the marker time and end, when
+// non-zero, makes it a region annotation spanning start..end.
+type Annotator interface {
+	Annotate(ctx context.Context, text string, tags []string, start, end time.Time)
+}
+
 // Alert severities and names used for the alerts sent per resize operation.
 const (
 	severityWarning = "warning"
@@ -79,19 +88,21 @@ const (
 
 // Resizer holds dependencies for one reconcile pass.
 type Resizer struct {
-	cfg      *config.Config
-	ec2      EC2API
-	ssm      SSMAPI
-	rec      Recorder
-	events   EventEmitter
-	notifier AlertNotifier
-	logger   *slog.Logger
+	cfg       *config.Config
+	ec2       EC2API
+	ssm       SSMAPI
+	rec       Recorder
+	events    EventEmitter
+	notifier  AlertNotifier
+	annotator Annotator
+	logger    *slog.Logger
 }
 
 // New constructs a Resizer. events may be nil to disable Kubernetes Events;
-// notifier may be nil to disable Alertmanager alerting.
-func New(cfg *config.Config, ec2 EC2API, ssm SSMAPI, rec Recorder, events EventEmitter, notifier AlertNotifier, logger *slog.Logger) *Resizer {
-	return &Resizer{cfg: cfg, ec2: ec2, ssm: ssm, rec: rec, events: events, notifier: notifier, logger: logger}
+// notifier may be nil to disable Alertmanager alerting; annotator may be nil to
+// disable Grafana annotations.
+func New(cfg *config.Config, ec2 EC2API, ssm SSMAPI, rec Recorder, events EventEmitter, notifier AlertNotifier, annotator Annotator, logger *slog.Logger) *Resizer {
+	return &Resizer{cfg: cfg, ec2: ec2, ssm: ssm, rec: rec, events: events, notifier: notifier, annotator: annotator, logger: logger}
 }
 
 // emit publishes a Kubernetes Event when an emitter is configured.
@@ -119,6 +130,44 @@ func (r *Resizer) notify(ctx context.Context, severity, alertname, summary, desc
 		}
 	}
 	r.notifier.Notify(ctx, severity, alertname, summary, description, labels, startsAt)
+}
+
+// annotate posts a Grafana annotation when an annotator is configured and the
+// resize outcome matches the configured annotate-on policy. A successful resize
+// is a region annotation spanning start..end; a failure is a point annotation
+// at start (end is the zero time).
+func (r *Resizer) annotate(ctx context.Context, success bool, text string, inst awsx.Instance, start, end time.Time) {
+	if r.annotator == nil {
+		return
+	}
+	switch r.cfg.GrafanaAnnotateOn {
+	case config.AnnotateOnSuccess:
+		if !success {
+			return
+		}
+	case config.AnnotateOnFailure:
+		if success {
+			return
+		}
+	}
+	r.annotator.Annotate(ctx, text, annotationTags(inst, success), start, end)
+}
+
+// annotationTags builds the per-annotation tags identifying the instance and
+// outcome. They are appended to the configured base tags (e.g. event:ebs-resize)
+// so dashboards can filter resize markers down to a single disk or outcome.
+func annotationTags(inst awsx.Instance, success bool) []string {
+	result := "failure"
+	if success {
+		result = "success"
+	}
+	return []string{
+		"instance_id:" + inst.ID,
+		"instance_name:" + inst.Name,
+		"volume_id:" + inst.RootVolumeID,
+		"device:" + inst.RootDeviceName,
+		"result:" + result,
+	}
 }
 
 // alertLabels builds the identifying labels attached to alerts for an instance.
@@ -242,6 +291,7 @@ func (r *Resizer) reconcileInstance(ctx context.Context, inst awsx.Instance) err
 			"EBS root volume autoresize failed",
 			failureDescription(inst, usage, fmt.Sprintf("ModifyVolume failed: %v", err)),
 			alertLabels(inst), start)
+		r.annotate(ctx, false, failureDescription(inst, usage, fmt.Sprintf("ModifyVolume failed: %v", err)), inst, start, time.Time{})
 		return fmt.Errorf("modify volume: %w", err)
 	}
 	log.Info("requested volume modification")
@@ -256,6 +306,7 @@ func (r *Resizer) reconcileInstance(ctx context.Context, inst awsx.Instance) err
 			"EBS root volume autoresize failed",
 			failureDescription(inst, usage, fmt.Sprintf("volume did not reach optimizing: %v", err)),
 			alertLabels(inst), start)
+		r.annotate(ctx, false, failureDescription(inst, usage, fmt.Sprintf("volume did not reach optimizing: %v", err)), inst, start, time.Time{})
 		return fmt.Errorf("wait for modification: %w", err)
 	}
 	log.Info("volume modification optimizing", "elapsed", time.Since(start).String())
@@ -271,6 +322,7 @@ func (r *Resizer) reconcileInstance(ctx context.Context, inst awsx.Instance) err
 			"EBS root volume autoresize failed",
 			failureDescription(inst, usage, fmt.Sprintf("filesystem resize failed: %v", err)),
 			alertLabels(inst), start)
+		r.annotate(ctx, false, failureDescription(inst, usage, fmt.Sprintf("filesystem resize failed: %v", err)), inst, start, time.Time{})
 		return fmt.Errorf("resize filesystem: %w", err)
 	}
 	log.Info("filesystem resize completed", "stdout", strings.TrimSpace(res.Stdout))
@@ -286,11 +338,15 @@ func (r *Resizer) reconcileInstance(ctx context.Context, inst awsx.Instance) err
 	r.emit(eventTypeNormal, reasonResizeCompleted,
 		"Resized root filesystem on device %s of instance %s (%s) to %d GiB in %s. Disk usage changed from %d%% to %d%%",
 		inst.RootDeviceName, inst.Name, inst.ID, target, time.Since(start).Round(time.Second), usage, after)
+	completedDescription := fmt.Sprintf("Instance %s (%s) device %s was autoresized to %d GiB. Root filesystem usage changed from %d%% to %d%%.",
+		inst.ID, inst.Name, inst.RootDeviceName, target, usage, after)
 	r.notify(ctx, severityInfo, alertResizeCompleted,
 		"EBS root volume autoresize completed",
-		fmt.Sprintf("Instance %s (%s) device %s was autoresized to %d GiB. Root filesystem usage changed from %d%% to %d%%.",
-			inst.ID, inst.Name, inst.RootDeviceName, target, usage, after),
+		completedDescription,
 		alertLabels(inst), start)
+	// A completed resize is a region annotation spanning the time the resize
+	// took, so dashboards show how long the volume was being grown.
+	r.annotate(ctx, true, completedDescription, inst, start, time.Now())
 	return nil
 }
 

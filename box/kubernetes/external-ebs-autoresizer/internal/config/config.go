@@ -83,13 +83,36 @@ type Config struct {
 	// AlertmanagerNotifyOn selects which resize outcomes are alerted: "all",
 	// "success" (default), or "failure".
 	AlertmanagerNotifyOn string
+	// GrafanaAnnotationEnabled turns on Grafana annotations. When false
+	// (default), annotating is disabled regardless of the other Grafana settings.
+	GrafanaAnnotationEnabled bool
+	// GrafanaURL is the base URL of a Grafana instance (e.g.
+	// http://grafana.monitoring:3000). Required when GrafanaAnnotationEnabled is true.
+	GrafanaURL string
+	// GrafanaAPIToken is a Grafana service account token sent as a Bearer
+	// credential. Required when GrafanaAnnotationEnabled is true. Set via the
+	// environment only (never a flag) so the token stays out of process args.
+	GrafanaAPIToken string
+	// GrafanaTimeout bounds each annotation POST. Defaults to 5s.
+	GrafanaTimeout time.Duration
+	// GrafanaAnnotationTags are the base tags merged into every annotation and
+	// subscribed to by dashboards (e.g. event:ebs-resize). Parsed from a
+	// comma-separated list.
+	GrafanaAnnotationTags []string
+	// GrafanaAnnotateOn selects which resize outcomes are annotated: "all"
+	// (default), "success", or "failure".
+	GrafanaAnnotateOn string
 }
 
-// Alertmanager notify-on policy values.
+// Alertmanager notify-on and Grafana annotate-on policy values.
 const (
 	NotifyOnAll     = "all"
 	NotifyOnSuccess = "success"
 	NotifyOnFailure = "failure"
+
+	AnnotateOnAll     = "all"
+	AnnotateOnSuccess = "success"
+	AnnotateOnFailure = "failure"
 )
 
 // Load reads configuration from environment variables, applies flag overrides
@@ -112,6 +135,10 @@ func Load(args []string) (*Config, error) {
 		return nil, err
 	}
 	alertmanagerTimeout, err := getEnvDuration("ALERTMANAGER_TIMEOUT", 5*time.Second)
+	if err != nil {
+		return nil, err
+	}
+	grafanaTimeout, err := getEnvDuration("GRAFANA_TIMEOUT", 5*time.Second)
 	if err != nil {
 		return nil, err
 	}
@@ -141,10 +168,17 @@ func Load(args []string) (*Config, error) {
 		AlertmanagerURL:       getEnv("ALERTMANAGER_URL", ""),
 		AlertmanagerTimeout:   alertmanagerTimeout,
 		AlertmanagerNotifyOn:  getEnv("ALERTMANAGER_NOTIFY_ON", NotifyOnSuccess),
+
+		GrafanaAnnotationEnabled: getEnvBool("GRAFANA_ANNOTATION_ENABLED", false),
+		GrafanaURL:               getEnv("GRAFANA_URL", ""),
+		GrafanaAPIToken:          getEnv("GRAFANA_API_TOKEN", ""),
+		GrafanaTimeout:           grafanaTimeout,
+		GrafanaAnnotateOn:        getEnv("GRAFANA_ANNOTATE_ON", AnnotateOnAll),
 	}
 
 	var tagFilters string
 	var alertmanagerLabels string
+	var grafanaTags string
 	fs := flag.NewFlagSet("external-ebs-autoresizer", flag.ContinueOnError)
 	fs.StringVar(&c.Region, "region", c.Region, "AWS region")
 	fs.StringVar(&tagFilters, "tag-filters", getEnv("TAG_FILTERS", ""), "Comma-separated Key=Value tag filters; empty scans all instances")
@@ -167,6 +201,11 @@ func Load(args []string) (*Config, error) {
 	fs.DurationVar(&c.AlertmanagerTimeout, "alertmanager-timeout", c.AlertmanagerTimeout, "Timeout for each Alertmanager POST")
 	fs.StringVar(&alertmanagerLabels, "alertmanager-labels", getEnv("ALERTMANAGER_LABELS", ""), "Comma-separated Key=Value static labels merged into every alert for routing")
 	fs.StringVar(&c.AlertmanagerNotifyOn, "alertmanager-notify-on", c.AlertmanagerNotifyOn, "Which resize outcomes to alert: all, success, or failure")
+	fs.BoolVar(&c.GrafanaAnnotationEnabled, "grafana-annotation-enabled", c.GrafanaAnnotationEnabled, "Enable Grafana annotations (requires grafana-url and GRAFANA_API_TOKEN)")
+	fs.StringVar(&c.GrafanaURL, "grafana-url", c.GrafanaURL, "Grafana base URL (e.g. http://grafana.monitoring:3000)")
+	fs.DurationVar(&c.GrafanaTimeout, "grafana-timeout", c.GrafanaTimeout, "Timeout for each Grafana annotation POST")
+	fs.StringVar(&grafanaTags, "grafana-annotation-tags", getEnv("GRAFANA_ANNOTATION_TAGS", "event:ebs-resize"), "Comma-separated base tags merged into every annotation and subscribed to by dashboards")
+	fs.StringVar(&c.GrafanaAnnotateOn, "grafana-annotate-on", c.GrafanaAnnotateOn, "Which resize outcomes to annotate: all, success, or failure")
 	if err := fs.Parse(args); err != nil {
 		return nil, err
 	}
@@ -185,6 +224,8 @@ func Load(args []string) (*Config, error) {
 	for _, l := range alertLabels {
 		c.AlertmanagerLabels[l.Key] = l.Value
 	}
+
+	c.GrafanaAnnotationTags = parseTags(grafanaTags)
 
 	if err := c.validate(); err != nil {
 		return nil, err
@@ -222,7 +263,36 @@ func (c *Config) validate() error {
 	if c.AlertmanagerEnabled && c.AlertmanagerURL == "" {
 		return fmt.Errorf("ALERTMANAGER_URL is required when ALERTMANAGER_ENABLED is true")
 	}
+	switch c.GrafanaAnnotateOn {
+	case AnnotateOnAll, AnnotateOnSuccess, AnnotateOnFailure:
+	default:
+		return fmt.Errorf("GRAFANA_ANNOTATE_ON must be one of %s, %s, %s, got %q", AnnotateOnAll, AnnotateOnSuccess, AnnotateOnFailure, c.GrafanaAnnotateOn)
+	}
+	if c.GrafanaAnnotationEnabled {
+		if c.GrafanaURL == "" {
+			return fmt.Errorf("GRAFANA_URL is required when GRAFANA_ANNOTATION_ENABLED is true")
+		}
+		if c.GrafanaAPIToken == "" {
+			return fmt.Errorf("GRAFANA_API_TOKEN is required when GRAFANA_ANNOTATION_ENABLED is true")
+		}
+	}
 	return nil
+}
+
+// parseTags splits a comma-separated tag list, trimming whitespace and dropping
+// empty entries. It returns nil for an empty input.
+func parseTags(raw string) []string {
+	raw = strings.TrimSpace(raw)
+	if raw == "" {
+		return nil
+	}
+	var out []string
+	for _, t := range strings.Split(raw, ",") {
+		if t = strings.TrimSpace(t); t != "" {
+			out = append(out, t)
+		}
+	}
+	return out
 }
 
 // parseTagFilters parses "Key=Value,Key2=Value2" into TagFilter slices.

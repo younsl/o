@@ -68,6 +68,48 @@ func TestLoadAlertmanagerLabels(t *testing.T) {
 	}
 }
 
+func TestLoadGrafanaAnnotation(t *testing.T) {
+	t.Setenv("AWS_REGION", "ap-northeast-2")
+	t.Setenv("GRAFANA_ANNOTATION_ENABLED", "true")
+	t.Setenv("GRAFANA_URL", "http://grafana:3000")
+	t.Setenv("GRAFANA_API_TOKEN", "secret")
+	t.Setenv("GRAFANA_ANNOTATION_TAGS", "event:ebs-resize, app:external-ebs-autoresizer")
+	t.Setenv("GRAFANA_ANNOTATE_ON", "failure")
+
+	c, err := Load(nil)
+	if err != nil {
+		t.Fatalf("Load returned error: %v", err)
+	}
+	if !c.GrafanaAnnotationEnabled || c.GrafanaURL != "http://grafana:3000" || c.GrafanaAPIToken != "secret" {
+		t.Errorf("grafana fields = (%v, %q, %q)", c.GrafanaAnnotationEnabled, c.GrafanaURL, c.GrafanaAPIToken)
+	}
+	if len(c.GrafanaAnnotationTags) != 2 || c.GrafanaAnnotationTags[0] != "event:ebs-resize" {
+		t.Errorf("GrafanaAnnotationTags = %v", c.GrafanaAnnotationTags)
+	}
+	if c.GrafanaAnnotateOn != AnnotateOnFailure {
+		t.Errorf("GrafanaAnnotateOn = %q, want failure", c.GrafanaAnnotateOn)
+	}
+}
+
+func TestLoadGrafanaDefaultsDisabled(t *testing.T) {
+	t.Setenv("AWS_REGION", "ap-northeast-2")
+
+	c, err := Load(nil)
+	if err != nil {
+		t.Fatalf("Load returned error: %v", err)
+	}
+	if c.GrafanaAnnotationEnabled {
+		t.Error("GrafanaAnnotationEnabled should default to false")
+	}
+	if c.GrafanaAnnotateOn != AnnotateOnAll {
+		t.Errorf("GrafanaAnnotateOn = %q, want all", c.GrafanaAnnotateOn)
+	}
+	// Default base tag is the dashboard-subscription tag.
+	if len(c.GrafanaAnnotationTags) != 1 || c.GrafanaAnnotationTags[0] != "event:ebs-resize" {
+		t.Errorf("GrafanaAnnotationTags = %v, want [event:ebs-resize]", c.GrafanaAnnotationTags)
+	}
+}
+
 func TestLoadAllowsEmptyTagFilters(t *testing.T) {
 	t.Setenv("AWS_REGION", "ap-northeast-2")
 
@@ -178,6 +220,9 @@ func TestLoadValidationErrors(t *testing.T) {
 		{"bad grow", map[string]string{"AWS_REGION": "r", "TAG_FILTERS": "A=b", "GROW_PERCENT": "0"}},
 		{"bad notify-on", map[string]string{"AWS_REGION": "r", "ALERTMANAGER_NOTIFY_ON": "sometimes"}},
 		{"enabled without url", map[string]string{"AWS_REGION": "r", "ALERTMANAGER_ENABLED": "true"}},
+		{"bad annotate-on", map[string]string{"AWS_REGION": "r", "GRAFANA_ANNOTATE_ON": "sometimes"}},
+		{"grafana enabled without url", map[string]string{"AWS_REGION": "r", "GRAFANA_ANNOTATION_ENABLED": "true", "GRAFANA_API_TOKEN": "t"}},
+		{"grafana enabled without token", map[string]string{"AWS_REGION": "r", "GRAFANA_ANNOTATION_ENABLED": "true", "GRAFANA_URL": "http://grafana:3000"}},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
