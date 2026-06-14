@@ -18,13 +18,18 @@ import (
 	"time"
 )
 
-// alertsPath is the Alertmanager v2 endpoint for posting alerts.
-const alertsPath = "/api/v2/alerts"
+// alertsPath is the Alertmanager v2 endpoint for posting alerts. healthPath is
+// the Alertmanager liveness endpoint used by the startup preflight check.
+const (
+	alertsPath = "/api/v2/alerts"
+	healthPath = "/-/healthy"
+)
 
 // Client posts alerts to an Alertmanager v2 endpoint. It implements
 // resizer.AlertNotifier. Delivery is best-effort: failures are logged, never
 // returned, so alerting never blocks or fails a reconcile.
 type Client struct {
+	base        string
 	endpoint    string
 	httpClient  *http.Client
 	extraLabels map[string]string
@@ -41,12 +46,38 @@ func New(baseURL string, timeout time.Duration, extraLabels map[string]string, l
 	if logger == nil {
 		logger = slog.Default()
 	}
+	base := strings.TrimRight(baseURL, "/")
 	return &Client{
-		endpoint:    strings.TrimRight(baseURL, "/") + alertsPath,
+		base:        base,
+		endpoint:    base + alertsPath,
 		httpClient:  &http.Client{Timeout: timeout},
 		extraLabels: extraLabels,
 		logger:      logger,
 	}
+}
+
+// Preflight performs a one-time liveness check against the Alertmanager health
+// endpoint. It returns the checked endpoint, the HTTP status code, the request
+// latency, and an error when the request fails or returns a non-2xx status.
+// It never mutates state; the caller decides what to do with a failure.
+func (c *Client) Preflight(ctx context.Context) (string, int, time.Duration, error) {
+	endpoint := c.base + healthPath
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, endpoint, nil)
+	if err != nil {
+		return endpoint, 0, 0, fmt.Errorf("build request: %w", err)
+	}
+	start := time.Now()
+	resp, err := c.httpClient.Do(req)
+	latency := time.Since(start)
+	if err != nil {
+		return endpoint, 0, latency, fmt.Errorf("get %s: %w", endpoint, err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode >= 300 {
+		msg, _ := io.ReadAll(io.LimitReader(resp.Body, 256))
+		return endpoint, resp.StatusCode, latency, fmt.Errorf("alertmanager health returned %s: %s", resp.Status, strings.TrimSpace(string(msg)))
+	}
+	return endpoint, resp.StatusCode, latency, nil
 }
 
 // wireAlert is the JSON shape of a single Alertmanager v2 postable alert.

@@ -10,6 +10,7 @@ import (
 	"os/signal"
 	"strings"
 	"syscall"
+	"time"
 
 	"github.com/younsl/o/box/kubernetes/external-ebs-autoresizer/internal/alertmanager"
 	"github.com/younsl/o/box/kubernetes/external-ebs-autoresizer/internal/awsx"
@@ -72,8 +73,10 @@ func main() {
 	// resizer's nil check works.
 	var notifier resizer.AlertNotifier
 	if cfg.AlertmanagerEnabled {
-		notifier = alertmanager.New(cfg.AlertmanagerURL, cfg.AlertmanagerTimeout, cfg.AlertmanagerLabels, logger)
+		amClient := alertmanager.New(cfg.AlertmanagerURL, cfg.AlertmanagerTimeout, cfg.AlertmanagerLabels, logger)
 		logger.Info("Alertmanager alerting enabled", "url", cfg.AlertmanagerURL, "notify_on", cfg.AlertmanagerNotifyOn)
+		runPreflight(ctx, logger, "alertmanager", amClient)
+		notifier = amClient
 	} else {
 		logger.Info("Alertmanager alerting disabled")
 	}
@@ -83,8 +86,10 @@ func main() {
 	// resizer's nil check works. The API token is never logged.
 	var annotator resizer.Annotator
 	if cfg.GrafanaAnnotationEnabled {
-		annotator = grafana.New(cfg.GrafanaURL, cfg.GrafanaAPIToken, cfg.GrafanaTimeout, cfg.GrafanaAnnotationTags, logger)
+		gfClient := grafana.New(cfg.GrafanaURL, cfg.GrafanaAPIToken, cfg.GrafanaTimeout, cfg.GrafanaAnnotationTags, logger)
 		logger.Info("Grafana annotations enabled", "url", cfg.GrafanaURL, "annotate_on", cfg.GrafanaAnnotateOn, "tags", cfg.GrafanaAnnotationTags)
+		runPreflight(ctx, logger, "grafana", gfClient)
+		annotator = gfClient
 	} else {
 		logger.Info("Grafana annotations disabled")
 	}
@@ -132,6 +137,55 @@ func main() {
 
 	health.SetReady(false)
 	logger.Info("shutdown complete")
+}
+
+// preflightAttempts is how many times a startup connectivity check is tried
+// before it is reported as failed. preflightBackoff is the delay between tries.
+const preflightAttempts = 3
+
+// preflightBackoff is the delay between preflight retries. It is a var so tests
+// can shorten it.
+var preflightBackoff = 2 * time.Second
+
+// preflighter performs a one-time startup connectivity check, returning the
+// checked endpoint, the HTTP status, the request latency, and an error.
+type preflighter interface {
+	Preflight(ctx context.Context) (string, int, time.Duration, error)
+}
+
+// runPreflight runs a best-effort startup connectivity check, retrying up to
+// preflightAttempts times, and logs the outcome (endpoint, status, latency).
+// It never blocks startup: a persistent failure is logged at error level so
+// misconfiguration is visible immediately, but the controller still starts
+// because alerting and annotations are auxiliary to the core resize loop.
+func runPreflight(ctx context.Context, logger *slog.Logger, name string, p preflighter) {
+	for attempt := 1; attempt <= preflightAttempts; attempt++ {
+		pctx, cancel := context.WithTimeout(ctx, 10*time.Second)
+		endpoint, status, latency, err := p.Preflight(pctx)
+		cancel()
+		if err == nil {
+			logger.Info(name+" preflight check succeeded",
+				"endpoint", endpoint, "status", status,
+				"latency", latency.Round(time.Millisecond).String(), "attempt", attempt)
+			return
+		}
+		if attempt < preflightAttempts {
+			logger.Warn(name+" preflight check failed, retrying",
+				"endpoint", endpoint, "status", status,
+				"latency", latency.Round(time.Millisecond).String(),
+				"attempt", attempt, "max_attempts", preflightAttempts, "error", err)
+			select {
+			case <-ctx.Done():
+				return
+			case <-time.After(preflightBackoff):
+			}
+			continue
+		}
+		logger.Error(name+" preflight check failed",
+			"endpoint", endpoint, "status", status,
+			"latency", latency.Round(time.Millisecond).String(),
+			"attempts", preflightAttempts, "error", err)
+	}
 }
 
 func newLogger(level, format string) *slog.Logger {

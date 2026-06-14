@@ -115,3 +115,50 @@ func TestNewTrimsTrailingSlash(t *testing.T) {
 		t.Errorf("endpoint = %q", c.endpoint)
 	}
 }
+
+func TestPreflightSucceeds(t *testing.T) {
+	var gotPath, gotAuth string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotPath = r.URL.Path
+		gotAuth = r.Header.Get("Authorization")
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer srv.Close()
+
+	c := New(srv.URL, "tok", time.Second, nil, discardLogger())
+	endpoint, status, latency, err := c.Preflight(context.Background())
+	if err != nil {
+		t.Fatalf("Preflight error: %v", err)
+	}
+	if gotPath != healthPath {
+		t.Errorf("path = %q, want %q", gotPath, healthPath)
+	}
+	if gotAuth != "Bearer tok" {
+		t.Errorf("Authorization = %q, want Bearer tok", gotAuth)
+	}
+	if status != http.StatusOK {
+		t.Errorf("status = %d, want 200", status)
+	}
+	if endpoint != srv.URL+healthPath {
+		t.Errorf("endpoint = %q", endpoint)
+	}
+	if latency <= 0 {
+		t.Errorf("latency = %v, want > 0", latency)
+	}
+}
+
+func TestPreflightNon2xxReturnsError(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusUnauthorized)
+	}))
+	defer srv.Close()
+
+	c := New(srv.URL, "bad", time.Second, nil, discardLogger())
+	_, status, _, err := c.Preflight(context.Background())
+	if err == nil {
+		t.Fatal("Preflight = nil error, want error on 401")
+	}
+	if status != http.StatusUnauthorized {
+		t.Errorf("status = %d, want 401", status)
+	}
+}

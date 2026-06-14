@@ -18,13 +18,18 @@ import (
 	"time"
 )
 
-// annotationsPath is the Grafana endpoint for posting annotations.
-const annotationsPath = "/api/annotations"
+// annotationsPath is the Grafana endpoint for posting annotations. healthPath
+// is the Grafana health endpoint used by the startup preflight check.
+const (
+	annotationsPath = "/api/annotations"
+	healthPath      = "/api/health"
+)
 
 // Client posts annotations to a Grafana endpoint. It implements
 // resizer.Annotator. Delivery is best-effort: failures are logged, never
 // returned, so annotating never blocks or fails a reconcile.
 type Client struct {
+	base       string
 	endpoint   string
 	token      string
 	httpClient *http.Client
@@ -44,13 +49,44 @@ func New(baseURL, token string, timeout time.Duration, baseTags []string, logger
 	if logger == nil {
 		logger = slog.Default()
 	}
+	base := strings.TrimRight(baseURL, "/")
 	return &Client{
-		endpoint:   strings.TrimRight(baseURL, "/") + annotationsPath,
+		base:       base,
+		endpoint:   base + annotationsPath,
 		token:      token,
 		httpClient: &http.Client{Timeout: timeout},
 		baseTags:   baseTags,
 		logger:     logger,
 	}
+}
+
+// Preflight performs a one-time health check against the Grafana health
+// endpoint. It returns the checked endpoint, the HTTP status code, the request
+// latency, and an error when the request fails or returns a non-2xx status.
+// The token is sent so the request also exercises the auth path, though
+// /api/health itself does not require authentication; an invalid token is only
+// rejected at the first annotation write. It never mutates state.
+func (c *Client) Preflight(ctx context.Context) (string, int, time.Duration, error) {
+	endpoint := c.base + healthPath
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, endpoint, nil)
+	if err != nil {
+		return endpoint, 0, 0, fmt.Errorf("build request: %w", err)
+	}
+	if c.token != "" {
+		req.Header.Set("Authorization", "Bearer "+c.token)
+	}
+	start := time.Now()
+	resp, err := c.httpClient.Do(req)
+	latency := time.Since(start)
+	if err != nil {
+		return endpoint, 0, latency, fmt.Errorf("get %s: %w", endpoint, err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode >= 300 {
+		msg, _ := io.ReadAll(io.LimitReader(resp.Body, 256))
+		return endpoint, resp.StatusCode, latency, fmt.Errorf("grafana health returned %s: %s", resp.Status, strings.TrimSpace(string(msg)))
+	}
+	return endpoint, resp.StatusCode, latency, nil
 }
 
 // wireAnnotation is the JSON shape of a single Grafana annotation. time and
