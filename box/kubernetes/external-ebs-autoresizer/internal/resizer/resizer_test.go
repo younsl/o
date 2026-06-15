@@ -137,6 +137,7 @@ func itoa(n int) string {
 type fakeRecorder struct {
 	resizeSuccess int
 	resizeFail    int
+	skips         []string
 	errors        []string
 }
 
@@ -148,6 +149,7 @@ func (r *fakeRecorder) ObserveResize(success bool) {
 		r.resizeFail++
 	}
 }
+func (r *fakeRecorder) ObserveSkip(reason string) { r.skips = append(r.skips, reason) }
 func (r *fakeRecorder) ObserveError(stage string) { r.errors = append(r.errors, stage) }
 
 // fakeEmitter records the reasons of emitted Kubernetes Events.
@@ -250,13 +252,17 @@ func TestReconcileDryRun(t *testing.T) {
 	cfg.DryRun = true
 	ec2 := &fakeEC2{instances: []awsx.Instance{sampleInstance()}}
 	ssm := &fakeSSM{usage: 95}
-	r := newResizer(t, cfg, ec2, ssm, &fakeRecorder{})
+	rec := &fakeRecorder{}
+	r := newResizer(t, cfg, ec2, ssm, rec)
 
 	if _, err := r.Reconcile(context.Background()); err != nil {
 		t.Fatalf("Reconcile error: %v", err)
 	}
 	if len(ec2.modifyCalls) != 0 {
 		t.Errorf("dry-run modified volume: %v", ec2.modifyCalls)
+	}
+	if want := []string{"dry_run"}; !slices.Equal(rec.skips, want) {
+		t.Errorf("skips = %v, want %v", rec.skips, want)
 	}
 }
 
@@ -265,13 +271,17 @@ func TestReconcileCooldownSkips(t *testing.T) {
 		instances: []awsx.Instance{sampleInstance()},
 		lastMod:   &awsx.VolumeModification{State: "completed", StartTime: time.Now().Add(-time.Hour)},
 	}
-	r := newResizer(t, baseConfig(), ec2, &fakeSSM{usage: 90}, &fakeRecorder{})
+	rec := &fakeRecorder{}
+	r := newResizer(t, baseConfig(), ec2, &fakeSSM{usage: 90}, rec)
 
 	if _, err := r.Reconcile(context.Background()); err != nil {
 		t.Fatalf("Reconcile error: %v", err)
 	}
 	if len(ec2.modifyCalls) != 0 {
 		t.Errorf("cooldown should skip modify, got %v", ec2.modifyCalls)
+	}
+	if want := []string{"cooldown"}; !slices.Equal(rec.skips, want) {
+		t.Errorf("skips = %v, want %v", rec.skips, want)
 	}
 }
 
@@ -280,7 +290,8 @@ func TestReconcileInProgressSkips(t *testing.T) {
 		instances: []awsx.Instance{sampleInstance()},
 		lastMod:   &awsx.VolumeModification{State: "optimizing"},
 	}
-	r := newResizer(t, baseConfig(), ec2, &fakeSSM{usage: 90}, &fakeRecorder{})
+	rec := &fakeRecorder{}
+	r := newResizer(t, baseConfig(), ec2, &fakeSSM{usage: 90}, rec)
 
 	if _, err := r.Reconcile(context.Background()); err != nil {
 		t.Fatalf("Reconcile error: %v", err)
@@ -288,19 +299,26 @@ func TestReconcileInProgressSkips(t *testing.T) {
 	if len(ec2.modifyCalls) != 0 {
 		t.Errorf("in-progress modification should skip, got %v", ec2.modifyCalls)
 	}
+	if want := []string{"cooldown"}; !slices.Equal(rec.skips, want) {
+		t.Errorf("skips = %v, want %v", rec.skips, want)
+	}
 }
 
 func TestReconcileMaxSizeSkips(t *testing.T) {
 	cfg := baseConfig()
 	cfg.MaxVolumeSizeGiB = 105
 	ec2 := &fakeEC2{instances: []awsx.Instance{sampleInstance()}}
-	r := newResizer(t, cfg, ec2, &fakeSSM{usage: 90}, &fakeRecorder{})
+	rec := &fakeRecorder{}
+	r := newResizer(t, cfg, ec2, &fakeSSM{usage: 90}, rec)
 
 	if _, err := r.Reconcile(context.Background()); err != nil {
 		t.Fatalf("Reconcile error: %v", err)
 	}
 	if len(ec2.modifyCalls) != 0 {
 		t.Errorf("target above max should skip, got %v", ec2.modifyCalls)
+	}
+	if want := []string{"max_size"}; !slices.Equal(rec.skips, want) {
+		t.Errorf("skips = %v, want %v", rec.skips, want)
 	}
 }
 

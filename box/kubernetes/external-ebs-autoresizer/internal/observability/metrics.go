@@ -19,6 +19,7 @@ type Metrics struct {
 	registry       *prometheus.Registry
 	usage          *prometheus.GaugeVec
 	resizeTotal    *prometheus.CounterVec
+	skipTotal      *prometheus.CounterVec
 	errorTotal     *prometheus.CounterVec
 	reconcileTotal prometheus.Counter
 }
@@ -35,6 +36,10 @@ func NewMetrics() *Metrics {
 			Name: "external_ebs_autoresizer_resize_total",
 			Help: "Total resize attempts by result.",
 		}, []string{"result"}),
+		skipTotal: prometheus.NewCounterVec(prometheus.CounterOpts{
+			Name: "external_ebs_autoresizer_skip_total",
+			Help: "Total instances skipped without a resize attempt, by reason.",
+		}, []string{"reason"}),
 		errorTotal: prometheus.NewCounterVec(prometheus.CounterOpts{
 			Name: "external_ebs_autoresizer_error_total",
 			Help: "Total errors by reconcile stage.",
@@ -44,7 +49,7 @@ func NewMetrics() *Metrics {
 			Help: "Total reconcile passes started.",
 		}),
 	}
-	m.registry.MustRegister(m.usage, m.resizeTotal, m.errorTotal, m.reconcileTotal)
+	m.registry.MustRegister(m.usage, m.resizeTotal, m.skipTotal, m.errorTotal, m.reconcileTotal)
 	return m
 }
 
@@ -60,6 +65,12 @@ func (m *Metrics) ObserveResize(success bool) {
 		result = "success"
 	}
 	m.resizeTotal.WithLabelValues(result).Inc()
+}
+
+// ObserveSkip counts an instance skipped without a resize attempt. reason is
+// one of: below_threshold, max_size, cooldown, dry_run.
+func (m *Metrics) ObserveSkip(reason string) {
+	m.skipTotal.WithLabelValues(reason).Inc()
 }
 
 // ObserveError counts an error in the given reconcile stage.

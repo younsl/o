@@ -79,6 +79,27 @@ as `failure`.
 Use it to track how many resizes happen over time and to catch a rising failure
 rate.
 
+### external_ebs_autoresizer_skip_total
+
+- Type: Counter
+- Labels: `reason`
+
+The total number of instances that the addon looked at but did not resize,
+grouped by why it held back. The `reason` label is one of:
+
+| Reason | Meaning |
+|--------|---------|
+| `below_threshold` | Root usage was under `USAGE_THRESHOLD_PERCENT`, so nothing was needed. This is the normal healthy case and grows on every pass. |
+| `max_size` | The target size would exceed `MAX_VOLUME_SIZE_GIB`, so the volume was left as is. |
+| `cooldown` | The volume was modified within the AWS 6-hour window, or is still modifying, so it could not be grown yet. |
+| `dry_run` | `DRY_RUN` is enabled, so the addon only logged what it would have done. |
+
+This metric makes the addon's silent decisions visible. `resize_total` and
+`error_total` say nothing when an instance is above threshold but skipped, so
+without `skip_total` a disk can keep filling up at the `max_size` ceiling with no
+signal at all. Watch `reason="max_size"` together with `root_usage_percent` to
+catch volumes that are stuck and need a manual size bump.
+
 ### external_ebs_autoresizer_error_total
 
 - Type: Counter
@@ -124,6 +145,13 @@ Errors by stage over the last hour:
 sum by (stage) (rate(external_ebs_autoresizer_error_total[1h]))
 ```
 
+Volumes stuck at the max-size ceiling while still filling up (above 90%):
+
+```promql
+rate(external_ebs_autoresizer_skip_total{reason="max_size"}[1h]) > 0
+  and on() max(external_ebs_autoresizer_root_usage_percent) > 90
+```
+
 Detect a stalled reconcile loop (no new pass in 15 minutes):
 
 ```promql
@@ -132,14 +160,16 @@ increase(external_ebs_autoresizer_reconcile_total[15m]) == 0
 
 ## Conclusion
 
-The addon exposes four metrics, and together they answer four simple questions:
+The addon exposes five metrics, and together they answer five simple questions:
 
 - How full are the disks? `root_usage_percent`
 - Are resizes succeeding? `resize_total`
+- When the addon holds back, why? `skip_total`
 - If something fails, where? `error_total`
 - Is the loop still running? `reconcile_total`
 
-A good starting point is one dashboard panel per metric, plus two alerts: one on
-a rising `resize_total{result="failure"}` rate, and one on a stalled
-`reconcile_total`. From there you can add per-instance usage views using the
-labels on `root_usage_percent`.
+A good starting point is one dashboard panel per metric, plus three alerts: one
+on a rising `resize_total{result="failure"}` rate, one on a stalled
+`reconcile_total`, and one on `skip_total{reason="max_size"}` paired with high
+`root_usage_percent` to catch disks stuck at the ceiling. From there you can add
+per-instance usage views using the labels on `root_usage_percent`.

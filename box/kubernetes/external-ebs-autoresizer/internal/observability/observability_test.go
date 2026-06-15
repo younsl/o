@@ -17,6 +17,9 @@ func TestMetricsObservations(t *testing.T) {
 	m.ObserveResize(true)
 	m.ObserveError("measure")
 	m.ObserveReconcile()
+	m.ObserveSkip("cooldown")
+	m.ObserveSkip("max_size")
+	m.ObserveSkip("max_size")
 	m.ObserveUsage("i-1", "/dev/xvda", "vol-1", "web-1", 73)
 
 	if got := testutil.ToFloat64(m.resizeTotal.WithLabelValues("success")); got != 2 {
@@ -27,6 +30,12 @@ func TestMetricsObservations(t *testing.T) {
 	}
 	if got := testutil.ToFloat64(m.errorTotal.WithLabelValues("measure")); got != 1 {
 		t.Errorf("error measure = %v, want 1", got)
+	}
+	if got := testutil.ToFloat64(m.skipTotal.WithLabelValues("cooldown")); got != 1 {
+		t.Errorf("skip cooldown = %v, want 1", got)
+	}
+	if got := testutil.ToFloat64(m.skipTotal.WithLabelValues("max_size")); got != 2 {
+		t.Errorf("skip max_size = %v, want 2", got)
 	}
 	if got := testutil.ToFloat64(m.reconcileTotal); got != 1 {
 		t.Errorf("reconcile total = %v, want 1", got)

@@ -39,8 +39,20 @@ type SSMAPI interface {
 type Recorder interface {
 	ObserveUsage(instanceID, device, volumeID, name string, percent float64)
 	ObserveResize(success bool)
+	ObserveSkip(reason string)
 	ObserveError(stage string)
 }
+
+// Skip reasons reported via Recorder.ObserveSkip when an instance is above the
+// usage threshold but no resize is attempted. They surface the silent states
+// that resize_total and error_total do not capture (e.g. a volume stuck at the
+// max-size ceiling while still filling up).
+const (
+	skipBelowThreshold = "below_threshold"
+	skipMaxSize        = "max_size"
+	skipCooldown       = "cooldown"
+	skipDryRun         = "dry_run"
+)
 
 // EventEmitter publishes Kubernetes Events about resize operations.
 // events.Emitter implements it. A nil EventEmitter disables event publishing
@@ -249,6 +261,7 @@ func (r *Resizer) reconcileInstance(ctx context.Context, inst awsx.Instance) err
 	// 2. Decide.
 	if usage < r.cfg.UsageThresholdPercent {
 		log.Debug("usage below threshold, nothing to do")
+		r.rec.ObserveSkip(skipBelowThreshold)
 		return nil
 	}
 
@@ -260,6 +273,7 @@ func (r *Resizer) reconcileInstance(ctx context.Context, inst awsx.Instance) err
 	// 4. Safety guards.
 	if int(target) > r.cfg.MaxVolumeSizeGiB {
 		log.Warn("target exceeds max volume size, skipping", "max_gib", r.cfg.MaxVolumeSizeGiB)
+		r.rec.ObserveSkip(skipMaxSize)
 		return nil
 	}
 	skip, err := r.withinCooldown(ctx, inst.RootVolumeID)
@@ -269,11 +283,13 @@ func (r *Resizer) reconcileInstance(ctx context.Context, inst awsx.Instance) err
 	}
 	if skip {
 		log.Info("volume modified within cooldown window, skipping")
+		r.rec.ObserveSkip(skipCooldown)
 		return nil
 	}
 
 	if r.cfg.DryRun {
 		log.Info("dry-run: would modify volume and resize filesystem")
+		r.rec.ObserveSkip(skipDryRun)
 		return nil
 	}
 
