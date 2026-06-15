@@ -1,7 +1,16 @@
 import { FormEvent, ReactNode, useCallback, useEffect, useMemo, useState } from "react";
+import { Link } from "react-router-dom";
 import { Approval, Repository, VersionDeny, api } from "../api";
 import { ConfirmModal } from "../components/ConfirmModal";
 import { Select } from "../components/Select";
+
+// repoLink renders a repository name as a link to its detail Approvals tab when
+// the id is known, falling back to plain text (non-admin approvers can't list
+// repositories, and the detail page is admin-only anyway).
+function repoLink(name: string, ids: Record<string, number>): ReactNode {
+  const id = ids[name];
+  return id ? <Link to={`/repositories/${id}/approvals`}>{name}</Link> : name;
+}
 
 const PAGE = 50;
 const STATUSES = ["pending", "approved", "rejected"];
@@ -31,6 +40,12 @@ export function Approvals() {
     return [...names].sort();
   }, [repos, rows]);
 
+  const repoIdByName = useMemo(() => {
+    const m: Record<string, number> = {};
+    repos.forEach((r) => { m[r.name] = r.id; });
+    return m;
+  }, [repos]);
+
   return (
     <>
       <div className="page-head">
@@ -47,6 +62,7 @@ export function Approvals() {
         reloadKey={reloadKey}
         onRows={setRows}
         repoNames={repoOptions}
+        repoIds={repoIdByName}
         filters={
           <Select style={{ width: 200 }} value={repo} onChange={setRepo}
             options={[
@@ -62,7 +78,7 @@ export function Approvals() {
           onCancel={() => setPreApproving(false)}
         />
       )}
-      <VersionDenies repo={repo} showRepo repoNames={repoOptions} />
+      <VersionDenies repo={repo} showRepo repoNames={repoOptions} repoIds={repoIdByName} />
     </>
   );
 }
@@ -70,7 +86,7 @@ export function Approvals() {
 // ApprovalList renders the approval queue scoped to an optional repository:
 // status filter, table, pagination and the approve/reject decision modal.
 // Shared by the global Approvals page and the repository detail tab.
-export function ApprovalList({ repo = "", showRepo = true, reloadKey = 0, onRows, filters, repoNames = [] }: {
+export function ApprovalList({ repo = "", showRepo = true, reloadKey = 0, onRows, filters, repoNames = [], repoIds = {} }: {
   repo?: string;
   showRepo?: boolean;
   reloadKey?: number;
@@ -78,6 +94,8 @@ export function ApprovalList({ repo = "", showRepo = true, reloadKey = 0, onRows
   filters?: ReactNode;
   // Proxy repository names the bulk-approve modal can target. Empty disables it.
   repoNames?: string[];
+  // Maps repository name to id so the Repository column can link to its detail.
+  repoIds?: Record<string, number>;
 }) {
   const [status, setStatus] = useState("pending");
   const [rows, setRows] = useState<Approval[]>([]);
@@ -135,7 +153,7 @@ export function ApprovalList({ repo = "", showRepo = true, reloadKey = 0, onRows
             <tbody>
               {rows.map((a) => (
                 <tr key={a.id}>
-                  {showRepo && <td>{a.repo_name}</td>}
+                  {showRepo && <td>{repoLink(a.repo_name, repoIds)}</td>}
                   <td style={{ fontFamily: "ui-monospace, monospace", fontSize: 13 }}>{a.package}</td>
                   <td>{a.requested_by || <span className="muted">anonymous</span>}</td>
                   <td>{a.request_count}</td>
@@ -318,10 +336,12 @@ function DecisionModal({ row, action, onDone, onCancel }: {
 // single poisoned releases are cut off (incident response, IOC blocking). The
 // deny overrides package approval and blocks already-cached copies immediately.
 // Shared by the global Approvals page and the repository detail tab.
-export function VersionDenies({ repo = "", showRepo = true, repoNames }: {
+export function VersionDenies({ repo = "", showRepo = true, repoNames, repoIds = {} }: {
   repo?: string;
   showRepo?: boolean;
   repoNames: string[];
+  // Maps repository name to id so the Repository column can link to its detail.
+  repoIds?: Record<string, number>;
 }) {
   const [rows, setRows] = useState<VersionDeny[]>([]);
   const [count, setCount] = useState(0);
@@ -378,7 +398,7 @@ export function VersionDenies({ repo = "", showRepo = true, repoNames }: {
             <tbody>
               {rows.map((d) => (
                 <tr key={d.id}>
-                  {showRepo && <td>{d.repo_name}</td>}
+                  {showRepo && <td>{repoLink(d.repo_name, repoIds)}</td>}
                   <td style={{ fontFamily: "ui-monospace, monospace", fontSize: 13 }}>{d.package}</td>
                   <td style={{ fontFamily: "ui-monospace, monospace", fontSize: 13 }}>{d.version}</td>
                   <td>{d.reason || <span className="muted">none</span>}</td>
