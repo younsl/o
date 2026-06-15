@@ -7,6 +7,7 @@ on:
     paths:
       - 'box/kubernetes/external-ebs-autoresizer/Dockerfile'
       - 'box/kubernetes/ec2-metadata-exporter/Dockerfile'
+      - 'box/kubernetes/forklift/Dockerfile'
   workflow_dispatch:
     inputs:
       project:
@@ -16,6 +17,7 @@ on:
         options:
           - external-ebs-autoresizer
           - ec2-metadata-exporter
+          - forklift
 
 env:
   GO_VERSION: "1.26.4"
@@ -67,6 +69,7 @@ jobs:
           PROJECTS=(
             "external-ebs-autoresizer:external-ebs-autoresizer"
             "ec2-metadata-exporter:ec2-metadata-exporter"
+            "forklift:forklift"
           )
 
           TEST_JSON="[]"
