@@ -1,0 +1,36 @@
+forklift {{ .Chart.AppVersion }} installed as {{ include "forklift.fullname" . }}.
+
+High availability:
+{{- if .Values.replication.enabled }}
+  PV-BASED REPLICATION is ENABLED ({{ .Values.replicaCount }} replicas, StatefulSet, per-pod RWO PVC).
+  The standby pulls the leader's data every {{ .Values.replication.interval }}; writes within
+  one interval can be lost on failover. Traffic follows the forklift.io/role=leader pod label.
+{{- else if eq (include "forklift.haEnabled" .) "true" }}
+  HA is ENABLED ({{ .Values.replicaCount }} replicas, leader election via Lease "{{ include "forklift.leaseName" . }}").
+  Ensure persistence.accessModes is ReadWriteMany so all replicas share the volume.
+  No RWX storage available? Set replication.enabled=true for per-pod RWO volumes.
+{{- else }}
+  HA is DISABLED (single instance). Set replicaCount > 1 (and RWX storage, or
+  replication.enabled=true for per-pod RWO volumes) for HA.
+{{- end }}
+
+Reach the API/UI:
+  kubectl -n {{ .Release.Namespace }} port-forward svc/{{ include "forklift.fullname" . }} 8080:{{ .Values.service.port }}
+  open http://localhost:8080
+
+First admin user: {{ .Values.auth.bootstrap.adminUser }}
+{{- if .Values.auth.bootstrap.adminPassword }}
+  (password from the value you provided; rotate after first login).
+{{- else }}
+  A random password was generated on first install. Retrieve it with:
+    kubectl -n {{ .Release.Namespace }} get secret {{ include "forklift.fullname" . }} \
+      -o jsonpath='{.data.bootstrap-admin-password}' | base64 -d ; echo
+  Rotate it after first login.
+{{- end }}
+
+Create a repository (admin):
+  curl -u {{ .Values.auth.bootstrap.adminUser }}:<password> -X POST http://localhost:8080/api/v1/repositories \
+    -H 'Content-Type: application/json' \
+    -d '{"name":"maven-central","format":"maven","type":"proxy","upstream_url":"https://repo1.maven.org/maven2"}'
+
+API docs: http://localhost:8080/api-docs

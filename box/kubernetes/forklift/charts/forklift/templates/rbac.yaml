@@ -1,0 +1,39 @@
+{{- if and .Values.rbac.create (eq (include "forklift.haEnabled" .) "true") }}
+# Leader election needs to manage a single Lease in the install namespace.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: {{ include "forklift.fullname" . }}-leader-election
+  labels:
+    {{- include "forklift.labels" . | nindent 4 }}
+rules:
+  - apiGroups: ["coordination.k8s.io"]
+    resources: ["leases"]
+    verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+  - apiGroups: [""]
+    resources: ["events"]
+    verbs: ["create", "patch"]
+  {{- if .Values.replication.enabled }}
+  # The leader patches its own pod with forklift.io/role=leader so the main
+  # Service routes traffic to it, and lists/demotes peers still labeled
+  # leader (a partitioned former leader cannot unlabel itself).
+  - apiGroups: [""]
+    resources: ["pods"]
+    verbs: ["get", "list", "patch"]
+  {{- end }}
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: {{ include "forklift.fullname" . }}-leader-election
+  labels:
+    {{- include "forklift.labels" . | nindent 4 }}
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: {{ include "forklift.fullname" . }}-leader-election
+subjects:
+  - kind: ServiceAccount
+    name: {{ include "forklift.serviceAccountName" . }}
+    namespace: {{ .Release.Namespace }}
+{{- end }}

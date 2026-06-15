@@ -1,0 +1,22 @@
+{{- if .Values.replication.enabled }}
+# Headless Service giving each StatefulSet pod a stable DNS record. The standby
+# resolves the leader as <lease-holder>.<this-service>.<namespace>.svc to pull
+# replication data. Not-ready addresses are published so peer DNS keeps working
+# through readiness transitions.
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "forklift.headlessServiceName" . }}
+  labels:
+    {{- include "forklift.labels" . | nindent 4 }}
+spec:
+  clusterIP: None
+  publishNotReadyAddresses: true
+  selector:
+    {{- include "forklift.selectorLabels" . | nindent 4 }}
+  ports:
+    - name: http
+      port: 8080
+      targetPort: http
+      protocol: TCP
+{{- end }}

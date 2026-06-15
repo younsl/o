@@ -1,0 +1,287 @@
+// Thin fetch wrapper around the forklift management API. Auth is cookie-based
+// (set by POST /api/v1/login), so requests just need credentials: "include".
+
+export interface RepoConfig {
+  cache: {
+    enabled: boolean;
+    artifact_ttl: string;
+    metadata_ttl: string;
+    negative_ttl: string;
+    max_size_bytes: number;
+    eviction: string;
+  };
+  age_policy: {
+    enabled: boolean;
+    min_age: string;
+    max_age: string;
+    action: string;
+  };
+  approval: {
+    enabled: boolean;
+    mode?: string;
+    auto_approve?: string[];
+  };
+  group: {
+    members?: string[];
+  };
+}
+
+export interface Repository {
+  id: number;
+  name: string;
+  format: string;
+  type: string;
+  upstream_url: string;
+  config: RepoConfig;
+  // Artifact aggregates, present in list responses only.
+  artifact_count?: number;
+  total_size?: number;
+}
+
+// RepositoryName is the slim repository shape returned by /repository-names for
+// token-scope autocomplete (available to any authenticated user).
+export interface RepositoryName {
+  name: string;
+  format: string;
+  type: string;
+}
+
+export interface Me {
+  authenticated: boolean;
+  username?: string;
+  source?: string;
+  admin?: boolean;
+  // approver: may decide package approvals (admin, or a role with the approve action).
+  approver?: boolean;
+}
+
+export interface Token {
+  id: number;
+  name: string;
+  description: string;
+  scopes_json: string;
+  expires_at: string | null;
+  last_used_at: string | null;
+  created_at: string;
+}
+
+export interface Artifact {
+  path: string;
+  version: string;
+  size: number;
+  content_type: string;
+  published_at: string | null;
+  cached_at: string;
+  last_accessed_at: string;
+}
+
+export interface ArtifactList {
+  count: number;
+  total_size: number;
+  artifacts: Artifact[];
+}
+
+export interface RoleRef {
+  id: number;
+  name: string;
+}
+
+export interface User {
+  id: number;
+  username: string;
+  source: string;
+  email: string;
+  disabled: boolean;
+  created_at: string;
+  last_login_at: string | null;
+  roles: RoleRef[];
+}
+
+export interface Permission {
+  id: number;
+  repo_pattern: string;
+  actions: string[];
+}
+
+export interface Role {
+  id: number;
+  name: string;
+  description: string;
+  created_at: string;
+  permissions: Permission[];
+}
+
+export interface AuditLog {
+  id: number;
+  event: string;
+  path: string;
+  username: string;
+  method: string;
+  status: number;
+  client_ip: string;
+  user_agent: string;
+  created_at: string;
+}
+
+export interface AuditLogList {
+  count: number;
+  logs: AuditLog[];
+}
+
+export interface Approval {
+  id: number;
+  repo_name: string;
+  package: string;
+  status: string;
+  requested_by: string;
+  decided_by: string;
+  note: string;
+  request_count: number;
+  first_requested_at: string;
+  last_requested_at: string;
+  decided_at: string | null;
+}
+
+export interface ApprovalList {
+  count: number;
+  approvals: Approval[];
+}
+
+export interface VersionDeny {
+  id: number;
+  repo_name: string;
+  package: string;
+  version: string;
+  reason: string;
+  created_by: string;
+  created_at: string;
+}
+
+export interface VersionDenyList {
+  count: number;
+  denies: VersionDeny[];
+}
+
+export interface UpstreamHealth {
+  applicable: boolean;
+  reachable?: boolean;
+  status?: number;
+  latency_ms?: number;
+  error?: string;
+}
+
+// repoEndpoint returns the forklift-relative call address for a repository, by
+// format, plus where the client configures it.
+export function repoEndpoint(format: string, name: string): { url: string; hint: string } {
+  const base = window.location.origin;
+  switch (format) {
+    case "maven":
+      return { url: `${base}/maven/${name}/`, hint: "settings.xml <mirror><url>" };
+    case "npm":
+      return { url: `${base}/npm/${name}/`, hint: ".npmrc registry=" };
+    case "cargo":
+      return { url: `sparse+${base}/cargo/${name}/`, hint: ".cargo/config.toml [registries]" };
+    case "go":
+      return { url: `${base}/go/${name}`, hint: "GOPROXY=" };
+    case "pypi":
+      return { url: `${base}/pypi/${name}/simple/`, hint: "pip index-url / twine repository url" };
+    default:
+      return { url: `${base}/${format}/${name}/`, hint: "" };
+  }
+}
+
+export function humanSize(bytes: number): string {
+  if (bytes < 1024) return `${bytes} B`;
+  const units = ["KB", "MB", "GB", "TB"];
+  let v = bytes / 1024;
+  let i = 0;
+  while (v >= 1024 && i < units.length - 1) { v /= 1024; i++; }
+  return `${v.toFixed(1)} ${units[i]}`;
+}
+
+async function req<T>(method: string, path: string, body?: unknown): Promise<T> {
+  const res = await fetch(`/api/v1${path}`, {
+    method,
+    credentials: "include",
+    headers: body ? { "Content-Type": "application/json" } : undefined,
+    body: body ? JSON.stringify(body) : undefined,
+  });
+  if (res.status === 204) return undefined as T;
+  const text = await res.text();
+  const data = text ? JSON.parse(text) : undefined;
+  if (!res.ok) {
+    throw new Error((data && data.error) || res.statusText);
+  }
+  return data as T;
+}
+
+export const api = {
+  me: () => req<Me>("GET", "/me"),
+  login: (username: string, password: string) =>
+    req<{ username: string }>("POST", "/login", { username, password }),
+  logout: () => req<void>("POST", "/logout"),
+
+  listRepositories: () => req<Repository[]>("GET", "/repositories"),
+  listRepositoryNames: () => req<RepositoryName[]>("GET", "/repository-names"),
+  getRepository: (id: number) => req<Repository>("GET", `/repositories/${id}`),
+  createRepository: (body: unknown) => req<Repository>("POST", "/repositories", body),
+  updateRepository: (id: number, body: unknown) =>
+    req<Repository>("PUT", `/repositories/${id}`, body),
+  deleteRepository: (id: number) => req<void>("DELETE", `/repositories/${id}`),
+
+  listArtifacts: (id: number, prefix = "") =>
+    req<ArtifactList>("GET", `/repositories/${id}/artifacts?prefix=${encodeURIComponent(prefix)}`),
+  upstreamHealth: (id: number) => req<UpstreamHealth>("GET", `/repositories/${id}/upstream-health`),
+  listAuditLogs: (id: number, event = "", limit = 100, offset = 0) =>
+    req<AuditLogList>(
+      "GET",
+      `/repositories/${id}/audit-logs?event=${encodeURIComponent(event)}&limit=${limit}&offset=${offset}`,
+    ),
+
+  listUsers: () => req<User[]>("GET", "/users"),
+  createUser: (body: { username: string; password: string; email?: string; role_ids?: number[] }) =>
+    req<{ id: number; username: string }>("POST", "/users", body),
+  updateUser: (id: number, body: { password?: string; disabled?: boolean }) =>
+    req<User>("PUT", `/users/${id}`, body),
+  deleteUser: (id: number) => req<void>("DELETE", `/users/${id}`),
+  assignRole: (userId: number, roleId: number) =>
+    req<void>("POST", `/users/${userId}/roles`, { role_id: roleId }),
+  removeRole: (userId: number, roleId: number) =>
+    req<void>("DELETE", `/users/${userId}/roles/${roleId}`),
+
+  listRoles: () => req<Role[]>("GET", "/roles"),
+  createRole: (body: { name: string; description?: string; permissions?: { repo_pattern: string; actions: string[] }[] }) =>
+    req<Role>("POST", "/roles", body),
+  deleteRole: (id: number) => req<void>("DELETE", `/roles/${id}`),
+  addPermission: (roleId: number, body: { repo_pattern: string; actions: string[] }) =>
+    req<Permission>("POST", `/roles/${roleId}/permissions`, body),
+  deletePermission: (roleId: number, permId: number) =>
+    req<void>("DELETE", `/roles/${roleId}/permissions/${permId}`),
+
+  listApprovals: (repo = "", status = "", limit = 100, offset = 0) =>
+    req<ApprovalList>(
+      "GET",
+      `/approvals?repo=${encodeURIComponent(repo)}&status=${encodeURIComponent(status)}&limit=${limit}&offset=${offset}`,
+    ),
+  approvalCount: (status = "pending") =>
+    req<{ count: number }>("GET", `/approvals/count?status=${encodeURIComponent(status)}`),
+  createApproval: (body: { repo: string; package: string; status: string; note?: string }) =>
+    req<Approval>("POST", "/approvals", body),
+  approveApproval: (id: number, note = "") =>
+    req<Approval>("POST", `/approvals/${id}/approve`, { note }),
+  rejectApproval: (id: number, note = "") =>
+    req<Approval>("POST", `/approvals/${id}/reject`, { note }),
+
+  listVersionDenies: (repo = "", limit = 100, offset = 0) =>
+    req<VersionDenyList>(
+      "GET",
+      `/version-denies?repo=${encodeURIComponent(repo)}&limit=${limit}&offset=${offset}`,
+    ),
+  createVersionDeny: (body: { repo: string; package: string; version: string; reason?: string }) =>
+    req<VersionDeny>("POST", "/version-denies", body),
+  deleteVersionDeny: (id: number) => req<void>("DELETE", `/version-denies/${id}`),
+
+  listTokens: () => req<Token[]>("GET", "/tokens"),
+  createToken: (body: unknown) => req<{ token: string; name: string }>("POST", "/tokens", body),
+  deleteToken: (id: number) => req<void>("DELETE", `/tokens/${id}`),
+};

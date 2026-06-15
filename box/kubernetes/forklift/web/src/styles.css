@@ -1,0 +1,247 @@
+/* forklift UI: strict black-and-white theme. */
+:root {
+  --bg: #181a1f;
+  --panel: #1e2127;
+  --panel-2: #262a32;
+  --border: #31363f;
+  --text: #e9ebee;
+  --muted: #9aa1ac;
+  --accent: #ffd400;
+  --accent-hover: #e6be00;
+  --danger: #e5484d;
+  --danger-hover: #f2555a;
+  --input-bg: #15171b;
+  --radius: 8px;
+  color-scheme: dark;
+}
+
+* { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  background: var(--bg);
+  color: var(--text);
+  font-size: 14px;
+}
+
+a { color: var(--text); text-decoration: none; }
+a:hover { color: var(--accent); text-decoration: underline; }
+
+.app { display: flex; min-height: 100vh; }
+
+.sidebar {
+  width: 220px;
+  background: var(--panel);
+  border-right: 1px solid var(--border);
+  padding: 20px 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.brand { display: flex; align-items: center; gap: 10px; font-weight: 700; font-size: 23px; padding: 4px 8px 18px; letter-spacing: 0.5px; color: var(--text); cursor: pointer; }
+.brand:hover { text-decoration: none; opacity: 0.85; }
+.logo-chip { display: inline-flex; align-items: center; justify-content: center; background: #f2f3f5; border-radius: 6px; flex-shrink: 0; }
+.brand-text span { color: var(--accent); }
+.navlink { padding: 8px 10px; border-radius: var(--radius); color: var(--muted); }
+.navlink:hover { background: var(--panel-2); color: var(--text); text-decoration: none; }
+.navlink.active { background: var(--panel-2); color: var(--accent); }
+.navlink.nav-flex { display: flex; align-items: center; justify-content: space-between; }
+.count-badge {
+  min-width: 20px; text-align: center; padding: 1px 7px; border-radius: 99px;
+  font-size: 11px; font-weight: 600; background: rgba(255, 255, 255, 0.08);
+  color: var(--muted); border: 1px solid var(--border);
+}
+.navlink.active .count-badge { background: var(--accent); color: #000; border-color: var(--accent); }
+.sidebar .spacer { flex: 1; }
+.userbox { font-size: 12px; color: var(--muted); padding: 10px; border-top: 1px solid var(--border); }
+.logout-btn { width: 100%; margin-top: 8px; padding: 6px 12px; font-size: 13px; }
+
+.main { flex: 1; padding: 28px 36px; max-width: 1100px; }
+h1 { font-size: 22px; margin: 0 0 18px; }
+/* List-page header: title left, action button right, vertically centered.
+   The h1 margin moves to the row so the button doesn't sag below the title. */
+.page-head { display: flex; justify-content: space-between; align-items: center; gap: 10px; margin: 0 0 18px; }
+.page-head h1 { margin: 0; }
+/* One-line page summary shown under the page heading. */
+.page-desc { color: var(--muted); font-size: 13px; line-height: 1.5; max-width: 780px; margin: -8px 0 22px; }
+h2 { font-size: 16px; margin: 24px 0 12px; }
+
+/* Custom hover tooltip (in-app replacement for the native title attribute).
+   Put .tooltip on the trigger and the text in data-tooltip. Appears centered
+   below the trigger. */
+.tooltip { position: relative; }
+.tooltip::after {
+  content: attr(data-tooltip);
+  position: absolute; top: calc(100% + 9px); left: 50%; transform: translateX(-50%);
+  width: max-content; max-width: 240px; white-space: normal;
+  background: #2c313b; color: var(--text);
+  border: 1px solid #3d434e; border-radius: var(--radius);
+  padding: 7px 10px; font-size: 12px; line-height: 1.35;
+  font-weight: 400; text-transform: none; letter-spacing: 0;
+  box-shadow: 0 10px 28px rgba(0, 0, 0, 0.6);
+  opacity: 0; pointer-events: none; z-index: 100; transition: opacity 0.12s ease;
+}
+/* Upward arrow connecting the tooltip to its trigger. */
+.tooltip::before {
+  content: ""; position: absolute; top: calc(100% + 4px); left: 50%; transform: translateX(-50%);
+  border: 5px solid transparent; border-bottom-color: #3d434e;
+  opacity: 0; pointer-events: none; z-index: 100; transition: opacity 0.12s ease;
+}
+.tooltip:hover::after, .tooltip:hover::before,
+.tooltip:focus-visible::after, .tooltip:focus-visible::before { opacity: 1; }
+
+/* Security column icons (Repositories list): on = active policy, dim = disabled.
+   Dim via color, not opacity: opacity would also fade the tooltip pseudo-element. */
+.sec-icons { display: inline-flex; gap: 9px; align-items: center; }
+.sec-icon { display: inline-flex; color: #565d68; cursor: help; }
+.sec-icon.on { color: var(--accent); }
+
+/* Subtitle that groups related settings panels (e.g. Repository, Security). */
+.section-title {
+  font-size: 12px; text-transform: uppercase; letter-spacing: 0.05em;
+  color: var(--muted); font-weight: 600;
+  margin: 24px 0 12px; padding-bottom: 7px; border-bottom: 1px solid var(--border);
+}
+.section-title .muted { text-transform: none; letter-spacing: 0; font-weight: 400; }
+.panel { background: var(--panel); border: 1px solid var(--border); border-radius: var(--radius); padding: 18px; margin-bottom: 18px; }
+.panel.danger { border-color: var(--danger); }
+.panel.danger h2 { color: var(--danger); }
+
+table { width: 100%; border-collapse: collapse; }
+th, td { text-align: left; padding: 10px 12px; border-bottom: 1px solid var(--border); }
+th { color: var(--muted); font-weight: 600; font-size: 12px; text-transform: uppercase; letter-spacing: 0.4px; }
+
+.btn {
+  background: var(--accent); color: #000; border: 1px solid var(--accent); padding: 8px 14px;
+  border-radius: var(--radius); cursor: pointer; font-size: 14px;
+}
+.btn:hover { background: var(--accent-hover); border-color: var(--accent-hover); }
+.btn.secondary { background: transparent; color: var(--text); border: 1px solid var(--border); }
+.btn.secondary:hover { background: var(--panel-2); }
+.btn.danger { background: var(--danger); color: #fff; border: 1px solid var(--danger); }
+.btn.danger:hover { background: var(--danger-hover); border-color: var(--danger-hover); }
+.btn:disabled { opacity: 0.4; cursor: not-allowed; }
+
+label { display: block; font-size: 12px; color: var(--muted); margin: 12px 0 4px; }
+.req { color: var(--accent); margin-left: 2px; }
+
+/* Password input with a right-aligned show/hide toggle. */
+.password-field { position: relative; }
+.password-field input { padding-right: 58px; }
+.password-toggle {
+  position: absolute; top: 1px; right: 1px; bottom: 1px;
+  display: flex; align-items: center;
+  background: none; border: none; color: var(--muted); cursor: pointer;
+  font-size: 12px; padding: 0 10px; border-radius: 0 var(--radius) var(--radius) 0;
+}
+.password-toggle:hover { color: var(--text); }
+input, textarea {
+  width: 100%; padding: 8px 10px; background: var(--input-bg); color: var(--text);
+  border: 1px solid var(--border); border-radius: var(--radius); font-size: 14px;
+}
+input:focus, textarea:focus { outline: none; border-color: var(--accent); }
+textarea { font-family: inherit; resize: vertical; }
+
+/* Custom dropdown (Select component, in-app replacement for native <select>) */
+.select { position: relative; width: 100%; }
+.select-trigger {
+  display: flex; align-items: center; justify-content: space-between; gap: 10px;
+  width: 100%; padding: 8px 10px;
+  background: var(--input-bg); color: var(--text);
+  border: 1px solid var(--border); border-radius: var(--radius);
+  font: inherit; font-size: 14px; cursor: pointer; text-align: left;
+}
+.select-trigger:hover { border-color: #3d434e; }
+.select-trigger:focus { outline: none; border-color: var(--accent); }
+.select.open .select-trigger { border-color: var(--accent); }
+.select-value { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.select-placeholder { color: var(--muted); }
+.select-caret { flex-shrink: 0; color: var(--muted); transition: transform 0.15s ease; }
+.select.open .select-caret { transform: rotate(180deg); }
+.select-menu {
+  position: absolute; top: calc(100% + 4px); left: 0; z-index: 60;
+  min-width: 100%; max-height: 280px; overflow-y: auto;
+  background: var(--panel); border: 1px solid var(--border); border-radius: var(--radius);
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5); padding: 4px;
+}
+.select-option {
+  display: flex; align-items: center; justify-content: space-between; gap: 10px;
+  padding: 7px 10px; border-radius: 5px; cursor: pointer; white-space: nowrap;
+}
+.select-option.active { background: var(--panel-2); }
+.select-option.selected { color: var(--accent); }
+.select-check { font-size: 11px; flex-shrink: 0; }
+.select-option-text { display: flex; flex-direction: column; gap: 1px; min-width: 0; }
+.select-desc { font-size: 11px; color: var(--muted); white-space: normal; max-width: 280px; word-break: break-word; }
+.select-empty { padding: 7px 10px; color: var(--muted); }
+.select.sm { width: auto; }
+.select.sm .select-trigger { padding: 3px 8px; font-size: 12px; }
+.select.sm .select-menu { font-size: 12px; }
+.row { display: flex; gap: 14px; }
+.row > * { flex: 1; }
+.inline { display: flex; gap: 10px; align-items: center; }
+
+/* Repository type picker: 3 selectable cards in a row. */
+.type-cards { display: flex; gap: 10px; }
+.type-card {
+  flex: 1; padding: 12px 14px; text-align: left; cursor: pointer;
+  background: var(--input-bg); color: var(--text);
+  border: 1px solid var(--border); border-radius: var(--radius);
+  font: inherit;
+}
+.type-card:hover { background: var(--panel-2); }
+.type-card.selected { border-color: var(--accent); background: var(--panel-2); }
+.type-card .type-title { font-size: 15px; font-weight: 600; margin-bottom: 4px; }
+.type-card.selected .type-title { color: var(--accent); }
+.type-card .type-desc { font-size: 12px; color: var(--muted); line-height: 1.4; }
+
+.tabs { display: flex; gap: 2px; border-bottom: 1px solid var(--border); margin-bottom: 18px; }
+.tab {
+  padding: 9px 16px; color: var(--muted); font-size: 14px;
+  border: 1px solid transparent; border-bottom: none;
+  border-radius: var(--radius) var(--radius) 0 0; margin-bottom: -1px;
+}
+.tab:hover { color: var(--text); background: var(--panel-2); text-decoration: none; }
+.tab.active {
+  color: var(--accent); background: var(--panel);
+  border-color: var(--border); border-bottom: 1px solid var(--panel);
+}
+
+.badge { display: inline-block; padding: 2px 8px; border-radius: 99px; font-size: 12px; background: var(--panel-2); color: var(--muted); border: 1px solid var(--border); }
+.badge.proxy, .badge.hosted, .badge.group { color: var(--text); }
+.badge.approval-pending { color: var(--accent); border-color: var(--accent); }
+.badge.approval-approved { color: #22c55e; border-color: #22c55e; }
+.badge.approval-rejected { color: var(--danger); border-color: var(--danger); }
+
+.status { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; color: var(--muted); }
+.dot { width: 9px; height: 9px; border-radius: 50%; display: inline-block; background: transparent; border: 1px solid var(--muted); }
+.dot.ok { background: #22c55e; border-color: #22c55e; box-shadow: 0 0 5px rgba(34, 197, 94, 0.7); }
+.dot.bad { background: #ef4444; border-color: #ef4444; box-shadow: 0 0 5px rgba(239, 68, 68, 0.7); }
+
+.error { color: var(--text); margin: 10px 0; padding: 8px 10px; border: 1px solid #555; border-radius: var(--radius); background: var(--panel-2); }
+.code-field {
+  flex: 1; font-family: ui-monospace, monospace; font-size: 13px;
+  background: var(--input-bg); color: var(--muted);
+  border: 1px dashed var(--border); border-radius: var(--radius);
+  padding: 8px 10px; overflow-x: auto; white-space: nowrap;
+  user-select: all; cursor: text;
+}
+
+.token-value { font-family: ui-monospace, monospace; background: var(--input-bg); padding: 10px; border-radius: var(--radius); border: 1px solid var(--border); word-break: break-all; }
+.muted { color: var(--muted); }
+
+.modal-overlay {
+  position: fixed; inset: 0; background: rgba(0, 0, 0, 0.6);
+  display: flex; align-items: center; justify-content: center; z-index: 100;
+}
+.modal {
+  background: var(--panel); border: 1px solid var(--border); border-radius: var(--radius);
+  padding: 22px; width: 380px; max-width: 90vw;
+  box-shadow: 0 10px 40px rgba(0, 0, 0, 0.5);
+}
+
+.login-wrap { display: flex; align-items: center; justify-content: center; width: 100%; min-height: 100vh; }
+.login-card { width: 340px; }
+.checkbox { display: flex; align-items: center; gap: 8px; }
+.checkbox input { width: auto; }

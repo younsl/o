@@ -1,0 +1,45 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="128" height="128">
+  <!-- forklift project logo : flat, black + yellow highlight -->
+  <defs>
+    <style>
+      .ink { fill: #111111; }
+      .hl  { fill: #FFC400; }
+    </style>
+  </defs>
+
+  <!-- fork (yellow highlight) : vertical carriage + horizontal blade -->
+  <path class="hl" d="M132 196 h-18 v250 h-90 v16 h108 z"/>
+
+  <!-- mast -->
+  <rect class="ink" x="138" y="108" width="18" height="354" rx="6"/>
+
+  <!-- overhead guard : posts + roof -->
+  <rect class="ink" x="192" y="140" width="14" height="150" rx="5"/>
+  <rect class="ink" x="332" y="140" width="14" height="150" rx="5"/>
+  <rect class="ink" x="180" y="124" width="180" height="18" rx="9"/>
+
+  <!-- beacon light on the roof (yellow highlight) -->
+  <path class="hl" d="M214 124 a12 12 0 0 1 24 0 z"/>
+
+  <!-- seat -->
+  <rect class="ink" x="296" y="208" width="14" height="78" rx="5"/>
+  <rect class="ink" x="276" y="200" width="52" height="16" rx="8"/>
+
+  <!-- body -->
+  <rect class="ink" x="166" y="282" width="234" height="110" rx="16"/>
+  <!-- body stripe (yellow highlight) -->
+  <path class="hl" d="M182 282 h202 a16 16 0 0 1 16 16 v10 h-234 v-10 a16 16 0 0 1 16 -16 z"/>
+
+  <!-- counterweight -->
+  <rect class="ink" x="386" y="310" width="32" height="72" rx="10"/>
+
+  <!-- front wheel -->
+  <circle class="ink" cx="212" cy="412" r="50"/>
+  <circle class="hl"  cx="212" cy="412" r="22"/>
+  <circle class="ink" cx="212" cy="412" r="9"/>
+
+  <!-- rear wheel -->
+  <circle class="ink" cx="372" cy="422" r="40"/>
+  <circle class="hl"  cx="372" cy="422" r="17"/>
+  <circle class="ink" cx="372" cy="422" r="7"/>
+</svg>

@@ -1,0 +1,24 @@
+# Go build artifacts
+/bin/
+cover.out
+*.test
+
+# Local data dir
+/.data/
+
+# Local config files (anchored so the internal/config Go package stays tracked)
+/config/
+!config
+
+# Node / Vite
+web/node_modules/
+web/.vite/
+
+# Embedded UI build output: keep the committed placeholder index.html so the Go
+# binary always builds, but ignore compiled assets produced by `make web-build`.
+internal/webui/dist/assets/
+internal/webui/dist/*.js
+internal/webui/dist/*.css
+
+# Packaged Helm charts
+*.tgz

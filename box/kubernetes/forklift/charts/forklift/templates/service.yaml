@@ -1,0 +1,30 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "forklift.fullname" . }}
+  labels:
+    {{- include "forklift.labels" . | nindent 4 }}
+  {{- with .Values.service.annotations }}
+  annotations:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+spec:
+  type: {{ .Values.service.type }}
+  selector:
+    {{- include "forklift.selectorLabels" . | nindent 4 }}
+    {{- if .Values.replication.enabled }}
+    # In replication mode every pod is Ready; only the leader (which patches
+    # this label onto itself) receives traffic.
+    forklift.io/role: leader
+    {{- end }}
+  ports:
+    - name: http
+      port: {{ .Values.service.port }}
+      targetPort: http
+      protocol: TCP
+    {{- if .Values.service.metricsPort }}
+    - name: metrics
+      port: {{ .Values.service.metricsPort }}
+      targetPort: metrics
+      protocol: TCP
+    {{- end }}
