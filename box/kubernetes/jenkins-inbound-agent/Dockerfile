@@ -47,10 +47,14 @@ RUN set -eux; \
     apt-get install -y --no-install-recommends sshpass; \
     rm -rf /var/lib/apt/lists/*
 
-# AWS CLI v2 from the builder stage (no curl/unzip left in the final image)
+# AWS CLI v2 from the builder stage (no curl/unzip left in the final image).
+# Copy the install tree and recreate the bin symlinks here; copying the
+# /usr/local/bin/aws symlink directly would dereference it and break the CLI's
+# relative bundled-library lookup (libpython).
 COPY --from=awscli /opt/aws-cli /opt/aws-cli
-COPY --from=awscli /usr/local/bin/aws /usr/local/bin/aws
-COPY --from=awscli /usr/local/bin/aws_completer /usr/local/bin/aws_completer
+RUN set -eux; \
+    ln -s /opt/aws-cli/v2/current/bin/aws /usr/local/bin/aws; \
+    ln -s /opt/aws-cli/v2/current/bin/aws_completer /usr/local/bin/aws_completer
 
 # Back to the unprivileged agent user; inherit the base ENTRYPOINT (jenkins-agent)
 USER jenkins
