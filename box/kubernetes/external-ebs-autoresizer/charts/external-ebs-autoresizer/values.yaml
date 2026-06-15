@@ -43,8 +43,12 @@ config:
   reconcileConcurrency: 10
   # -- (int) Root filesystem usage percent that triggers a resize
   usageThresholdPercent: 80
-  # -- (int) EBS volume growth percent per resize
+  # -- (string) Growth mode: "percent" grows by growPercent, "absolute" grows by growAmount
+  growMode: percent
+  # -- (int) EBS volume growth percent per resize (used when growMode is percent)
   growPercent: 10
+  # -- (string) Absolute growth per resize with a MiB or GiB unit, e.g. 10GiB or 5120MiB (used when growMode is absolute); MiB rounds up to whole GiB
+  growAmount: "10GiB"
   # -- (int) Maximum volume size in GiB; resizes that would exceed it are skipped
   maxVolumeSizeGiB: 1000
   # -- (string) SSM command poll timeout as a Go duration

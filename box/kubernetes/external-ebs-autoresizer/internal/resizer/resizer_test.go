@@ -33,8 +33,28 @@ func TestTargetSize(t *testing.T) {
 		{200, 50, 300},
 	}
 	for _, tt := range tests {
-		if got := TargetSize(tt.current, tt.grow); got != tt.want {
-			t.Errorf("TargetSize(%d, %d) = %d, want %d", tt.current, tt.grow, got, tt.want)
+		cfg := &config.Config{GrowMode: config.GrowModePercent, GrowPercent: tt.grow}
+		if got := TargetSize(tt.current, cfg); got != tt.want {
+			t.Errorf("TargetSize(%d, percent %d) = %d, want %d", tt.current, tt.grow, got, tt.want)
+		}
+	}
+}
+
+func TestTargetSizeAbsolute(t *testing.T) {
+	tests := []struct {
+		current   int32
+		amountGiB int32
+		want      int32
+	}{
+		{100, 10, 110},
+		{100, 1, 101},
+		{8, 50, 58},
+		{100, 0, 101}, // zero increment still grows by at least 1 GiB
+	}
+	for _, tt := range tests {
+		cfg := &config.Config{GrowMode: config.GrowModeAbsolute, GrowAmountGiB: tt.amountGiB}
+		if got := TargetSize(tt.current, cfg); got != tt.want {
+			t.Errorf("TargetSize(%d, absolute %d GiB) = %d, want %d", tt.current, tt.amountGiB, got, tt.want)
 		}
 	}
 }

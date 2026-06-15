@@ -39,8 +39,19 @@ type Config struct {
 	SSMPollInterval time.Duration
 	// UsageThresholdPercent triggers a resize when root usage reaches it.
 	UsageThresholdPercent int
+	// GrowMode selects how the target size is computed: "percent" grows the
+	// volume relative to its current size by GrowPercent, "absolute" grows it by
+	// a fixed amount (GrowAmount).
+	GrowMode string
 	// GrowPercent is how much to grow the EBS volume relative to current size.
+	// Used when GrowMode is "percent".
 	GrowPercent int
+	// GrowAmount is the raw fixed growth per resize with a MiB or GiB unit (e.g.
+	// "10GiB", "5120MiB"). Used when GrowMode is "absolute".
+	GrowAmount string
+	// GrowAmountGiB is GrowAmount parsed and rounded up to whole GiB (EBS volumes
+	// are sized in GiB). Populated during Load when GrowMode is "absolute".
+	GrowAmountGiB int32
 	// MaxVolumeSizeGiB is a safety ceiling; resizes that would exceed it are skipped.
 	MaxVolumeSizeGiB int
 	// SSMCommandTimeout bounds how long we wait for an SSM command to finish.
@@ -115,6 +126,12 @@ const (
 	AnnotateOnFailure = "failure"
 )
 
+// Grow mode values selecting how the resize target size is computed.
+const (
+	GrowModePercent  = "percent"
+	GrowModeAbsolute = "absolute"
+)
+
 // Load reads configuration from environment variables, applies flag overrides
 // from args, validates the result, and returns it.
 func Load(args []string) (*Config, error) {
@@ -149,7 +166,9 @@ func Load(args []string) (*Config, error) {
 		ReconcileConcurrency:  getEnvInt("RECONCILE_CONCURRENCY", 10),
 		SSMPollInterval:       ssmPollInterval,
 		UsageThresholdPercent: getEnvInt("USAGE_THRESHOLD_PERCENT", 80),
+		GrowMode:              getEnv("GROW_MODE", GrowModePercent),
 		GrowPercent:           getEnvInt("GROW_PERCENT", 10),
+		GrowAmount:            getEnv("GROW_AMOUNT", "10GiB"),
 		MaxVolumeSizeGiB:      getEnvInt("MAX_VOLUME_SIZE_GIB", 1000),
 		ExcludeEKSNodes:       getEnvBool("EXCLUDE_EKS_NODES", true),
 		SSMCommandTimeout:     ssmCommandTimeout,
@@ -187,7 +206,9 @@ func Load(args []string) (*Config, error) {
 	fs.IntVar(&c.ReconcileConcurrency, "reconcile-concurrency", c.ReconcileConcurrency, "Max instances reconciled in parallel per pass")
 	fs.DurationVar(&c.SSMPollInterval, "ssm-poll-interval", c.SSMPollInterval, "Delay between SSM command and volume modification status polls")
 	fs.IntVar(&c.UsageThresholdPercent, "usage-threshold-percent", c.UsageThresholdPercent, "Root usage percent that triggers a resize")
-	fs.IntVar(&c.GrowPercent, "grow-percent", c.GrowPercent, "EBS growth percent")
+	fs.StringVar(&c.GrowMode, "grow-mode", c.GrowMode, "How to grow the volume: percent (by grow-percent) or absolute (by grow-amount)")
+	fs.IntVar(&c.GrowPercent, "grow-percent", c.GrowPercent, "EBS growth percent (used when grow-mode is percent)")
+	fs.StringVar(&c.GrowAmount, "grow-amount", c.GrowAmount, "Absolute EBS growth per resize with a MiB or GiB unit, e.g. 10GiB or 5120MiB (used when grow-mode is absolute)")
 	fs.IntVar(&c.MaxVolumeSizeGiB, "max-volume-size-gib", c.MaxVolumeSizeGiB, "Maximum volume size in GiB")
 	fs.DurationVar(&c.SSMCommandTimeout, "ssm-command-timeout", c.SSMCommandTimeout, "SSM command poll timeout")
 	fs.DurationVar(&c.VolumeModifyTimeout, "volume-modify-timeout", c.VolumeModifyTimeout, "Volume modification poll timeout")
@@ -227,6 +248,15 @@ func Load(args []string) (*Config, error) {
 
 	c.GrafanaAnnotationTags = parseTags(grafanaTags)
 
+	c.GrowMode = strings.ToLower(strings.TrimSpace(c.GrowMode))
+	if c.GrowMode == GrowModeAbsolute {
+		gib, err := parseGrowAmount(c.GrowAmount)
+		if err != nil {
+			return nil, fmt.Errorf("invalid GROW_AMOUNT: %w", err)
+		}
+		c.GrowAmountGiB = gib
+	}
+
 	if err := c.validate(); err != nil {
 		return nil, err
 	}
@@ -240,8 +270,17 @@ func (c *Config) validate() error {
 	if c.UsageThresholdPercent < 0 || c.UsageThresholdPercent > 100 {
 		return fmt.Errorf("USAGE_THRESHOLD_PERCENT must be between 0 and 100, got %d", c.UsageThresholdPercent)
 	}
-	if c.GrowPercent <= 0 {
-		return fmt.Errorf("GROW_PERCENT must be greater than 0, got %d", c.GrowPercent)
+	switch c.GrowMode {
+	case GrowModePercent:
+		if c.GrowPercent <= 0 {
+			return fmt.Errorf("GROW_PERCENT must be greater than 0, got %d", c.GrowPercent)
+		}
+	case GrowModeAbsolute:
+		if c.GrowAmountGiB <= 0 {
+			return fmt.Errorf("GROW_AMOUNT must resolve to at least 1 GiB, got %q", c.GrowAmount)
+		}
+	default:
+		return fmt.Errorf("GROW_MODE must be one of %s, %s, got %q", GrowModePercent, GrowModeAbsolute, c.GrowMode)
 	}
 	if c.MaxVolumeSizeGiB <= 0 {
 		return fmt.Errorf("MAX_VOLUME_SIZE_GIB must be greater than 0, got %d", c.MaxVolumeSizeGiB)
@@ -277,6 +316,51 @@ func (c *Config) validate() error {
 		}
 	}
 	return nil
+}
+
+// parseGrowAmount parses an absolute growth value with a MiB or GiB unit (e.g.
+// "10GiB", "5120MiB") into whole GiB. EBS volumes are sized in GiB, so a MiB
+// value is rounded up to the next whole GiB to guarantee at least the requested
+// growth. The unit is required and case-insensitive; the shorthand forms "Gi"
+// and "Mi" are also accepted.
+func parseGrowAmount(raw string) (int32, error) {
+	s := strings.TrimSpace(raw)
+	if s == "" {
+		return 0, fmt.Errorf("empty value, expected a number with a MiB or GiB unit such as 10GiB")
+	}
+	lower := strings.ToLower(s)
+	var (
+		numStr  string
+		toGiB   func(int64) int64
+		unitErr = fmt.Errorf("value %q must end with a MiB or GiB unit such as 10GiB or 5120MiB", raw)
+	)
+	switch {
+	case strings.HasSuffix(lower, "gib"):
+		numStr, toGiB = lower[:len(lower)-3], func(n int64) int64 { return n }
+	case strings.HasSuffix(lower, "mib"):
+		numStr, toGiB = lower[:len(lower)-3], mibToGiB
+	case strings.HasSuffix(lower, "gi"):
+		numStr, toGiB = lower[:len(lower)-2], func(n int64) int64 { return n }
+	case strings.HasSuffix(lower, "mi"):
+		numStr, toGiB = lower[:len(lower)-2], mibToGiB
+	default:
+		return 0, unitErr
+	}
+	numStr = strings.TrimSpace(numStr)
+	n, err := strconv.ParseInt(numStr, 10, 64)
+	if err != nil {
+		return 0, fmt.Errorf("value %q has an invalid number %q: %w", raw, numStr, err)
+	}
+	if n <= 0 {
+		return 0, fmt.Errorf("value %q must be greater than 0", raw)
+	}
+	return int32(toGiB(n)), nil
+}
+
+// mibToGiB converts MiB to GiB, rounding up so the resulting whole GiB is never
+// less than the requested MiB.
+func mibToGiB(mib int64) int64 {
+	return (mib + 1023) / 1024
 }
 
 // parseTags splits a comma-separated tag list, trimming whitespace and dropping

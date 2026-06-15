@@ -35,8 +35,8 @@ func main() {
 	logger.Info("starting external-ebs-autoresizer",
 		"version", version.Version, "commit", version.Commit,
 		"region", cfg.Region, "reconcile_interval", cfg.ReconcileInterval.String(),
-		"threshold_percent", cfg.UsageThresholdPercent, "grow_percent", cfg.GrowPercent,
 		"dry_run", cfg.DryRun)
+	logResizePolicy(logger, cfg)
 
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
@@ -137,6 +137,28 @@ func main() {
 
 	health.SetReady(false)
 	logger.Info("shutdown complete")
+}
+
+// logResizePolicy logs the effective volume growth policy (mode and amount) at
+// INFO so the resize behavior is unambiguous in the Pod's startup logs. In
+// percent mode it reports the growth percentage; in absolute mode it reports
+// the fixed GiB increment (and the raw configured value).
+func logResizePolicy(logger *slog.Logger, cfg *config.Config) {
+	switch cfg.GrowMode {
+	case config.GrowModeAbsolute:
+		logger.Info("Resize policy has been configured to grow each volume by a fixed absolute amount once root filesystem usage crosses the threshold",
+			"grow_mode", cfg.GrowMode,
+			"grow_amount", cfg.GrowAmount,
+			"grow_amount_gib", cfg.GrowAmountGiB,
+			"usage_threshold_percent", cfg.UsageThresholdPercent,
+			"max_volume_size_gib", cfg.MaxVolumeSizeGiB)
+	default:
+		logger.Info("Resize policy has been configured to grow each volume by a percentage of its current size once root filesystem usage crosses the threshold",
+			"grow_mode", cfg.GrowMode,
+			"grow_percent", cfg.GrowPercent,
+			"usage_threshold_percent", cfg.UsageThresholdPercent,
+			"max_volume_size_gib", cfg.MaxVolumeSizeGiB)
+	}
 }
 
 // preflightAttempts is how many times a startup connectivity check is tried

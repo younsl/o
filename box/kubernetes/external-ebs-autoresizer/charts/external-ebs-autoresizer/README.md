@@ -1,6 +1,6 @@
 # external-ebs-autoresizer
 
-![Version: 0.2.0](https://img.shields.io/badge/Version-0.2.0-informational?style=flat-square) ![Type: application](https://img.shields.io/badge/Type-application-informational?style=flat-square) ![AppVersion: 0.2.0](https://img.shields.io/badge/AppVersion-0.2.0-informational?style=flat-square)
+![Version: 0.3.0](https://img.shields.io/badge/Version-0.3.0-informational?style=flat-square) ![Type: application](https://img.shields.io/badge/Type-application-informational?style=flat-square) ![AppVersion: 0.3.0](https://img.shields.io/badge/AppVersion-0.3.0-informational?style=flat-square)
 
 Auto-expands the root filesystem (ext2/3/4 or XFS) of standalone EC2 instances via EBS ModifyVolume and SSM
 
@@ -39,7 +39,7 @@ helm install external-ebs-autoresizer oci://ghcr.io/younsl/charts/external-ebs-a
 Install a specific version:
 
 ```console
-helm install external-ebs-autoresizer oci://ghcr.io/younsl/charts/external-ebs-autoresizer --version 0.2.0
+helm install external-ebs-autoresizer oci://ghcr.io/younsl/charts/external-ebs-autoresizer --version 0.3.0
 ```
 
 ### Install from local chart
@@ -47,7 +47,7 @@ helm install external-ebs-autoresizer oci://ghcr.io/younsl/charts/external-ebs-a
 Download external-ebs-autoresizer chart and install from local directory:
 
 ```console
-helm pull oci://ghcr.io/younsl/charts/external-ebs-autoresizer --untar --version 0.2.0
+helm pull oci://ghcr.io/younsl/charts/external-ebs-autoresizer --untar --version 0.3.0
 helm install external-ebs-autoresizer ./external-ebs-autoresizer
 ```
 
@@ -91,7 +91,9 @@ The following table lists the configurable parameters and their default values.
 | config.reconcileInterval | string | `"5m"` | Reconcile loop interval as a Go duration; supports h, m, s and combinations (e.g. 30s, 5m, 1h, 1h30m) |
 | config.reconcileConcurrency | int | `10` | Max instances reconciled in parallel per pass |
 | config.usageThresholdPercent | int | `80` | Root filesystem usage percent that triggers a resize |
-| config.growPercent | int | `10` | EBS volume growth percent per resize |
+| config.growMode | string | `"percent"` | Growth mode: "percent" grows by growPercent, "absolute" grows by growAmount |
+| config.growPercent | int | `10` | EBS volume growth percent per resize (used when growMode is percent) |
+| config.growAmount | string | `"10GiB"` | Absolute growth per resize with a MiB or GiB unit, e.g. 10GiB or 5120MiB (used when growMode is absolute); MiB rounds up to whole GiB |
 | config.maxVolumeSizeGiB | int | `1000` | Maximum volume size in GiB; resizes that would exceed it are skipped |
 | config.ssmCommandTimeout | string | `"5m"` | SSM command poll timeout as a Go duration |
 | config.ssmPollInterval | string | `"1s"` | Delay between SSM command and volume modification status polls as a Go duration |

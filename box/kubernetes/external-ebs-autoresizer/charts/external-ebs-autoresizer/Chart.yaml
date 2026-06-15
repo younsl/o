@@ -2,8 +2,8 @@ apiVersion: v2
 name: external-ebs-autoresizer
 description: Auto-expands the root filesystem (ext2/3/4 or XFS) of standalone EC2 instances via EBS ModifyVolume and SSM
 type: application
-version: 0.2.0
-appVersion: "0.2.0"
+version: 0.3.0
+appVersion: "0.3.0"
 keywords:
   - aws
   - ec2

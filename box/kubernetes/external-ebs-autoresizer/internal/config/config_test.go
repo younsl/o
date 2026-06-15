@@ -236,6 +236,94 @@ func TestLoadValidationErrors(t *testing.T) {
 	}
 }
 
+func TestLoadDefaultGrowMode(t *testing.T) {
+	t.Setenv("AWS_REGION", "ap-northeast-2")
+
+	c, err := Load(nil)
+	if err != nil {
+		t.Fatalf("Load returned error: %v", err)
+	}
+	if c.GrowMode != GrowModePercent {
+		t.Errorf("GrowMode = %q, want %q", c.GrowMode, GrowModePercent)
+	}
+	// Absolute growth is not parsed unless absolute mode is selected.
+	if c.GrowAmountGiB != 0 {
+		t.Errorf("GrowAmountGiB = %d, want 0 in percent mode", c.GrowAmountGiB)
+	}
+}
+
+func TestLoadAbsoluteGrowMode(t *testing.T) {
+	cases := map[string]int32{
+		"10GiB":   10,
+		"5120MiB": 5,
+		"1500MiB": 2, // rounds up to the next whole GiB
+		"20Gi":    20,
+		"2048Mi":  2,
+		" 10gib ": 10, // case-insensitive, trimmed
+	}
+	for in, want := range cases {
+		t.Run(in, func(t *testing.T) {
+			t.Setenv("AWS_REGION", "ap-northeast-2")
+			t.Setenv("GROW_MODE", "absolute")
+			t.Setenv("GROW_AMOUNT", in)
+
+			c, err := Load(nil)
+			if err != nil {
+				t.Fatalf("Load returned error: %v", err)
+			}
+			if c.GrowMode != GrowModeAbsolute {
+				t.Errorf("GrowMode = %q, want %q", c.GrowMode, GrowModeAbsolute)
+			}
+			if c.GrowAmountGiB != want {
+				t.Errorf("GrowAmountGiB = %d, want %d", c.GrowAmountGiB, want)
+			}
+		})
+	}
+}
+
+func TestLoadAbsoluteGrowModeInvalid(t *testing.T) {
+	for _, bad := range []string{"10", "10TiB", "GiB", "-5GiB", "0GiB", ""} {
+		t.Run(bad, func(t *testing.T) {
+			t.Setenv("AWS_REGION", "ap-northeast-2")
+			t.Setenv("GROW_MODE", "absolute")
+			t.Setenv("GROW_AMOUNT", bad)
+
+			if _, err := Load(nil); err == nil {
+				t.Errorf("Load with GROW_AMOUNT=%q = nil error, want failure", bad)
+			}
+		})
+	}
+}
+
+func TestLoadInvalidGrowModeFails(t *testing.T) {
+	t.Setenv("AWS_REGION", "ap-northeast-2")
+	t.Setenv("GROW_MODE", "exponential")
+
+	if _, err := Load(nil); err == nil {
+		t.Error("Load with GROW_MODE=exponential = nil error, want failure")
+	}
+}
+
+func TestParseGrowAmount(t *testing.T) {
+	valid := map[string]int32{
+		"1GiB":    1,
+		"1024MiB": 1,
+		"1025MiB": 2,
+		"100Gi":   100,
+	}
+	for in, want := range valid {
+		got, err := parseGrowAmount(in)
+		if err != nil || got != want {
+			t.Errorf("parseGrowAmount(%q) = (%d, %v), want (%d, nil)", in, got, err, want)
+		}
+	}
+	for _, in := range []string{"", "abc", "10", "10KiB", "GiB", "0MiB"} {
+		if _, err := parseGrowAmount(in); err == nil {
+			t.Errorf("parseGrowAmount(%q) = nil error, want error", in)
+		}
+	}
+}
+
 func TestParseTagFiltersInvalid(t *testing.T) {
 	if _, err := parseTagFilters("KeyOnly"); err == nil {
 		t.Error("parseTagFilters(KeyOnly) = nil error, want error")

@@ -11,7 +11,9 @@ data:
   RECONCILE_INTERVAL: {{ .Values.config.reconcileInterval | quote }}
   RECONCILE_CONCURRENCY: {{ .Values.config.reconcileConcurrency | quote }}
   USAGE_THRESHOLD_PERCENT: {{ .Values.config.usageThresholdPercent | quote }}
+  GROW_MODE: {{ .Values.config.growMode | quote }}
   GROW_PERCENT: {{ .Values.config.growPercent | quote }}
+  GROW_AMOUNT: {{ .Values.config.growAmount | quote }}
   MAX_VOLUME_SIZE_GIB: {{ .Values.config.maxVolumeSizeGiB | quote }}
   SSM_COMMAND_TIMEOUT: {{ .Values.config.ssmCommandTimeout | quote }}
   SSM_POLL_INTERVAL: {{ .Values.config.ssmPollInterval | quote }}

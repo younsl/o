@@ -55,7 +55,9 @@ Each reconcile pass processes every matching instance sequentially:
 4. **Guard**: skip if the volume was modified within the cooldown window ([EBS
    allows one modification per volume every 6 hours][ebs-modify-reqs]) or if the
    target size would exceed `MAX_VOLUME_SIZE_GIB`.
-5. **Grow**: call [`ec2:ModifyVolume`][ec2-modifyvolume] to `ceil(current * (1 + GROW_PERCENT/100))`.
+5. **Grow**: call [`ec2:ModifyVolume`][ec2-modifyvolume] to the target size. In
+   `percent` mode the target is `ceil(current * (1 + GROW_PERCENT/100))`; in
+   `absolute` mode it is `current + GROW_AMOUNT` (rounded up to whole GiB).
 6. **Wait**: poll until the modification reaches [`optimizing`][ebs-monitor]
    (filesystem extension is safe from that point).
 7. **Extend**: run [`growpart` + `resize2fs`][ebs-extend-fs] via [SSM Run
@@ -83,7 +85,9 @@ commands as a non-root user.
 | `RECONCILE_INTERVAL` | `5m` | Loop interval (Go duration: h, m, s; e.g. `30s`, `5m`, `1h`, `1h30m`) |
 | `RECONCILE_CONCURRENCY` | `10` | Max instances reconciled in parallel per pass |
 | `USAGE_THRESHOLD_PERCENT` | `80` | Usage that triggers a resize |
-| `GROW_PERCENT` | `10` | Growth percent per resize |
+| `GROW_MODE` | `percent` | How to grow the volume: `percent` (by `GROW_PERCENT`) or `absolute` (by `GROW_AMOUNT`) |
+| `GROW_PERCENT` | `10` | Growth percent per resize (used when `GROW_MODE=percent`) |
+| `GROW_AMOUNT` | `10GiB` | Absolute growth per resize with a MiB or GiB unit, e.g. `10GiB`, `5120MiB` (used when `GROW_MODE=absolute`); MiB rounds up to whole GiB |
 | `MAX_VOLUME_SIZE_GIB` | `1000` | Safety ceiling |
 | `SSM_COMMAND_TIMEOUT` | `5m` | SSM command poll timeout |
 | `SSM_POLL_INTERVAL` | `1s` | Delay between SSM command and volume modification status polls |

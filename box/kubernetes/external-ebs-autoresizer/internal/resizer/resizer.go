@@ -254,7 +254,7 @@ func (r *Resizer) reconcileInstance(ctx context.Context, inst awsx.Instance) err
 
 	// 3. Target size.
 	current := inst.RootVolumeSizeGiB
-	target := TargetSize(current, r.cfg.GrowPercent)
+	target := TargetSize(current, r.cfg)
 	log = log.With("volume", inst.RootVolumeID, "current_gib", current, "target_gib", target)
 
 	// 4. Safety guards.
@@ -378,10 +378,18 @@ func (r *Resizer) withinCooldown(ctx context.Context, volumeID string) (bool, er
 	return false, nil
 }
 
-// TargetSize returns the new volume size in GiB after growing current by
-// growPercent, rounded up and always at least one GiB larger than current.
-func TargetSize(current int32, growPercent int) int32 {
-	grown := (int(current)*(100+growPercent) + 99) / 100
+// TargetSize returns the new volume size in GiB after growing current per the
+// configured grow mode. In "percent" mode it grows current by GrowPercent,
+// rounded up; in "absolute" mode it adds GrowAmountGiB. The result is always at
+// least one GiB larger than current.
+func TargetSize(current int32, cfg *config.Config) int32 {
+	var grown int
+	switch cfg.GrowMode {
+	case config.GrowModeAbsolute:
+		grown = int(current) + int(cfg.GrowAmountGiB)
+	default:
+		grown = (int(current)*(100+cfg.GrowPercent) + 99) / 100
+	}
 	if grown < int(current)+1 {
 		grown = int(current) + 1
 	}
