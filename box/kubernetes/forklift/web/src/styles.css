@@ -39,8 +39,11 @@ a:hover { color: var(--accent); text-decoration: underline; }
   flex-direction: column;
   gap: 4px;
 }
-.brand { display: flex; align-items: center; gap: 10px; font-weight: 700; font-size: 23px; padding: 4px 8px 18px; letter-spacing: 0.5px; color: var(--text); cursor: pointer; }
+.brand-block { padding: 4px 8px 18px; }
+.brand { display: flex; align-items: center; gap: 10px; font-weight: 700; font-size: 23px; letter-spacing: 0.5px; color: var(--text); cursor: pointer; }
 .brand:hover { text-decoration: none; opacity: 0.85; }
+.brand-version { display: block; margin-left: 44px; margin-top: 2px; font-size: 11px; font-weight: 500; color: var(--muted); letter-spacing: 0.3px; }
+.brand-commit { opacity: 0.65; }
 .logo-chip { display: inline-flex; align-items: center; justify-content: center; background: #f2f3f5; border-radius: 6px; flex-shrink: 0; }
 .brand-text span { color: var(--accent); }
 .navlink { padding: 8px 10px; border-radius: var(--radius); color: var(--muted); }

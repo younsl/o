@@ -62,6 +62,7 @@ function Sidebar({ me, onLogout }: { me: Me; onLogout: () => void }) {
   const location = useLocation();
   const [repoCount, setRepoCount] = useState<number | null>(null);
   const [pendingCount, setPendingCount] = useState<number | null>(null);
+  const [version, setVersion] = useState<{ version: string; commit: string } | null>(null);
 
   const canApprove = Boolean(me.admin || me.approver);
   useEffect(() => {
@@ -71,9 +72,23 @@ function Sidebar({ me, onLogout }: { me: Me; onLogout: () => void }) {
     }
   }, [location.pathname, canApprove]);
 
+  useEffect(() => {
+    api.version().then((v) => setVersion(v)).catch(() => setVersion(null));
+  }, []);
+
   return (
     <div className="sidebar">
-      <Link to="/repositories" className="brand"><Logo /><span className="brand-text">fork<span>lift</span></span></Link>
+      <div className="brand-block">
+        <Link to="/repositories" className="brand"><Logo /><span className="brand-text">fork<span>lift</span></span></Link>
+        {version && (
+          <span className="brand-version">
+            {version.version}
+            {version.commit && version.commit !== "none" && (
+              <span className="brand-commit"> ({version.commit.slice(0, 7)})</span>
+            )}
+          </span>
+        )}
+      </div>
       <NavLink className="navlink nav-flex" to="/repositories">
         <span>Repositories</span>
         {repoCount !== null && <span className="count-badge">{repoCount}</span>}

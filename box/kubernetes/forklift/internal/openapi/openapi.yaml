@@ -45,6 +45,12 @@ paths:
       summary: Describe the current principal
       responses:
         "200": { description: Principal info }
+  /api/v1/version:
+    get:
+      tags: [session]
+      summary: Build-time version and commit metadata
+      responses:
+        "200": { description: Version info }
   /api/v1/repositories:
     get:
       tags: [repositories]

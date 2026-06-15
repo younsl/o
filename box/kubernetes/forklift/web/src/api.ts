@@ -55,6 +55,11 @@ export interface Me {
   approver?: boolean;
 }
 
+export interface Version {
+  version: string;
+  commit: string;
+}
+
 export interface Token {
   id: number;
   name: string;
@@ -220,6 +225,7 @@ export const api = {
   login: (username: string, password: string) =>
     req<{ username: string }>("POST", "/login", { username, password }),
   logout: () => req<void>("POST", "/logout"),
+  version: () => req<Version>("GET", "/version"),
 
   listRepositories: () => req<Repository[]>("GET", "/repositories"),
   listRepositoryNames: () => req<RepositoryName[]>("GET", "/repository-names"),

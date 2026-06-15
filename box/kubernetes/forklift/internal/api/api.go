@@ -14,6 +14,7 @@ import (
 	"github.com/younsl/o/box/kubernetes/forklift/internal/audit"
 	"github.com/younsl/o/box/kubernetes/forklift/internal/auth"
 	"github.com/younsl/o/box/kubernetes/forklift/internal/meta"
+	"github.com/younsl/o/box/kubernetes/forklift/internal/version"
 )
 
 // Handler serves the management API.
@@ -65,6 +66,7 @@ func (h *Handler) Routes() chi.Router {
 	r.Post("/login", h.login)
 	r.Post("/logout", h.logout)
 	r.Get("/me", h.me)
+	r.Get("/version", h.version)
 
 	// Authenticated self-service: personal access tokens.
 	r.Group(func(r chi.Router) {
@@ -138,6 +140,15 @@ func (h *Handler) Routes() chi.Router {
 	})
 
 	return r
+}
+
+// version reports the build-time version metadata so the web UI can show it in
+// the sidebar. Public: it leaks nothing sensitive and aids support triage.
+func (h *Handler) version(w http.ResponseWriter, _ *http.Request) {
+	writeJSON(w, http.StatusOK, map[string]string{
+		"version": version.Version,
+		"commit":  version.Commit,
+	})
 }
 
 // validName accepts the identifier charset shared by every "name" input
