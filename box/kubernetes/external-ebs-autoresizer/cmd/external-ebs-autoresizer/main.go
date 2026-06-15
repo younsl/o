@@ -73,7 +73,7 @@ func main() {
 	// resizer's nil check works.
 	var notifier resizer.AlertNotifier
 	if cfg.AlertmanagerEnabled {
-		amClient := alertmanager.New(cfg.AlertmanagerURL, cfg.AlertmanagerTimeout, cfg.AlertmanagerLabels, logger)
+		amClient := alertmanager.New(cfg.AlertmanagerURL, cfg.AlertmanagerTimeout, cfg.AlertmanagerLabels, cfg.AlertmanagerDashboardURL, logger)
 		logger.Info("Alertmanager alerting enabled", "url", cfg.AlertmanagerURL, "notify_on", cfg.AlertmanagerNotifyOn)
 		runPreflight(ctx, logger, "alertmanager", amClient)
 		notifier = amClient

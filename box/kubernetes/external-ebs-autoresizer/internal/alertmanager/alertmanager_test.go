@@ -30,7 +30,7 @@ func TestNotifyPostsV2Alert(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	c := New(srv.URL, time.Second, map[string]string{"cluster": "prod"}, discardLogger())
+	c := New(srv.URL, time.Second, map[string]string{"cluster": "prod"}, "", discardLogger())
 	start := time.Date(2026, 6, 9, 12, 0, 0, 0, time.UTC)
 	c.Notify(context.Background(), "warning", "EBSRootVolumeAutoresizeFailed", "boom", "instance i-123 failed",
 		map[string]string{"instance_id": "i-123", "cluster": "override"}, start)
@@ -66,19 +66,65 @@ func TestNotifyPostsV2Alert(t *testing.T) {
 	}
 }
 
+func TestNotifyAppendsDashboardLink(t *testing.T) {
+	var gotBody []wireAlert
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if err := json.NewDecoder(r.Body).Decode(&gotBody); err != nil {
+			t.Errorf("decode body: %v", err)
+		}
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer srv.Close()
+
+	tmpl := "https://grafana.example.com/d/abc?var-instance={instance_id}&var-volume={volume_id}"
+	c := New(srv.URL, time.Second, nil, tmpl, discardLogger())
+	c.Notify(context.Background(), "info", "EBSRootVolumeAutoresizeCompleted", "ok", "resized to 110 GiB",
+		map[string]string{"instance_id": "i-123", "volume_id": "vol-456"}, time.Unix(0, 0).UTC())
+
+	if len(gotBody) != 1 {
+		t.Fatalf("got %d alerts, want 1", len(gotBody))
+	}
+	want := "resized to 110 GiB (<https://grafana.example.com/d/abc?var-instance=i-123&var-volume=vol-456|Dashboard>)"
+	if got := gotBody[0].Annotations["description"]; got != want {
+		t.Errorf("description = %q, want %q", got, want)
+	}
+}
+
+func TestNotifyWithoutDashboardTemplateLeavesDescription(t *testing.T) {
+	var gotBody []wireAlert
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if err := json.NewDecoder(r.Body).Decode(&gotBody); err != nil {
+			t.Errorf("decode body: %v", err)
+		}
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer srv.Close()
+
+	c := New(srv.URL, time.Second, nil, "", discardLogger())
+	c.Notify(context.Background(), "info", "EBSRootVolumeAutoresizeCompleted", "ok", "resized to 110 GiB",
+		map[string]string{"instance_id": "i-123"}, time.Unix(0, 0).UTC())
+
+	if len(gotBody) != 1 {
+		t.Fatalf("got %d alerts, want 1", len(gotBody))
+	}
+	if got := gotBody[0].Annotations["description"]; got != "resized to 110 GiB" {
+		t.Errorf("description = %q, want unchanged", got)
+	}
+}
+
 func TestNotifySwallowsServerError(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusInternalServerError)
 	}))
 	defer srv.Close()
 
-	c := New(srv.URL, time.Second, nil, discardLogger())
+	c := New(srv.URL, time.Second, nil, "", discardLogger())
 	// Must not panic or block; errors are logged, not returned.
 	c.Notify(context.Background(), "info", "EBSRootVolumeAutoresizeCompleted", "ok", "", nil, time.Unix(0, 0).UTC())
 }
 
 func TestNewTrimsTrailingSlash(t *testing.T) {
-	c := New("http://alertmanager:9093/", 0, nil, discardLogger())
+	c := New("http://alertmanager:9093/", 0, nil, "", discardLogger())
 	if c.endpoint != "http://alertmanager:9093"+alertsPath {
 		t.Errorf("endpoint = %q", c.endpoint)
 	}
@@ -92,7 +138,7 @@ func TestPreflightSucceeds(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	c := New(srv.URL, time.Second, nil, discardLogger())
+	c := New(srv.URL, time.Second, nil, "", discardLogger())
 	endpoint, status, latency, err := c.Preflight(context.Background())
 	if err != nil {
 		t.Fatalf("Preflight error: %v", err)
@@ -117,7 +163,7 @@ func TestPreflightNon2xxReturnsError(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	c := New(srv.URL, time.Second, nil, discardLogger())
+	c := New(srv.URL, time.Second, nil, "", discardLogger())
 	_, status, _, err := c.Preflight(context.Background())
 	if err == nil {
 		t.Fatal("Preflight = nil error, want error on 503")

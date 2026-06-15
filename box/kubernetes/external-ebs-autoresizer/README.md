@@ -103,6 +103,7 @@ commands as a non-root user.
 | `ALERTMANAGER_TIMEOUT` | `5s` | Timeout for each alert POST |
 | `ALERTMANAGER_LABELS` | (empty) | `Key=Value,Key2=Value2` static labels merged into every alert for routing |
 | `ALERTMANAGER_NOTIFY_ON` | `success` | Which resize outcomes to alert: `all`, `success`, or `failure` |
+| `ALERTMANAGER_DASHBOARD_URL` | (empty) | Dashboard URL template appended to each alert's description as a Slack link; supports `{instance_id}`, `{volume_id}`, `{device}`, `{instance_name}` placeholders |
 
 All variables have an equivalent `--flag` override.
 
@@ -132,6 +133,13 @@ a long-lived firing alert. Every alert carries `instance_id`, `instance_name`,
 `ALERTMANAGER_LABELS` (e.g. `cluster=prod`) for routing, and a `summary`
 annotation. Delivery is best-effort: a failed POST is logged and never blocks or
 fails a reconcile.
+
+Set `ALERTMANAGER_DASHBOARD_URL` to append a dashboard link to each alert's
+`description` as a Slack mrkdwn link rendered as `(Dashboard)`. The value is a URL
+template whose `{key}` placeholders are substituted with the alert's labels, e.g.
+`https://grafana.example.com/d/abc?var-instance={instance_id}&var-volume={volume_id}`.
+Any label key works as a placeholder, including static `ALERTMANAGER_LABELS`
+keys. Leave it empty to omit the link.
 
 ## Grafana annotations
 

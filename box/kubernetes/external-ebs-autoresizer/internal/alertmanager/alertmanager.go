@@ -29,17 +29,21 @@ const (
 // resizer.AlertNotifier. Delivery is best-effort: failures are logged, never
 // returned, so alerting never blocks or fails a reconcile.
 type Client struct {
-	base        string
-	endpoint    string
-	httpClient  *http.Client
-	extraLabels map[string]string
-	logger      *slog.Logger
+	base             string
+	endpoint         string
+	httpClient       *http.Client
+	extraLabels      map[string]string
+	dashboardURLTmpl string
+	logger           *slog.Logger
 }
 
 // New builds a Client targeting baseURL (e.g. http://alertmanager:9093). timeout
 // bounds each POST. extraLabels are merged into every alert's labels for routing
 // (e.g. cluster or environment); per-alert labels take precedence.
-func New(baseURL string, timeout time.Duration, extraLabels map[string]string, logger *slog.Logger) *Client {
+// dashboardURLTmpl is an optional URL template appended to each alert's
+// description as a Slack mrkdwn link; {key} placeholders are substituted with
+// the alert's labels. An empty template disables the link.
+func New(baseURL string, timeout time.Duration, extraLabels map[string]string, dashboardURLTmpl string, logger *slog.Logger) *Client {
 	if timeout <= 0 {
 		timeout = 5 * time.Second
 	}
@@ -48,11 +52,12 @@ func New(baseURL string, timeout time.Duration, extraLabels map[string]string, l
 	}
 	base := strings.TrimRight(baseURL, "/")
 	return &Client{
-		base:        base,
-		endpoint:    base + alertsPath,
-		httpClient:  &http.Client{Timeout: timeout},
-		extraLabels: extraLabels,
-		logger:      logger,
+		base:             base,
+		endpoint:         base + alertsPath,
+		httpClient:       &http.Client{Timeout: timeout},
+		extraLabels:      extraLabels,
+		dashboardURLTmpl: dashboardURLTmpl,
+		logger:           logger,
 	}
 }
 
@@ -99,6 +104,15 @@ func (c *Client) Notify(ctx context.Context, severity, alertname, summary, descr
 	merged["alertname"] = alertname
 	merged["severity"] = severity
 
+	if c.dashboardURLTmpl != "" {
+		link := fmt.Sprintf("(<%s|Dashboard>)", renderDashboardURL(c.dashboardURLTmpl, merged))
+		if description == "" {
+			description = link
+		} else {
+			description += " " + link
+		}
+	}
+
 	annotations := map[string]string{"summary": summary}
 	if description != "" {
 		annotations["description"] = description
@@ -111,6 +125,16 @@ func (c *Client) Notify(ctx context.Context, severity, alertname, summary, descr
 	if err := c.post(ctx, []wireAlert{alert}); err != nil {
 		c.logger.Warn("failed to send Alertmanager alert", "alertname", alertname, "error", err)
 	}
+}
+
+// renderDashboardURL substitutes {key} placeholders in tmpl with the matching
+// label values. Placeholders without a matching label are left untouched.
+func renderDashboardURL(tmpl string, labels map[string]string) string {
+	out := tmpl
+	for k, v := range labels {
+		out = strings.ReplaceAll(out, "{"+k+"}", v)
+	}
+	return out
 }
 
 func (c *Client) post(ctx context.Context, alerts []wireAlert) error {

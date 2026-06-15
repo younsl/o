@@ -94,6 +94,12 @@ type Config struct {
 	// AlertmanagerNotifyOn selects which resize outcomes are alerted: "all",
 	// "success" (default), or "failure".
 	AlertmanagerNotifyOn string
+	// AlertmanagerDashboardURL is an optional dashboard URL template appended to
+	// each alert's description as a Slack mrkdwn link. Placeholders in the form
+	// {key} are substituted with the alert's labels (e.g. {instance_id},
+	// {volume_id}, {device}, {instance_name}, plus any static AlertmanagerLabels
+	// key). Empty (default) disables the link.
+	AlertmanagerDashboardURL string
 	// GrafanaAnnotationEnabled turns on Grafana annotations. When false
 	// (default), annotating is disabled regardless of the other Grafana settings.
 	GrafanaAnnotationEnabled bool
@@ -161,32 +167,33 @@ func Load(args []string) (*Config, error) {
 	}
 
 	c := &Config{
-		Region:                getEnv("AWS_REGION", ""),
-		ReconcileInterval:     reconcileInterval,
-		ReconcileConcurrency:  getEnvInt("RECONCILE_CONCURRENCY", 10),
-		SSMPollInterval:       ssmPollInterval,
-		UsageThresholdPercent: getEnvInt("USAGE_THRESHOLD_PERCENT", 80),
-		GrowMode:              getEnv("GROW_MODE", GrowModePercent),
-		GrowPercent:           getEnvInt("GROW_PERCENT", 10),
-		GrowAmount:            getEnv("GROW_AMOUNT", "10GiB"),
-		MaxVolumeSizeGiB:      getEnvInt("MAX_VOLUME_SIZE_GIB", 1000),
-		ExcludeEKSNodes:       getEnvBool("EXCLUDE_EKS_NODES", true),
-		SSMCommandTimeout:     ssmCommandTimeout,
-		VolumeModifyTimeout:   volumeModifyTimeout,
-		DryRun:                getEnvBool("DRY_RUN", false),
-		HealthPort:            getEnvInt("HEALTH_PORT", 8080),
-		MetricsPort:           getEnvInt("METRICS_PORT", 8081),
-		PodName:               getEnv("POD_NAME", ""),
-		PodNamespace:          getEnv("POD_NAMESPACE", ""),
-		PodUID:                getEnv("POD_UID", ""),
-		LeaderElect:           getEnvBool("LEADER_ELECT", true),
-		LeaseName:             getEnv("LEASE_NAME", "external-ebs-autoresizer"),
-		LogLevel:              getEnv("LOG_LEVEL", "info"),
-		LogFormat:             getEnv("LOG_FORMAT", "json"),
-		AlertmanagerEnabled:   getEnvBool("ALERTMANAGER_ENABLED", false),
-		AlertmanagerURL:       getEnv("ALERTMANAGER_URL", ""),
-		AlertmanagerTimeout:   alertmanagerTimeout,
-		AlertmanagerNotifyOn:  getEnv("ALERTMANAGER_NOTIFY_ON", NotifyOnSuccess),
+		Region:                   getEnv("AWS_REGION", ""),
+		ReconcileInterval:        reconcileInterval,
+		ReconcileConcurrency:     getEnvInt("RECONCILE_CONCURRENCY", 10),
+		SSMPollInterval:          ssmPollInterval,
+		UsageThresholdPercent:    getEnvInt("USAGE_THRESHOLD_PERCENT", 80),
+		GrowMode:                 getEnv("GROW_MODE", GrowModePercent),
+		GrowPercent:              getEnvInt("GROW_PERCENT", 10),
+		GrowAmount:               getEnv("GROW_AMOUNT", "10GiB"),
+		MaxVolumeSizeGiB:         getEnvInt("MAX_VOLUME_SIZE_GIB", 1000),
+		ExcludeEKSNodes:          getEnvBool("EXCLUDE_EKS_NODES", true),
+		SSMCommandTimeout:        ssmCommandTimeout,
+		VolumeModifyTimeout:      volumeModifyTimeout,
+		DryRun:                   getEnvBool("DRY_RUN", false),
+		HealthPort:               getEnvInt("HEALTH_PORT", 8080),
+		MetricsPort:              getEnvInt("METRICS_PORT", 8081),
+		PodName:                  getEnv("POD_NAME", ""),
+		PodNamespace:             getEnv("POD_NAMESPACE", ""),
+		PodUID:                   getEnv("POD_UID", ""),
+		LeaderElect:              getEnvBool("LEADER_ELECT", true),
+		LeaseName:                getEnv("LEASE_NAME", "external-ebs-autoresizer"),
+		LogLevel:                 getEnv("LOG_LEVEL", "info"),
+		LogFormat:                getEnv("LOG_FORMAT", "json"),
+		AlertmanagerEnabled:      getEnvBool("ALERTMANAGER_ENABLED", false),
+		AlertmanagerURL:          getEnv("ALERTMANAGER_URL", ""),
+		AlertmanagerTimeout:      alertmanagerTimeout,
+		AlertmanagerNotifyOn:     getEnv("ALERTMANAGER_NOTIFY_ON", NotifyOnSuccess),
+		AlertmanagerDashboardURL: getEnv("ALERTMANAGER_DASHBOARD_URL", ""),
 
 		GrafanaAnnotationEnabled: getEnvBool("GRAFANA_ANNOTATION_ENABLED", false),
 		GrafanaURL:               getEnv("GRAFANA_URL", ""),
@@ -222,6 +229,7 @@ func Load(args []string) (*Config, error) {
 	fs.DurationVar(&c.AlertmanagerTimeout, "alertmanager-timeout", c.AlertmanagerTimeout, "Timeout for each Alertmanager POST")
 	fs.StringVar(&alertmanagerLabels, "alertmanager-labels", getEnv("ALERTMANAGER_LABELS", ""), "Comma-separated Key=Value static labels merged into every alert for routing")
 	fs.StringVar(&c.AlertmanagerNotifyOn, "alertmanager-notify-on", c.AlertmanagerNotifyOn, "Which resize outcomes to alert: all, success, or failure")
+	fs.StringVar(&c.AlertmanagerDashboardURL, "alertmanager-dashboard-url", c.AlertmanagerDashboardURL, "Optional dashboard URL template appended to each alert as a Slack link; supports {instance_id}, {volume_id}, {device}, {instance_name} placeholders")
 	fs.BoolVar(&c.GrafanaAnnotationEnabled, "grafana-annotation-enabled", c.GrafanaAnnotationEnabled, "Enable Grafana annotations (requires grafana-url and GRAFANA_API_TOKEN)")
 	fs.StringVar(&c.GrafanaURL, "grafana-url", c.GrafanaURL, "Grafana base URL (e.g. http://grafana.monitoring:3000)")
 	fs.DurationVar(&c.GrafanaTimeout, "grafana-timeout", c.GrafanaTimeout, "Timeout for each Grafana annotation POST")

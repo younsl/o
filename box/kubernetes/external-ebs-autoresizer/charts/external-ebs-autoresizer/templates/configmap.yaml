@@ -28,6 +28,7 @@ data:
   ALERTMANAGER_TIMEOUT: {{ .Values.config.alertmanager.timeout | quote }}
   ALERTMANAGER_LABELS: {{ .Values.config.alertmanager.labels | quote }}
   ALERTMANAGER_NOTIFY_ON: {{ .Values.config.alertmanager.notifyOn | quote }}
+  ALERTMANAGER_DASHBOARD_URL: {{ .Values.config.alertmanager.dashboardUrl | quote }}
   GRAFANA_ANNOTATION_ENABLED: {{ .Values.config.grafanaAnnotation.enabled | quote }}
   GRAFANA_URL: {{ .Values.config.grafanaAnnotation.url | quote }}
   GRAFANA_TIMEOUT: {{ .Values.config.grafanaAnnotation.timeout | quote }}

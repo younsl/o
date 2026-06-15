@@ -106,6 +106,7 @@ The following table lists the configurable parameters and their default values.
 | config.alertmanager.timeout | string | `"5s"` | Timeout for each Alertmanager POST as a Go duration |
 | config.alertmanager.labels | string | `""` | Comma-separated Key=Value static labels merged into every alert for routing (e.g. cluster=prod,env=production) |
 | config.alertmanager.notifyOn | string | `"success"` | Which resize outcomes to alert: all, success, or failure |
+| config.alertmanager.dashboardUrl | string | `""` | Optional dashboard URL template appended to each alert's description as a Slack link; supports {instance_id}, {volume_id}, {device}, {instance_name} placeholders. Empty disables the link |
 | config.grafanaAnnotation.enabled | bool | `false` | Enable Grafana annotations on resize outcomes; requires url and a token when true |
 | config.grafanaAnnotation.url | string | `"http://grafana.monitoring:3000"` | Grafana base URL; required when enabled |
 | config.grafanaAnnotation.timeout | string | `"5s"` | Timeout for each Grafana annotation POST as a Go duration |

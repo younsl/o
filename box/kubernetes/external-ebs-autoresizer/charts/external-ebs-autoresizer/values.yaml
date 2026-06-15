@@ -74,6 +74,8 @@ config:
     labels: ""
     # -- (string) Which resize outcomes to alert: all, success, or failure
     notifyOn: "success"
+    # -- (string) Optional dashboard URL template appended to each alert's description as a Slack link; supports {instance_id}, {volume_id}, {device}, {instance_name} placeholders. Empty disables the link
+    dashboardUrl: ""
   grafanaAnnotation:
     # -- (bool) Enable Grafana annotations on resize outcomes; requires url and a token when true
     enabled: false
