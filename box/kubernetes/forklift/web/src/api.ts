@@ -263,10 +263,15 @@ export const api = {
       "GET",
       `/approvals?repo=${encodeURIComponent(repo)}&status=${encodeURIComponent(status)}&limit=${limit}&offset=${offset}`,
     ),
-  approvalCount: (status = "pending") =>
-    req<{ count: number }>("GET", `/approvals/count?status=${encodeURIComponent(status)}`),
+  approvalCount: (status = "pending", repo = "") =>
+    req<{ count: number }>(
+      "GET",
+      `/approvals/count?status=${encodeURIComponent(status)}&repo=${encodeURIComponent(repo)}`,
+    ),
   createApproval: (body: { repo: string; package: string; status: string; note?: string }) =>
     req<Approval>("POST", "/approvals", body),
+  approveAllPending: (repo: string, note = "") =>
+    req<{ approved: number }>("POST", "/approvals/approve-all", { repo, note }),
   approveApproval: (id: number, note = "") =>
     req<Approval>("POST", `/approvals/${id}/approve`, { note }),
   rejectApproval: (id: number, note = "") =>

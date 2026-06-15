@@ -2,6 +2,7 @@ package api
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -277,6 +278,52 @@ func TestApproveActionForSecurityEngineers(t *testing.T) {
 	resp = userDo(t, "sec1", "pw123456", http.MethodPost, srv.URL+"/tokens",
 		`{"name":"bad","description":"x","scopes":[{"repo_pattern":"*","actions":["approve"]}],"expires_in":"720h"}`)
 	mustStatus(t, resp, http.StatusBadRequest)
+	resp.Body.Close()
+}
+
+func TestApproveAllPendingEndpoint(t *testing.T) {
+	srv, store := newTestServerWithStore(t)
+	mkProxyRepo(t, srv.URL, "npmjs")
+	mkProxyRepo(t, srv.URL, "pypi")
+
+	// Seed pending demand directly: the public API can't create pending rows.
+	ctx := context.Background()
+	for _, p := range []string{"left-pad", "is-odd", "lodash"} {
+		if _, err := store.UpsertPendingApproval(ctx, "npmjs", p, "alice"); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if _, err := store.UpsertPendingApproval(ctx, "pypi", "requests", "bob"); err != nil {
+		t.Fatal(err)
+	}
+
+	// Approve every pending package in npmjs only.
+	resp := adminDo(t, http.MethodPost, srv.URL+"/approvals/approve-all",
+		`{"repo":"npmjs","note":"batch reviewed"}`)
+	mustStatus(t, resp, http.StatusOK)
+	got := decodeAs[map[string]any](t, resp)
+	if got["approved"].(float64) != 3 {
+		t.Fatalf("approved = %v, want 3", got["approved"])
+	}
+
+	// npmjs now has no pending rows; pypi is untouched.
+	if n, _ := store.CountApprovals(ctx, "npmjs", "pending"); n != 0 {
+		t.Fatalf("npmjs pending = %d, want 0", n)
+	}
+	if n, _ := store.CountApprovals(ctx, "pypi", "pending"); n != 1 {
+		t.Fatalf("pypi pending = %d, want 1", n)
+	}
+
+	// Re-running approves nothing.
+	resp = adminDo(t, http.MethodPost, srv.URL+"/approvals/approve-all", `{"repo":"npmjs"}`)
+	mustStatus(t, resp, http.StatusOK)
+	if decodeAs[map[string]any](t, resp)["approved"].(float64) != 0 {
+		t.Fatal("second run should approve 0")
+	}
+
+	// Unknown repo is a 404; missing repo resolves to an empty name (404 too).
+	resp = adminDo(t, http.MethodPost, srv.URL+"/approvals/approve-all", `{"repo":"nope"}`)
+	mustStatus(t, resp, http.StatusNotFound)
 	resp.Body.Close()
 }
 

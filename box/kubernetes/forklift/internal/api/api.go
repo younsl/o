@@ -89,6 +89,7 @@ func (h *Handler) Routes() chi.Router {
 			r.Get("/", h.listApprovals)
 			r.Get("/count", h.countApprovals)
 			r.Post("/", h.createApproval)
+			r.Post("/approve-all", h.approveAllPending)
 			r.Post("/{id}/approve", h.approveApproval)
 			r.Post("/{id}/reject", h.rejectApproval)
 		})

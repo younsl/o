@@ -157,6 +157,53 @@ func TestUpsertApprovalDecision(t *testing.T) {
 	}
 }
 
+func TestApproveAllPending(t *testing.T) {
+	s := openApprovalStore(t)
+	ctx := context.Background()
+
+	for _, p := range []string{"a", "b", "c"} {
+		if _, err := s.UpsertPendingApproval(ctx, "npmjs", p, "alice"); err != nil {
+			t.Fatal(err)
+		}
+	}
+	// A different repo must not be touched by a scoped bulk approve.
+	if _, err := s.UpsertPendingApproval(ctx, "pypi", "requests", ""); err != nil {
+		t.Fatal(err)
+	}
+	// An already-rejected row in the target repo must stay rejected.
+	rej, _ := s.UpsertApprovalDecision(ctx, "npmjs", "evil", ApprovalRejected, "admin", "ioc")
+
+	approved, err := s.ApproveAllPending(ctx, "npmjs", "admin", "batch ok")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(approved) != 3 {
+		t.Fatalf("approved %d rows, want 3", len(approved))
+	}
+	for _, a := range approved {
+		if a.Status != ApprovalApproved || a.DecidedBy != "admin" || a.Note != "batch ok" || a.DecidedAt == nil {
+			t.Fatalf("approved row not decided: %+v", a)
+		}
+	}
+	// The rejected row is untouched.
+	got, _ := s.GetApproval(ctx, rej.ID)
+	if got.Status != ApprovalRejected {
+		t.Fatalf("rejected row flipped to %q", got.Status)
+	}
+	// The other repo's pending row is untouched.
+	if st, _ := s.GetApprovalStatus(ctx, "pypi", "requests"); st != ApprovalPending {
+		t.Fatalf("pypi row status = %q, want pending", st)
+	}
+	// No pending rows left in npmjs: a second run approves nothing.
+	again, err := s.ApproveAllPending(ctx, "npmjs", "admin", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(again) != 0 {
+		t.Fatalf("second run approved %d rows, want 0", len(again))
+	}
+}
+
 func TestApprovalListFiltersAndDelete(t *testing.T) {
 	s := openApprovalStore(t)
 	ctx := context.Background()

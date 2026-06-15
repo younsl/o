@@ -128,6 +128,43 @@ func (h *Handler) createApproval(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusCreated, approvalToDTO(a))
 }
 
+type approveAllReq struct {
+	Repo string `json:"repo"`
+	Note string `json:"note"`
+}
+
+// approveAllPending approves every pending package in one proxy repository.
+// Scoped to a single repository so the per-repository approve permission check
+// is unambiguous; the response reports how many rows were approved.
+func (h *Handler) approveAllPending(w http.ResponseWriter, r *http.Request) {
+	var req approveAllReq
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid json body")
+		return
+	}
+	repo, err := h.store.GetRepositoryByName(r.Context(), strings.TrimSpace(req.Repo))
+	if err != nil {
+		mapError(w, err)
+		return
+	}
+	if repo.Type != meta.TypeProxy {
+		writeError(w, http.StatusBadRequest, "approval is only valid for proxy repositories")
+		return
+	}
+	if !h.canApprove(w, r, repo.Name) {
+		return
+	}
+	approved, err := h.store.ApproveAllPending(r.Context(), repo.Name, principalName(r), req.Note)
+	if err != nil {
+		mapError(w, err)
+		return
+	}
+	for _, a := range approved {
+		h.auditApproval(r, a, http.StatusOK)
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"approved": len(approved)})
+}
+
 type decideApprovalReq struct {
 	Note string `json:"note"`
 }

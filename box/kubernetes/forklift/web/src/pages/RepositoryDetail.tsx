@@ -63,7 +63,7 @@ export function RepositoryDetail() {
       {tab === "audit" && <AuditLogs repoId={repo.id} />}
       {tab === "approvals" && repo.type === "proxy" && (
         <>
-          {gated && <ApprovalList repo={repo.name} showRepo={false} />}
+          {gated && <ApprovalList repo={repo.name} showRepo={false} repoNames={[repo.name]} />}
           <VersionDenies repo={repo.name} showRepo={false} repoNames={[repo.name]} />
         </>
       )}
@@ -337,7 +337,7 @@ function AuditLogs({ repoId }: { repoId: number }) {
               <td><span className="badge">{l.event}</span></td>
               <td style={{ fontFamily: "ui-monospace, monospace", fontSize: 12 }}>{l.path || "-"}</td>
               <td>{l.username || <span className="muted">anonymous</span>}</td>
-              <td className={l.status >= 400 ? "error" : "muted"}>{l.status}</td>
+              <td className={l.status >= 400 ? "status-err" : "muted"}>{l.status}</td>
               <td className="muted">{l.client_ip}</td>
             </tr>
           ))}

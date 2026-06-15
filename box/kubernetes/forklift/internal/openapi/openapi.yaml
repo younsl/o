@@ -325,6 +325,32 @@ paths:
                 type: object
                 properties:
                   count: { type: integer }
+  /api/v1/approvals/approve-all:
+    post:
+      tags: [approvals]
+      summary: Approve every pending package in one proxy repository (admin or approve permission on the repository)
+      security: [{ basicAuth: [] }, { bearerAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [repo]
+              properties:
+                repo: { type: string }
+                note: { type: string }
+      responses:
+        "200":
+          description: Number of pending packages approved
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  approved: { type: integer }
+        "400": { description: Missing repo or repo is not a proxy }
+        "404": { description: Repository not found }
   /api/v1/approvals/{id}/approve:
     post:
       tags: [approvals]

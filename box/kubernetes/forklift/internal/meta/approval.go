@@ -163,6 +163,31 @@ func (s *Store) DecideApproval(ctx context.Context, id int64, status, decidedBy,
 	return nil
 }
 
+// ApproveAllPending approves every pending package in one repository in a
+// single statement and returns the rows it changed (for the audit log).
+// Already approved or rejected rows are left untouched. Scoped to one
+// repository so the per-repository approve permission check stays meaningful.
+func (s *Store) ApproveAllPending(ctx context.Context, repoName, decidedBy, note string) ([]PackageApproval, error) {
+	rows, err := s.h().QueryContext(ctx,
+		`UPDATE package_approvals SET status = 'approved', decided_by = ?, note = ?, decided_at = ?
+         WHERE repo_name = ? AND status = 'pending'
+         RETURNING `+approvalCols,
+		decidedBy, note, nowRFC3339(), repoName)
+	if err != nil {
+		return nil, wrap("approve all pending", err)
+	}
+	defer rows.Close()
+	out := []PackageApproval{}
+	for rows.Next() {
+		a, err := scanApproval(rows)
+		if err != nil {
+			return nil, wrap("scan approval", err)
+		}
+		out = append(out, a)
+	}
+	return out, rows.Err()
+}
+
 // UpsertApprovalDecision creates or overwrites a decision for a package that
 // may not have been requested yet (manual pre-approval via the admin API).
 func (s *Store) UpsertApprovalDecision(ctx context.Context, repoName, pkg, status, decidedBy, note string) (PackageApproval, error) {

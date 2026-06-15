@@ -57,7 +57,10 @@ a:hover { color: var(--accent); text-decoration: underline; }
 .userbox { font-size: 12px; color: var(--muted); padding: 10px; border-top: 1px solid var(--border); }
 .logout-btn { width: 100%; margin-top: 8px; padding: 6px 12px; font-size: 13px; }
 
-.main { flex: 1; padding: 28px 36px; max-width: 1100px; }
+/* min-width: 0 lets this flex item shrink below its content's intrinsic width,
+   so wide tables (long monospace package paths) scroll instead of pushing the
+   whole page past the viewport. */
+.main { flex: 1; min-width: 0; padding: 28px 36px; max-width: 1100px; }
 h1 { font-size: 22px; margin: 0 0 18px; }
 /* List-page header: title left, action button right, vertically centered.
    The h1 margin moves to the row so the button doesn't sag below the title. */
@@ -108,6 +111,11 @@ h2 { font-size: 16px; margin: 24px 0 12px; }
 .panel.danger { border-color: var(--danger); }
 .panel.danger h2 { color: var(--danger); }
 
+/* Horizontal scroll container for tables that can exceed the panel width
+   (long unbreakable monospace package/version strings). Keeps the table inside
+   the panel instead of bleeding out; not on .panel itself so the tooltip and
+   select dropdowns rendered inside panels elsewhere are never clipped. */
+.table-wrap { overflow-x: auto; }
 table { width: 100%; border-collapse: collapse; }
 th, td { text-align: left; padding: 10px 12px; border-bottom: 1px solid var(--border); }
 th { color: var(--muted); font-weight: 600; font-size: 12px; text-transform: uppercase; letter-spacing: 0.4px; }
@@ -220,6 +228,8 @@ textarea { font-family: inherit; resize: vertical; }
 .dot.bad { background: #ef4444; border-color: #ef4444; box-shadow: 0 0 5px rgba(239, 68, 68, 0.7); }
 
 .error { color: var(--text); margin: 10px 0; padding: 8px 10px; border: 1px solid #555; border-radius: var(--radius); background: var(--panel-2); }
+/* Inline error emphasis (e.g. an audit status >= 400): just colour, no box. */
+.status-err { color: var(--danger); }
 .code-field {
   flex: 1; font-family: ui-monospace, monospace; font-size: 13px;
   background: var(--input-bg); color: var(--muted);

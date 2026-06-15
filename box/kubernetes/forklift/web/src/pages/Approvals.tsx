@@ -46,6 +46,7 @@ export function Approvals() {
         showRepo
         reloadKey={reloadKey}
         onRows={setRows}
+        repoNames={repoOptions}
         filters={
           <Select style={{ width: 200 }} value={repo} onChange={setRepo}
             options={[
@@ -69,12 +70,14 @@ export function Approvals() {
 // ApprovalList renders the approval queue scoped to an optional repository:
 // status filter, table, pagination and the approve/reject decision modal.
 // Shared by the global Approvals page and the repository detail tab.
-export function ApprovalList({ repo = "", showRepo = true, reloadKey = 0, onRows, filters }: {
+export function ApprovalList({ repo = "", showRepo = true, reloadKey = 0, onRows, filters, repoNames = [] }: {
   repo?: string;
   showRepo?: boolean;
   reloadKey?: number;
   onRows?: (rows: Approval[]) => void;
   filters?: ReactNode;
+  // Proxy repository names the bulk-approve modal can target. Empty disables it.
+  repoNames?: string[];
 }) {
   const [status, setStatus] = useState("pending");
   const [rows, setRows] = useState<Approval[]>([]);
@@ -82,6 +85,7 @@ export function ApprovalList({ repo = "", showRepo = true, reloadKey = 0, onRows
   const [offset, setOffset] = useState(0);
   const [error, setError] = useState("");
   const [deciding, setDeciding] = useState<{ row: Approval; action: "approve" | "reject" } | null>(null);
+  const [approvingAll, setApprovingAll] = useState(false);
 
   useEffect(() => { setOffset(0); }, [repo]);
 
@@ -106,12 +110,20 @@ export function ApprovalList({ repo = "", showRepo = true, reloadKey = 0, onRows
           ]} />
         {filters}
         <span className="muted">{count} total</span>
+        {/* Bulk approve is always offered; the repository is chosen inside the
+            modal (defaulting to the active filter), so it works from the global
+            queue too. Hidden only when there are no proxy repos to target. */}
+        {repoNames.length > 0 && (
+          <button className="btn" style={{ marginLeft: "auto" }}
+            onClick={() => setApprovingAll(true)}>Approve all pending</button>
+        )}
       </div>
       {error && <div className="error">{error}</div>}
       <div className="panel">
         {rows.length === 0 ? (
           <p className="muted">No {status || "approval"} requests.</p>
         ) : (
+          <div className="table-wrap">
           <table>
             <thead>
               <tr>
@@ -145,6 +157,7 @@ export function ApprovalList({ repo = "", showRepo = true, reloadKey = 0, onRows
               ))}
             </tbody>
           </table>
+          </div>
         )}
         {count > PAGE && (
           <div className="inline" style={{ marginTop: 12 }}>
@@ -164,7 +177,89 @@ export function ApprovalList({ repo = "", showRepo = true, reloadKey = 0, onRows
           onCancel={() => setDeciding(null)}
         />
       )}
+      {approvingAll && (
+        <ApproveAllModal
+          repoNames={repoNames}
+          initialRepo={repo}
+          onDone={() => { setApprovingAll(false); load(); }}
+          onCancel={() => setApprovingAll(false)}
+        />
+      )}
     </>
+  );
+}
+
+// ApproveAllModal approves every pending package in one repository at once. The
+// repository is chosen here (defaulting to the active filter), and the pending
+// count for the selection is fetched live so the operator sees the blast radius.
+function ApproveAllModal({ repoNames, initialRepo, onDone, onCancel }: {
+  repoNames: string[];
+  initialRepo?: string;
+  onDone: () => void;
+  onCancel: () => void;
+}) {
+  const [repo, setRepo] = useState(initialRepo || repoNames[0] || "");
+  const [note, setNote] = useState("");
+  const [pending, setPending] = useState<number | null>(null);
+  const [error, setError] = useState("");
+  const [busy, setBusy] = useState(false);
+
+  useEffect(() => {
+    if (!repo) { setPending(null); return; }
+    let live = true;
+    setPending(null);
+    api.approvalCount("pending", repo)
+      .then((r) => { if (live) setPending(r.count); })
+      .catch(() => { if (live) setPending(null); });
+    return () => { live = false; };
+  }, [repo]);
+
+  const submit = async (e: FormEvent) => {
+    e.preventDefault();
+    setError("");
+    setBusy(true);
+    try {
+      await api.approveAllPending(repo, note);
+      onDone();
+    } catch (err) {
+      setError((err as Error).message);
+      setBusy(false);
+    }
+  };
+
+  const single = repoNames.length === 1;
+  return (
+    <div className="modal-overlay" onClick={onCancel}>
+      <div className="modal" onClick={(e) => e.stopPropagation()}>
+        <h2 style={{ marginTop: 0 }}>Approve all pending</h2>
+        <form onSubmit={submit}>
+          <label>Proxy repository</label>
+          {single ? (
+            <input value={repo} disabled />
+          ) : (
+            <Select value={repo} onChange={setRepo}
+              options={repoNames.map((name) => ({ value: name, label: name }))} />
+          )}
+          <p className="muted" style={{ marginTop: 10 }}>
+            {pending === null
+              ? "Counting pending requests…"
+              : pending === 0
+                ? `No pending requests on ${repo}.`
+                : `All ${pending} pending ${pending === 1 ? "request" : "requests"} on ${repo} will be approved and served (age policy still applies). This cannot be undone in bulk.`}
+          </p>
+          <label>Note (optional)</label>
+          <input value={note} autoFocus placeholder="reason for the record"
+            onChange={(e) => setNote(e.target.value)} />
+          {error && <div className="error">{error}</div>}
+          <div className="inline" style={{ justifyContent: "flex-end", marginTop: 18 }}>
+            <button className="btn secondary" type="button" onClick={onCancel}>Cancel</button>
+            <button className="btn" type="submit" disabled={busy || !repo || !pending}>
+              {busy ? "Approving…" : pending ? `Approve ${pending}` : "Approve"}
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
   );
 }
 
@@ -271,6 +366,7 @@ export function VersionDenies({ repo = "", showRepo = true, repoNames }: {
         {rows.length === 0 ? (
           <p className="muted">No denied versions.</p>
         ) : (
+          <div className="table-wrap">
           <table>
             <thead>
               <tr>
@@ -295,6 +391,7 @@ export function VersionDenies({ repo = "", showRepo = true, repoNames }: {
               ))}
             </tbody>
           </table>
+          </div>
         )}
         {count > PAGE && (
           <div className="inline" style={{ marginTop: 12 }}>
