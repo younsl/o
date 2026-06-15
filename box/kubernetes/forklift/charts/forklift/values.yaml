@@ -104,6 +104,48 @@ auth:
     usernameClaim: preferred_username
     # -- (string) Token claim used for group membership.
     groupsClaim: groups
+  # Declarative, ArgoCD-style RBAC reconciled from this chart on every startup.
+  # The policy is authoritative for the roles, grants and group mappings it
+  # defines (managed rows): removing an entry here removes it from the database
+  # on the next restart. Roles, mappings and assignments created interactively
+  # in the UI are left untouched and remain editable.
+  rbac:
+    # -- (bool) Enable declarative RBAC. When false, no policy is mounted and
+    # authorization relies solely on roles managed through the UI/API.
+    enabled: true
+    # -- (string) Default role granted to every authenticated user, even with no
+    # explicit role or group mapping (ArgoCD policy.default). Empty disables it
+    # (deny-all until a role is granted). The default `readonly` role below grants
+    # read (pull) access to all repositories for any signed-in user.
+    policyDefault: readonly
+    # -- (string) ArgoCD-style policy. Permission lines:
+    #   p, <role>, repo, <action>, <repo-glob>, allow
+    # where <action> is read|write|delete|approve|admin (or '*' = admin). Grant lines:
+    #   g, <subject>, <role>
+    # where <subject> is `group:<keycloak-group>`, `user:<username>`, or a bare
+    # name (treated as a user). Lines starting with '#' are comments.
+    policy: |
+      # Read-only access to every repository (default role for all users).
+      p, readonly, repo, read, *, allow
+
+      # Full administrative access.
+      p, admins, repo, admin, *, allow
+
+      # Example: developers can pull and push to team repositories.
+      # p, developer, repo, read, team-a-*, allow
+      # p, developer, repo, write, team-a-*, allow
+
+      # Example: map a Keycloak group and a specific user to roles.
+      # g, group:/platform-admins, admins
+      # g, user:alice, developer
+    # -- (list) Local (password) accounts to provision declaratively. Each gets a
+    # password generated into the chart Secret (key: local-user-<name>-password)
+    # and preserved across upgrades, or set `password` explicitly. Grant roles to
+    # them with `g, user:<name>, <role>` lines above. Existing accounts (incl. the
+    # bootstrap admin) are never overwritten.
+    accounts: []
+    #  - name: ci-bot
+    #    password: ""   # empty -> generated and stored in the Secret
 
 # Per-repository audit log: records every artifact download/upload/delete and
 # repository config change with user, status and client IP.

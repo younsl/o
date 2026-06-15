@@ -429,6 +429,13 @@ func (h *Handler) removeRole(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "invalid role id")
 		return
 	}
+	if managed, err := h.store.IsManagedUserRole(r.Context(), id, roleID); err != nil {
+		mapError(w, err)
+		return
+	} else if managed {
+		writeError(w, http.StatusConflict, managedRoleMsg)
+		return
+	}
 	if err := h.store.RemoveRole(r.Context(), id, roleID); err != nil {
 		mapError(w, err)
 		return
@@ -453,6 +460,11 @@ func validRoleAction(a string) bool {
 	return false
 }
 
+// managedRoleMsg is returned when a client tries to mutate an entity owned by
+// the declarative RBAC policy. Such entities are reconciled from the chart and
+// are read-only via the API; change them in the chart values instead.
+const managedRoleMsg = "managed by declarative RBAC policy; edit the chart values instead"
+
 type permissionDTO struct {
 	ID          int64    `json:"id"`
 	RepoPattern string   `json:"repo_pattern"`
@@ -464,12 +476,14 @@ type roleDTO struct {
 	Name        string          `json:"name"`
 	Description string          `json:"description"`
 	CreatedAt   time.Time       `json:"created_at"`
+	Managed     bool            `json:"managed"`
 	Permissions []permissionDTO `json:"permissions"`
 }
 
 func toRoleDTO(r meta.Role, perms []meta.Permission) roleDTO {
 	out := roleDTO{
 		ID: r.ID, Name: r.Name, Description: r.Description, CreatedAt: r.CreatedAt,
+		Managed:     r.Managed,
 		Permissions: make([]permissionDTO, 0, len(perms)),
 	}
 	for _, p := range perms {
@@ -550,6 +564,13 @@ func (h *Handler) deleteRole(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
+	if managed, err := h.store.RoleManaged(r.Context(), id); err != nil {
+		mapError(w, err)
+		return
+	} else if managed {
+		writeError(w, http.StatusConflict, managedRoleMsg)
+		return
+	}
 	if err := h.store.DeleteRole(r.Context(), id); err != nil {
 		mapError(w, err)
 		return
@@ -565,6 +586,13 @@ type addPermissionReq struct {
 func (h *Handler) addPermission(w http.ResponseWriter, r *http.Request) {
 	id, ok := pathID(w, r)
 	if !ok {
+		return
+	}
+	if managed, err := h.store.RoleManaged(r.Context(), id); err != nil {
+		mapError(w, err)
+		return
+	} else if managed {
+		writeError(w, http.StatusConflict, managedRoleMsg)
 		return
 	}
 	var req addPermissionReq
@@ -598,6 +626,13 @@ func (h *Handler) deletePermission(w http.ResponseWriter, r *http.Request) {
 	permID, err := parseID(chi.URLParam(r, "permID"))
 	if err != nil {
 		writeError(w, http.StatusBadRequest, "invalid permission id")
+		return
+	}
+	if managed, err := h.store.PermissionManaged(r.Context(), permID); err != nil {
+		mapError(w, err)
+		return
+	} else if managed {
+		writeError(w, http.StatusConflict, managedRoleMsg)
 		return
 	}
 	if err := h.store.DeletePermission(r.Context(), id, permID); err != nil {
@@ -639,6 +674,13 @@ func (h *Handler) createGroupMapping(w http.ResponseWriter, r *http.Request) {
 func (h *Handler) deleteGroupMapping(w http.ResponseWriter, r *http.Request) {
 	id, ok := pathID(w, r)
 	if !ok {
+		return
+	}
+	if managed, err := h.store.GroupMappingManaged(r.Context(), id); err != nil {
+		mapError(w, err)
+		return
+	} else if managed {
+		writeError(w, http.StatusConflict, managedRoleMsg)
 		return
 	}
 	if err := h.store.DeleteGroupMapping(r.Context(), id); err != nil {

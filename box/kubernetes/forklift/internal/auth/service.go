@@ -19,6 +19,9 @@ type Options struct {
 	SessionTTL    time.Duration
 	AnonymousRead bool
 	OIDC          *OIDCProvider // optional
+	// DefaultRole, when set, grants its permissions to every authenticated
+	// principal regardless of explicit role assignments (ArgoCD policy.default).
+	DefaultRole string
 }
 
 // Service authenticates requests and resolves effective permissions.
@@ -28,6 +31,7 @@ type Service struct {
 	codec         *SessionCodec
 	oidc          *OIDCProvider
 	anonymousRead bool
+	defaultRole   string
 }
 
 // NewService builds a Service. If SessionSecret is empty, an ephemeral random
@@ -49,6 +53,7 @@ func NewService(store *meta.Store, log *slog.Logger, opts Options) *Service {
 		codec:         NewSessionCodec(secret, ttl),
 		oidc:          opts.OIDC,
 		anonymousRead: opts.AnonymousRead,
+		defaultRole:   opts.DefaultRole,
 	}
 }
 
@@ -182,6 +187,15 @@ func (s *Service) buildPrincipal(ctx context.Context, u meta.User, groups []stri
 			return nil, err
 		}
 		perms = append(perms, groupPerms...)
+	}
+	// Every authenticated principal inherits the default role's permissions, if
+	// one is configured (e.g. read-only access for all signed-in users).
+	if s.defaultRole != "" {
+		defPerms, err := s.store.PermissionsForRoleNames(ctx, []string{s.defaultRole})
+		if err != nil {
+			return nil, err
+		}
+		perms = append(perms, defPerms...)
 	}
 	return &Principal{
 		Username:    u.Username,

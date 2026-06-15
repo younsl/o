@@ -127,9 +127,10 @@ func (s *Store) CreateRole(ctx context.Context, r Role) (Role, error) {
 func (s *Store) GetRoleByName(ctx context.Context, name string) (Role, error) {
 	var r Role
 	var created string
+	var managed int
 	err := s.h().QueryRowContext(ctx,
-		`SELECT id, name, description, created_at FROM roles WHERE name = ?`, name).
-		Scan(&r.ID, &r.Name, &r.Description, &created)
+		`SELECT id, name, description, created_at, managed FROM roles WHERE name = ?`, name).
+		Scan(&r.ID, &r.Name, &r.Description, &created, &managed)
 	if errors.Is(err, sql.ErrNoRows) {
 		return Role{}, ErrNotFound
 	}
@@ -137,12 +138,13 @@ func (s *Store) GetRoleByName(ctx context.Context, name string) (Role, error) {
 		return Role{}, err
 	}
 	r.CreatedAt = parseTime(created)
+	r.Managed = managed != 0
 	return r, nil
 }
 
 // ListRoles returns all roles.
 func (s *Store) ListRoles(ctx context.Context) ([]Role, error) {
-	rows, err := s.h().QueryContext(ctx, `SELECT id, name, description, created_at FROM roles ORDER BY name`)
+	rows, err := s.h().QueryContext(ctx, `SELECT id, name, description, created_at, managed FROM roles ORDER BY name`)
 	if err != nil {
 		return nil, err
 	}
@@ -151,10 +153,12 @@ func (s *Store) ListRoles(ctx context.Context) ([]Role, error) {
 	for rows.Next() {
 		var r Role
 		var created string
-		if err := rows.Scan(&r.ID, &r.Name, &r.Description, &created); err != nil {
+		var managed int
+		if err := rows.Scan(&r.ID, &r.Name, &r.Description, &created, &managed); err != nil {
 			return nil, err
 		}
 		r.CreatedAt = parseTime(created)
+		r.Managed = managed != 0
 		out = append(out, r)
 	}
 	return out, rows.Err()
@@ -185,7 +189,7 @@ func (s *Store) AddPermission(ctx context.Context, p Permission) (Permission, er
 // ListPermissions returns every role permission (grouped by role in the API).
 func (s *Store) ListPermissions(ctx context.Context) ([]Permission, error) {
 	rows, err := s.h().QueryContext(ctx,
-		`SELECT id, role_id, repo_pattern, actions FROM role_permissions ORDER BY id`)
+		`SELECT id, role_id, repo_pattern, actions, managed FROM role_permissions ORDER BY id`)
 	if err != nil {
 		return nil, err
 	}
@@ -242,7 +246,7 @@ func (s *Store) RemoveRole(ctx context.Context, userID, roleID int64) error {
 // PermissionsForUser returns the permissions granted to a user via their roles.
 func (s *Store) PermissionsForUser(ctx context.Context, userID int64) ([]Permission, error) {
 	rows, err := s.h().QueryContext(ctx,
-		`SELECT rp.id, rp.role_id, rp.repo_pattern, rp.actions
+		`SELECT rp.id, rp.role_id, rp.repo_pattern, rp.actions, rp.managed
          FROM role_permissions rp
          JOIN user_roles ur ON ur.role_id = rp.role_id
          WHERE ur.user_id = ?`, userID)
@@ -258,7 +262,7 @@ func (s *Store) PermissionsForRoleNames(ctx context.Context, names []string) ([]
 	if len(names) == 0 {
 		return nil, nil
 	}
-	query := `SELECT rp.id, rp.role_id, rp.repo_pattern, rp.actions
+	query := `SELECT rp.id, rp.role_id, rp.repo_pattern, rp.actions, rp.managed
               FROM role_permissions rp JOIN roles r ON r.id = rp.role_id WHERE r.name IN (`
 	args := make([]any, len(names))
 	for i, n := range names {
@@ -288,7 +292,7 @@ func (s *Store) CreateGroupMapping(ctx context.Context, groupName string, roleID
 
 // ListGroupMappings returns all group-to-role mappings.
 func (s *Store) ListGroupMappings(ctx context.Context) ([]GroupMapping, error) {
-	rows, err := s.h().QueryContext(ctx, `SELECT id, group_name, role_id FROM oidc_group_mappings ORDER BY group_name`)
+	rows, err := s.h().QueryContext(ctx, `SELECT id, group_name, role_id, managed FROM oidc_group_mappings ORDER BY group_name`)
 	if err != nil {
 		return nil, err
 	}
@@ -296,9 +300,11 @@ func (s *Store) ListGroupMappings(ctx context.Context) ([]GroupMapping, error) {
 	var out []GroupMapping
 	for rows.Next() {
 		var g GroupMapping
-		if err := rows.Scan(&g.ID, &g.GroupName, &g.RoleID); err != nil {
+		var managed int
+		if err := rows.Scan(&g.ID, &g.GroupName, &g.RoleID, &managed); err != nil {
 			return nil, err
 		}
+		g.Managed = managed != 0
 		out = append(out, g)
 	}
 	return out, rows.Err()
@@ -469,9 +475,11 @@ func scanPermissions(rows *sql.Rows) ([]Permission, error) {
 	var out []Permission
 	for rows.Next() {
 		var p Permission
-		if err := rows.Scan(&p.ID, &p.RoleID, &p.RepoPattern, &p.Actions); err != nil {
+		var managed int
+		if err := rows.Scan(&p.ID, &p.RoleID, &p.RepoPattern, &p.Actions, &managed); err != nil {
 			return nil, err
 		}
+		p.Managed = managed != 0
 		out = append(out, p)
 	}
 	return out, rows.Err()

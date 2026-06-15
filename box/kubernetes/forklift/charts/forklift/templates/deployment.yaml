@@ -19,6 +19,9 @@ spec:
   template:
     metadata:
       annotations:
+        {{- if .Values.auth.rbac.enabled }}
+        checksum/rbac-policy: {{ .Values.auth.rbac.policy | sha256sum }}
+        {{- end }}
         {{- with .Values.podAnnotations }}
         {{- toYaml . | nindent 8 }}
         {{- end }}
@@ -61,6 +64,7 @@ spec:
           volumeMounts:
             - name: data
               mountPath: /data
+            {{- include "forklift.rbacVolumeMounts" . | nindent 12 }}
       volumes:
         - name: data
           {{- if .Values.persistence.enabled }}
@@ -69,6 +73,7 @@ spec:
           {{- else }}
           emptyDir: {}
           {{- end }}
+        {{- include "forklift.rbacVolumes" . | nindent 8 }}
       {{- with .Values.nodeSelector }}
       nodeSelector:
         {{- toYaml . | nindent 8 }}

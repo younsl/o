@@ -70,6 +70,22 @@ type AuthConfig struct {
 	BootstrapAdminPassword string
 
 	OIDC OIDCConfig
+	RBAC RBACConfig
+}
+
+// RBACConfig configures declarative, ArgoCD-style RBAC reconciled from the
+// chart on startup. When PolicyFile is empty, declarative RBAC is disabled and
+// authorization relies solely on roles managed through the API/UI.
+type RBACConfig struct {
+	// PolicyFile is the path to an ArgoCD-style policy.csv (ConfigMap mount).
+	PolicyFile string
+	// DefaultRole grants its permissions to every authenticated principal,
+	// regardless of explicit assignments (ArgoCD policy.default). Empty means
+	// no default access (deny-all until a role is granted).
+	DefaultRole string
+	// AccountsDir is a directory of local-account password files (Secret mount),
+	// one file per account named after the username.
+	AccountsDir string
 }
 
 // OIDCConfig configures Keycloak (or any OIDC provider) login.
@@ -169,6 +185,11 @@ func Load() (*Config, error) {
 				RedirectURL:   env("FORKLIFT_OIDC_REDIRECT_URL", ""),
 				UsernameClaim: env("FORKLIFT_OIDC_USERNAME_CLAIM", "preferred_username"),
 				GroupsClaim:   env("FORKLIFT_OIDC_GROUPS_CLAIM", "groups"),
+			},
+			RBAC: RBACConfig{
+				PolicyFile:  env("FORKLIFT_RBAC_POLICY_FILE", ""),
+				DefaultRole: env("FORKLIFT_RBAC_DEFAULT_ROLE", ""),
+				AccountsDir: env("FORKLIFT_RBAC_ACCOUNTS_DIR", ""),
 			},
 		},
 		Audit: AuditConfig{

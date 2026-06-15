@@ -11,7 +11,7 @@ Lightweight, Kubernetes-native artifact repository. A single static Go binary th
 
 - Hosted, Proxy (cached upstream) and Group (ordered member lookup behind one URL) repositories
 - Five package families: Maven (and Gradle), npm, Cargo, Go Modules, PyPI
-- Keycloak OIDC login with group-to-role mapping, plus local username/password
+- Keycloak OIDC login with group-to-role mapping, plus local username/password; roles and grants managed in the UI or declared in the chart (ArgoCD-style RBAC)
 - Fine-grained personal access tokens (per repository pattern and action)
 - Per-repository caching: TTL revalidation, LRU eviction, negative caching
 - Age policy: quarantine freshly published upstream versions to mitigate supply-chain attacks
@@ -98,10 +98,37 @@ All settings are environment variables (the Helm chart maps values to them).
 | `FORKLIFT_OIDC_ENABLED` | `false` | Enable Keycloak OIDC login |
 | `FORKLIFT_OIDC_ISSUER_URL` / `_CLIENT_ID` / `_CLIENT_SECRET` / `_REDIRECT_URL` | | OIDC settings |
 | `FORKLIFT_OIDC_GROUPS_CLAIM` | `groups` | Claim mapped to roles |
+| `FORKLIFT_RBAC_POLICY_FILE` | (none) | Path to a declarative policy.csv; enables declarative RBAC |
+| `FORKLIFT_RBAC_DEFAULT_ROLE` | (none) | Role granted to every authenticated user (ArgoCD `policy.default`) |
+| `FORKLIFT_RBAC_ACCOUNTS_DIR` | (none) | Directory of local-account password files (Secret mount) |
 | `FORKLIFT_AUDIT_ENABLED` | `true` | Record per-repository audit events |
 | `FORKLIFT_AUDIT_RETENTION` | `2160h` (90d) | Prune audit entries older than this; `0` keeps forever |
 
 Per-repository options (caching and age policy) are set through the UI or the REST API, not env vars.
+
+## Access control
+
+Authorization is role-based. A role bundles permissions, each granting a set of actions (`read`, `write`, `delete`, `approve`, `admin`) on repositories matching a glob pattern. Roles reach principals two ways: assigned directly to a user, or mapped from a Keycloak group claim. A user with no matching grant has no access unless a default role is configured.
+
+Roles, grants and group mappings can be managed interactively in the UI/API, or declared once in the Helm chart and reconciled on startup (ArgoCD-style). The two coexist: declarative entries are authoritative and read-only in the UI; interactively-created entries are left untouched.
+
+### Declarative RBAC (chart)
+
+`auth.rbac.policy` is an ArgoCD-style policy reconciled on every startup. It is authoritative for the roles, grants and group mappings it defines (managed rows): removing an entry removes it from the database on the next restart, while UI-created rows survive.
+
+```csv
+# p, <role>, repo, <action>, <repo-glob>, allow   (action: read|write|delete|approve|admin, or '*' = admin)
+# g, <subject>, <role>                              (subject: group:<keycloak-group> | user:<name> | bare = user)
+p, readonly, repo, read, *, allow
+p, developer, repo, read, team-a-*, allow
+p, developer, repo, write, team-a-*, allow
+g, group:/platform-admins, admins
+g, user:alice, developer
+```
+
+- `auth.rbac.policyDefault` (default `readonly`) is the role granted to every authenticated user, even with no explicit grant. Set it empty for deny-all.
+- `auth.rbac.accounts` provisions local (password) accounts; each password is generated into the chart Secret (key `local-user-<name>-password`) and preserved across upgrades. Grant them roles with `g, user:<name>, <role>` lines. Existing accounts (including the bootstrap admin) are never overwritten.
+- Out of the box the chart ships a `readonly` role (read on all repositories), an `admins` role (full access), and `policyDefault: readonly`, so every signed-in user can pull and access is granted from there.
 
 ## Usage
 

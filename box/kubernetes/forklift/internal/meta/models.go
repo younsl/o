@@ -59,6 +59,9 @@ type Role struct {
 	Name        string
 	Description string
 	CreatedAt   time.Time
+	// Managed marks roles owned by the declarative RBAC policy. Managed roles
+	// are reconciled from the chart on startup and are read-only via the API.
+	Managed bool
 }
 
 // Permission grants a set of actions on repositories matching a glob pattern.
@@ -67,6 +70,7 @@ type Permission struct {
 	RoleID      int64
 	RepoPattern string // glob: * or maven-*
 	Actions     string // csv: read,write,delete,admin
+	Managed     bool
 }
 
 // GroupMapping maps a Keycloak group name to a role.
@@ -74,6 +78,7 @@ type GroupMapping struct {
 	ID        int64
 	GroupName string
 	RoleID    int64
+	Managed   bool
 }
 
 // Token is a personal access token (PAT). Only the SHA-256 hash is stored.

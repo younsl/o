@@ -1,0 +1,17 @@
+{{- if .Values.auth.rbac.enabled }}
+{{- /*
+Declarative RBAC policy (ArgoCD-style policy.csv) mounted into the container and
+reconciled on startup. Changing this ConfigMap and restarting the pod re-applies
+the policy; managed rows are synced authoritatively while UI-created rows are
+preserved.
+*/}}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "forklift.fullname" . }}-rbac
+  labels:
+    {{- include "forklift.labels" . | nindent 4 }}
+data:
+  policy.csv: |
+    {{- .Values.auth.rbac.policy | nindent 4 }}
+{{- end }}

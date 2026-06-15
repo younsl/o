@@ -96,9 +96,15 @@ func run() error {
 		SessionTTL:    cfg.Auth.SessionTTL,
 		AnonymousRead: cfg.Auth.AnonymousRead,
 		OIDC:          oidcProvider,
+		DefaultRole:   cfg.Auth.RBAC.DefaultRole,
 	})
 	if err := authSvc.BootstrapAdmin(ctx, cfg.Auth.BootstrapAdminUser, cfg.Auth.BootstrapAdminPassword); err != nil {
 		return fmt.Errorf("bootstrap admin: %w", err)
+	}
+	// Declarative RBAC: reconcile chart-provided roles, grants, group mappings
+	// and local accounts. No-op when no policy file is configured.
+	if err := auth.ReconcileRBAC(ctx, store, log, cfg.Auth.RBAC.PolicyFile, cfg.Auth.RBAC.AccountsDir); err != nil {
+		return fmt.Errorf("reconcile rbac: %w", err)
 	}
 
 	if cfg.SeedDefaultRepos {

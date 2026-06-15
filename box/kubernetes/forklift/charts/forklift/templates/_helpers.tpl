@@ -143,7 +143,52 @@ StatefulSet (PV-based replication mode).
     secretKeyRef:
       name: {{ include "forklift.fullname" . }}
       key: bootstrap-admin-password
+{{- if .Values.auth.rbac.enabled }}
+- name: FORKLIFT_RBAC_POLICY_FILE
+  value: /etc/forklift/rbac/policy.csv
+- name: FORKLIFT_RBAC_DEFAULT_ROLE
+  value: {{ .Values.auth.rbac.policyDefault | quote }}
+{{- if .Values.auth.rbac.accounts }}
+- name: FORKLIFT_RBAC_ACCOUNTS_DIR
+  value: /etc/forklift/accounts
+{{- end }}
+{{- end }}
 {{- with .Values.extraEnv }}
 {{ toYaml . }}
+{{- end }}
+{{- end }}
+
+{{/*
+RBAC volume mounts: the policy.csv ConfigMap and, when local accounts are
+declared, the per-account password Secret projected as files named by username.
+*/}}
+{{- define "forklift.rbacVolumeMounts" -}}
+{{- if .Values.auth.rbac.enabled }}
+- name: rbac-policy
+  mountPath: /etc/forklift/rbac
+  readOnly: true
+{{- if .Values.auth.rbac.accounts }}
+- name: rbac-accounts
+  mountPath: /etc/forklift/accounts
+  readOnly: true
+{{- end }}
+{{- end }}
+{{- end }}
+
+{{- define "forklift.rbacVolumes" -}}
+{{- if .Values.auth.rbac.enabled }}
+- name: rbac-policy
+  configMap:
+    name: {{ include "forklift.fullname" . }}-rbac
+{{- if .Values.auth.rbac.accounts }}
+- name: rbac-accounts
+  secret:
+    secretName: {{ include "forklift.fullname" . }}
+    items:
+      {{- range .Values.auth.rbac.accounts }}
+      - key: {{ printf "local-user-%s-password" .name }}
+        path: {{ .name }}
+      {{- end }}
+{{- end }}
 {{- end }}
 {{- end }}
