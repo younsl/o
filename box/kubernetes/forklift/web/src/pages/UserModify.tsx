@@ -43,11 +43,27 @@ export function UserModify({ me }: { me: Me }) {
       </div>
       {error && <div className="error">{error}</div>}
 
+      <AccountPanel user={user} />
       <RolesPanel user={user} roles={roles} run={run} />
       {user.source === "local" && <PasswordPanel user={user} onError={setError} />}
       <StatusPanel user={user} self={self} run={run} />
       <DangerPanel user={user} self={self} onDeleted={() => navigate("/users")} onError={setError} />
     </>
+  );
+}
+
+// AccountPanel shows the identity fields read-only. Username and email are owned
+// by the identity provider (OIDC) or set at creation (local), so they are not
+// editable here — only displayed.
+function AccountPanel({ user }: { user: User }) {
+  return (
+    <div className="panel">
+      <h2 style={{ marginTop: 0 }}>Account</h2>
+      <label>Username</label>
+      <input type="text" value={user.username} readOnly />
+      <label>Email</label>
+      <input type="text" value={user.email || "—"} readOnly />
+    </div>
   );
 }
 

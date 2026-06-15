@@ -210,6 +210,88 @@ func placeholders(n int) string {
 	return strings.TrimSuffix(strings.Repeat("?,", n), ",")
 }
 
+// managedLoginSync marks a user_roles row as login-synced: materialized from a
+// user's OIDC group membership on login, rather than assigned interactively
+// (managed = 0) or by the declarative policy (managed = 1). Treating it as
+// managed keeps it read-only via the API (it would only reappear on next login)
+// while letting the declarative reconciler, which owns managed = 1, leave it be.
+const managedLoginSync = 2
+
+// SyncOIDCGroupRoles reconciles a user's login-synced (managed = 2) role
+// assignments to exactly the roles currently mapped from the given Keycloak
+// groups. It runs on every OIDC login so a user's stored roles track the
+// identity provider's group claims: roles for groups the user has left are
+// revoked, roles for newly-joined groups are granted. Interactive (managed = 0)
+// and declarative (managed = 1) assignments are never touched; an existing
+// assignment of a group-mapped role under those flags is left as-is.
+func (s *Store) SyncOIDCGroupRoles(ctx context.Context, userID int64, groups []string) error {
+	tx, err := s.h().BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback() //nolint:errcheck // no-op after Commit
+
+	roleIDs, err := groupRoleIDs(ctx, tx, groups)
+	if err != nil {
+		return err
+	}
+
+	// Revoke login-synced roles the user no longer qualifies for.
+	if len(roleIDs) == 0 {
+		if _, err := tx.ExecContext(ctx,
+			`DELETE FROM user_roles WHERE user_id = ? AND managed = ?`, userID, managedLoginSync); err != nil {
+			return err
+		}
+		return tx.Commit()
+	}
+	del := `DELETE FROM user_roles WHERE user_id = ? AND managed = ? AND role_id NOT IN (` + placeholders(len(roleIDs)) + `)`
+	args := make([]any, 0, len(roleIDs)+2)
+	args = append(args, userID, managedLoginSync)
+	for _, id := range roleIDs {
+		args = append(args, id)
+	}
+	if _, err := tx.ExecContext(ctx, del, args...); err != nil {
+		return err
+	}
+
+	// Grant currently-qualifying group roles. DO NOTHING preserves an existing
+	// interactive or declarative assignment of the same role.
+	for _, id := range roleIDs {
+		if _, err := tx.ExecContext(ctx,
+			`INSERT INTO user_roles(user_id, role_id, managed) VALUES(?, ?, ?)
+             ON CONFLICT(user_id, role_id) DO NOTHING`, userID, id, managedLoginSync); err != nil {
+			return err
+		}
+	}
+	return tx.Commit()
+}
+
+// groupRoleIDs resolves the distinct role IDs mapped from the given group names.
+func groupRoleIDs(ctx context.Context, tx *sql.Tx, groups []string) ([]int64, error) {
+	if len(groups) == 0 {
+		return nil, nil
+	}
+	q := `SELECT DISTINCT role_id FROM oidc_group_mappings WHERE group_name IN (` + placeholders(len(groups)) + `)`
+	args := make([]any, len(groups))
+	for i, g := range groups {
+		args[i] = g
+	}
+	rows, err := tx.QueryContext(ctx, q, args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var ids []int64
+	for rows.Next() {
+		var id int64
+		if err := rows.Scan(&id); err != nil {
+			return nil, err
+		}
+		ids = append(ids, id)
+	}
+	return ids, rows.Err()
+}
+
 // RoleManaged reports whether a role is managed by the declarative policy.
 func (s *Store) RoleManaged(ctx context.Context, id int64) (bool, error) {
 	return s.managedFlag(ctx, `SELECT managed FROM roles WHERE id = ?`, id)

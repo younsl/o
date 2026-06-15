@@ -136,6 +136,14 @@ func (s *Service) HandleCallback(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "user provisioning failed", http.StatusInternalServerError)
 		return
 	}
+	// Materialize the user's group-mapped forklift roles so the assignment is
+	// durable and visible in the UI, syncing on every login to track the
+	// identity provider's current group membership. Best-effort: effective
+	// permissions are also resolved dynamically from the session groups, so a
+	// sync failure must not block the login.
+	if err := s.store.SyncOIDCGroupRoles(ctx, u.ID, groups); err != nil {
+		s.log.Warn("sync oidc group roles", "user", u.Username, "err", err)
+	}
 	// Best-effort: a bookkeeping failure must not block the login.
 	if err := s.store.TouchLastLogin(ctx, u.ID); err != nil {
 		s.log.Warn("record last login", "user", u.Username, "err", err)

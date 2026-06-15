@@ -80,6 +80,7 @@ export function Repositories() {
       </p>
       {error && <div className="error">{error}</div>}
       <div className="panel">
+        <div className="table-wrap">
         <table>
           <thead>
             <tr><th>Name</th><th>Format</th><th>Type</th><th>Endpoint (forklift)</th><th>Artifacts</th><th>Size</th><th>Upstream</th><th>Security</th></tr>
@@ -105,6 +106,7 @@ export function Repositories() {
             )}
           </tbody>
         </table>
+        </div>
       </div>
     </>
   );

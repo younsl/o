@@ -221,3 +221,91 @@ func TestManagedFlagHelpers(t *testing.T) {
 		t.Fatal("missing assignment should report unmanaged")
 	}
 }
+
+func TestSyncOIDCGroupRoles(t *testing.T) {
+	s := openTestStore(t)
+	ctx := context.Background()
+
+	readonly, _ := s.CreateRole(ctx, Role{Name: "readonly"})
+	security, _ := s.CreateRole(ctx, Role{Name: "security"})
+	admins, _ := s.CreateRole(ctx, Role{Name: "admins"})
+	if err := s.CreateGroupMapping(ctx, "/security", security.ID); err != nil {
+		t.Fatalf("map security: %v", err)
+	}
+	if err := s.CreateGroupMapping(ctx, "/administrator", admins.ID); err != nil {
+		t.Fatalf("map admin: %v", err)
+	}
+
+	u, _ := s.CreateUser(ctx, User{Username: "bob", Source: SourceOIDC})
+
+	// An admin manually grants readonly; this interactive (managed=0) row must
+	// survive every sync.
+	if err := s.AssignRole(ctx, u.ID, readonly.ID); err != nil {
+		t.Fatalf("manual assign: %v", err)
+	}
+
+	// First login: member of /security only.
+	if err := s.SyncOIDCGroupRoles(ctx, u.ID, []string{"/security"}); err != nil {
+		t.Fatalf("sync 1: %v", err)
+	}
+	if got := roleNames(t, s, u.ID); !sameSet(got, []string{"readonly", "security"}) {
+		t.Fatalf("after sync 1 roles = %v", got)
+	}
+	// The synced role is treated as managed (read-only via API).
+	if managed, _ := s.IsManagedUserRole(ctx, u.ID, security.ID); !managed {
+		t.Fatal("synced security role should report managed")
+	}
+	// The manual grant stays unmanaged.
+	if managed, _ := s.IsManagedUserRole(ctx, u.ID, readonly.ID); managed {
+		t.Fatal("manual readonly grant should stay unmanaged")
+	}
+
+	// Second login: moved from /security to /administrator. security is revoked,
+	// admins granted, manual readonly untouched.
+	if err := s.SyncOIDCGroupRoles(ctx, u.ID, []string{"/administrator"}); err != nil {
+		t.Fatalf("sync 2: %v", err)
+	}
+	if got := roleNames(t, s, u.ID); !sameSet(got, []string{"readonly", "admins"}) {
+		t.Fatalf("after sync 2 roles = %v", got)
+	}
+
+	// Third login: no group claims. All login-synced roles revoked, manual stays.
+	if err := s.SyncOIDCGroupRoles(ctx, u.ID, nil); err != nil {
+		t.Fatalf("sync 3: %v", err)
+	}
+	if got := roleNames(t, s, u.ID); !sameSet(got, []string{"readonly"}) {
+		t.Fatalf("after sync 3 roles = %v", got)
+	}
+}
+
+func roleNames(t *testing.T, s *Store, userID int64) []string {
+	t.Helper()
+	byUser, err := s.RolesByUser(context.Background())
+	if err != nil {
+		t.Fatalf("RolesByUser: %v", err)
+	}
+	var names []string
+	for _, r := range byUser[userID] {
+		names = append(names, r.Name)
+	}
+	return names
+}
+
+func sameSet(a, b []string) bool {
+	if len(a) != len(b) {
+		return false
+	}
+	m := map[string]int{}
+	for _, x := range a {
+		m[x]++
+	}
+	for _, x := range b {
+		m[x]--
+	}
+	for _, v := range m {
+		if v != 0 {
+			return false
+		}
+	}
+	return true
+}

@@ -152,6 +152,12 @@ input, textarea {
   border: 1px solid var(--border); border-radius: var(--radius); font-size: 14px;
 }
 input:focus, textarea:focus { outline: none; border-color: var(--accent); }
+/* Read-only fields (e.g. identity-provider-owned username/email): shown for
+   reference, visually muted to signal they cannot be edited here. */
+input[readonly], textarea[readonly] {
+  color: var(--muted); background: transparent; cursor: default;
+}
+input[readonly]:focus, textarea[readonly]:focus { border-color: var(--border); }
 textarea { font-family: inherit; resize: vertical; }
 
 /* Custom dropdown (Select component, in-app replacement for native <select>) */
