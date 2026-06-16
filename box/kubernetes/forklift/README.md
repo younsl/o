@@ -191,6 +191,30 @@ curl -u admin:change-me -X POST http://forklift/api/v1/version-denies \
 
 API reference: `http://forklift/api-docs` (Scalar) and `http://forklift/openapi.yaml`.
 
+## Metrics
+
+Prometheus metrics are exposed on `FORKLIFT_METRICS_ADDR` (`:8081` by default) at `/metrics`, alongside the standard Go runtime and process collectors (`go_*`, `process_*`).
+
+| Metric | Type | Labels | Description |
+|--------|------|--------|-------------|
+| `forklift_build_info` | gauge | `version`, `commit`, `go_version` | Build metadata; value is always 1 |
+| `forklift_leader` | gauge | | 1 if this instance currently holds leadership, else 0 |
+| `forklift_http_requests_total` | counter | `method`, `route`, `status` | HTTP requests served |
+| `forklift_http_request_duration_seconds` | histogram | `method`, `route`, `status` | HTTP request latency |
+| `forklift_repositories` | gauge | `format`, `type` | Configured repositories |
+| `forklift_artifacts` | gauge | | Logical artifacts across all repositories |
+| `forklift_blobs` | gauge | | Deduplicated content-addressed blobs |
+| `forklift_storage_bytes` | gauge | | Physical bytes used by deduplicated blobs |
+| `forklift_bytes_transferred_total` | counter | `direction`, `format` | Artifact bytes to/from clients (`egress` downloads, `ingress` uploads) |
+| `forklift_cache_hits_total` / `forklift_cache_misses_total` | counter | `repo` | Proxy cache outcomes |
+| `forklift_upstream_errors_total` | counter | `repo` | Upstream fetch failures |
+| `forklift_age_policy_violations_total` | counter | `repo`, `action` | Age policy blocks and warnings |
+| `forklift_approval_blocked_total` | counter | `repo`, `mode` | Package approval gate blocks |
+| `forklift_approval_pending` | gauge | | Package approval requests pending |
+| `forklift_version_deny_blocked_total` | counter | `repo` | Version deny gate blocks |
+| `forklift_audit_events_dropped_total` | counter | | Audit events dropped (recorder queue full) |
+| `forklift_replication_*` | counter/gauge | | PV-based replication progress (when `replication.enabled`) |
+
 ## Development
 
 ```bash

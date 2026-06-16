@@ -43,6 +43,7 @@ type Engine struct {
 	cacheMiss   *prometheus.CounterVec
 	ageBlocks   *prometheus.CounterVec
 	upstreamErr *prometheus.CounterVec
+	bytes       *prometheus.CounterVec
 }
 
 // NewEngine builds an Engine and registers its metrics.
@@ -67,8 +68,12 @@ func NewEngine(store *meta.Store, blobs storage.BlobStore, log *slog.Logger, reg
 		upstreamErr: prometheus.NewCounterVec(prometheus.CounterOpts{
 			Namespace: "forklift", Name: "upstream_errors_total", Help: "Upstream fetch errors.",
 		}, []string{"repo"}),
+		bytes: prometheus.NewCounterVec(prometheus.CounterOpts{
+			Namespace: "forklift", Name: "bytes_transferred_total",
+			Help: "Artifact bytes transferred to/from clients (egress=downloads, ingress=uploads).",
+		}, []string{"direction", "format"}),
 	}
-	reg.MustRegister(e.cacheHits, e.cacheMiss, e.ageBlocks, e.upstreamErr)
+	reg.MustRegister(e.cacheHits, e.cacheMiss, e.ageBlocks, e.upstreamErr, e.bytes)
 	return e
 }
 
@@ -104,7 +109,8 @@ func (e *Engine) serve(w http.ResponseWriter, r *http.Request, spec fetchSpec) {
 				e.cacheHits.WithLabelValues(spec.repo.Name).Inc()
 			}
 			_ = e.store.Touch(ctx, spec.repo.ID, spec.path)
-			e.serveArtifact(w, r, art)
+			n := e.serveArtifact(w, r, art)
+			e.bytes.WithLabelValues("egress", spec.repo.Format).Add(float64(n))
 			return
 		}
 	} else if !errors.Is(err, meta.ErrNotFound) {
@@ -179,7 +185,8 @@ func (e *Engine) fetchAndServe(w http.ResponseWriter, r *http.Request, spec fetc
 			w.WriteHeader(http.StatusOK)
 			return
 		}
-		_, _ = io.Copy(w, resp.Body)
+		n, _ := io.Copy(w, resp.Body)
+		e.bytes.WithLabelValues("egress", spec.repo.Format).Add(float64(n))
 		return
 	}
 
@@ -189,7 +196,8 @@ func (e *Engine) fetchAndServe(w http.ResponseWriter, r *http.Request, spec fetc
 		return
 	}
 	e.maybeEvict(ctx, spec)
-	e.serveArtifact(w, r, art)
+	n := e.serveArtifact(w, r, art)
+	e.bytes.WithLabelValues("egress", spec.repo.Format).Add(float64(n))
 }
 
 // storeArtifact streams body into the blob store and records the artifact.
@@ -214,18 +222,23 @@ func (e *Engine) storeArtifact(ctx context.Context, spec fetchSpec, body io.Read
 
 // put stores an uploaded artifact for a hosted repository.
 func (e *Engine) put(ctx context.Context, repo meta.Repository, path, version, contentType string, published *time.Time, body io.Reader) error {
-	_, err := e.storeArtifact(ctx, fetchSpec{
+	art, err := e.storeArtifact(ctx, fetchSpec{
 		repo: repo, path: path, version: version, contentType: contentType,
 	}, body, contentType, published)
 	e.neg.clear(repo.Name + "/" + path)
+	if err == nil {
+		e.bytes.WithLabelValues("ingress", repo.Format).Add(float64(art.Size))
+	}
 	return err
 }
 
-func (e *Engine) serveArtifact(w http.ResponseWriter, r *http.Request, art meta.Artifact) {
+// serveArtifact writes the artifact body and returns the number of bytes copied
+// to the client (0 for HEAD or a 304 response).
+func (e *Engine) serveArtifact(w http.ResponseWriter, r *http.Request, art meta.Artifact) int64 {
 	rc, size, err := e.blobs.Open(r.Context(), art.BlobSHA256)
 	if err != nil {
 		http.Error(w, "blob missing", http.StatusInternalServerError)
-		return
+		return 0
 	}
 	defer rc.Close()
 	if art.ContentType != "" {
@@ -234,14 +247,15 @@ func (e *Engine) serveArtifact(w http.ResponseWriter, r *http.Request, art meta.
 	w.Header().Set("ETag", `"`+art.BlobSHA256+`"`)
 	if match := r.Header.Get("If-None-Match"); match != "" && match == `"`+art.BlobSHA256+`"` {
 		w.WriteHeader(http.StatusNotModified)
-		return
+		return 0
 	}
 	w.Header().Set("Content-Length", itoa(size))
 	if r.Method == http.MethodHead {
 		w.WriteHeader(http.StatusOK)
-		return
+		return 0
 	}
-	_, _ = io.Copy(w, rc)
+	n, _ := io.Copy(w, rc)
+	return n
 }
 
 // ageGate evaluates the age policy and, when blocking, writes a 404 and returns

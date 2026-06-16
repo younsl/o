@@ -23,6 +23,19 @@ func (s *Store) GetBlob(ctx context.Context, sha string) (Blob, error) {
 	return b, nil
 }
 
+// BlobStats returns the number of stored blobs and their total physical size in
+// bytes. Because blobs are content-addressed and deduplicated, this reflects
+// actual disk usage rather than the logical artifact size.
+func (s *Store) BlobStats(ctx context.Context) (count, bytes int64, err error) {
+	var c, b sql.NullInt64
+	err = s.h().QueryRowContext(ctx,
+		`SELECT COUNT(*), COALESCE(SUM(size), 0) FROM blobs`).Scan(&c, &b)
+	if err != nil {
+		return 0, 0, err
+	}
+	return c.Int64, b.Int64, nil
+}
+
 // ListUnreferencedBlobs returns digests of blobs with ref_count <= 0, capped by
 // limit. The cache sweeper uses this to delete bytes from the blob store.
 func (s *Store) ListUnreferencedBlobs(ctx context.Context, limit int) ([]string, error) {

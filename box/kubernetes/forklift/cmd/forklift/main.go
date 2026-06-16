@@ -9,6 +9,7 @@ import (
 	"os"
 	"os/signal"
 	"path/filepath"
+	"runtime"
 	"syscall"
 	"time"
 
@@ -22,6 +23,7 @@ import (
 	"github.com/younsl/o/box/kubernetes/forklift/internal/cluster"
 	"github.com/younsl/o/box/kubernetes/forklift/internal/config"
 	"github.com/younsl/o/box/kubernetes/forklift/internal/meta"
+	"github.com/younsl/o/box/kubernetes/forklift/internal/metrics"
 	"github.com/younsl/o/box/kubernetes/forklift/internal/openapi"
 	"github.com/younsl/o/box/kubernetes/forklift/internal/replication"
 	"github.com/younsl/o/box/kubernetes/forklift/internal/repo"
@@ -74,6 +76,17 @@ func run() error {
 
 	reg := prometheus.NewRegistry()
 	reg.MustRegister(prometheus.NewGoCollector(), prometheus.NewProcessCollector(prometheus.ProcessCollectorOpts{}))
+
+	// Build metadata, exposed as a constant gauge=1 (standard exporter pattern).
+	buildInfo := prometheus.NewGaugeVec(prometheus.GaugeOpts{
+		Namespace: "forklift", Name: "build_info",
+		Help: "Build metadata; the value is always 1.",
+	}, []string{"version", "commit", "go_version"})
+	buildInfo.WithLabelValues(version.Version, version.Commit, runtime.Version()).Set(1)
+	reg.MustRegister(buildInfo)
+
+	// Repository inventory and physical storage usage, computed per scrape.
+	reg.MustRegister(metrics.NewStorageCollector(store))
 
 	// Auth: optional Keycloak OIDC plus local users and PATs.
 	var oidcProvider *auth.OIDCProvider
@@ -163,6 +176,14 @@ func run() error {
 	// any path not matched above.
 	srv.Router().NotFound(webui.Handler())
 
+	// leaderGauge reports whether this instance currently holds leadership.
+	// Single-instance deployments are always leader; in HA exactly one pod is 1.
+	leaderGauge := prometheus.NewGauge(prometheus.GaugeOpts{
+		Namespace: "forklift", Name: "leader",
+		Help: "1 if this instance currently holds leadership, else 0.",
+	})
+	reg.MustRegister(leaderGauge)
+
 	var elector *cluster.Elector
 	if cfg.HA.Enabled {
 		elector, err = cluster.New(cfg.HA, log)
@@ -218,6 +239,7 @@ func run() error {
 	// single writer. With replication enabled, the replicated snapshot is
 	// applied before this instance takes traffic.
 	startLeading := func(leadCtx context.Context) {
+		leaderGauge.Set(1)
 		if replicator != nil {
 			if err := replicator.Promote(leadCtx); err != nil {
 				log.Error("replication: promote failed; serving local data", "err", err)
@@ -238,6 +260,7 @@ func run() error {
 		}
 	}
 	stopLeading := func() {
+		leaderGauge.Set(0)
 		if replicator != nil {
 			// Stay Ready so rollouts proceed; the role label moves traffic away.
 			replicator.Demote()
