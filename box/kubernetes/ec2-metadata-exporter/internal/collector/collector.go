@@ -21,6 +21,8 @@ type Instance struct {
 	InstanceType     string
 	AvailabilityZone string
 	State            string
+	Lifecycle        string
+	Architecture     string
 }
 
 // Collector polls EC2 and keeps the metric registry in sync with the latest
@@ -46,8 +48,8 @@ func New(client ec2.DescribeInstancesAPIClient, logger *slog.Logger) *Collector 
 		registry: prometheus.NewRegistry(),
 		info: prometheus.NewGaugeVec(prometheus.GaugeOpts{
 			Name: "ec2_metadata_instance_info",
-			Help: "EC2 instance metadata. Value is always 1; labels carry the private IP, Name tag, instance type, and availability zone.",
-		}, []string{"instance_id", "name", "private_ip", "instance_type", "availability_zone", "state"}),
+			Help: "EC2 instance metadata. Value is always 1; labels carry the private IP, Name tag, instance type, availability zone, lifecycle (on-demand or spot), and CPU architecture.",
+		}, []string{"instance_id", "name", "private_ip", "instance_type", "availability_zone", "state", "lifecycle", "architecture"}),
 		instances: prometheus.NewGauge(prometheus.GaugeOpts{
 			Name: "ec2_metadata_instances",
 			Help: "Number of EC2 instances observed in the last successful scrape.",
@@ -101,7 +103,7 @@ func (c *Collector) refresh(ctx context.Context) {
 
 	c.info.Reset()
 	for _, inst := range instances {
-		c.info.WithLabelValues(inst.ID, inst.Name, inst.PrivateIP, inst.InstanceType, inst.AvailabilityZone, inst.State).Set(1)
+		c.info.WithLabelValues(inst.ID, inst.Name, inst.PrivateIP, inst.InstanceType, inst.AvailabilityZone, inst.State, inst.Lifecycle, inst.Architecture).Set(1)
 	}
 	c.instances.Set(float64(len(instances)))
 	c.lastSuccess.SetToCurrentTime()
@@ -137,6 +139,8 @@ func (c *Collector) describeAll(ctx context.Context) ([]Instance, error) {
 					InstanceType:     string(inst.InstanceType),
 					AvailabilityZone: availabilityZone(inst.Placement),
 					State:            string(inst.State.Name),
+					Lifecycle:        lifecycle(inst.InstanceLifecycle),
+					Architecture:     string(inst.Architecture),
 				})
 			}
 		}
@@ -149,6 +153,16 @@ func availabilityZone(placement *ec2types.Placement) string {
 		return ""
 	}
 	return aws.ToString(placement.AvailabilityZone)
+}
+
+// lifecycle maps the EC2 InstanceLifecycle field to a metric label value. The
+// field is empty for on-demand instances and "spot" for Spot instances; other
+// values (scheduled, capacity-block) pass through verbatim.
+func lifecycle(l ec2types.InstanceLifecycleType) string {
+	if l == "" {
+		return "on-demand"
+	}
+	return string(l)
 }
 
 func nameTag(tags []ec2types.Tag) string {

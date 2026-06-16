@@ -37,6 +37,7 @@ func instance(id, name, privateIP string, state ec2types.InstanceStateName) ec2t
 	inst := ec2types.Instance{
 		InstanceId:   aws.String(id),
 		InstanceType: ec2types.InstanceTypeM5Large,
+		Architecture: ec2types.ArchitectureValuesX8664,
 		Placement:    &ec2types.Placement{AvailabilityZone: aws.String("ap-northeast-2a")},
 		State:        &ec2types.InstanceState{Name: state},
 	}
@@ -52,6 +53,12 @@ func instance(id, name, privateIP string, state ec2types.InstanceStateName) ec2t
 	return inst
 }
 
+func spotInstance(id, name, privateIP string, state ec2types.InstanceStateName) ec2types.Instance {
+	inst := instance(id, name, privateIP, state)
+	inst.InstanceLifecycle = ec2types.InstanceLifecycleTypeSpot
+	return inst
+}
+
 func TestRefreshPublishesInstanceInfo(t *testing.T) {
 	client := &fakeEC2{pages: []*ec2.DescribeInstancesOutput{
 		{
@@ -62,7 +69,7 @@ func TestRefreshPublishesInstanceInfo(t *testing.T) {
 		},
 		{
 			Reservations: []ec2types.Reservation{{Instances: []ec2types.Instance{
-				instance("i-bbb", "", "10.0.1.11", ec2types.InstanceStateNameStopped),
+				spotInstance("i-bbb", "", "10.0.1.11", ec2types.InstanceStateNameStopped),
 				instance("i-ccc", "no-ip", "", ec2types.InstanceStateNamePending),
 			}}},
 		},
@@ -73,10 +80,10 @@ func TestRefreshPublishesInstanceInfo(t *testing.T) {
 	if got := testutil.ToFloat64(c.instances); got != 2 {
 		t.Fatalf("instances gauge = %v, want 2", got)
 	}
-	if got := testutil.ToFloat64(c.info.WithLabelValues("i-aaa", "web-1", "10.0.1.10", "m5.large", "ap-northeast-2a", "running")); got != 1 {
+	if got := testutil.ToFloat64(c.info.WithLabelValues("i-aaa", "web-1", "10.0.1.10", "m5.large", "ap-northeast-2a", "running", "on-demand", "x86_64")); got != 1 {
 		t.Fatalf("info{i-aaa} = %v, want 1", got)
 	}
-	if got := testutil.ToFloat64(c.info.WithLabelValues("i-bbb", "", "10.0.1.11", "m5.large", "ap-northeast-2a", "stopped")); got != 1 {
+	if got := testutil.ToFloat64(c.info.WithLabelValues("i-bbb", "", "10.0.1.11", "m5.large", "ap-northeast-2a", "stopped", "spot", "x86_64")); got != 1 {
 		t.Fatalf("info{i-bbb} = %v, want 1", got)
 	}
 	if got := testutil.CollectAndCount(c.info); got != 2 {
@@ -100,8 +107,17 @@ func TestRefreshResetsRemovedInstances(t *testing.T) {
 	if got := testutil.CollectAndCount(c.info); got != 1 {
 		t.Fatalf("info series count = %v, want 1 after reset", got)
 	}
-	if got := testutil.ToFloat64(c.info.WithLabelValues("i-new", "new", "10.0.0.2", "m5.large", "ap-northeast-2a", "running")); got != 1 {
+	if got := testutil.ToFloat64(c.info.WithLabelValues("i-new", "new", "10.0.0.2", "m5.large", "ap-northeast-2a", "running", "on-demand", "x86_64")); got != 1 {
 		t.Fatalf("info{i-new} = %v, want 1", got)
+	}
+}
+
+func TestLifecycle(t *testing.T) {
+	if got := lifecycle(""); got != "on-demand" {
+		t.Fatalf("lifecycle(\"\") = %q, want on-demand", got)
+	}
+	if got := lifecycle(ec2types.InstanceLifecycleTypeSpot); got != "spot" {
+		t.Fatalf("lifecycle(spot) = %q, want spot", got)
 	}
 }
 

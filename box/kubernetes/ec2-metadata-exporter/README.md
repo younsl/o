@@ -8,7 +8,7 @@ and shipped as a statically linked binary on a scratch image.
 
 | Metric | Type | Description |
 |--------|------|-------------|
-| `ec2_metadata_instance_info{instance_id, name, private_ip, instance_type, availability_zone, state}` | Gauge | Always 1. One series per non-terminated instance with a private IP. |
+| `ec2_metadata_instance_info{instance_id, name, private_ip, instance_type, availability_zone, state, lifecycle, architecture}` | Gauge | Always 1. One series per non-terminated instance with a private IP. `lifecycle` is `on-demand` or `spot`; `architecture` is `x86_64`, `arm64`, etc. |
 | `ec2_metadata_instances` | Gauge | Instance count from the last successful scrape. |
 | `ec2_metadata_scrape_errors_total` | Counter | EC2 API scrape failures. |
 | `ec2_metadata_scrape_duration_seconds` | Gauge | Duration of the last scrape. |
@@ -17,7 +17,7 @@ and shipped as a statically linked binary on a scratch image.
 Example output:
 
 ```
-ec2_metadata_instance_info{instance_id="i-0abc123",name="web-1",private_ip="10.0.1.10",instance_type="m5.large",availability_zone="ap-northeast-2a",state="running"} 1
+ec2_metadata_instance_info{instance_id="i-0abc123",name="web-1",private_ip="10.0.1.10",instance_type="m5.large",availability_zone="ap-northeast-2a",state="running",lifecycle="on-demand",architecture="x86_64"} 1
 ```
 
 The info gauge is fully reset on every refresh, so terminated instances drop
