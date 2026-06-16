@@ -215,6 +215,8 @@ Prometheus metrics are exposed on `FORKLIFT_METRICS_ADDR` (`:8081` by default) a
 | `forklift_audit_events_dropped_total` | counter | | Audit events dropped (recorder queue full) |
 | `forklift_replication_*` | counter/gauge | | PV-based replication progress (when `replication.enabled`) |
 
+See [docs/metrics.md](docs/metrics.md) for per-metric meaning, labels, and example PromQL queries.
+
 ## Development
 
 ```bash
