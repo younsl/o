@@ -31,6 +31,9 @@ func main() {
 		"version", version.Version, "commit", version.Commit,
 		"region", cfg.Region, "scrape_interval", cfg.ScrapeInterval.String(),
 		"metrics_port", cfg.MetricsPort, "health_port", cfg.HealthPort)
+	logger.Info("collecting EC2 instance metadata",
+		"labels", strings.Join(collector.InfoLabels, ","),
+		"label_count", len(collector.InfoLabels))
 
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()

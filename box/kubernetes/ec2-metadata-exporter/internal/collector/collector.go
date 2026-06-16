@@ -13,6 +13,20 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 )
 
+// InfoLabels is the ordered label set published on ec2_metadata_instance_info.
+// It is the single source of truth for both metric construction and the startup
+// log; the per-instance values in refresh must be passed in this same order.
+var InfoLabels = []string{
+	"instance_id",
+	"name",
+	"private_ip",
+	"instance_type",
+	"availability_zone",
+	"state",
+	"lifecycle",
+	"architecture",
+}
+
 // Instance is the subset of EC2 instance data the exporter publishes.
 type Instance struct {
 	ID               string
@@ -49,7 +63,7 @@ func New(client ec2.DescribeInstancesAPIClient, logger *slog.Logger) *Collector 
 		info: prometheus.NewGaugeVec(prometheus.GaugeOpts{
 			Name: "ec2_metadata_instance_info",
 			Help: "EC2 instance metadata. Value is always 1; labels carry the private IP, Name tag, instance type, availability zone, lifecycle (on-demand or spot), and CPU architecture.",
-		}, []string{"instance_id", "name", "private_ip", "instance_type", "availability_zone", "state", "lifecycle", "architecture"}),
+		}, InfoLabels),
 		instances: prometheus.NewGauge(prometheus.GaugeOpts{
 			Name: "ec2_metadata_instances",
 			Help: "Number of EC2 instances observed in the last successful scrape.",
