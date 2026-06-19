@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"testing"
+	"time"
 )
 
 func TestRolePermissionQueries(t *testing.T) {
@@ -102,6 +103,109 @@ func TestBlobRecordLifecycle(t *testing.T) {
 	// Deleting an already-removed record is a sweeper-friendly no-op.
 	if err := s.DeleteBlobRecord(ctx, art.BlobSHA256); err != nil {
 		t.Fatalf("double delete err = %v, want nil", err)
+	}
+}
+
+func TestPurgeArtifacts(t *testing.T) {
+	s := openTestStore(t)
+	ctx := context.Background()
+
+	repo, err := s.CreateRepository(ctx, Repository{Name: "purge-me", Format: FormatNPM, Type: TypeHosted})
+	if err != nil {
+		t.Fatal(err)
+	}
+	other, err := s.CreateRepository(ctx, Repository{Name: "keep-me", Format: FormatNPM, Type: TypeHosted})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Two artifacts in the target repo share one blob (ref_count must drop by 2),
+	// a third has its own. A fourth lives in another repo and must survive.
+	for _, a := range []Artifact{
+		{RepoID: repo.ID, Path: "a/1.tgz", BlobSHA256: "shared", Size: 10},
+		{RepoID: repo.ID, Path: "a/2.tgz", BlobSHA256: "shared", Size: 10},
+		{RepoID: repo.ID, Path: "a/3.tgz", BlobSHA256: "solo", Size: 5},
+		{RepoID: other.ID, Path: "b/1.tgz", BlobSHA256: "elsewhere", Size: 3},
+	} {
+		if _, err := s.PutArtifact(ctx, a); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	n, err := s.PurgeArtifacts(ctx, repo.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if n != 3 {
+		t.Fatalf("purged %d, want 3", n)
+	}
+	if c, _ := s.CountArtifacts(ctx, repo.ID); c != 0 {
+		t.Fatalf("repo still has %d artifacts", c)
+	}
+	// The other repo is untouched.
+	if c, _ := s.CountArtifacts(ctx, other.ID); c != 1 {
+		t.Fatalf("other repo count = %d, want 1", c)
+	}
+	// All blobs the purged repo referenced are now unreferenced; the shared blob
+	// must not be pinned by a leaked reference.
+	shas, err := s.ListUnreferencedBlobs(ctx, 10)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(shas) != 2 {
+		t.Fatalf("unreferenced blobs = %v, want shared+solo", shas)
+	}
+
+	// Purging an already-empty repo is a no-op returning 0.
+	if n, err := s.PurgeArtifacts(ctx, repo.ID); err != nil || n != 0 {
+		t.Fatalf("re-purge n=%d err=%v, want 0 nil", n, err)
+	}
+}
+
+func TestListExpiredArtifacts(t *testing.T) {
+	s := openTestStore(t)
+	ctx := context.Background()
+	repo, err := s.CreateRepository(ctx, Repository{Name: "idle", Format: FormatNPM, Type: TypeHosted})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	base := time.Date(2026, 1, 1, 12, 0, 0, 0, time.UTC)
+	put := func(path string, lastAccessed time.Time) {
+		if _, err := s.PutArtifact(ctx, Artifact{
+			RepoID: repo.ID, Path: path, BlobSHA256: path, Size: 1,
+			CachedAt: lastAccessed, LastAccessedAt: lastAccessed,
+		}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	put("old-3h", base.Add(-3*time.Hour))
+	put("old-2h", base.Add(-2*time.Hour))
+	put("fresh", base)
+
+	// Cutoff 1h before base: both old artifacts qualify, the fresh one does not.
+	got, err := s.ListExpiredArtifacts(ctx, repo.ID, base.Add(-time.Hour), 10)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(got) != 2 {
+		t.Fatalf("expired = %d, want 2", len(got))
+	}
+	// Oldest first.
+	if got[0].Path != "old-3h" || got[1].Path != "old-2h" {
+		t.Fatalf("order = %s, %s", got[0].Path, got[1].Path)
+	}
+
+	// Limit is honored.
+	got, err = s.ListExpiredArtifacts(ctx, repo.ID, base.Add(-time.Hour), 1)
+	if err != nil || len(got) != 1 || got[0].Path != "old-3h" {
+		t.Fatalf("limited = %+v err=%v", got, err)
+	}
+
+	// A cutoff before everything matches nothing.
+	got, _ = s.ListExpiredArtifacts(ctx, repo.ID, base.Add(-100*time.Hour), 10)
+	if len(got) != 0 {
+		t.Fatalf("expired before all = %d, want 0", len(got))
 	}
 }
 

@@ -81,7 +81,7 @@ func (m *Manager) approvalGate(w http.ResponseWriter, r *http.Request, res resol
 		if p := auth.FromContext(r.Context()); p != nil {
 			username = p.Username
 		}
-		created, uerr := m.store.UpsertPendingApproval(r.Context(), res.repo.Name, pkg, username)
+		created, uerr := m.store.UpsertPendingApproval(r.Context(), res.repo.Name, pkg, username, version)
 		if uerr != nil {
 			m.engine.log.Error("pending approval upsert failed", "repo", res.repo.Name, "package", pkg, "err", uerr)
 		} else if created && m.rec != nil {

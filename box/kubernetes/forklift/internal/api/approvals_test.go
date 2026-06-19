@@ -289,11 +289,11 @@ func TestApproveAllPendingEndpoint(t *testing.T) {
 	// Seed pending demand directly: the public API can't create pending rows.
 	ctx := context.Background()
 	for _, p := range []string{"left-pad", "is-odd", "lodash"} {
-		if _, err := store.UpsertPendingApproval(ctx, "npmjs", p, "alice"); err != nil {
+		if _, err := store.UpsertPendingApproval(ctx, "npmjs", p, "alice", ""); err != nil {
 			t.Fatal(err)
 		}
 	}
-	if _, err := store.UpsertPendingApproval(ctx, "pypi", "requests", "bob"); err != nil {
+	if _, err := store.UpsertPendingApproval(ctx, "pypi", "requests", "bob", ""); err != nil {
 		t.Fatal(err)
 	}
 

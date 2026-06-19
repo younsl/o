@@ -119,6 +119,16 @@ func TestCargoHelpers(t *testing.T) {
 	if v := cargoVersion(dl); v != "1.2.3" {
 		t.Fatalf("cargoVersion = %q", v)
 	}
+	// The repo-relative download path arrives with its leading slash stripped
+	// (resolveRepo), so "api/v1/crates/..." must classify and version-extract
+	// just like the prefixed form above.
+	real := "api/v1/crates/serde/1.0.197/download"
+	if cargoKind(real) != kindArtifact {
+		t.Fatal("leading-slash-stripped download should be artifact")
+	}
+	if v := cargoVersion(real); v != "1.0.197" {
+		t.Fatalf("cargoVersion(real) = %q, want 1.0.197", v)
+	}
 	if cargoKind("se/rd/serde") != kindMetadata {
 		t.Fatal("index should be metadata")
 	}

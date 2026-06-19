@@ -91,6 +91,31 @@ func TestValidate(t *testing.T) {
 	if err := bad.Validate(); err == nil {
 		t.Fatal("expected auto_approve pattern validation error")
 	}
+	bad = Config{Retention: RetentionConfig{IdleTTL: -1}}
+	if err := bad.Validate(); err == nil {
+		t.Fatal("expected negative idle_ttl error")
+	}
+}
+
+func TestRetentionConfigRoundTrip(t *testing.T) {
+	c, err := Parse(`{"retention":{"idle_ttl":"7d"}}`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if c.Retention.IdleTTL.D() != 7*24*time.Hour {
+		t.Fatalf("idle_ttl = %v, want 168h", c.Retention.IdleTTL.D())
+	}
+	raw, err := c.JSON()
+	if err != nil {
+		t.Fatal(err)
+	}
+	again, err := Parse(raw)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if again.Retention.IdleTTL != c.Retention.IdleTTL {
+		t.Fatalf("round-trip idle_ttl = %v, want %v", again.Retention.IdleTTL, c.Retention.IdleTTL)
+	}
 }
 
 func TestApprovalConfig(t *testing.T) {

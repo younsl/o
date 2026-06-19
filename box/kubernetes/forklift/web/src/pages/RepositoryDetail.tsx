@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { Link, Navigate, useNavigate, useParams } from "react-router-dom";
-import { api, ArtifactList, AuditLogList, humanSize, repoEndpoint, Repository } from "../api";
+import { api, Artifact, ArtifactList, AuditLogList, humanSize, repoEndpoint, Repository } from "../api";
 import { UpstreamStatus } from "../components/UpstreamStatus";
 import { ConfirmModal } from "../components/ConfirmModal";
 import { Select } from "../components/Select";
@@ -77,6 +77,21 @@ function Settings({ repo, setRepo }: { repo: Repository; setRepo: (r: Repository
   const [error, setError] = useState("");
   const [saved, setSaved] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
+  const [confirmPurge, setConfirmPurge] = useState(false);
+  const [purged, setPurged] = useState<number | null>(null);
+
+  const purge = async () => {
+    setError("");
+    setPurged(null);
+    try {
+      const { deleted } = await api.purgeArtifacts(repo.id);
+      setConfirmPurge(false);
+      setPurged(deleted);
+    } catch (e) {
+      setError((e as Error).message);
+      setConfirmPurge(false);
+    }
+  };
 
   const save = async () => {
     setError("");
@@ -209,12 +224,43 @@ function Settings({ repo, setRepo }: { repo: Repository; setRepo: (r: Repository
         </div>
       )}
 
+      {repo.type !== "group" && (
+        <div className="panel">
+          <h2>Retention <span className="muted" style={{ fontWeight: 400, fontSize: 12 }}>· idle auto-delete</span></h2>
+          <div className="row">
+            <div><label>Idle TTL (e.g. 7d, 2w, 0 = keep forever)</label>
+              <input value={repo.config.retention?.idle_ttl ?? ""}
+                placeholder="0"
+                onChange={(e) => setRepo({ ...repo, config: { ...repo.config, retention: { idle_ttl: e.target.value } } })} /></div>
+          </div>
+          <p className="muted">Artifacts not served for this long are deleted automatically; each removal is recorded in the audit log. Based on last-served time.</p>
+        </div>
+      )}
+
       {error && <div className="error">{error}</div>}
       {saved && <div className="muted">Saved.</div>}
-      {repo.type !== "hosted" && <button className="btn" onClick={save}>Save changes</button>}
+      {repo.type !== "group" && <button className="btn" onClick={save}>Save changes</button>}
+
+      <ConfirmModal
+        open={confirmPurge}
+        title={`Purge all artifacts in "${repo.name}"?`}
+        message="This removes every cached or hosted artifact in the repository. The repository and its settings stay. A proxy will re-cache on demand; hosted uploads cannot be recovered."
+        confirmLabel="Purge artifacts"
+        danger
+        onConfirm={purge}
+        onCancel={() => setConfirmPurge(false)}
+      />
 
       <div className="panel danger" style={{ marginTop: 18 }}>
         <h2 style={{ marginTop: 0 }}>Danger zone</h2>
+        {repo.type !== "group" && (
+          <>
+            <p className="muted">Purging removes all cached/hosted artifacts but keeps the repository and its settings. This cannot be undone.</p>
+            {purged !== null && <div className="muted">Purged {purged} {purged === 1 ? "artifact" : "artifacts"}.</div>}
+            <button className="btn danger" onClick={() => setConfirmPurge(true)}>Purge all artifacts</button>
+            <hr style={{ margin: "18px 0", border: "none", borderTop: "1px solid var(--border, #333)" }} />
+          </>
+        )}
         <p className="muted">Deleting a repository removes its cached/hosted artifacts. This cannot be undone.</p>
         <button className="btn danger" onClick={() => setConfirmDelete(true)}>Delete repository</button>
       </div>
@@ -255,10 +301,23 @@ function Artifacts({ repoId }: { repoId: number }) {
   const [data, setData] = useState<ArtifactList | null>(null);
   const [prefix, setPrefix] = useState("");
   const [error, setError] = useState("");
+  const [deleting, setDeleting] = useState<Artifact | null>(null);
 
   const load = (p = prefix) =>
     api.listArtifacts(repoId, p).then(setData).catch((e) => setError(e.message));
   useEffect(() => { load(""); /* eslint-disable-next-line */ }, [repoId]);
+
+  const del = async (a: Artifact) => {
+    setError("");
+    try {
+      await api.deleteArtifact(repoId, a.path);
+      setDeleting(null);
+      load();
+    } catch (e) {
+      setError((e as Error).message);
+      setDeleting(null);
+    }
+  };
 
   return (
     <div className="panel">
@@ -274,7 +333,7 @@ function Artifacts({ repoId }: { repoId: number }) {
       {error && <div className="error">{error}</div>}
       <table style={{ marginTop: 12 }}>
         <thead>
-          <tr><th>Path</th><th>Version</th><th>Size</th><th>Type</th><th>Last accessed</th></tr>
+          <tr><th>Path</th><th>Version</th><th>Size</th><th>Type</th><th>Last accessed</th><th></th></tr>
         </thead>
         <tbody>
           {data?.artifacts.map((a) => (
@@ -284,18 +343,32 @@ function Artifacts({ repoId }: { repoId: number }) {
               <td className="muted">{humanSize(a.size)}</td>
               <td className="muted">{a.content_type}</td>
               <td className="muted">{a.last_accessed_at?.slice(0, 19).replace("T", " ")}</td>
+              <td style={{ textAlign: "right" }}>
+                <button className="btn secondary" onClick={() => setDeleting(a)}>Delete</button>
+              </td>
             </tr>
           ))}
           {data && data.artifacts.length === 0 && (
-            <tr><td colSpan={5} className="muted">No cached artifacts yet. Pull through the endpoint above to populate the cache.</td></tr>
+            <tr><td colSpan={6} className="muted">No cached artifacts yet. Pull through the endpoint above to populate the cache.</td></tr>
           )}
         </tbody>
       </table>
+      <ConfirmModal
+        open={deleting !== null}
+        title="Delete artifact"
+        message={deleting
+          ? `${deleting.path} will be removed from this repository. A proxy can re-cache it on the next request; a hosted upload cannot be recovered.`
+          : undefined}
+        confirmLabel="Delete"
+        danger
+        onConfirm={() => deleting && del(deleting)}
+        onCancel={() => setDeleting(null)}
+      />
     </div>
   );
 }
 
-const AUDIT_EVENTS = ["", "download", "upload", "delete", "repo.create", "repo.update", "repo.delete",
+const AUDIT_EVENTS = ["", "download", "upload", "delete", "ttl.expire", "repo.create", "repo.update", "repo.delete",
   "approval.request", "approval.approve", "approval.reject"];
 const AUDIT_PAGE_SIZE = 50;
 

@@ -8,6 +8,7 @@ import (
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"path/filepath"
 	"strconv"
 	"testing"
@@ -147,6 +148,68 @@ func TestUpdateAndDelete(t *testing.T) {
 	resp = adminDo(t, http.MethodGet, srv.URL+"/repositories/"+itoa(created.ID), "")
 	if resp.StatusCode != http.StatusNotFound {
 		t.Fatalf("get after delete status = %d", resp.StatusCode)
+	}
+	resp.Body.Close()
+}
+
+func TestDeleteArtifact(t *testing.T) {
+	srv, store := newTestServerWithStore(t)
+	ctx := context.Background()
+	id := mkProxyRepo(t, srv.URL, "npmjs")
+
+	seed := func() {
+		for _, a := range []meta.Artifact{
+			{RepoID: id, Path: "lodash/-/lodash-4.17.21.tgz", Version: "4.17.21", BlobSHA256: "b1", Size: 10},
+			{RepoID: id, Path: "is-odd/-/is-odd-1.0.0.tgz", Version: "1.0.0", BlobSHA256: "b2", Size: 5},
+		} {
+			if _, err := store.PutArtifact(ctx, a); err != nil {
+				t.Fatal(err)
+			}
+		}
+	}
+	seed()
+
+	// Single delete by path -> 204, only that artifact gone.
+	resp := adminDo(t, http.MethodDelete,
+		srv.URL+"/repositories/"+itoa(id)+"/artifacts?path="+url.QueryEscape("lodash/-/lodash-4.17.21.tgz"), "")
+	if resp.StatusCode != http.StatusNoContent {
+		t.Fatalf("single delete status = %d, want 204", resp.StatusCode)
+	}
+	resp.Body.Close()
+	if c, _ := store.CountArtifacts(ctx, id); c != 1 {
+		t.Fatalf("count after single delete = %d, want 1", c)
+	}
+
+	// Deleting a missing path -> 404.
+	resp = adminDo(t, http.MethodDelete,
+		srv.URL+"/repositories/"+itoa(id)+"/artifacts?path="+url.QueryEscape("nope/-/nope-9.9.9.tgz"), "")
+	if resp.StatusCode != http.StatusNotFound {
+		t.Fatalf("missing delete status = %d, want 404", resp.StatusCode)
+	}
+	resp.Body.Close()
+
+	// Purge all (no path) -> 200 with deleted count, repo emptied.
+	seed() // restore the one that was deleted plus the survivor stays
+	resp = adminDo(t, http.MethodDelete, srv.URL+"/repositories/"+itoa(id)+"/artifacts", "")
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("purge status = %d, want 200", resp.StatusCode)
+	}
+	var out struct {
+		Deleted int `json:"deleted"`
+	}
+	json.NewDecoder(resp.Body).Decode(&out)
+	resp.Body.Close()
+	if out.Deleted != 2 {
+		t.Fatalf("purge deleted = %d, want 2", out.Deleted)
+	}
+	if c, _ := store.CountArtifacts(ctx, id); c != 0 {
+		t.Fatalf("count after purge = %d, want 0", c)
+	}
+
+	// Unknown repo id -> 404.
+	resp = adminDo(t, http.MethodDelete, srv.URL+"/repositories/99999/artifacts", "")
+	if resp.StatusCode != http.StatusNotFound {
+		t.Fatalf("unknown repo status = %d, want 404", resp.StatusCode)
 	}
 	resp.Body.Close()
 }

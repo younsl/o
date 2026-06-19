@@ -114,6 +114,7 @@ func (h *Handler) Routes() chi.Router {
 			r.Put("/{id}", h.updateRepository)
 			r.Delete("/{id}", h.deleteRepository)
 			r.Get("/{id}/artifacts", h.listArtifacts)
+			r.Delete("/{id}/artifacts", h.deleteArtifact)
 			r.Get("/{id}/upstream-health", h.upstreamHealth)
 			r.Get("/{id}/audit-logs", h.listAuditLogs)
 		})

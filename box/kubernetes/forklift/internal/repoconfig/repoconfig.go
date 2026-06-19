@@ -17,7 +17,16 @@ type Config struct {
 	Cache     CacheConfig     `json:"cache"`
 	AgePolicy AgePolicyConfig `json:"age_policy"`
 	Approval  ApprovalConfig  `json:"approval"`
+	Retention RetentionConfig `json:"retention"`
 	Group     GroupConfig     `json:"group"`
+}
+
+// RetentionConfig auto-deletes artifacts that have been idle (not served) for
+// IdleTTL, keyed on last_accessed_at (the last-served time). Zero disables it.
+// Applies to proxy (cached) and hosted (uploaded) repositories alike; group
+// repositories hold no artifacts of their own.
+type RetentionConfig struct {
+	IdleTTL Duration `json:"idle_ttl,omitempty"`
 }
 
 // GroupConfig lists the member repositories of a group repository, in lookup
@@ -132,6 +141,9 @@ func (c Config) Validate() error {
 	}
 	if c.Cache.MaxSizeBytes < 0 {
 		return fmt.Errorf("max_size_bytes must be >= 0")
+	}
+	if c.Retention.IdleTTL < 0 {
+		return fmt.Errorf("retention idle_ttl must be >= 0")
 	}
 	switch c.AgePolicy.Action {
 	case "", ActionBlock, ActionWarn:

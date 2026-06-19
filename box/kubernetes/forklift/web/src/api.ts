@@ -21,6 +21,9 @@ export interface RepoConfig {
     mode?: string;
     auto_approve?: string[];
   };
+  retention?: {
+    idle_ttl?: string;
+  };
   group: {
     members?: string[];
   };
@@ -142,6 +145,7 @@ export interface Approval {
   decided_by: string;
   note: string;
   request_count: number;
+  last_requested_version: string;
   first_requested_at: string;
   last_requested_at: string;
   decided_at: string | null;
@@ -237,6 +241,10 @@ export const api = {
 
   listArtifacts: (id: number, prefix = "") =>
     req<ArtifactList>("GET", `/repositories/${id}/artifacts?prefix=${encodeURIComponent(prefix)}`),
+  deleteArtifact: (id: number, path: string) =>
+    req<void>("DELETE", `/repositories/${id}/artifacts?path=${encodeURIComponent(path)}`),
+  purgeArtifacts: (id: number) =>
+    req<{ deleted: number }>("DELETE", `/repositories/${id}/artifacts`),
   upstreamHealth: (id: number) => req<UpstreamHealth>("GET", `/repositories/${id}/upstream-health`),
   listAuditLogs: (id: number, event = "", limit = 100, offset = 0) =>
     req<AuditLogList>(

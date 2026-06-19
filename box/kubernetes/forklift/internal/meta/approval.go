@@ -12,17 +12,18 @@ import (
 // (npm package, normalized PyPI project, maven group:artifact, crate name, go
 // module path).
 type PackageApproval struct {
-	ID               int64
-	RepoName         string
-	Package          string
-	Status           string
-	RequestedBy      string // first requester, empty = anonymous
-	DecidedBy        string
-	Note             string
-	RequestCount     int64
-	FirstRequestedAt time.Time
-	LastRequestedAt  time.Time
-	DecidedAt        *time.Time
+	ID                   int64
+	RepoName             string
+	Package              string
+	Status               string
+	RequestedBy          string // first requester, empty = anonymous
+	DecidedBy            string
+	Note                 string
+	RequestCount         int64
+	LastRequestedVersion string // last version seen in a blocked request, "" if none carried one
+	FirstRequestedAt     time.Time
+	LastRequestedAt      time.Time
+	DecidedAt            *time.Time
 }
 
 // Approval status constants.
@@ -40,7 +41,7 @@ const (
 )
 
 const approvalCols = `id, repo_name, package, status, requested_by, decided_by, note,
-       request_count, first_requested_at, last_requested_at, decided_at`
+       request_count, last_requested_version, first_requested_at, last_requested_at, decided_at`
 
 // GetApprovalStatus returns a package's approval status for a repository.
 // Hot path for the approval gate: a single indexed point read. Returns
@@ -60,18 +61,26 @@ func (s *Store) GetApprovalStatus(ctx context.Context, repoName, pkg string) (st
 // pending row on first request and bumps request_count/last_requested_at on
 // subsequent ones. Approved rows are left untouched. Returns created=true only
 // when a new pending row was inserted (drives the approval.request audit event).
-func (s *Store) UpsertPendingApproval(ctx context.Context, repoName, pkg, username string) (bool, error) {
+//
+// version is the version observed in the blocked request ("" for metadata
+// requests that carry none). It is display-only context for the queue; a
+// non-empty value overwrites the stored one, but an empty value never clobbers
+// a version already recorded from an earlier versioned request.
+func (s *Store) UpsertPendingApproval(ctx context.Context, repoName, pkg, username, version string) (bool, error) {
 	now := nowRFC3339()
 	var count int64
 	err := s.h().QueryRowContext(ctx,
-		`INSERT INTO package_approvals(repo_name, package, status, requested_by, first_requested_at, last_requested_at)
-         VALUES(?, ?, 'pending', ?, ?, ?)
+		`INSERT INTO package_approvals(repo_name, package, status, requested_by, last_requested_version, first_requested_at, last_requested_at)
+         VALUES(?, ?, 'pending', ?, ?, ?, ?)
          ON CONFLICT(repo_name, package) DO UPDATE SET
              request_count = request_count + 1,
-             last_requested_at = excluded.last_requested_at
+             last_requested_at = excluded.last_requested_at,
+             last_requested_version = CASE
+                 WHEN excluded.last_requested_version != '' THEN excluded.last_requested_version
+                 ELSE package_approvals.last_requested_version END
              WHERE package_approvals.status != 'approved'
          RETURNING request_count`,
-		repoName, pkg, username, now, now).Scan(&count)
+		repoName, pkg, username, version, now, now).Scan(&count)
 	if errors.Is(err, sql.ErrNoRows) {
 		// The DO UPDATE WHERE clause skipped an approved row.
 		return false, nil
@@ -221,7 +230,7 @@ func scanApproval(row interface{ Scan(...any) error }) (PackageApproval, error) 
 	var first, last string
 	var decided sql.NullString
 	if err := row.Scan(&a.ID, &a.RepoName, &a.Package, &a.Status, &a.RequestedBy,
-		&a.DecidedBy, &a.Note, &a.RequestCount, &first, &last, &decided); err != nil {
+		&a.DecidedBy, &a.Note, &a.RequestCount, &a.LastRequestedVersion, &first, &last, &decided); err != nil {
 		return PackageApproval{}, err
 	}
 	a.FirstRequestedAt = parseTime(first)

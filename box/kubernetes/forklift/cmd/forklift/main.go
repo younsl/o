@@ -255,6 +255,7 @@ func run() error {
 			}
 		}
 		go engine.RunSweeper(leadCtx, 5*time.Minute)
+		go manager.RunIdleReaper(leadCtx, time.Hour)
 		if recorder != nil && cfg.Audit.Retention > 0 {
 			go recorder.RunRetention(leadCtx, time.Hour, cfg.Audit.Retention)
 		}

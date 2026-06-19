@@ -21,7 +21,8 @@ func TestUpsertPendingApproval(t *testing.T) {
 	s := openApprovalStore(t)
 	ctx := context.Background()
 
-	created, err := s.UpsertPendingApproval(ctx, "npmjs", "left-pad", "alice")
+	// First demand came from a metadata request with no version.
+	created, err := s.UpsertPendingApproval(ctx, "npmjs", "left-pad", "alice", "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -29,14 +30,16 @@ func TestUpsertPendingApproval(t *testing.T) {
 		t.Fatal("first upsert should create")
 	}
 
-	// Repeat requests dedup into the same row and bump the counter.
-	for range 3 {
-		created, err = s.UpsertPendingApproval(ctx, "npmjs", "left-pad", "bob")
+	// Repeat requests dedup into the same row and bump the counter. A later
+	// versioned request records the version; a subsequent empty one must not
+	// clobber it.
+	for i, ver := range []string{"1.3.0", "", ""} {
+		created, err = s.UpsertPendingApproval(ctx, "npmjs", "left-pad", "bob", ver)
 		if err != nil {
 			t.Fatal(err)
 		}
 		if created {
-			t.Fatal("repeat upsert must not report created")
+			t.Fatalf("repeat upsert %d must not report created", i)
 		}
 	}
 	rows, err := s.ListApprovals(ctx, "npmjs", ApprovalPending, 10, 0)
@@ -50,6 +53,9 @@ func TestUpsertPendingApproval(t *testing.T) {
 	if a.RequestCount != 4 || a.RequestedBy != "alice" || a.Status != ApprovalPending {
 		t.Fatalf("row = %+v", a)
 	}
+	if a.LastRequestedVersion != "1.3.0" {
+		t.Fatalf("last_requested_version = %q, want 1.3.0 (empty requests must not clobber it)", a.LastRequestedVersion)
+	}
 	if !a.LastRequestedAt.After(a.FirstRequestedAt) && !a.LastRequestedAt.Equal(a.FirstRequestedAt) {
 		t.Fatalf("last_requested_at %v before first %v", a.LastRequestedAt, a.FirstRequestedAt)
 	}
@@ -58,7 +64,7 @@ func TestUpsertPendingApproval(t *testing.T) {
 	if err := s.DecideApproval(ctx, a.ID, ApprovalApproved, "admin", "ok"); err != nil {
 		t.Fatal(err)
 	}
-	created, err = s.UpsertPendingApproval(ctx, "npmjs", "left-pad", "carol")
+	created, err = s.UpsertPendingApproval(ctx, "npmjs", "left-pad", "carol", "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -77,7 +83,7 @@ func TestUpsertPendingApproval(t *testing.T) {
 	if err := s.DecideApproval(ctx, a.ID, ApprovalRejected, "admin", "nope"); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := s.UpsertPendingApproval(ctx, "npmjs", "left-pad", ""); err != nil {
+	if _, err := s.UpsertPendingApproval(ctx, "npmjs", "left-pad", "", ""); err != nil {
 		t.Fatal(err)
 	}
 	got, err = s.GetApproval(ctx, a.ID)
@@ -96,7 +102,7 @@ func TestApprovalStatusAndDecide(t *testing.T) {
 	if _, err := s.GetApprovalStatus(ctx, "npmjs", "lodash"); !errors.Is(err, ErrNotFound) {
 		t.Fatalf("status of unknown package err = %v, want ErrNotFound", err)
 	}
-	if _, err := s.UpsertPendingApproval(ctx, "npmjs", "lodash", "alice"); err != nil {
+	if _, err := s.UpsertPendingApproval(ctx, "npmjs", "lodash", "alice", ""); err != nil {
 		t.Fatal(err)
 	}
 	st, err := s.GetApprovalStatus(ctx, "npmjs", "lodash")
@@ -145,7 +151,7 @@ func TestUpsertApprovalDecision(t *testing.T) {
 	}
 
 	// Overwriting an existing pending row preserves its demand counters.
-	if _, err := s.UpsertPendingApproval(ctx, "npmjs", "axios", "alice"); err != nil {
+	if _, err := s.UpsertPendingApproval(ctx, "npmjs", "axios", "alice", ""); err != nil {
 		t.Fatal(err)
 	}
 	a, err = s.UpsertApprovalDecision(ctx, "npmjs", "axios", ApprovalRejected, "admin", "no")
@@ -162,12 +168,12 @@ func TestApproveAllPending(t *testing.T) {
 	ctx := context.Background()
 
 	for _, p := range []string{"a", "b", "c"} {
-		if _, err := s.UpsertPendingApproval(ctx, "npmjs", p, "alice"); err != nil {
+		if _, err := s.UpsertPendingApproval(ctx, "npmjs", p, "alice", ""); err != nil {
 			t.Fatal(err)
 		}
 	}
 	// A different repo must not be touched by a scoped bulk approve.
-	if _, err := s.UpsertPendingApproval(ctx, "pypi", "requests", ""); err != nil {
+	if _, err := s.UpsertPendingApproval(ctx, "pypi", "requests", "", ""); err != nil {
 		t.Fatal(err)
 	}
 	// An already-rejected row in the target repo must stay rejected.
@@ -209,11 +215,11 @@ func TestApprovalListFiltersAndDelete(t *testing.T) {
 	ctx := context.Background()
 
 	for _, p := range []string{"a", "b", "c"} {
-		if _, err := s.UpsertPendingApproval(ctx, "npmjs", p, ""); err != nil {
+		if _, err := s.UpsertPendingApproval(ctx, "npmjs", p, "", ""); err != nil {
 			t.Fatal(err)
 		}
 	}
-	if _, err := s.UpsertPendingApproval(ctx, "pypi", "requests", ""); err != nil {
+	if _, err := s.UpsertPendingApproval(ctx, "pypi", "requests", "", ""); err != nil {
 		t.Fatal(err)
 	}
 	rows, _ := s.ListApprovals(ctx, "npmjs", "", 10, 0)

@@ -13,25 +13,26 @@ import (
 
 // approvalDTO is the JSON shape for one package approval row.
 type approvalDTO struct {
-	ID               int64      `json:"id"`
-	RepoName         string     `json:"repo_name"`
-	Package          string     `json:"package"`
-	Status           string     `json:"status"`
-	RequestedBy      string     `json:"requested_by"`
-	DecidedBy        string     `json:"decided_by"`
-	Note             string     `json:"note"`
-	RequestCount     int64      `json:"request_count"`
-	FirstRequestedAt time.Time  `json:"first_requested_at"`
-	LastRequestedAt  time.Time  `json:"last_requested_at"`
-	DecidedAt        *time.Time `json:"decided_at"`
+	ID                   int64      `json:"id"`
+	RepoName             string     `json:"repo_name"`
+	Package              string     `json:"package"`
+	Status               string     `json:"status"`
+	RequestedBy          string     `json:"requested_by"`
+	DecidedBy            string     `json:"decided_by"`
+	Note                 string     `json:"note"`
+	RequestCount         int64      `json:"request_count"`
+	LastRequestedVersion string     `json:"last_requested_version"`
+	FirstRequestedAt     time.Time  `json:"first_requested_at"`
+	LastRequestedAt      time.Time  `json:"last_requested_at"`
+	DecidedAt            *time.Time `json:"decided_at"`
 }
 
 func approvalToDTO(a meta.PackageApproval) approvalDTO {
 	return approvalDTO{
 		ID: a.ID, RepoName: a.RepoName, Package: a.Package, Status: a.Status,
 		RequestedBy: a.RequestedBy, DecidedBy: a.DecidedBy, Note: a.Note,
-		RequestCount: a.RequestCount, FirstRequestedAt: a.FirstRequestedAt,
-		LastRequestedAt: a.LastRequestedAt, DecidedAt: a.DecidedAt,
+		RequestCount: a.RequestCount, LastRequestedVersion: a.LastRequestedVersion,
+		FirstRequestedAt: a.FirstRequestedAt, LastRequestedAt: a.LastRequestedAt, DecidedAt: a.DecidedAt,
 	}
 }
 

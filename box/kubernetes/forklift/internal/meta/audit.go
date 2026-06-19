@@ -29,6 +29,7 @@ const (
 	EventRepoCreate = "repo.create"
 	EventRepoUpdate = "repo.update"
 	EventRepoDelete = "repo.delete"
+	EventTTLExpire  = "ttl.expire" // artifact auto-deleted by the idle retention reaper
 )
 
 // InsertAuditLog appends one audit log entry. CreatedAt defaults to now when

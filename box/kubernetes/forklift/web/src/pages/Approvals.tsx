@@ -146,7 +146,7 @@ export function ApprovalList({ repo = "", showRepo = true, reloadKey = 0, onRows
             <thead>
               <tr>
                 {showRepo && <th>Repository</th>}
-                <th>Package</th><th>Requested by</th><th>Requests</th>
+                <th>Package</th><th>Version</th><th>Requested by</th><th>Requests</th>
                 <th>Last requested</th><th>Status</th><th></th>
               </tr>
             </thead>
@@ -155,6 +155,7 @@ export function ApprovalList({ repo = "", showRepo = true, reloadKey = 0, onRows
                 <tr key={a.id}>
                   {showRepo && <td>{repoLink(a.repo_name, repoIds)}</td>}
                   <td style={{ fontFamily: "ui-monospace, monospace", fontSize: 13 }}>{a.package}</td>
+                  <td style={{ fontFamily: "ui-monospace, monospace", fontSize: 13 }}>{a.last_requested_version || <span className="muted">—</span>}</td>
                   <td>{a.requested_by || <span className="muted">anonymous</span>}</td>
                   <td>{a.request_count}</td>
                   <td className="muted">{new Date(a.last_requested_at).toLocaleString()}</td>

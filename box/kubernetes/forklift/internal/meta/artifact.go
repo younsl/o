@@ -190,6 +190,70 @@ func (s *Store) DeleteArtifact(ctx context.Context, repoID int64, path string) e
 	return tx.Commit()
 }
 
+// PurgeArtifacts removes every artifact in a repository in one transaction,
+// decrementing each referenced blob's count, and returns the number of rows
+// deleted. Unreferenced blobs are reclaimed separately by the sweeper. Used by
+// the repository's "purge all artifacts" admin action.
+func (s *Store) PurgeArtifacts(ctx context.Context, repoID int64) (int, error) {
+	tx, err := s.h().BeginTx(ctx, nil)
+	if err != nil {
+		return 0, err
+	}
+	defer tx.Rollback()
+
+	// Drop one reference for every artifact about to be deleted. Two artifacts in
+	// this repo can point at the same blob, so subtract the per-blob row count
+	// rather than a flat 1 (which would leak references and pin the blob).
+	if _, err := tx.ExecContext(ctx,
+		`UPDATE blobs SET ref_count = ref_count - (
+             SELECT COUNT(*) FROM artifacts
+             WHERE artifacts.repo_id = ? AND artifacts.blob_sha256 = blobs.sha256)
+         WHERE sha256 IN (SELECT blob_sha256 FROM artifacts WHERE repo_id = ?)`,
+		repoID, repoID); err != nil {
+		return 0, wrap("purge adjust refs", err)
+	}
+	res, err := tx.ExecContext(ctx, `DELETE FROM artifacts WHERE repo_id = ?`, repoID)
+	if err != nil {
+		return 0, wrap("purge artifacts", err)
+	}
+	n, err := res.RowsAffected()
+	if err != nil {
+		return 0, err
+	}
+	if err := tx.Commit(); err != nil {
+		return 0, err
+	}
+	return int(n), nil
+}
+
+// ListExpiredArtifacts returns artifacts in a repository last accessed (served)
+// before cutoff, oldest first, capped by limit. Path and Version are populated
+// so the idle-retention reaper can audit exactly what it removes. The cutoff is
+// compared against the RFC3339Nano UTC text in last_accessed_at, whose
+// lexicographic order matches chronological order.
+func (s *Store) ListExpiredArtifacts(ctx context.Context, repoID int64, cutoff time.Time, limit int) ([]Artifact, error) {
+	if limit <= 0 {
+		limit = 256
+	}
+	rows, err := s.h().QueryContext(ctx,
+		`SELECT id, repo_id, path, version, blob_sha256, size, content_type, metadata_json, published_at, cached_at, last_accessed_at, updated_at
+         FROM artifacts WHERE repo_id = ? AND last_accessed_at < ? ORDER BY last_accessed_at ASC LIMIT ?`,
+		repoID, cutoff.UTC().Format(time.RFC3339Nano), limit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []Artifact
+	for rows.Next() {
+		a, err := scanArtifactRows(rows)
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, a)
+	}
+	return out, rows.Err()
+}
+
 // EvictLRU removes up to limit least-recently-accessed artifacts in a repository
 // and returns the freed paths. Blob ref counts are decremented; unreferenced
 // blobs are reclaimed separately via ListUnreferencedBlobs.

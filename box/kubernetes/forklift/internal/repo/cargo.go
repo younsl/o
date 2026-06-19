@@ -76,16 +76,20 @@ func (m *Manager) cargoConfig(w http.ResponseWriter, r *http.Request, res resolv
 }
 
 func cargoKind(p string) kind {
-	if strings.Contains(p, "/api/v1/crates/") && strings.HasSuffix(p, "/download") {
+	// Match "api/v1/crates/" unanchored: the download path arrives repo-relative
+	// with the leading slash stripped (resolveRepo), so requiring "/api/v1/..."
+	// would misclassify real downloads as metadata. Mirrors cargoPackage.
+	if strings.Contains(p, "api/v1/crates/") && strings.HasSuffix(p, "/download") {
 		return kindArtifact
 	}
 	return kindMetadata
 }
 
 func cargoVersion(p string) string {
-	// .../api/v1/crates/<crate>/<version>/download
-	if i := strings.Index(p, "/api/v1/crates/"); i >= 0 {
-		rest := strings.TrimSuffix(p[i+len("/api/v1/crates/"):], "/download")
+	// .../api/v1/crates/<crate>/<version>/download — matched unanchored so the
+	// leading-slash-stripped repo-relative download path also resolves a version.
+	if i := strings.Index(p, "api/v1/crates/"); i >= 0 {
+		rest := strings.TrimSuffix(p[i+len("api/v1/crates/"):], "/download")
 		parts := strings.Split(rest, "/")
 		if len(parts) == 2 {
 			return parts[1]

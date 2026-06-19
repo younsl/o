@@ -9,6 +9,7 @@ import (
 
 	"github.com/go-chi/chi/v5"
 
+	"github.com/younsl/o/box/kubernetes/forklift/internal/audit"
 	"github.com/younsl/o/box/kubernetes/forklift/internal/meta"
 	repopkg "github.com/younsl/o/box/kubernetes/forklift/internal/repo"
 	"github.com/younsl/o/box/kubernetes/forklift/internal/repoconfig"
@@ -312,6 +313,58 @@ func (h *Handler) listArtifacts(w http.ResponseWriter, r *http.Request) {
 	}
 	writeJSON(w, http.StatusOK, map[string]any{
 		"count": count, "total_size": size, "artifacts": out,
+	})
+}
+
+// deleteArtifact removes artifacts from a repository (admin only, via the
+// RequireAdmin route group). With a "path" query parameter it deletes that one
+// artifact; without it, it purges every artifact in the repository (the Danger
+// Zone "purge all" action). Blob bytes are reclaimed asynchronously by the
+// sweeper once their reference count reaches zero.
+func (h *Handler) deleteArtifact(w http.ResponseWriter, r *http.Request) {
+	id, ok := pathID(w, r)
+	if !ok {
+		return
+	}
+	repo, err := h.store.GetRepository(r.Context(), id)
+	if err != nil {
+		mapError(w, err)
+		return
+	}
+
+	path := strings.TrimSpace(r.URL.Query().Get("path"))
+	if path == "" {
+		// No path: purge the whole repository's artifacts.
+		n, err := h.store.PurgeArtifacts(r.Context(), id)
+		if err != nil {
+			mapError(w, err)
+			return
+		}
+		h.auditArtifact(r, repo.Name, "(all artifacts)", http.StatusOK)
+		writeJSON(w, http.StatusOK, map[string]any{"deleted": n})
+		return
+	}
+
+	if err := h.store.DeleteArtifact(r.Context(), id, path); err != nil {
+		mapError(w, err)
+		return
+	}
+	h.auditArtifact(r, repo.Name, path, http.StatusNoContent)
+	w.WriteHeader(http.StatusNoContent)
+}
+
+// auditArtifact records an artifact deletion in the repository's audit log,
+// with the artifact path (or "(all artifacts)") in the path column.
+func (h *Handler) auditArtifact(r *http.Request, repoName, path string, status int) {
+	h.rec.Record(audit.Event{
+		Repo:      repoName,
+		Action:    meta.EventDelete,
+		Path:      path,
+		Username:  principalName(r),
+		Method:    r.Method,
+		Status:    status,
+		ClientIP:  audit.ClientIP(r),
+		UserAgent: r.UserAgent(),
 	})
 }
 

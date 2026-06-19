@@ -28,6 +28,7 @@ type Manager struct {
 	reqMarks        *negCache
 	approvalBlocked *prometheus.CounterVec
 	denyBlocked     *prometheus.CounterVec
+	ttlExpired      *prometheus.CounterVec
 }
 
 // NewManager creates a Manager. authz may be nil to disable authorization
@@ -48,9 +49,13 @@ func NewManager(engine *Engine, store *meta.Store, authz *auth.Service, rec *aud
 			Namespace: "forklift", Name: "version_deny_blocked_total",
 			Help: "Requests blocked by the per-version deny list.",
 		}, []string{"repo"}),
+		ttlExpired: prometheus.NewCounterVec(prometheus.CounterOpts{
+			Namespace: "forklift", Name: "ttl_expired_total",
+			Help: "Artifacts auto-deleted by the idle retention reaper.",
+		}, []string{"repo"}),
 	}
 	if reg != nil {
-		reg.MustRegister(m.approvalBlocked, m.denyBlocked)
+		reg.MustRegister(m.approvalBlocked, m.denyBlocked, m.ttlExpired)
 	}
 	return m
 }
