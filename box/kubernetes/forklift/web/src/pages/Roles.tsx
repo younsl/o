@@ -35,8 +35,8 @@ export function Roles({ me }: { me: Me }) {
                 <td>{r.name}</td>
                 <td>
                   <span className="badge" title={r.managed
-                    ? "Declared by the chart (declarative RBAC). Managed externally and not editable in the UI."
-                    : "Created in the UI or API. Editable here."}>
+                    ? "Managed by the declarative RBAC policy and not editable in the UI."
+                    : "Created in the UI or API and editable here."}>
                     {r.managed ? "managed" : "local"}
                   </span>
                 </td>

@@ -7,8 +7,9 @@ import { Combobox } from "../components/Combobox";
 const ACTIONS = ["read", "write", "delete", "approve", "audit", "admin"];
 
 // Per-role modify page: permission mapping, assigned users, and the danger zone
-// (delete). The Roles list is read-only; all edits happen here. An auditor sees
-// the same page read-only (no add/remove permission, no delete).
+// (delete). The Roles list is read-only; all edits happen here. The page is
+// read-only (no add/remove permission, no delete) for an auditor and for managed
+// roles, which are owned by the chart's declarative RBAC policy.
 export function RoleModify({ me }: { me: Me }) {
   const { id } = useParams();
   const navigate = useNavigate();
@@ -36,6 +37,12 @@ export function RoleModify({ me }: { me: Me }) {
     p.then(load).catch((e) => setError((e as Error).message));
   };
 
+  // Managed roles are reconciled from the chart's declarative RBAC policy and are
+  // read-only via the API. Gate every edit control on !role.managed so an admin
+  // never sees a button that would only return a 409; the backend still enforces
+  // this regardless of the UI.
+  const editable = !!me.admin && !role.managed;
+
   return (
     <>
       <div className="page-head">
@@ -43,11 +50,27 @@ export function RoleModify({ me }: { me: Me }) {
         <Link className="btn secondary" to="/roles">Back to roles</Link>
       </div>
       {role.description && <p className="page-desc">{role.description}</p>}
+      {role.managed && (
+        <div className="panel" style={{ borderColor: "var(--accent)" }}>
+          <h2 style={{ marginTop: 0, display: "flex", alignItems: "center", gap: 8 }}>
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+              strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"
+              style={{ color: "var(--accent)" }}>
+              <rect x="3" y="11" width="18" height="11" rx="2" ry="2" />
+              <path d="M7 11V7a5 5 0 0 1 10 0v4" />
+            </svg>
+            Managed role
+          </h2>
+          <p className="muted" style={{ margin: 0 }}>
+            This role was configured by a Forklift administrator in the declarative RBAC policy so it cannot be edited here. To change its permissions or delete it ask an administrator to update the policy file and restart forklift.
+          </p>
+        </div>
+      )}
       {error && <div className="error">{error}</div>}
 
-      <PermissionsPanel role={role} run={run} canWrite={!!me.admin} />
+      <PermissionsPanel role={role} run={run} canWrite={editable} />
       <AssignedUsersPanel members={members} />
-      {me.admin && <DangerPanel role={role} onDeleted={() => navigate("/roles")} onError={setError} />}
+      {editable && <DangerPanel role={role} onDeleted={() => navigate("/roles")} onError={setError} />}
     </>
   );
 }
