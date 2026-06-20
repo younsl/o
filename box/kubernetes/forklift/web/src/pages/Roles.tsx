@@ -1,10 +1,10 @@
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
-import { api, Role } from "../api";
+import { api, Me, Role } from "../api";
 
 // Admin role directory (read-only). Roles and their permissions are defined on
 // /roles/new; this page only displays them.
-export function Roles() {
+export function Roles({ me }: { me: Me }) {
   const [roles, setRoles] = useState<Role[]>([]);
   const [error, setError] = useState("");
 
@@ -16,10 +16,10 @@ export function Roles() {
     <>
       <div className="page-head">
         <h1>Roles</h1>
-        <Link className="btn" to="/roles/new">Create role</Link>
+        {me.admin && <Link className="btn" to="/roles/new">Create role</Link>}
       </div>
       <p className="page-desc">
-        Bundle repository permissions (read, write, delete, approve, admin) over name patterns.
+        Bundle repository permissions (read, write, delete, approve, audit, admin) over name patterns.
         Open a role to map permissions; roles are assigned to users on each user's Modify page.
       </p>
       {error && <div className="error">{error}</div>}

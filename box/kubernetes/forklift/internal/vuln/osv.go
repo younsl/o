@@ -29,8 +29,15 @@ func NewOSV(baseURL string, client *http.Client) *OSVScanner {
 	return &OSVScanner{url: strings.TrimRight(baseURL, "/"), client: client}
 }
 
+// Source names the advisory data source, recorded on each scan it produces.
+func (o *OSVScanner) Source() string { return "OSV" }
+
 type osvQuery struct {
-	Version string     `json:"version"`
+	// Version is omitted for a package-level query: OSV then returns every
+	// advisory affecting the package across all versions, used to surface a
+	// vulnerability signal for an approval decision when the exact requested
+	// version is not known (e.g. a blocked npm packument).
+	Version string     `json:"version,omitempty"`
 	Package osvPackage `json:"package"`
 }
 
@@ -58,9 +65,12 @@ type osvVuln struct {
 
 // Query asks OSV which advisories affect the exact version. OSV resolves the
 // affected-version ranges server-side, avoiding error-prone local version
-// comparison across ecosystem version schemes.
+// comparison across ecosystem version schemes. An empty version performs a
+// package-level query (every advisory for the package, any version), so an
+// approval reviewer still gets a vulnerability signal when the requested
+// version is unknown.
 func (o *OSVScanner) Query(ctx context.Context, ecosystem, pkg, version string) (Finding, error) {
-	if pkg == "" || version == "" {
+	if pkg == "" {
 		return Finding{}, nil
 	}
 	body, err := json.Marshal(osvQuery{Version: version, Package: osvPackage{Name: pkg, Ecosystem: ecosystem}})
@@ -108,11 +118,35 @@ func (o *OSVScanner) Query(ctx context.Context, ecosystem, pkg, version string) 
 		}
 		seen[id] = true
 		f.IDs = append(f.IDs, id)
-		if sev := severityOf(v); sev > f.Max {
+		sev := severityOf(v)
+		f.Advisories = append(f.Advisories, Advisory{ID: id, Severity: sev.String(), Score: scoreOf(v)})
+		if sev > SevNone && int(sev) < len(f.Counts) {
+			f.Counts[sev]++
+		}
+		if sev > f.Max {
 			f.Max = sev
 		}
 	}
 	return f, nil
+}
+
+// scoreOf returns a display score for an advisory: the CVSS base score computed
+// from a CVSS vector string, a plain numeric score as given, or "" when the
+// source provides no usable score.
+func scoreOf(v osvVuln) string {
+	for _, s := range v.Severity {
+		raw := strings.TrimSpace(s.Score)
+		if raw == "" {
+			continue
+		}
+		if bs, ok := cvssBaseScore(raw); ok {
+			return strconv.FormatFloat(bs, 'f', 1, 64)
+		}
+		if _, err := strconv.ParseFloat(raw, 64); err == nil {
+			return raw
+		}
+	}
+	return ""
 }
 
 // severityOf derives a severity for one advisory. It prefers the GHSA-style

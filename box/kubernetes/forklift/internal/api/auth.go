@@ -69,6 +69,7 @@ func (h *Handler) me(w http.ResponseWriter, r *http.Request) {
 		"source":        p.Source,
 		"admin":         p.IsAdmin(),
 		"approver":      p.IsAdmin() || p.CanApproveAny(),
+		"auditor":       p.IsAdmin() || p.CanAuditAny(),
 	})
 }
 
@@ -497,7 +498,7 @@ type createRoleReq struct {
 // validRoleAction reports whether a is a grantable permission action.
 func validRoleAction(a string) bool {
 	switch a {
-	case auth.ActionRead, auth.ActionWrite, auth.ActionDelete, auth.ActionApprove, auth.ActionAdmin:
+	case auth.ActionRead, auth.ActionWrite, auth.ActionDelete, auth.ActionApprove, auth.ActionAudit, auth.ActionAdmin:
 		return true
 	}
 	return false

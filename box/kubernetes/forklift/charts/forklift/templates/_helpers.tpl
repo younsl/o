@@ -153,6 +153,12 @@ StatefulSet (PV-based replication mode).
   value: /etc/forklift/accounts
 {{- end }}
 {{- end }}
+- name: FORKLIFT_OSV_URL
+  value: {{ .Values.vuln.osvUrl | quote }}
+{{- with .Values.externalUrl }}
+- name: FORKLIFT_EXTERNAL_URL
+  value: {{ . | quote }}
+{{- end }}
 {{- with .Values.extraEnv }}
 {{ toYaml . }}
 {{- end }}

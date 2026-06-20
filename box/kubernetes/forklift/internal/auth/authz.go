@@ -10,12 +10,16 @@ import (
 
 // Action constants. "admin" implies all other actions. "approve" grants
 // package approval decisions (quarantine) on matching repositories without
-// repository management rights, e.g. for security engineers.
+// repository management rights, e.g. for security engineers. "audit" grants
+// read-only access to the administrative surfaces (users, roles, group
+// mappings, audit logs, repository permissions) without any mutation rights,
+// e.g. for a security auditor.
 const (
 	ActionRead    = "read"
 	ActionWrite   = "write"
 	ActionDelete  = "delete"
 	ActionApprove = "approve"
+	ActionAudit   = "audit"
 	ActionAdmin   = "admin"
 )
 
@@ -79,6 +83,27 @@ func (p *Principal) CanApproveAny() bool {
 				return true
 			}
 		}
+		return false
+	}
+	return true
+}
+
+// CanAuditAny reports whether the principal may read the administrative
+// surfaces on at least one repository pattern (admin qualifies via
+// admin-implies-all). Like approve, the audit action cannot be carried by a
+// token scope, so a scoped token never qualifies.
+func (p *Principal) CanAuditAny() bool {
+	has := false
+	for _, perm := range p.perms {
+		if actionsContain(perm.Actions, ActionAudit) {
+			has = true
+			break
+		}
+	}
+	if !has {
+		return false
+	}
+	if p.viaToken && len(p.tokenScopes) > 0 {
 		return false
 	}
 	return true

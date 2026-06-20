@@ -7,7 +7,9 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"slices"
 	"testing"
+	"time"
 )
 
 // mkProxyRepo creates a proxy repository through the API and returns its id.
@@ -105,6 +107,57 @@ func TestApprovalLifecycle(t *testing.T) {
 	resp.Body.Close()
 }
 
+func TestGetApprovalWithVuln(t *testing.T) {
+	srv, store := newTestServerWithStore(t)
+	mkProxyRepo(t, srv.URL, "npmjs")
+	ctx := context.Background()
+
+	// A pending request without a resolved version, plus a package-level scan.
+	if _, err := store.UpsertPendingApproval(ctx, "npmjs", "express", "alice", ""); err != nil {
+		t.Fatal(err)
+	}
+	if err := store.UpsertVulnScan(ctx, "npm", "express", "", "medium", []string{"CVE-1", "CVE-2"}, map[string]int{"medium": 2}, 0, nil, "OSV"); err != nil {
+		t.Fatal(err)
+	}
+	rows, err := store.ListApprovals(ctx, "npmjs", "pending", 10, 0)
+	if err != nil || len(rows) != 1 {
+		t.Fatalf("list pending: rows=%d err=%v", len(rows), err)
+	}
+
+	resp := adminDo(t, http.MethodGet, fmt.Sprintf("%s/approvals/%d", srv.URL, rows[0].ID), "")
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("get approval: status=%d", resp.StatusCode)
+	}
+	var dto struct {
+		Package       string     `json:"package"`
+		VulnSeverity  string     `json:"vuln_severity"`
+		VulnScope     string     `json:"vuln_scope"`
+		VulnIDs       []string   `json:"vuln_ids"`
+		VulnScannedAt *time.Time `json:"vuln_scanned_at"`
+		Reviewers     []string   `json:"reviewers"`
+	}
+	_ = json.NewDecoder(resp.Body).Decode(&dto)
+	// Version unknown -> package-level scan surfaced with scope "package".
+	if dto.Package != "express" || dto.VulnSeverity != "medium" || dto.VulnScope != "package" || len(dto.VulnIDs) != 2 {
+		t.Fatalf("dto = %+v", dto)
+	}
+	if dto.VulnScannedAt == nil {
+		t.Fatal("vuln_scanned_at should be set for a scanned coordinate")
+	}
+	// The seeded admin can approve any repository and must be listed as a reviewer.
+	if !slices.Contains(dto.Reviewers, adminUser) {
+		t.Fatalf("reviewers = %v, want to contain %q", dto.Reviewers, adminUser)
+	}
+
+	// Unknown id -> 404.
+	resp2 := adminDo(t, http.MethodGet, srv.URL+"/approvals/9999", "")
+	if resp2.StatusCode != http.StatusNotFound {
+		t.Fatalf("unknown id: status=%d", resp2.StatusCode)
+	}
+	resp2.Body.Close()
+}
+
 func TestApprovalValidation(t *testing.T) {
 	srv := newTestServer(t)
 	mkProxyRepo(t, srv.URL, "npmjs")
@@ -170,6 +223,54 @@ func userDo(t *testing.T, username, password, method, url, body string) *http.Re
 		t.Fatal(err)
 	}
 	return resp
+}
+
+// TestAuditorRole covers the read-only auditor: the audit action grants read
+// access to the admin surfaces (users, roles, audit logs) but no mutations.
+func TestAuditorRole(t *testing.T) {
+	srv := newTestServer(t)
+	repoID := mkProxyRepo(t, srv.URL, "npmjs")
+
+	resp := adminDo(t, http.MethodPost, srv.URL+"/users", `{"username":"aud1","password":"pw123456"}`)
+	mustStatus(t, resp, http.StatusCreated)
+	userID := int64(decodeAs[map[string]any](t, resp)["id"].(float64))
+	resp = adminDo(t, http.MethodPost, srv.URL+"/roles", `{"name":"auditor","description":"read-only auditor"}`)
+	mustStatus(t, resp, http.StatusCreated)
+	role := decodeAs[roleDTO](t, resp)
+	resp = adminDo(t, http.MethodPost, fmt.Sprintf("%s/roles/%d/permissions", srv.URL, role.ID),
+		`{"repo_pattern":"*","actions":["read","audit"]}`)
+	mustStatus(t, resp, http.StatusCreated)
+	resp.Body.Close()
+	resp = adminDo(t, http.MethodPost, fmt.Sprintf("%s/users/%d/roles", srv.URL, userID),
+		fmt.Sprintf(`{"role_id":%d}`, role.ID))
+	mustStatus(t, resp, http.StatusNoContent)
+	resp.Body.Close()
+
+	// /me reports the auditor capability but not admin.
+	resp = userDo(t, "aud1", "pw123456", http.MethodGet, srv.URL+"/me", "")
+	me := decodeAs[map[string]any](t, resp)
+	if me["admin"] != false || me["auditor"] != true {
+		t.Fatalf("me = %v", me)
+	}
+
+	// Read-only admin surfaces are allowed.
+	for _, path := range []string{"/users", "/roles", fmt.Sprintf("/repositories/%d/audit-logs", repoID)} {
+		resp = userDo(t, "aud1", "pw123456", http.MethodGet, srv.URL+path, "")
+		mustStatus(t, resp, http.StatusOK)
+		resp.Body.Close()
+	}
+
+	// Mutations are forbidden.
+	resp = userDo(t, "aud1", "pw123456", http.MethodPost, srv.URL+"/users", `{"username":"x","password":"pw123456"}`)
+	mustStatus(t, resp, http.StatusForbidden)
+	resp.Body.Close()
+	resp = userDo(t, "aud1", "pw123456", http.MethodPost, srv.URL+"/repositories",
+		`{"name":"nope","format":"npm","type":"hosted"}`)
+	mustStatus(t, resp, http.StatusForbidden)
+	resp.Body.Close()
+	resp = userDo(t, "aud1", "pw123456", http.MethodDelete, fmt.Sprintf("%s/roles/%d", srv.URL, role.ID), "")
+	mustStatus(t, resp, http.StatusForbidden)
+	resp.Body.Close()
 }
 
 // TestApproveActionForSecurityEngineers covers the non-admin approver flow: a

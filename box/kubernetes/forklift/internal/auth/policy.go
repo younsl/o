@@ -150,7 +150,7 @@ func buildRoles(seen map[string]bool, actions map[string]map[string][]string) []
 // validRoleAction reports whether action is a grantable RBAC action.
 func validRoleAction(action string) bool {
 	switch action {
-	case ActionRead, ActionWrite, ActionDelete, ActionApprove, ActionAdmin:
+	case ActionRead, ActionWrite, ActionDelete, ActionApprove, ActionAudit, ActionAdmin:
 		return true
 	default:
 		return false

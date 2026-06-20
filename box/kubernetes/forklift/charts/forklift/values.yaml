@@ -120,23 +120,33 @@ auth:
     policyDefault: readonly
     # -- (string) ArgoCD-style policy. Permission lines:
     #   p, <role>, repo, <action>, <repo-glob>, allow
-    # where <action> is read|write|delete|approve|admin (or '*' = admin). Grant lines:
+    # where <action> is read|write|delete|approve|audit|admin (or '*' = admin).
+    # Grant lines:
     #   g, <subject>, <role>
     # where <subject> is `group:<keycloak-group>`, `user:<username>`, or a bare
     # name (treated as a user). Lines starting with '#' are comments.
     policy: |
-      # Read-only access to every repository (default role for all users).
+      # The `administrator` role (admin on every repository) is created
+      # automatically for the bootstrap admin on first run, so it is not declared
+      # here; reference it in grant lines below to assign full access to others.
+
+      # readonly: read-only (pull) access to every repository. Default role for
+      # all authenticated users.
       p, readonly, repo, read, *, allow
 
-      # Full administrative access.
-      p, admins, repo, admin, *, allow
+      # auditor (security engineer): read-only across all administrative surfaces
+      # (audit) plus package approval decisions and repository reads, but no
+      # create/update/delete.
+      p, auditor, repo, audit, *, allow
+      p, auditor, repo, approve, *, allow
+      p, auditor, repo, read, *, allow
 
       # Example: developers can pull and push to team repositories.
       # p, developer, repo, read, team-a-*, allow
       # p, developer, repo, write, team-a-*, allow
 
       # Example: map a Keycloak group and a specific user to roles.
-      # g, group:/platform-admins, admins
+      # g, group:/platform-admins, administrator
       # g, user:alice, developer
     # -- (list) Local (password) accounts to provision declaratively. Each gets a
     # password generated into the chart Secret (key: local-user-<name>-password)
@@ -154,6 +164,19 @@ audit:
   enabled: true
   # -- (string) Retention period; the leader prunes older entries. "0" keeps them forever.
   retention: 2160h # 90 days
+
+# Vulnerability scanning data source (OSV). Enforcement is per-repository
+# (Settings > Vulnerability policy) and only happens for repositories that opt
+# in, so there is no global on/off here; this just points the scanner at an OSV
+# endpoint. For air-gapped clusters, set this to a self-hosted/mirrored OSV.
+vuln:
+  # -- (string) OSV API base URL used to scan requested versions.
+  osvUrl: https://api.osv.dev
+
+# -- (string) Public base URL clients reach forklift at (e.g. https://forklift.example.com).
+# When set, generated index/metadata URLs use it instead of the inbound request
+# host, which hardens against Host-header injection. Empty uses the request host.
+externalUrl: ""
 
 # -- (bool) Seed default repositories on first run, like a fresh Nexus install: a
 # proxy of each public registry (Maven Central, npm, crates.io, Go proxy) plus one

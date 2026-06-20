@@ -63,7 +63,7 @@ function SecurityIcons({ repo }: { repo: Repository }) {
 
 // repoCells renders the columns after Name, shared by top-level and nested
 // (group member) rows so a member shows its own format/type/endpoint/status.
-function repoCells(r: Repository, isAdmin: boolean) {
+function repoCells(r: Repository, canViewStatus: boolean) {
   return (
     <>
       <td>{r.format}</td>
@@ -74,9 +74,10 @@ function repoCells(r: Repository, isAdmin: boolean) {
       </td>
       <td style={{ whiteSpace: "nowrap" }}><ArtifactCount repo={r} /></td>
       <td style={{ whiteSpace: "nowrap" }}><RepoSize repo={r} /></td>
-      {/* Remote-health and supply-chain policy state are admin-only (Nexus parity). */}
-      <td>{isAdmin && r.type === "proxy" ? <UpstreamStatus repoId={r.id} compact /> : <span className="muted">—</span>}</td>
-      <td>{isAdmin ? <SecurityIcons repo={r} /> : <span className="muted">—</span>}</td>
+      {/* Remote-health and supply-chain policy state are shown to admins and
+          auditors (read-only), hidden from plain readers (Nexus parity). */}
+      <td>{canViewStatus && r.type === "proxy" ? <UpstreamStatus repoId={r.id} compact /> : <span className="muted">—</span>}</td>
+      <td>{canViewStatus ? <SecurityIcons repo={r} /> : <span className="muted">—</span>}</td>
     </>
   );
 }
@@ -87,6 +88,9 @@ export function Repositories({ me }: { me: Me }) {
   // Detail is read-only browsable by any authenticated user, so every name links
   // into it; admin-only controls are hidden inside the detail page itself.
   const nameNode = (id: number, name: string) => <Link to={`/repositories/${id}`}>{name}</Link>;
+  // Upstream health and security policy columns are visible to admins and
+  // auditors (read-only); plain readers see a muted dash.
+  const canViewStatus = Boolean(me.admin || me.auditor);
   // Groups are expanded by default so the composition tree is visible at a glance.
   const [expanded, setExpanded] = useState<Set<number>>(new Set());
 
@@ -160,7 +164,7 @@ export function Repositories({ me }: { me: Me }) {
                       nameNode(r.id, r.name)
                     )}
                   </td>
-                  {repoCells(r, !!me.admin)}
+                  {repoCells(r, canViewStatus)}
                 </tr>,
               ];
               if (isGroup && open) {
@@ -175,7 +179,7 @@ export function Repositories({ me }: { me: Me }) {
                           : <span className="muted">{name}</span>}
                       </td>
                       {m
-                        ? repoCells(m, !!me.admin)
+                        ? repoCells(m, canViewStatus)
                         : <td colSpan={7} className="muted">member not found</td>}
                     </tr>,
                   );

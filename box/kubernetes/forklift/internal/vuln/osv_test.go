@@ -2,6 +2,7 @@ package vuln
 
 import (
 	"context"
+	"encoding/json"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -37,6 +38,14 @@ func TestOSVQuery(t *testing.T) {
 	// MAL- advisory forces critical even without a severity label.
 	if f.Max != SevCritical {
 		t.Fatalf("max severity = %v, want critical", f.Max)
+	}
+	// Per-severity histogram: one HIGH and one CRITICAL (withdrawn one excluded).
+	if f.Counts[SevHigh] != 1 || f.Counts[SevCritical] != 1 {
+		t.Fatalf("counts = %v", f.Counts)
+	}
+	sc := f.SeverityCounts()
+	if sc["high"] != 1 || sc["critical"] != 1 || len(sc) != 2 {
+		t.Fatalf("severity counts = %v", sc)
 	}
 }
 
@@ -75,9 +84,33 @@ func TestBucketCVSS(t *testing.T) {
 }
 
 func TestQueryEmptyCoordinate(t *testing.T) {
-	// No HTTP call should happen for an empty package/version.
+	// No HTTP call should happen without a package name.
 	f, err := NewOSV("http://invalid.example", nil).Query(context.Background(), "npm", "", "")
 	if err != nil || len(f.IDs) != 0 {
 		t.Fatalf("empty coordinate = %+v err=%v", f, err)
+	}
+}
+
+func TestOSVQueryPackageLevel(t *testing.T) {
+	// An empty version performs a package-level query: the request must omit the
+	// "version" field so OSV returns advisories across all versions.
+	var sawVersion bool
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var body map[string]any
+		_ = json.NewDecoder(r.Body).Decode(&body)
+		_, sawVersion = body["version"]
+		_, _ = w.Write([]byte(`{"vulns":[{"id":"GHSA-pkg","database_specific":{"severity":"MODERATE"}}]}`))
+	}))
+	defer srv.Close()
+
+	f, err := NewOSV(srv.URL, nil).Query(context.Background(), "npm", "express", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if sawVersion {
+		t.Fatal("package-level query must omit the version field")
+	}
+	if len(f.IDs) != 1 || f.Max != SevMedium {
+		t.Fatalf("package-level finding = %+v", f)
 	}
 }

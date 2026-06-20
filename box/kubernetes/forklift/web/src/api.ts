@@ -87,6 +87,8 @@ export interface Me {
   admin?: boolean;
   // approver: may decide package approvals (admin, or a role with the approve action).
   approver?: boolean;
+  // auditor: may read the admin surfaces read-only (admin, or a role with the audit action).
+  auditor?: boolean;
 }
 
 export interface Version {
@@ -192,6 +194,13 @@ export interface Approval {
   decided_at: string | null;
   vuln_severity?: string;
   vuln_ids?: string[];
+  vuln_scope?: string;
+  vuln_counts?: Record<string, number>;
+  vuln_advisories?: { id: string; severity: string; score?: string }[];
+  vuln_source?: string;
+  vuln_scanned_at?: string;
+  vuln_scan_ms?: number;
+  reviewers?: string[];
 }
 
 export interface ApprovalList {
@@ -341,6 +350,7 @@ export const api = {
       "GET",
       `/approvals/count?status=${encodeURIComponent(status)}&repo=${encodeURIComponent(repo)}`,
     ),
+  getApproval: (id: number) => req<Approval>("GET", `/approvals/${id}`),
   createApproval: (body: { repo: string; package: string; status: string; note?: string }) =>
     req<Approval>("POST", "/approvals", body),
   approveAllPending: (repo: string, note = "") =>

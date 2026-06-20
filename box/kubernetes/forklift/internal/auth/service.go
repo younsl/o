@@ -240,6 +240,32 @@ func (s *Service) buildPrincipal(ctx context.Context, u meta.User, groups []stri
 	}, nil
 }
 
+// ApproversFor lists the usernames of enabled users who may approve packages on
+// repo, computed from each user's persisted roles (directly assigned plus any
+// synced from OIDC groups) and the default role, using the same Can check the
+// API enforces. OIDC group approvers who have never signed in are not persisted
+// and so are not enumerable here.
+func (s *Service) ApproversFor(ctx context.Context, repo string) ([]string, error) {
+	users, err := s.store.ListUsers(ctx)
+	if err != nil {
+		return nil, err
+	}
+	out := []string{}
+	for _, u := range users {
+		if u.Disabled {
+			continue
+		}
+		p, err := s.buildPrincipal(ctx, u, nil, false, nil)
+		if err != nil {
+			return nil, err
+		}
+		if p.Can(repo, ActionApprove) {
+			out = append(out, u.Username)
+		}
+	}
+	return out, nil
+}
+
 // BootstrapAdmin seeds an initial admin user and role on first run when no users
 // exist yet. It is idempotent and a no-op once any user is present. When no
 // password is supplied, a random one is generated and logged once so the
@@ -274,9 +300,9 @@ func (s *Service) BootstrapAdmin(ctx context.Context, username, password string)
 		}
 		return err
 	}
-	role, err := s.store.GetRoleByName(ctx, "admin")
+	role, err := s.store.GetRoleByName(ctx, "administrator")
 	if errors.Is(err, meta.ErrNotFound) {
-		role, err = s.store.CreateRole(ctx, meta.Role{Name: "admin", Description: "Full administrative access"})
+		role, err = s.store.CreateRole(ctx, meta.Role{Name: "administrator", Description: "Full administrative access"})
 		if err != nil {
 			return err
 		}

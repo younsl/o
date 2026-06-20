@@ -97,6 +97,7 @@ func (h *Handler) Routes() chi.Router {
 		r.Route("/approvals", func(r chi.Router) {
 			r.Get("/", h.listApprovals)
 			r.Get("/count", h.countApprovals)
+			r.Get("/{id}", h.getApproval)
 			r.Post("/", h.createApproval)
 			r.Post("/approve-all", h.approveAllPending)
 			r.Post("/{id}/approve", h.approveApproval)
@@ -109,44 +110,45 @@ func (h *Handler) Routes() chi.Router {
 		})
 	})
 
-	// Administrative.
+	// Administrative reads: administrators plus principals holding the audit
+	// action (e.g. a security auditor). Read-only views of the admin surfaces.
+	r.Group(func(r chi.Router) {
+		if h.authz != nil {
+			r.Use(h.authz.RequireAuditor)
+		}
+		r.Get("/repositories/{id}/upstream-health", h.upstreamHealth)
+		r.Get("/repositories/{id}/audit-logs", h.listAuditLogs)
+		r.Get("/repositories/{id}/permissions", h.repositoryPermissions)
+		r.Get("/repositories/{id}/tokens", h.repositoryTokens)
+		r.Get("/users", h.listUsers)
+		r.Get("/roles", h.listRoles)
+		r.Get("/group-mappings", h.listGroupMappings)
+	})
+
+	// Administrative mutations: administrators only. Same paths as the reads
+	// above are registered here per-method, so chi applies the admin middleware
+	// to the mutating verbs while reads stay under RequireAuditor.
 	r.Group(func(r chi.Router) {
 		if h.authz != nil {
 			r.Use(h.authz.RequireAdmin)
 		}
-		// Registered individually (not via Route) because GET /repositories lives
-		// in the authenticated group above; chi forbids mounting a subrouter on a
-		// path that already has a route. Mutations and detail stay admin-only.
 		r.Post("/repositories", h.createRepository)
 		r.Post("/repositories/check-upstream", h.checkUpstream)
 		r.Put("/repositories/{id}", h.updateRepository)
 		r.Post("/repositories/{id}/disabled", h.setRepositoryDisabled)
 		r.Delete("/repositories/{id}", h.deleteRepository)
 		r.Delete("/repositories/{id}/artifacts", h.deleteArtifact)
-		r.Get("/repositories/{id}/upstream-health", h.upstreamHealth)
-		r.Get("/repositories/{id}/audit-logs", h.listAuditLogs)
-		r.Get("/repositories/{id}/permissions", h.repositoryPermissions)
-		r.Get("/repositories/{id}/tokens", h.repositoryTokens)
-		r.Route("/users", func(r chi.Router) {
-			r.Get("/", h.listUsers)
-			r.Post("/", h.createUser)
-			r.Put("/{id}", h.updateUser)
-			r.Delete("/{id}", h.deleteUser)
-			r.Post("/{id}/roles", h.assignRole)
-			r.Delete("/{id}/roles/{roleID}", h.removeRole)
-		})
-		r.Route("/roles", func(r chi.Router) {
-			r.Get("/", h.listRoles)
-			r.Post("/", h.createRole)
-			r.Delete("/{id}", h.deleteRole)
-			r.Post("/{id}/permissions", h.addPermission)
-			r.Delete("/{id}/permissions/{permID}", h.deletePermission)
-		})
-		r.Route("/group-mappings", func(r chi.Router) {
-			r.Get("/", h.listGroupMappings)
-			r.Post("/", h.createGroupMapping)
-			r.Delete("/{id}", h.deleteGroupMapping)
-		})
+		r.Post("/users", h.createUser)
+		r.Put("/users/{id}", h.updateUser)
+		r.Delete("/users/{id}", h.deleteUser)
+		r.Post("/users/{id}/roles", h.assignRole)
+		r.Delete("/users/{id}/roles/{roleID}", h.removeRole)
+		r.Post("/roles", h.createRole)
+		r.Delete("/roles/{id}", h.deleteRole)
+		r.Post("/roles/{id}/permissions", h.addPermission)
+		r.Delete("/roles/{id}/permissions/{permID}", h.deletePermission)
+		r.Post("/group-mappings", h.createGroupMapping)
+		r.Delete("/group-mappings/{id}", h.deleteGroupMapping)
 	})
 
 	return r

@@ -9,6 +9,7 @@ import { RepositoryDetail } from "./pages/RepositoryDetail";
 import { Tokens } from "./pages/Tokens";
 import { TokenNew } from "./pages/TokenNew";
 import { Approvals } from "./pages/Approvals";
+import { ApprovalDetail } from "./pages/ApprovalDetail";
 import { Users } from "./pages/Users";
 import { UserNew } from "./pages/UserNew";
 import { UserModify } from "./pages/UserModify";
@@ -44,12 +45,13 @@ export function App() {
           <Route path="/tokens" element={<Tokens />} />
           <Route path="/tokens/new" element={<TokenNew />} />
           {(me.admin || me.approver) && <Route path="/approvals" element={<Approvals />} />}
-          {me.admin && <Route path="/users" element={<Users me={me} />} />}
+          {(me.admin || me.approver) && <Route path="/approvals/:id" element={<ApprovalDetail />} />}
+          {(me.admin || me.auditor) && <Route path="/users" element={<Users me={me} />} />}
           {me.admin && <Route path="/users/new" element={<UserNew />} />}
-          {me.admin && <Route path="/users/:id" element={<UserModify me={me} />} />}
-          {me.admin && <Route path="/roles" element={<Roles />} />}
+          {(me.admin || me.auditor) && <Route path="/users/:id" element={<UserModify me={me} />} />}
+          {(me.admin || me.auditor) && <Route path="/roles" element={<Roles me={me} />} />}
           {me.admin && <Route path="/roles/new" element={<RoleNew />} />}
-          {me.admin && <Route path="/roles/:id" element={<RoleModify />} />}
+          {(me.admin || me.auditor) && <Route path="/roles/:id" element={<RoleModify me={me} />} />}
           <Route path="*" element={<Navigate to="/repositories" replace />} />
         </Routes>
       </div>
@@ -100,12 +102,12 @@ function Sidebar({ me, onLogout }: { me: Me; onLogout: () => void }) {
           {pendingCount !== null && pendingCount > 0 && <span className="count-badge">{pendingCount}</span>}
         </NavLink>
       )}
-      {me.admin && <NavLink className="navlink" to="/users">Users</NavLink>}
-      {me.admin && <NavLink className="navlink" to="/roles">Roles</NavLink>}
+      {(me.admin || me.auditor) && <NavLink className="navlink" to="/users">Users</NavLink>}
+      {(me.admin || me.auditor) && <NavLink className="navlink" to="/roles">Roles</NavLink>}
       <div className="spacer" />
       <a className="navlink" href="/api-docs" target="_blank" rel="noreferrer">API Docs ↗</a>
       <div className="userbox">
-        <div>{me.username} {me.admin ? "(admin)" : ""}</div>
+        <div>{me.username} {me.admin ? "(admin)" : me.auditor ? "(auditor)" : ""}</div>
         <button type="button" className="btn secondary logout-btn"
           onClick={() => { onLogout(); navigate("/"); }}>Log Out</button>
       </div>

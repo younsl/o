@@ -20,14 +20,16 @@ export function RepositoryDetail({ me }: { me: Me }) {
   if (!repo) return <div>{error || "Loading…"}</div>;
 
   // Tabs follow Nexus-style privileges: every authenticated reader can browse
-  // Artifacts; Approvals needs the approve action; Audit and Settings are
-  // admin-only. Direct-URL access to a hidden tab redirects to Artifacts.
+  // Artifacts; Approvals needs the approve action; Permissions, Audit and
+  // Settings are for admins and auditors (auditors see them read-only). Direct
+  // URL access to a hidden tab redirects to Artifacts.
   const gated = repo.type === "proxy" && Boolean(repo.config.approval?.enabled);
   const canApprove = me.admin || me.approver;
+  const canAdminView = me.admin || me.auditor;
   const tabs = [
     { key: "artifacts", label: "Artifacts" },
     ...(repo.type === "proxy" && canApprove ? [{ key: "approvals", label: "Approvals" }] : []),
-    ...(me.admin ? [{ key: "permissions", label: "Permissions" }, { key: "audit", label: "Audit" }, { key: "settings", label: "Settings" }] : []),
+    ...(canAdminView ? [{ key: "permissions", label: "Permissions" }, { key: "audit", label: "Audit" }, { key: "settings", label: "Settings" }] : []),
   ];
 
   if (!tabs.some((t) => t.key === tab)) {
@@ -66,12 +68,12 @@ export function RepositoryDetail({ me }: { me: Me }) {
           <VersionDenies repo={repo.name} showRepo={false} repoNames={[repo.name]} />
         </>
       )}
-      {tab === "settings" && <Settings repo={repo} setRepo={setRepo} />}
+      {tab === "settings" && <Settings repo={repo} setRepo={setRepo} canWrite={!!me.admin} />}
     </>
   );
 }
 
-function Settings({ repo, setRepo }: { repo: Repository; setRepo: (r: Repository) => void }) {
+function Settings({ repo, setRepo, canWrite }: { repo: Repository; setRepo: (r: Repository) => void; canWrite: boolean }) {
   const navigate = useNavigate();
   const [error, setError] = useState("");
   const [saved, setSaved] = useState(false);
@@ -116,6 +118,11 @@ function Settings({ repo, setRepo }: { repo: Repository; setRepo: (r: Repository
 
   return (
     <>
+      {!canWrite && (
+        <p className="muted" style={{ marginTop: 0 }}>
+          Read-only view. You can review the configuration but not change it.
+        </p>
+      )}
       <ConfirmModal
         open={confirmDelete}
         title={`Delete repository "${repo.name}"?`}
@@ -126,6 +133,10 @@ function Settings({ repo, setRepo }: { repo: Repository; setRepo: (r: Repository
         onCancel={() => setConfirmDelete(false)}
       />
 
+      {/* For an auditor (canWrite=false) the whole settings form is disabled via
+          fieldset[disabled], which blocks every control (mouse and keyboard);
+          they can read the configuration but not change it. */}
+      <fieldset className="settings-fields" disabled={!canWrite}>
       <div className="panel">
         <h2 style={{ marginTop: 0 }}>State</h2>
         <p className="muted">
@@ -133,14 +144,18 @@ function Settings({ repo, setRepo }: { repo: Repository; setRepo: (r: Repository
             ? "This repository is offline: uploads and downloads are refused (503). Its config and artifacts are kept."
             : "This repository is online and serving the package protocols."}
         </p>
-        <Toggle
-          checked={!repo.disabled}
-          label={repo.disabled ? "Offline" : "Online"}
-          onChange={(online) => {
-            setError("");
-            api.setRepositoryDisabled(repo.id, !online).then(setRepo).catch((e) => setError((e as Error).message));
-          }}
-        />
+        {canWrite ? (
+          <Toggle
+            checked={!repo.disabled}
+            label={repo.disabled ? "Offline" : "Online"}
+            onChange={(online) => {
+              setError("");
+              api.setRepositoryDisabled(repo.id, !online).then(setRepo).catch((e) => setError((e as Error).message));
+            }}
+          />
+        ) : (
+          <span className={`badge ${repo.disabled ? "" : ""}`}>{repo.disabled ? "Offline" : "Online"}</span>
+        )}
       </div>
 
       {(repo.type === "proxy" || repo.type === "group") && (
@@ -301,10 +316,14 @@ function Settings({ repo, setRepo }: { repo: Repository; setRepo: (r: Repository
         </div>
       )}
 
+      </fieldset>
+
       {error && <div className="error">{error}</div>}
       {saved && <div className="muted">Saved.</div>}
-      {repo.type !== "group" && <button className="btn" onClick={save}>Save changes</button>}
+      {canWrite && repo.type !== "group" && <button className="btn" onClick={save}>Save changes</button>}
 
+      {canWrite && (
+      <>
       <ConfirmModal
         open={confirmPurge}
         title={`Purge all artifacts in "${repo.name}"?`}
@@ -328,6 +347,8 @@ function Settings({ repo, setRepo }: { repo: Repository; setRepo: (r: Repository
         <p className="muted">Deleting a repository removes its cached/hosted artifacts. This cannot be undone.</p>
         <button className="btn danger" onClick={() => setConfirmDelete(true)}>Delete repository</button>
       </div>
+      </>
+      )}
     </>
   );
 }
@@ -361,10 +382,15 @@ function GroupMembers({ repo, setRepo }: { repo: Repository; setRepo: (r: Reposi
   );
 }
 
-// SeverityBadge renders a coloured vulnerability badge for an artifact version,
-// or a muted dash when clean / not yet scanned. The advisory ids are tooltipped.
+// SeverityBadge renders a coloured vulnerability badge for an artifact version.
+// A scanned version with no advisories shows a green "clean" badge; a version
+// that has not been scanned yet shows muted "not scanned". The two states are
+// distinct: absent max_severity means unscanned, "none" means scanned-clean.
+// The advisory ids are tooltipped.
 function SeverityBadge({ severity, ids }: { severity?: string; ids?: string[] }) {
-  if (!severity || severity === "none") return <span className="muted">—</span>;
+  if (severity === undefined) return <span className="muted">not scanned</span>;
+  if (severity === "none")
+    return <span className="badge" style={{ background: "#2ea043", color: "#fff" }}>clean</span>;
   const bg: Record<string, string> = {
     critical: "var(--danger)", high: "var(--danger)", medium: "#f5a623", low: "#9aa1ac",
   };
@@ -501,7 +527,7 @@ function Artifacts({ repoId, canDelete }: { repoId: number; canDelete: boolean }
         <tbody>
           {data?.artifacts.map((a) => (
             <tr key={a.path}>
-              <td style={{ fontFamily: "ui-monospace, monospace", fontSize: 12 }}>{a.path}</td>
+              <td style={{ fontFamily: "ui-monospace, monospace", fontSize: 12, wordBreak: "break-all" }}>{a.path}</td>
               <td>{a.version || "—"}</td>
               <td><SeverityBadge severity={a.max_severity} ids={a.vuln_ids} /></td>
               <td className="muted">{humanSize(a.size)}</td>

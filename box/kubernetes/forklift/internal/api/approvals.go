@@ -1,6 +1,7 @@
 package api
 
 import (
+	"context"
 	"encoding/json"
 	"net/http"
 	"strings"
@@ -26,10 +27,21 @@ type approvalDTO struct {
 	FirstRequestedAt     time.Time  `json:"first_requested_at"`
 	LastRequestedAt      time.Time  `json:"last_requested_at"`
 	DecidedAt            *time.Time `json:"decided_at"`
-	// Vulnerability scan for the last requested version, when scanned. Lets a
-	// reviewer see known advisories before approving.
-	VulnSeverity string   `json:"vuln_severity,omitempty"`
-	VulnIDs      []string `json:"vuln_ids,omitempty"`
+	// Vulnerability scan surfaced for the approval decision. VulnScope is
+	// "version" when the scan is for the exact requested version, or "package"
+	// when the version was unknown and the scan covers the package across all
+	// versions. Empty when the coordinate has not been scanned yet.
+	VulnSeverity   string              `json:"vuln_severity,omitempty"`
+	VulnIDs        []string            `json:"vuln_ids,omitempty"`
+	VulnScope      string              `json:"vuln_scope,omitempty"`
+	VulnCounts     map[string]int      `json:"vuln_counts,omitempty"`
+	VulnAdvisories []meta.VulnAdvisory `json:"vuln_advisories,omitempty"`
+	VulnSource     string              `json:"vuln_source,omitempty"`
+	VulnScannedAt  *time.Time          `json:"vuln_scanned_at,omitempty"`
+	VulnScanMS     int64               `json:"vuln_scan_ms,omitempty"`
+	// Reviewers lists usernames permitted to approve this repository. Populated
+	// only on the single-approval detail endpoint.
+	Reviewers []string `json:"reviewers,omitempty"`
 }
 
 func approvalToDTO(a meta.PackageApproval) approvalDTO {
@@ -78,17 +90,60 @@ func (h *Handler) listApprovals(w http.ResponseWriter, r *http.Request) {
 	out := make([]approvalDTO, 0, len(rows))
 	for _, a := range rows {
 		dto := approvalToDTO(a)
-		if a.LastRequestedVersion != "" {
-			if eco := ecoByRepo[a.RepoName]; eco != "" {
-				if scan, serr := h.store.GetVulnScan(r.Context(), eco, a.Package, a.LastRequestedVersion); serr == nil {
-					dto.VulnSeverity = scan.MaxSeverity
-					dto.VulnIDs = scan.VulnIDs
-				}
-			}
-		}
+		h.annotateApprovalVuln(r.Context(), &dto, a, ecoByRepo[a.RepoName])
 		out = append(out, dto)
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"count": count, "approvals": out})
+}
+
+// annotateApprovalVuln fills dto's vulnerability fields from the stored scan for
+// the approval's coordinate: the exact requested version when known (scope
+// "version"), otherwise a package-level scan (scope "package"), so the reviewer
+// always has a signal even when the requested version is unknown. A no-op when
+// eco is empty (format OSV does not cover) or the coordinate is not scanned yet.
+func (h *Handler) annotateApprovalVuln(ctx context.Context, dto *approvalDTO, a meta.PackageApproval, eco string) {
+	if eco == "" {
+		return
+	}
+	scope := "version"
+	if a.LastRequestedVersion == "" {
+		scope = "package"
+	}
+	if scan, err := h.store.GetVulnScan(ctx, eco, a.Package, a.LastRequestedVersion); err == nil {
+		dto.VulnSeverity = scan.MaxSeverity
+		dto.VulnIDs = scan.VulnIDs
+		dto.VulnScope = scope
+		dto.VulnCounts = scan.SeverityCounts
+		dto.VulnAdvisories = scan.Advisories
+		dto.VulnSource = scan.Source
+		dto.VulnScanMS = scan.DurationMS
+		t := scan.ScannedAt
+		dto.VulnScannedAt = &t
+	}
+}
+
+// getApproval returns one approval row with its joined vulnerability scan, for
+// the approval detail page.
+func (h *Handler) getApproval(w http.ResponseWriter, r *http.Request) {
+	id, ok := pathID(w, r)
+	if !ok {
+		return
+	}
+	a, err := h.store.GetApproval(r.Context(), id)
+	if err != nil {
+		mapError(w, err)
+		return
+	}
+	dto := approvalToDTO(a)
+	if repo, rerr := h.store.GetRepositoryByName(r.Context(), a.RepoName); rerr == nil {
+		h.annotateApprovalVuln(r.Context(), &dto, a, repopkg.OSVEcosystem(repo.Format))
+	}
+	if h.authz != nil {
+		if reviewers, rerr := h.authz.ApproversFor(r.Context(), a.RepoName); rerr == nil {
+			dto.Reviewers = reviewers
+		}
+	}
+	writeJSON(w, http.StatusOK, dto)
 }
 
 // countApprovals returns just the matching row count (sidebar badge).

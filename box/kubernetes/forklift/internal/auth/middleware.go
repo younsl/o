@@ -67,6 +67,25 @@ func (s *Service) RequireApprover(next http.Handler) http.Handler {
 	})
 }
 
+// RequireAuditor is middleware that allows administrators and principals holding
+// the audit action on at least one repository pattern. It gates the read-only
+// administrative endpoints (users, roles, group mappings, audit logs, repository
+// permissions); mutating endpoints stay behind RequireAdmin.
+func (s *Service) RequireAuditor(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		p := FromContext(r.Context())
+		if p == nil {
+			Unauthorized(w)
+			return
+		}
+		if !p.IsAdmin() && !p.CanAuditAny() {
+			http.Error(w, "forbidden", http.StatusForbidden)
+			return
+		}
+		next.ServeHTTP(w, r)
+	})
+}
+
 // RequireAuth is middleware that requires any authenticated principal.
 func (s *Service) RequireAuth(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

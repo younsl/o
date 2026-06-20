@@ -17,7 +17,7 @@ export function Users({ me }: { me: Me }) {
     <>
       <div className="page-head">
         <h1>Users</h1>
-        <Link className="btn" to="/users/new">Create user</Link>
+        {me.admin && <Link className="btn" to="/users/new">Create user</Link>}
       </div>
       <p className="page-desc">
         Local and OIDC accounts. Open a user to map roles, reset the password, or disable access.

@@ -4,19 +4,64 @@ import { Approval, Repository, VersionDeny, api } from "../api";
 import { ConfirmModal } from "../components/ConfirmModal";
 import { Select } from "../components/Select";
 
-// ApprovalVulnBadge shows the OSV scan result for the requested version so a
-// reviewer sees known advisories before approving. Muted dash when clean or not
-// yet scanned.
-function ApprovalVulnBadge({ severity, ids }: { severity?: string; ids?: string[] }) {
-  if (!severity || severity === "none") return <span className="muted">—</span>;
+// ApprovalVulnBadge shows the OSV scan result so a reviewer sees known
+// advisories before approving. A scanned coordinate with no advisories shows a
+// green "clean" badge; an unscanned one shows muted "not scanned". scope marks
+// whether the scan is for the exact requested version ("version") or the
+// package across all versions ("package", shown with a "pkg" suffix), the
+// latter used when the requested version is unknown.
+export function ApprovalVulnBadge({ severity, ids, scope }: { severity?: string; ids?: string[]; scope?: string }) {
+  if (severity === undefined) return <span className="muted">not scanned</span>;
+  const pkgScope = scope === "package";
+  const suffix = pkgScope ? " · pkg" : "";
+  const scopeTitle = pkgScope ? "package-level scan (requested version unknown)" : "scan for the requested version";
+  if (severity === "none")
+    return <span className="badge" style={{ background: "#2ea043", color: "#fff" }} title={scopeTitle}>clean{suffix}</span>;
   const bg: Record<string, string> = {
     critical: "var(--danger)", high: "var(--danger)", medium: "#f5a623", low: "#9aa1ac",
   };
   const count = ids?.length ?? 0;
   return (
     <span className="badge" style={{ background: bg[severity] || "#9aa1ac", color: "#fff" }}
-      title={count ? ids!.join(", ") : severity}>
-      {severity}{count > 1 ? ` ×${count}` : ""}
+      title={`${count ? ids!.join(", ") : severity} · ${scopeTitle}`}>
+      {severity}{count > 1 ? ` ×${count}` : ""}{suffix}
+    </span>
+  );
+}
+
+// Severity order (worst first) and segment colours for the mini bar.
+const SEV_ORDER = ["critical", "high", "medium", "low"] as const;
+export const SEV_COLOR: Record<string, string> = {
+  critical: "#e5484d", high: "#f77f00", medium: "#f5a623", low: "#9aa1ac",
+};
+
+// SeverityBar renders the per-level advisory counts as a segmented stacked bar
+// (segment width proportional to count, coloured by severity). size "sm" (the
+// list) shows a narrow bar with the bare count on the right; size "lg" (the
+// detail page) shows a wide bar with an "N vulns" label. "not scanned" and
+// "clean" reuse the badge styling; a scanned result without a per-level
+// histogram (older scan) falls back to the single badge.
+export function SeverityBar({ severity, counts, scope, size = "sm" }: {
+  severity?: string; counts?: Record<string, number>; scope?: string; size?: "sm" | "lg";
+}) {
+  if (severity === undefined) return <span className="muted">not scanned</span>;
+  if (severity === "none")
+    return <ApprovalVulnBadge severity={severity} scope={scope} />;
+  const c = counts ?? {};
+  const total = SEV_ORDER.reduce((n, s) => n + (c[s] ?? 0), 0);
+  if (total === 0) return <ApprovalVulnBadge severity={severity} scope={scope} />;
+  const suffix = scope === "package" ? " · pkg" : "";
+  const title = SEV_ORDER.filter((s) => c[s]).map((s) => `${s} ${c[s]}`).join(", ")
+    + (scope === "package" ? " (package-level)" : "");
+  const label = size === "lg" ? `${total} vuln${total !== 1 ? "s" : ""}${suffix}` : `${total}`;
+  return (
+    <span className={`sev-bar ${size}`} title={title}>
+      <span className="sev-bar-track">
+        {SEV_ORDER.map((s) => (c[s] ? (
+          <span key={s} className="sev-seg" style={{ flexGrow: c[s], background: SEV_COLOR[s] }} />
+        ) : null))}
+      </span>
+      <span className="sev-bar-count">{label}</span>
     </span>
   );
 }
@@ -120,7 +165,6 @@ export function ApprovalList({ repo = "", showRepo = true, reloadKey = 0, onRows
   const [pendingCount, setPendingCount] = useState(0);
   const [offset, setOffset] = useState(0);
   const [error, setError] = useState("");
-  const [deciding, setDeciding] = useState<{ row: Approval; action: "approve" | "reject" } | null>(null);
   const [approvingAll, setApprovingAll] = useState(false);
 
   useEffect(() => { setOffset(0); }, [repo]);
@@ -177,8 +221,8 @@ export function ApprovalList({ repo = "", showRepo = true, reloadKey = 0, onRows
                 <tr key={a.id}>
                   {showRepo && <td>{repoLink(a.repo_name, repoIds)}</td>}
                   <td style={{ fontFamily: "ui-monospace, monospace", fontSize: 13 }}>{a.package}</td>
-                  <td style={{ fontFamily: "ui-monospace, monospace", fontSize: 13 }}>{a.last_requested_version || <span className="muted">—</span>}</td>
-                  <td><ApprovalVulnBadge severity={a.vuln_severity} ids={a.vuln_ids} /></td>
+                  <td style={{ fontFamily: "ui-monospace, monospace", fontSize: 13 }}>{a.last_requested_version || <span className="muted">unknown</span>}</td>
+                  <td><SeverityBar severity={a.vuln_severity} counts={a.vuln_counts} scope={a.vuln_scope} /></td>
                   <td>{a.requested_by || <span className="muted">anonymous</span>}</td>
                   <td>{a.request_count}</td>
                   <td className="muted">{new Date(a.last_requested_at).toLocaleString()}</td>
@@ -188,12 +232,7 @@ export function ApprovalList({ repo = "", showRepo = true, reloadKey = 0, onRows
                     </span>
                   </td>
                   <td style={{ textAlign: "right", whiteSpace: "nowrap" }}>
-                    {a.status !== "approved" && (
-                      <button className="btn" onClick={() => setDeciding({ row: a, action: "approve" })}>Approve</button>
-                    )}{" "}
-                    {a.status !== "rejected" && (
-                      <button className="btn danger" onClick={() => setDeciding({ row: a, action: "reject" })}>Reject</button>
-                    )}
+                    <Link className="btn" to={`/approvals/${a.id}`}>Review</Link>
                   </td>
                 </tr>
               ))}
@@ -211,14 +250,6 @@ export function ApprovalList({ repo = "", showRepo = true, reloadKey = 0, onRows
           </div>
         )}
       </div>
-      {deciding && (
-        <DecisionModal
-          row={deciding.row}
-          action={deciding.action}
-          onDone={() => { setDeciding(null); load(); }}
-          onCancel={() => setDeciding(null)}
-        />
-      )}
       {approvingAll && (
         <ApproveAllModal
           repoNames={repoNames}
@@ -305,19 +336,21 @@ function ApproveAllModal({ repoNames, initialRepo, onDone, onCancel }: {
   );
 }
 
-// DecisionModal confirms an approve/reject with an optional note (in-app, never
-// a native dialog).
-function DecisionModal({ row, action, onDone, onCancel }: {
+// ReviewModal makes the approve/reject decision with an optional note (in-app,
+// never a native dialog). It offers both actions so the reviewer decides in one
+// place; the button matching the current status is hidden (re-approving an
+// approved package is a no-op). Shared by the queue and the detail page.
+export function ReviewModal({ row, onDone, onCancel }: {
   row: Approval;
-  action: "approve" | "reject";
   onDone: () => void;
   onCancel: () => void;
 }) {
   const [note, setNote] = useState("");
   const [error, setError] = useState("");
+  const [busy, setBusy] = useState<"approve" | "reject" | null>(null);
 
-  const submit = async (e: FormEvent) => {
-    e.preventDefault();
+  const decide = async (action: "approve" | "reject") => {
+    setBusy(action);
     setError("");
     try {
       if (action === "approve") await api.approveApproval(row.id, note);
@@ -325,32 +358,37 @@ function DecisionModal({ row, action, onDone, onCancel }: {
       onDone();
     } catch (err) {
       setError((err as Error).message);
+      setBusy(null);
     }
   };
 
   return (
     <div className="modal-overlay" onClick={onCancel}>
       <div className="modal" onClick={(e) => e.stopPropagation()}>
-        <h2 style={{ marginTop: 0 }}>
-          {action === "approve" ? "Approve" : "Reject"} "{row.package}"
-        </h2>
+        <h2 style={{ marginTop: 0 }}>Review "{row.package}"</h2>
         <p className="muted">
-          {action === "approve"
-            ? `All versions of this package will be served from ${row.repo_name} (age policy still applies).`
-            : `Requests for this package on ${row.repo_name} will be blocked, including already-cached content.`}
+          Approve to serve all versions from {row.repo_name} (age policy still
+          applies); reject to block the package, including already-cached content.
         </p>
-        <form onSubmit={submit}>
-          <label>Note (optional)</label>
-          <input value={note} autoFocus placeholder="reason for the record"
-            onChange={(e) => setNote(e.target.value)} />
-          {error && <div className="error">{error}</div>}
-          <div className="inline" style={{ justifyContent: "flex-end", marginTop: 18 }}>
-            <button className="btn secondary" type="button" onClick={onCancel}>Cancel</button>
-            <button className={`btn ${action === "reject" ? "danger" : ""}`} type="submit">
-              {action === "approve" ? "Approve" : "Reject"}
-            </button>
-          </div>
-        </form>
+        <div className="inline" style={{ marginBottom: 12 }}>
+          <span className="muted">Vulnerabilities:</span>
+          <ApprovalVulnBadge severity={row.vuln_severity} ids={row.vuln_ids} scope={row.vuln_scope} />
+        </div>
+        <label>Note (optional)</label>
+        <input value={note} autoFocus placeholder="reason for the record"
+          onChange={(e) => setNote(e.target.value)} />
+        {error && <div className="error">{error}</div>}
+        <div className="inline" style={{ justifyContent: "flex-end", marginTop: 18 }}>
+          <button className="btn secondary" type="button" onClick={onCancel}>Cancel</button>
+          {row.status !== "rejected" && (
+            <button className="btn danger" type="button" disabled={busy !== null}
+              onClick={() => decide("reject")}>{busy === "reject" ? "Rejecting…" : "Reject"}</button>
+          )}
+          {row.status !== "approved" && (
+            <button className="btn" type="button" disabled={busy !== null}
+              onClick={() => decide("approve")}>{busy === "approve" ? "Approving…" : "Approve"}</button>
+          )}
+        </div>
       </div>
     </div>
   );

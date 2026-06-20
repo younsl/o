@@ -64,9 +64,11 @@ func osvEcosystem(format string) string {
 
 // enqueueScan schedules an async scan for a coordinate, deduplicated within the
 // pending-mark TTL so hot paths do not flood the queue. Drops silently when the
-// queue is full (the next request after the mark expires re-enqueues).
+// queue is full (the next request after the mark expires re-enqueues). An empty
+// version enqueues a package-level scan (used by the approval gate when the
+// requested version is unknown).
 func (m *Manager) enqueueScan(eco, pkg, version string) {
-	if m.scanner == nil || eco == "" || pkg == "" || version == "" {
+	if m.scanner == nil || eco == "" || pkg == "" {
 		return
 	}
 	key := "scan\x00" + eco + "\x00" + pkg + "\x00" + version
@@ -97,7 +99,9 @@ func (m *Manager) RunVulnWorker(ctx context.Context) {
 }
 
 func (m *Manager) runScan(ctx context.Context, job scanJob) {
+	start := m.engine.now()
 	f, err := m.scanner.Query(ctx, job.ecosystem, job.pkg, job.version)
+	durationMS := m.engine.now().Sub(start).Milliseconds()
 	if err != nil {
 		m.vulnScans.WithLabelValues("error").Inc()
 		m.engine.log.Warn("vuln scan failed",
@@ -109,7 +113,11 @@ func (m *Manager) runScan(ctx context.Context, job scanJob) {
 	} else {
 		m.vulnScans.WithLabelValues("vulnerable").Inc()
 	}
-	if err := m.store.UpsertVulnScan(ctx, job.ecosystem, job.pkg, job.version, f.Max.String(), f.IDs); err != nil {
+	advisories := make([]meta.VulnAdvisory, len(f.Advisories))
+	for i, a := range f.Advisories {
+		advisories[i] = meta.VulnAdvisory{ID: a.ID, Severity: a.Severity, Score: a.Score}
+	}
+	if err := m.store.UpsertVulnScan(ctx, job.ecosystem, job.pkg, job.version, f.Max.String(), f.IDs, f.SeverityCounts(), durationMS, advisories, m.scanner.Source()); err != nil {
 		m.engine.log.Error("store vuln scan failed",
 			"ecosystem", job.ecosystem, "package", job.pkg, "version", job.version, "err", err)
 	}

@@ -27,6 +27,39 @@ body {
 
 a { color: var(--text); text-decoration: none; }
 a:hover { color: var(--accent); text-decoration: underline; }
+/* External (new-tab) links: always underlined and marked with a trailing ↗ so
+   it's clear they leave the app. Button-styled links are exempt. */
+a[target="_blank"]:not(.btn):not(.navlink) { text-decoration: underline; }
+a[target="_blank"]:not(.btn):not(.navlink)::after {
+  content: "\2197"; margin-left: 3px; font-size: 0.85em; display: inline-block; text-decoration: none;
+}
+/* Buttons read as buttons, never underlined. */
+.btn:hover { text-decoration: none; }
+/* Inline help marker + custom tooltip (see components/Tooltip.tsx). The bubble
+   is rendered in a body portal with position: fixed so it is never clipped. */
+.help { margin-left: 5px; color: var(--muted); font-size: 0.85em; }
+/* Sortable table header buttons. */
+.sort-btn {
+  background: none; border: none; padding: 0; cursor: pointer;
+  color: inherit; font: inherit; text-transform: inherit; letter-spacing: inherit;
+  display: inline-flex; align-items: center; gap: 5px;
+}
+.sort-btn:hover { color: var(--text); }
+.sort-icon { display: block; flex-shrink: 0; }
+/* Settings form wrapper: a borderless fieldset so disabled={true} (auditor)
+   makes the whole form read-only for both mouse and keyboard. */
+.settings-fields { border: 0; margin: 0; padding: 0; min-width: 0; }
+.settings-fields[disabled] { opacity: 0.65; }
+.tooltip-trigger { cursor: help; outline: none; }
+.tooltip-trigger:focus-visible .help { outline: 2px solid var(--accent); border-radius: 3px; }
+.tooltip-bubble {
+  position: fixed; z-index: 1000; width: max-content; max-width: 260px;
+  background: var(--panel-2); color: var(--text);
+  border: 1px solid var(--border); border-radius: 6px;
+  padding: 8px 10px; font-size: 12px; font-weight: 400; line-height: 1.45;
+  text-transform: none; letter-spacing: 0; text-align: left; white-space: normal;
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.35); pointer-events: none;
+}
 
 .app { display: flex; min-height: 100vh; }
 
@@ -314,3 +347,21 @@ textarea { font-family: inherit; resize: vertical; }
    clip rather than push the column wider. */
 .repo-table td .inline { min-width: 0; }
 .repo-table td .inline a { overflow: hidden; text-overflow: ellipsis; }
+
+/* Approval detail: key/value metadata grid and the OSV advisory id list. */
+dl.kv { display: grid; grid-template-columns: max-content 1fr; gap: 8px 20px; margin: 0; }
+dl.kv dt { color: var(--muted); }
+dl.kv dd { margin: 0; }
+ul.advisory-list { margin: 10px 0 0; padding-left: 18px; columns: 2; column-gap: 28px; }
+ul.advisory-list li { font-family: ui-monospace, monospace; font-size: 13px; break-inside: avoid; }
+
+/* Segmented stacked bar of per-severity advisory counts. size "sm" (list) is a
+   narrow bar with the bare count on the right; "lg" (detail) is wide. */
+.sev-bar { display: inline-flex; align-items: center; gap: 8px; }
+.sev-bar-track { display: inline-flex; border-radius: 4px; overflow: hidden; background: var(--border); }
+.sev-bar.sm .sev-bar-track { width: 54px; height: 6px; }
+.sev-bar.lg { gap: 12px; }
+.sev-bar.lg .sev-bar-track { width: 280px; height: 16px; border-radius: 8px; }
+.sev-bar.lg .sev-bar-count { font-size: 14px; }
+.sev-seg { height: 100%; min-width: 3px; }
+.sev-bar-count { font-size: 12px; color: var(--muted); font-variant-numeric: tabular-nums; }

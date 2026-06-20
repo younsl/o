@@ -45,11 +45,11 @@ export function UserModify({ me }: { me: Me }) {
       {error && <div className="error">{error}</div>}
 
       <AccountPanel user={user} />
-      <RolesPanel user={user} roles={roles} run={run} />
-      {user.source === "local" && <PasswordPanel user={user} onError={setError} />}
-      {user.source === "local" && <LockoutPanel user={user} run={run} />}
-      <StatusPanel user={user} self={self} run={run} />
-      <DangerPanel user={user} self={self} onDeleted={() => navigate("/users")} onError={setError} />
+      <RolesPanel user={user} roles={roles} run={run} canWrite={!!me.admin} />
+      {me.admin && user.source === "local" && <PasswordPanel user={user} onError={setError} />}
+      {me.admin && user.source === "local" && <LockoutPanel user={user} run={run} />}
+      {me.admin && <StatusPanel user={user} self={self} run={run} />}
+      {me.admin && <DangerPanel user={user} self={self} onDeleted={() => navigate("/users")} onError={setError} />}
     </>
   );
 }
@@ -69,7 +69,7 @@ function AccountPanel({ user }: { user: User }) {
   );
 }
 
-function RolesPanel({ user, roles, run }: { user: User; roles: Role[]; run: (p: Promise<unknown>) => void }) {
+function RolesPanel({ user, roles, run, canWrite }: { user: User; roles: Role[]; run: (p: Promise<unknown>) => void; canWrite: boolean }) {
   const [selected, setSelected] = useState("");
   const assignable = roles.filter((r) => !user.roles.some((ur) => ur.id === r.id));
 
@@ -80,13 +80,15 @@ function RolesPanel({ user, roles, run }: { user: User; roles: Role[]; run: (p: 
         {user.roles.map((r) => (
           <span key={r.id} className="badge">
             {r.name}
-            <a style={{ marginLeft: 6, cursor: "pointer" }} title="Remove role"
-              onClick={() => run(api.removeRole(user.id, r.id))}>×</a>
+            {canWrite && (
+              <a style={{ marginLeft: 6, cursor: "pointer" }} title="Remove role"
+                onClick={() => run(api.removeRole(user.id, r.id))}>×</a>
+            )}
           </span>
         ))}
         {user.roles.length === 0 && <span className="muted">No roles assigned.</span>}
       </div>
-      {assignable.length > 0 && (
+      {canWrite && assignable.length > 0 && (
         <div className="inline" style={{ marginTop: 12, gap: 6 }}>
           <Select value={selected} onChange={setSelected} placeholder="add role…"
             options={assignable.map((r) => ({ value: String(r.id), label: r.name, description: r.description || undefined }))} />

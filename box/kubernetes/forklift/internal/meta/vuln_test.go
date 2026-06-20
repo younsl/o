@@ -16,7 +16,7 @@ func TestVulnScanStore(t *testing.T) {
 	}
 
 	// Upsert + round-trip (ids survive JSON encoding).
-	if err := s.UpsertVulnScan(ctx, "npm", "lodash", "1.0.0", "high", []string{"CVE-1", "GHSA-2"}); err != nil {
+	if err := s.UpsertVulnScan(ctx, "npm", "lodash", "1.0.0", "high", []string{"CVE-1", "GHSA-2"}, map[string]int{"high": 1, "medium": 1}, 0, nil, "OSV"); err != nil {
 		t.Fatal(err)
 	}
 	got, err := s.GetVulnScan(ctx, "npm", "lodash", "1.0.0")
@@ -28,7 +28,7 @@ func TestVulnScanStore(t *testing.T) {
 	}
 
 	// Upsert again refreshes severity/ids in place (no duplicate row).
-	if err := s.UpsertVulnScan(ctx, "npm", "lodash", "1.0.0", "critical", []string{"CVE-1"}); err != nil {
+	if err := s.UpsertVulnScan(ctx, "npm", "lodash", "1.0.0", "critical", []string{"CVE-1"}, map[string]int{"critical": 1}, 0, nil, "OSV"); err != nil {
 		t.Fatal(err)
 	}
 	got, _ = s.GetVulnScan(ctx, "npm", "lodash", "1.0.0")

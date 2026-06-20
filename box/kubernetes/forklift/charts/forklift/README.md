@@ -1,8 +1,8 @@
 # forklift
 
-![Version: 0.1.0](https://img.shields.io/badge/Version-0.1.0-informational?style=flat-square) ![Type: application](https://img.shields.io/badge/Type-application-informational?style=flat-square) ![AppVersion: 0.1.0](https://img.shields.io/badge/AppVersion-0.1.0-informational?style=flat-square)
+![Version: 0.2.0](https://img.shields.io/badge/Version-0.2.0-informational?style=flat-square) ![Type: application](https://img.shields.io/badge/Type-application-informational?style=flat-square) ![AppVersion: 0.2.0](https://img.shields.io/badge/AppVersion-0.2.0-informational?style=flat-square)
 
-Lightweight Kubernetes-native artifact repository (Maven, npm, Cargo, Go) with proxy caching and supply-chain age policy
+Lightweight Kubernetes-native artifact repository (Maven, npm, Cargo, Go, PyPI) with proxy caching and supply-chain controls (age policy, package approval, vulnerability scanning)
 
 **Homepage:** <https://github.com/younsl/o>
 
@@ -39,7 +39,7 @@ helm install forklift oci://ghcr.io/younsl/charts/forklift -f values.yaml
 Install a specific version:
 
 ```console
-helm install forklift oci://ghcr.io/younsl/charts/forklift --version 0.1.0
+helm install forklift oci://ghcr.io/younsl/charts/forklift --version 0.2.0
 ```
 
 ### Install from local chart
@@ -47,7 +47,7 @@ helm install forklift oci://ghcr.io/younsl/charts/forklift --version 0.1.0
 Download forklift chart and install from local directory:
 
 ```console
-helm pull oci://ghcr.io/younsl/charts/forklift --untar --version 0.1.0
+helm pull oci://ghcr.io/younsl/charts/forklift --untar --version 0.2.0
 helm install forklift ./forklift
 ```
 
@@ -108,10 +108,12 @@ The following table lists the configurable parameters and their default values.
 | auth.oidc.groupsClaim | string | `"groups"` | Token claim used for group membership. |
 | auth.rbac.enabled | bool | `true` | Enable declarative RBAC. When false, no policy is mounted and authorization relies solely on roles managed through the UI/API. |
 | auth.rbac.policyDefault | string | `"readonly"` | Default role granted to every authenticated user, even with no explicit role or group mapping (ArgoCD policy.default). Empty disables it (deny-all until a role is granted). The default `readonly` role below grants read (pull) access to all repositories for any signed-in user. |
-| auth.rbac.policy | string | `"# Read-only access to every repository (default role for all users).\np, readonly, repo, read, *, allow\n\n# Full administrative access.\np, admins, repo, admin, *, allow\n\n# Example: developers can pull and push to team repositories.\n# p, developer, repo, read, team-a-*, allow\n# p, developer, repo, write, team-a-*, allow\n\n# Example: map a Keycloak group and a specific user to roles.\n# g, group:/platform-admins, admins\n# g, user:alice, developer\n"` | ArgoCD-style policy. Permission lines:   p, <role>, repo, <action>, <repo-glob>, allow where <action> is read|write|delete|approve|admin (or '*' = admin). Grant lines:   g, <subject>, <role> where <subject> is `group:<keycloak-group>`, `user:<username>`, or a bare name (treated as a user). Lines starting with '#' are comments. |
+| auth.rbac.policy | string | `"# The `administrator` role (admin on every repository) is created\n# automatically for the bootstrap admin on first run, so it is not declared\n# here; reference it in grant lines below to assign full access to others.\n\n# readonly: read-only (pull) access to every repository. Default role for\n# all authenticated users.\np, readonly, repo, read, *, allow\n\n# auditor (security engineer): read-only across all administrative surfaces\n# (audit) plus package approval decisions and repository reads, but no\n# create/update/delete.\np, auditor, repo, audit, *, allow\np, auditor, repo, approve, *, allow\np, auditor, repo, read, *, allow\n\n# Example: developers can pull and push to team repositories.\n# p, developer, repo, read, team-a-*, allow\n# p, developer, repo, write, team-a-*, allow\n\n# Example: map a Keycloak group and a specific user to roles.\n# g, group:/platform-admins, administrator\n# g, user:alice, developer\n"` | ArgoCD-style policy. Permission lines:   p, <role>, repo, <action>, <repo-glob>, allow where <action> is read|write|delete|approve|audit|admin (or '*' = admin). Grant lines:   g, <subject>, <role> where <subject> is `group:<keycloak-group>`, `user:<username>`, or a bare name (treated as a user). Lines starting with '#' are comments. |
 | auth.rbac.accounts | list | `[]` | Local (password) accounts to provision declaratively. Each gets a password generated into the chart Secret (key: local-user-<name>-password) and preserved across upgrades, or set `password` explicitly. Grant roles to them with `g, user:<name>, <role>` lines above. Existing accounts (incl. the bootstrap admin) are never overwritten. |
 | audit.enabled | bool | `true` | Enable the audit log. |
 | audit.retention | string | `"2160h"` | Retention period; the leader prunes older entries. "0" keeps them forever. |
+| vuln.osvUrl | string | `"https://api.osv.dev"` | OSV API base URL used to scan requested versions. |
+| externalUrl | string | `""` | Public base URL clients reach forklift at (e.g. https://forklift.example.com). When set, generated index/metadata URLs use it instead of the inbound request host, which hardens against Host-header injection. Empty uses the request host. |
 | seedDefaultRepos | bool | `true` | Seed default repositories on first run, like a fresh Nexus install: a proxy of each public registry (Maven Central, npm, crates.io, Go proxy) plus one local hosted repository per format. Idempotent. Set false to start with no repos. |
 | log.level | string | `"info"` | Log level (debug, info, warn, error). |
 | log.format | string | `"json"` | Log format (json, text). |

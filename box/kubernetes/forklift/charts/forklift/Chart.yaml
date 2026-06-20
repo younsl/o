@@ -1,10 +1,10 @@
 apiVersion: v2
 name: forklift
-description: Lightweight Kubernetes-native artifact repository (Maven, npm, Cargo, Go) with proxy caching and supply-chain age policy
+description: Lightweight Kubernetes-native artifact repository (Maven, npm, Cargo, Go, PyPI) with proxy caching and supply-chain controls (age policy, package approval, vulnerability scanning)
 type: application
 deprecated: false
-version: 0.1.0
-appVersion: "0.1.0"
+version: 0.2.0
+appVersion: "0.2.0"
 home: https://github.com/younsl/o
 sources:
   - https://github.com/younsl/o/tree/main/box/kubernetes/forklift
@@ -19,12 +19,17 @@ keywords:
   - npm
   - cargo
   - go-modules
+  - pypi
   - nexus
 annotations:
   artifacthub.io/changes: |
     - kind: added
-      description: "Initial release: Maven/npm/Cargo/Go local and proxy repositories, OIDC and local auth, fine-grained PATs, per-repo caching and age policy, active/standby HA via leader election"
+      description: "PyPI hosted and proxy repositories (PEP 503/691/700/658)"
     - kind: added
-      description: "PV-based HA replication: StatefulSet with per-pod RWO PVC, standby pulls leader SQLite snapshot and blobs, leader routing via forklift.io/role pod label"
+      description: "Vulnerability scanning: scan requested versions against OSV and block, warn, or audit by severity threshold, with periodic re-scanning"
     - kind: added
-      description: "Gateway API HTTPRoute support as an alternative to Ingress"
+      description: "Package approval (quarantine) queue and per-version deny list for proxy repositories"
+    - kind: added
+      description: "Security auditor role (audit action): read-only access to admin surfaces plus package approval, declared via the default RBAC policy"
+    - kind: added
+      description: "Local account lockout after repeated failed logins, and repository enable/disable"

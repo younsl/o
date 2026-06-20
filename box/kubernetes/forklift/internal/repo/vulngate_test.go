@@ -19,6 +19,8 @@ func (fakeScanner) Query(context.Context, string, string, string) (vuln.Finding,
 	return vuln.Finding{}, nil
 }
 
+func (fakeScanner) Source() string { return "fake" }
+
 func vulnCfg(action, threshold string, ignore ...string) repoconfig.Config {
 	cfg := repoconfig.Default()
 	cfg.Vuln = repoconfig.VulnPolicyConfig{Enabled: true, Action: action, Threshold: threshold, Ignore: ignore}
@@ -45,7 +47,7 @@ func TestVulnGate(t *testing.T) {
 	ctx := t.Context()
 
 	// Critical vuln, block action -> 403.
-	if err := store.UpsertVulnScan(ctx, "npm", "lodash", "4.17.99", "critical", []string{"CVE-2026-1"}); err != nil {
+	if err := store.UpsertVulnScan(ctx, "npm", "lodash", "4.17.99", "critical", []string{"CVE-2026-1"}, nil, 0, nil, "OSV"); err != nil {
 		t.Fatal(err)
 	}
 	if rec := get(); rec.Code != http.StatusForbidden || !strings.Contains(rec.Body.String(), "known vulnerabilities") {
@@ -53,7 +55,7 @@ func TestVulnGate(t *testing.T) {
 	}
 
 	// Below threshold (low < high) -> served.
-	if err := store.UpsertVulnScan(ctx, "npm", "lodash", "4.17.99", "low", []string{"CVE-2026-1"}); err != nil {
+	if err := store.UpsertVulnScan(ctx, "npm", "lodash", "4.17.99", "low", []string{"CVE-2026-1"}, nil, 0, nil, "OSV"); err != nil {
 		t.Fatal(err)
 	}
 	if rec := get(); rec.Code != http.StatusOK {
@@ -74,7 +76,7 @@ func TestVulnGateIgnoreAndAudit(t *testing.T) {
 	// Ignore list covers the only advisory -> served despite critical severity.
 	mkFormatRepo(t, store, "npmjs", meta.FormatNPM, meta.TypeProxy, upstream.URL,
 		vulnCfg(repoconfig.VulnActionBlock, repoconfig.SeverityHigh, "CVE-2026-1"))
-	if err := store.UpsertVulnScan(ctx, "npm", "lodash", "4.17.99", "critical", []string{"CVE-2026-1"}); err != nil {
+	if err := store.UpsertVulnScan(ctx, "npm", "lodash", "4.17.99", "critical", []string{"CVE-2026-1"}, nil, 0, nil, "OSV"); err != nil {
 		t.Fatal(err)
 	}
 	h := mux(m)
@@ -87,7 +89,7 @@ func TestVulnGateIgnoreAndAudit(t *testing.T) {
 	// Audit mode never blocks even at/above threshold.
 	mkFormatRepo(t, store, "npm-audit", meta.FormatNPM, meta.TypeProxy, upstream.URL,
 		vulnCfg(repoconfig.VulnActionAudit, repoconfig.SeverityHigh))
-	if err := store.UpsertVulnScan(ctx, "npm", "react", "1.0.0", "critical", []string{"CVE-2026-2"}); err != nil {
+	if err := store.UpsertVulnScan(ctx, "npm", "react", "1.0.0", "critical", []string{"CVE-2026-2"}, nil, 0, nil, "OSV"); err != nil {
 		t.Fatal(err)
 	}
 	h = mux(m)
@@ -128,7 +130,7 @@ func TestVulnGateDisabledWithoutScanner(t *testing.T) {
 	// No scanner set: even a stored critical vuln does not block (feature off).
 	m, _, store := newTestManager(t)
 	mkFormatRepo(t, store, "npmjs", meta.FormatNPM, meta.TypeProxy, upstream.URL, vulnCfg(repoconfig.VulnActionBlock, repoconfig.SeverityHigh))
-	if err := store.UpsertVulnScan(t.Context(), "npm", "lodash", "4.17.99", "critical", []string{"CVE-2026-1"}); err != nil {
+	if err := store.UpsertVulnScan(t.Context(), "npm", "lodash", "4.17.99", "critical", []string{"CVE-2026-1"}, nil, 0, nil, "OSV"); err != nil {
 		t.Fatal(err)
 	}
 	h := mux(m)
