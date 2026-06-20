@@ -62,3 +62,11 @@ func IsPAT(s string) bool {
 
 // ErrInvalidCredential is returned when authentication fails.
 var ErrInvalidCredential = errors.New("invalid credentials")
+
+// ErrAccountLocked is returned when a valid account is locked out after too many
+// failed password attempts and must be unlocked by an administrator.
+var ErrAccountLocked = errors.New("account locked")
+
+// MaxFailedLogins is the consecutive failed-password threshold that locks a
+// lockout-enabled account.
+const MaxFailedLogins = 5

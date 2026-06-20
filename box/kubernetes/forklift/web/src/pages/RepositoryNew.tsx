@@ -1,6 +1,6 @@
 import { FormEvent, useEffect, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
-import { api, Repository } from "../api";
+import { api, Repository, UpstreamHealth } from "../api";
 import { Select } from "../components/Select";
 
 const REPO_TYPES = [
@@ -20,10 +20,32 @@ export function RepositoryNew() {
   const [members, setMembers] = useState<string[]>([]);
   const [repos, setRepos] = useState<Repository[]>([]);
   const [error, setError] = useState("");
+  // Auto connectivity check for the upstream URL (proxy only), debounced.
+  const [health, setHealth] = useState<UpstreamHealth | null>(null);
+  const [checking, setChecking] = useState(false);
 
   useEffect(() => {
     api.listRepositories().then(setRepos).catch(() => setRepos([]));
   }, []);
+
+  // Probe the upstream URL ~600ms after the user stops typing. The cancelled
+  // flag drops stale responses so only the latest URL's result is shown.
+  useEffect(() => {
+    const url = upstream.trim();
+    if (type !== "proxy" || url === "") {
+      setHealth(null);
+      setChecking(false);
+      return;
+    }
+    let cancelled = false;
+    setChecking(true);
+    const t = setTimeout(() => {
+      api.checkUpstream(url)
+        .then((h) => { if (!cancelled) { setHealth(h); setChecking(false); } })
+        .catch(() => { if (!cancelled) { setHealth(null); setChecking(false); } });
+    }, 600);
+    return () => { cancelled = true; clearTimeout(t); };
+  }, [upstream, type]);
 
   // Candidate members: same format, not a group itself, not yet selected.
   const candidates = repos.filter(
@@ -97,6 +119,7 @@ export function RepositoryNew() {
             <label>Upstream URL<span className="req">*</span></label>
             <input value={upstream} onChange={(e) => setUpstream(e.target.value)}
               placeholder="https://repo1.maven.org/maven2" required />
+            <ConnectivityHint checking={checking} health={health} hasUrl={upstream.trim() !== ""} />
           </>
         )}
         {type === "group" && (
@@ -136,6 +159,30 @@ export function RepositoryNew() {
         </div>
       </form>
     </>
+  );
+}
+
+// ConnectivityHint renders the live result of the debounced upstream probe
+// under the URL field: a spinner-ish "checking" line, then reachable/unreachable.
+function ConnectivityHint({ checking, health, hasUrl }: {
+  checking: boolean; health: UpstreamHealth | null; hasUrl: boolean;
+}) {
+  if (!hasUrl) return null;
+  if (checking) {
+    return <p className="muted" style={{ marginTop: 6, fontSize: 13 }}>Checking connectivity…</p>;
+  }
+  if (!health) return null;
+  if (health.reachable) {
+    return (
+      <p style={{ marginTop: 6, fontSize: 13, color: "var(--ok, #2e7d32)" }}>
+        ✓ Reachable — HTTP {health.status}{health.latency_ms != null && ` (${health.latency_ms} ms)`}
+      </p>
+    );
+  }
+  return (
+    <p style={{ marginTop: 6, fontSize: 13, color: "var(--danger, #c0392b)" }}>
+      ✗ Unreachable{health.error ? ` — ${health.error}` : ""}
+    </p>
   );
 }
 

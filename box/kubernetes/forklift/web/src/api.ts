@@ -24,9 +24,39 @@ export interface RepoConfig {
   retention?: {
     idle_ttl?: string;
   };
+  vuln?: {
+    enabled: boolean;
+    threshold?: string;
+    action?: string;
+    ignore?: string[];
+    block_unscanned?: boolean;
+  };
   group: {
     members?: string[];
   };
+}
+
+// RepoPermission is a role permission that grants access to a repository (its
+// pattern matched the repo name), with the granting role and its user count.
+export interface RepoPermission {
+  role_id: number;
+  role: string;
+  repo_pattern: string;
+  actions: string[];
+  user_count: number;
+}
+
+// RepoToken is a personal access token that can reach a repository: a scoped
+// token whose pattern matched, or an unscoped token inheriting the owner roles.
+export interface RepoToken {
+  token_id: number;
+  name: string;
+  owner: string;
+  repo_pattern: string;
+  actions: string[];
+  unscoped: boolean;
+  expires_at: string | null;
+  last_used_at: string | null;
 }
 
 export interface Repository {
@@ -36,6 +66,7 @@ export interface Repository {
   type: string;
   upstream_url: string;
   config: RepoConfig;
+  disabled: boolean;
   // Artifact aggregates, present in list responses only.
   artifact_count?: number;
   total_size?: number;
@@ -61,6 +92,7 @@ export interface Me {
 export interface Version {
   version: string;
   commit: string;
+  oidc_enabled: boolean;
 }
 
 export interface Token {
@@ -81,6 +113,8 @@ export interface Artifact {
   published_at: string | null;
   cached_at: string;
   last_accessed_at: string;
+  max_severity?: string;
+  vuln_ids?: string[];
 }
 
 export interface ArtifactList {
@@ -103,6 +137,10 @@ export interface User {
   created_at: string;
   last_login_at: string | null;
   roles: RoleRef[];
+  lockout_enabled: boolean;
+  locked: boolean;
+  // protected: the default admin, which cannot be locked out.
+  protected: boolean;
 }
 
 export interface Permission {
@@ -117,6 +155,9 @@ export interface Role {
   description: string;
   created_at: string;
   permissions: Permission[];
+  user_count: number;
+  // managed: declared via the chart (declarative RBAC) vs created in the UI.
+  managed: boolean;
 }
 
 export interface AuditLog {
@@ -149,6 +190,8 @@ export interface Approval {
   first_requested_at: string;
   last_requested_at: string;
   decided_at: string | null;
+  vuln_severity?: string;
+  vuln_ids?: string[];
 }
 
 export interface ApprovalList {
@@ -217,9 +260,18 @@ async function req<T>(method: string, path: string, body?: unknown): Promise<T> 
   });
   if (res.status === 204) return undefined as T;
   const text = await res.text();
-  const data = text ? JSON.parse(text) : undefined;
+  // Error bodies are not always JSON (e.g. middleware returns plaintext
+  // "forbidden" / "unauthorized"), so parse defensively and fall back to the
+  // raw text instead of throwing a misleading "Unexpected token" parse error.
+  let data: unknown;
+  try {
+    data = text ? JSON.parse(text) : undefined;
+  } catch {
+    data = undefined;
+  }
   if (!res.ok) {
-    throw new Error((data && data.error) || res.statusText);
+    const fromJson = (data as { error?: string } | undefined)?.error;
+    throw new Error(fromJson || text.trim() || res.statusText);
   }
   return data as T;
 }
@@ -238,6 +290,12 @@ export const api = {
   updateRepository: (id: number, body: unknown) =>
     req<Repository>("PUT", `/repositories/${id}`, body),
   deleteRepository: (id: number) => req<void>("DELETE", `/repositories/${id}`),
+  repositoryPermissions: (id: number) =>
+    req<RepoPermission[]>("GET", `/repositories/${id}/permissions`),
+  repositoryTokens: (id: number) =>
+    req<RepoToken[]>("GET", `/repositories/${id}/tokens`),
+  setRepositoryDisabled: (id: number, disabled: boolean) =>
+    req<Repository>("POST", `/repositories/${id}/disabled`, { disabled }),
 
   listArtifacts: (id: number, prefix = "") =>
     req<ArtifactList>("GET", `/repositories/${id}/artifacts?prefix=${encodeURIComponent(prefix)}`),
@@ -246,6 +304,7 @@ export const api = {
   purgeArtifacts: (id: number) =>
     req<{ deleted: number }>("DELETE", `/repositories/${id}/artifacts`),
   upstreamHealth: (id: number) => req<UpstreamHealth>("GET", `/repositories/${id}/upstream-health`),
+  checkUpstream: (url: string) => req<UpstreamHealth>("POST", "/repositories/check-upstream", { url }),
   listAuditLogs: (id: number, event = "", limit = 100, offset = 0) =>
     req<AuditLogList>(
       "GET",
@@ -255,7 +314,7 @@ export const api = {
   listUsers: () => req<User[]>("GET", "/users"),
   createUser: (body: { username: string; password: string; email?: string; role_ids?: number[] }) =>
     req<{ id: number; username: string }>("POST", "/users", body),
-  updateUser: (id: number, body: { password?: string; disabled?: boolean }) =>
+  updateUser: (id: number, body: { password?: string; disabled?: boolean; lockout_enabled?: boolean; unlock?: boolean }) =>
     req<User>("PUT", `/users/${id}`, body),
   deleteUser: (id: number) => req<void>("DELETE", `/users/${id}`),
   assignRole: (userId: number, roleId: number) =>

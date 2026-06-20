@@ -4,12 +4,15 @@ import { CSSProperties, KeyboardEvent, useEffect, useRef, useState } from "react
 // patterns like `*` or `maven-*` still work) while offering a filtered dropdown
 // of known values. It reuses the .select-* dropdown styling so it matches the
 // in-app Select component.
-export function Combobox({ value, onChange, options, placeholder, style }: {
+export function Combobox({ value, onChange, options, placeholder, style, hints }: {
   value: string;
   onChange: (value: string) => void;
   options: string[];
   placeholder?: string;
   style?: CSSProperties;
+  // hints maps an option to a muted secondary label (e.g. a repository type)
+  // shown in the dropdown; the picked value is still the option string itself.
+  hints?: Record<string, string>;
 }) {
   const [open, setOpen] = useState(false);
   const [active, setActive] = useState(-1);
@@ -81,7 +84,7 @@ export function Combobox({ value, onChange, options, placeholder, style }: {
               onMouseEnter={() => setActive(i)}
               // mousedown (not click) so the option is picked before the input blurs.
               onMouseDown={(e) => { e.preventDefault(); pick(o); }}>
-              <span>{o}</span>
+              <span>{o}{hints?.[o] && <span className="muted" style={{ marginLeft: 8, fontSize: 12 }}>{hints[o]}</span>}</span>
               {o === value && <span className="select-check">✓</span>}
             </div>
           ))}

@@ -14,11 +14,54 @@ import (
 
 // Config is the per-repository config payload.
 type Config struct {
-	Cache     CacheConfig     `json:"cache"`
-	AgePolicy AgePolicyConfig `json:"age_policy"`
-	Approval  ApprovalConfig  `json:"approval"`
-	Retention RetentionConfig `json:"retention"`
-	Group     GroupConfig     `json:"group"`
+	Cache     CacheConfig      `json:"cache"`
+	AgePolicy AgePolicyConfig  `json:"age_policy"`
+	Approval  ApprovalConfig   `json:"approval"`
+	Retention RetentionConfig  `json:"retention"`
+	Vuln      VulnPolicyConfig `json:"vuln"`
+	Group     GroupConfig      `json:"group"`
+}
+
+// Vulnerability policy actions and severity labels.
+const (
+	VulnActionBlock = "block"
+	VulnActionWarn  = "warn"
+	VulnActionAudit = "audit"
+
+	SeverityCritical = "critical"
+	SeverityHigh     = "high"
+	SeverityMedium   = "medium"
+	SeverityLow      = "low"
+)
+
+// VulnPolicyConfig gates proxy packages by known-vulnerability scan results.
+// When enabled, a requested version whose highest advisory severity meets
+// Threshold is blocked, warned, or audited per Action. Ignore lists advisory
+// ids (CVE/GHSA/OSV) accepted as false-positive or risk-accepted.
+// BlockUnscanned blocks a not-yet-scanned version (enforce posture); otherwise
+// the request is served and the coordinate is scanned asynchronously.
+type VulnPolicyConfig struct {
+	Enabled        bool     `json:"enabled"`
+	Threshold      string   `json:"threshold,omitempty"` // critical|high|medium|low (default high)
+	Action         string   `json:"action,omitempty"`    // block|warn|audit (default audit)
+	Ignore         []string `json:"ignore,omitempty"`
+	BlockUnscanned bool     `json:"block_unscanned,omitempty"`
+}
+
+// EffectiveAction returns Action with the audit default applied.
+func (v VulnPolicyConfig) EffectiveAction() string {
+	if v.Action == "" {
+		return VulnActionAudit
+	}
+	return v.Action
+}
+
+// EffectiveThreshold returns Threshold with the high default applied.
+func (v VulnPolicyConfig) EffectiveThreshold() string {
+	if v.Threshold == "" {
+		return SeverityHigh
+	}
+	return v.Threshold
 }
 
 // RetentionConfig auto-deletes artifacts that have been idle (not served) for
@@ -159,6 +202,16 @@ func (c Config) Validate() error {
 		if _, err := path.Match(pat, "probe"); err != nil {
 			return fmt.Errorf("invalid auto_approve pattern %q: %w", pat, err)
 		}
+	}
+	switch c.Vuln.Action {
+	case "", VulnActionBlock, VulnActionWarn, VulnActionAudit:
+	default:
+		return fmt.Errorf("unsupported vuln action %q", c.Vuln.Action)
+	}
+	switch c.Vuln.Threshold {
+	case "", SeverityCritical, SeverityHigh, SeverityMedium, SeverityLow:
+	default:
+		return fmt.Errorf("unsupported vuln threshold %q", c.Vuln.Threshold)
 	}
 	return nil
 }

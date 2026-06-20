@@ -27,13 +27,21 @@ export function Roles() {
       <div className="panel">
         <table>
           <thead>
-            <tr><th>Role</th><th>Description</th><th>Permissions</th><th></th></tr>
+            <tr><th>Role</th><th>Source</th><th>Description</th><th>Users</th><th>Permissions</th><th></th></tr>
           </thead>
           <tbody>
             {roles.map((r) => (
               <tr key={r.id}>
                 <td>{r.name}</td>
+                <td>
+                  <span className="badge" title={r.managed
+                    ? "Declared by the chart (declarative RBAC). Managed externally and not editable in the UI."
+                    : "Created in the UI or API. Editable here."}>
+                    {r.managed ? "managed" : "local"}
+                  </span>
+                </td>
                 <td className="muted">{r.description || "-"}</td>
+                <td>{r.user_count}</td>
                 <td>
                   <div className="inline" style={{ flexWrap: "wrap", gap: 6 }}>
                     {r.permissions.map((p) => (
@@ -49,7 +57,7 @@ export function Roles() {
                 </td>
               </tr>
             ))}
-            {roles.length === 0 && <tr><td colSpan={4} className="muted">No roles yet. Create one to grant repository access.</td></tr>}
+            {roles.length === 0 && <tr><td colSpan={6} className="muted">No roles yet. Create one to grant repository access.</td></tr>}
           </tbody>
         </table>
       </div>

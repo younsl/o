@@ -2,6 +2,7 @@ package auth
 
 import (
 	"context"
+	"errors"
 	"io"
 	"log/slog"
 	"net/http"
@@ -166,6 +167,71 @@ func TestBootstrapAndLocalAuth(t *testing.T) {
 	}
 	if _, err := svc.AuthenticateLocal(ctx, "admin", "bad"); err == nil {
 		t.Fatal("bad password should fail")
+	}
+}
+
+func TestAccountLockout(t *testing.T) {
+	store, err := meta.Open(context.Background(), filepath.Join(t.TempDir(), "auth.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { store.Close() })
+	svc := NewService(store, slog.New(slog.NewTextHandler(io.Discard, nil)), Options{
+		SessionSecret:      []byte("test-secret-test-secret-test-secret"),
+		BootstrapAdminUser: "admin",
+	})
+	ctx := context.Background()
+
+	hash, _ := HashPassword("pw")
+	u, err := store.CreateUser(ctx, meta.User{Username: "alice", PasswordHash: hash, Source: meta.SourceLocal})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := store.SetLockoutEnabled(ctx, u.ID, true); err != nil {
+		t.Fatal(err)
+	}
+
+	// MaxFailedLogins-1 failures must not lock yet.
+	for i := 0; i < MaxFailedLogins-1; i++ {
+		if _, err := svc.AuthenticateLocal(ctx, "alice", "bad"); !errors.Is(err, ErrInvalidCredential) {
+			t.Fatalf("attempt %d: err = %v, want invalid credential", i, err)
+		}
+	}
+	// A correct password before the threshold still works and resets the count.
+	if _, err := svc.AuthenticateLocal(ctx, "alice", "pw"); err != nil {
+		t.Fatalf("login before lock should succeed: %v", err)
+	}
+
+	// Now fail the full threshold to lock the account.
+	for i := 0; i < MaxFailedLogins; i++ {
+		_, _ = svc.AuthenticateLocal(ctx, "alice", "bad")
+	}
+	if _, err := svc.AuthenticateLocal(ctx, "alice", "pw"); !errors.Is(err, ErrAccountLocked) {
+		t.Fatalf("locked account: err = %v, want ErrAccountLocked", err)
+	}
+
+	// Admin unlock restores access.
+	if err := store.ResetFailedLogin(ctx, u.ID); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := svc.AuthenticateLocal(ctx, "alice", "pw"); err != nil {
+		t.Fatalf("after unlock: %v", err)
+	}
+
+	// The protected bootstrap admin never locks, even with lockout enabled.
+	adminHash, _ := HashPassword("pw")
+	admin, err := store.CreateUser(ctx, meta.User{Username: "admin", PasswordHash: adminHash, Source: meta.SourceLocal})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := store.SetLockoutEnabled(ctx, admin.ID, true); err != nil {
+		t.Fatal(err)
+	}
+	for i := 0; i < MaxFailedLogins+3; i++ {
+		_, _ = svc.AuthenticateLocal(ctx, "admin", "bad")
+	}
+	if _, err := svc.AuthenticateLocal(ctx, "admin", "pw"); err != nil {
+		t.Fatalf("protected admin must never lock: %v", err)
 	}
 }
 

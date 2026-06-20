@@ -193,6 +193,26 @@ version (for example a poisoned release or a known IOC) while the package itself
 stays approved. A spike after adding a deny entry confirms clients are still
 trying to pull the bad version.
 
+### forklift_vuln_blocked_total
+
+- Type: Counter
+- Labels: `repo`, `action`
+
+Requests counted by the vulnerability policy: blocked when `action=block`, or
+recorded-only when `action=warn`/`audit`. The policy matches the requested
+package version against OSV advisories (direct dependency only) and triggers
+when the highest non-ignored severity meets the configured threshold. A spike
+indicates clients pulling versions with known advisories.
+
+### forklift_vuln_scans_total
+
+- Type: Counter
+- Labels: `result` (`clean`, `vulnerable`, `error`)
+
+Vulnerability scans performed by the background worker against OSV. `error`
+growth means OSV lookups are failing (unreachable endpoint, rate limit), in
+which case unscanned coordinates fail open unless `block_unscanned` is set.
+
 ### forklift_audit_events_dropped_total
 
 - Type: Counter
@@ -311,7 +331,8 @@ The metrics answer a few core questions about a forklift deployment:
   `artifacts`, `blobs`, `storage_bytes`
 - Are proxies caching and reaching upstreams? `cache_*`, `upstream_errors_total`
 - Are the supply-chain gates doing their job? `age_policy_violations_total`,
-  `approval_blocked_total`, `approval_pending`, `version_deny_blocked_total`
+  `approval_blocked_total`, `approval_pending`, `version_deny_blocked_total`,
+  `vuln_blocked_total`, `vuln_scans_total`
 - Is auditing complete? `audit_events_dropped_total`
 - In HA, are standbys keeping up? `replication_*`
 

@@ -3,6 +3,7 @@ import { Link, useNavigate, useParams } from "react-router-dom";
 import { api, Me, Role, User } from "../api";
 import { ConfirmModal } from "../components/ConfirmModal";
 import { Select } from "../components/Select";
+import { Toggle } from "../components/Toggle";
 
 // Per-user modify page: role mapping, password reset, enable/disable, and the
 // danger zone (delete). The Users list is read-only; all edits happen here.
@@ -46,6 +47,7 @@ export function UserModify({ me }: { me: Me }) {
       <AccountPanel user={user} />
       <RolesPanel user={user} roles={roles} run={run} />
       {user.source === "local" && <PasswordPanel user={user} onError={setError} />}
+      {user.source === "local" && <LockoutPanel user={user} run={run} />}
       <StatusPanel user={user} self={self} run={run} />
       <DangerPanel user={user} self={self} onDeleted={() => navigate("/users")} onError={setError} />
     </>
@@ -133,18 +135,60 @@ function PasswordPanel({ user, onError }: { user: User; onError: (e: string) => 
   );
 }
 
+// LockoutPanel toggles failed-password lockout for a local account and unlocks
+// it after a lockout. The default admin is protected: the toggle is disabled so
+// it can never be locked out of the only guaranteed admin account.
+function LockoutPanel({ user, run }: { user: User; run: (p: Promise<unknown>) => void }) {
+  return (
+    <div className="panel">
+      <h2>Account lockout</h2>
+      <p className="muted">
+        When enabled, the account is locked after 5 consecutive failed password attempts and must be
+        unlocked by an administrator. {user.protected && "The default admin account cannot be locked out."}
+      </p>
+      <Toggle
+        checked={user.lockout_enabled}
+        disabled={user.protected}
+        label={user.lockout_enabled ? "Lockout enabled" : "Lockout disabled"}
+        onChange={(v) => run(api.updateUser(user.id, { lockout_enabled: v }))}
+      />
+      {user.locked && (
+        <div className="inline" style={{ marginTop: 14, gap: 10, alignItems: "center" }}>
+          <span className="badge" style={{ background: "var(--danger)", color: "#fff" }}>Locked</span>
+          <button className="btn" type="button"
+            onClick={() => run(api.updateUser(user.id, { unlock: true }))}>
+            Unlock account
+          </button>
+        </div>
+      )}
+    </div>
+  );
+}
+
 function StatusPanel({ user, self, run }: { user: User; self: boolean; run: (p: Promise<unknown>) => void }) {
   return (
     <div className="panel">
       <h2>Status</h2>
       <p className="muted">
-        This account is currently {user.disabled ? "disabled" : "active"}.
+        {user.disabled
+          ? "Disabled accounts cannot sign in or pull artifacts."
+          : "Active accounts can sign in and pull artifacts."}
         {self && " You cannot disable your own account."}
       </p>
-      <button className="btn secondary" type="button" disabled={self}
-        onClick={() => run(api.updateUser(user.id, { disabled: !user.disabled }))}>
-        {user.disabled ? "Enable" : "Disable"}
-      </button>
+      <Toggle
+        checked={!user.disabled}
+        disabled={self}
+        label={user.disabled ? "Account disabled" : "Account active"}
+        onChange={(v) => run(api.updateUser(user.id, { disabled: !v }))}
+      />
+      {user.locked && (
+        <p style={{ marginTop: 12, marginBottom: 0 }}>
+          <span className="badge" style={{ background: "var(--danger)", color: "#fff" }}>Locked</span>
+          <span className="muted" style={{ marginLeft: 8 }}>
+            Locked after too many failed password attempts — unlock it in Account lockout.
+          </span>
+        </p>
+      )}
     </div>
   );
 }

@@ -40,19 +40,19 @@ func (s *Store) EnsureUser(ctx context.Context, username, email, source string) 
 // GetUser returns a user by ID.
 func (s *Store) GetUser(ctx context.Context, id int64) (User, error) {
 	return scanUser(s.h().QueryRowContext(ctx,
-		`SELECT id, username, password_hash, source, email, disabled, created_at, updated_at, last_login_at FROM users WHERE id = ?`, id))
+		`SELECT id, username, password_hash, source, email, disabled, created_at, updated_at, last_login_at, lockout_enabled, failed_login_count, locked_at FROM users WHERE id = ?`, id))
 }
 
 // GetUserByUsername returns a user by username.
 func (s *Store) GetUserByUsername(ctx context.Context, username string) (User, error) {
 	return scanUser(s.h().QueryRowContext(ctx,
-		`SELECT id, username, password_hash, source, email, disabled, created_at, updated_at, last_login_at FROM users WHERE username = ?`, username))
+		`SELECT id, username, password_hash, source, email, disabled, created_at, updated_at, last_login_at, lockout_enabled, failed_login_count, locked_at FROM users WHERE username = ?`, username))
 }
 
 // ListUsers returns all users ordered by username.
 func (s *Store) ListUsers(ctx context.Context) ([]User, error) {
 	rows, err := s.h().QueryContext(ctx,
-		`SELECT id, username, password_hash, source, email, disabled, created_at, updated_at, last_login_at FROM users ORDER BY username`)
+		`SELECT id, username, password_hash, source, email, disabled, created_at, updated_at, last_login_at, lockout_enabled, failed_login_count, locked_at FROM users ORDER BY username`)
 	if err != nil {
 		return nil, err
 	}
@@ -93,6 +93,58 @@ func (s *Store) TouchLastLogin(ctx context.Context, id int64) error {
 func (s *Store) SetUserDisabled(ctx context.Context, id int64, disabled bool) error {
 	res, err := s.h().ExecContext(ctx,
 		`UPDATE users SET disabled = ?, updated_at = ? WHERE id = ?`, boolToInt(disabled), nowRFC3339(), id)
+	if err != nil {
+		return err
+	}
+	return ensureAffected(res)
+}
+
+// SetLockoutEnabled toggles a user's failed-password lockout. Disabling it also
+// clears any accumulated failure count and unlocks the account, so turning the
+// feature off can never leave someone stuck locked out.
+func (s *Store) SetLockoutEnabled(ctx context.Context, id int64, enabled bool) error {
+	var res sql.Result
+	var err error
+	if enabled {
+		res, err = s.h().ExecContext(ctx,
+			`UPDATE users SET lockout_enabled = 1, updated_at = ? WHERE id = ?`,
+			nowRFC3339(), id)
+	} else {
+		res, err = s.h().ExecContext(ctx,
+			`UPDATE users SET lockout_enabled = 0, failed_login_count = 0, locked_at = '', updated_at = ? WHERE id = ?`,
+			nowRFC3339(), id)
+	}
+	if err != nil {
+		return err
+	}
+	return ensureAffected(res)
+}
+
+// RegisterFailedLogin records one failed local-password attempt. When the
+// account opted into lockout and the running count reaches threshold, it sets
+// locked_at (idempotent: an already-locked account keeps its original time).
+func (s *Store) RegisterFailedLogin(ctx context.Context, id int64, threshold int) error {
+	res, err := s.h().ExecContext(ctx,
+		`UPDATE users
+		    SET failed_login_count = failed_login_count + 1,
+		        locked_at = CASE
+		            WHEN lockout_enabled = 1 AND failed_login_count + 1 >= ? AND locked_at = ''
+		                THEN ? ELSE locked_at END,
+		        updated_at = ?
+		  WHERE id = ?`,
+		threshold, nowRFC3339(), nowRFC3339(), id)
+	if err != nil {
+		return err
+	}
+	return ensureAffected(res)
+}
+
+// ResetFailedLogin clears the failure count and unlocks the account. Called on a
+// successful login and by an admin unlock action.
+func (s *Store) ResetFailedLogin(ctx context.Context, id int64) error {
+	res, err := s.h().ExecContext(ctx,
+		`UPDATE users SET failed_login_count = 0, locked_at = '', updated_at = ? WHERE id = ?`,
+		nowRFC3339(), id)
 	if err != nil {
 		return err
 	}
@@ -414,6 +466,33 @@ func (s *Store) ListTokens(ctx context.Context, userID int64) ([]Token, error) {
 	return out, rows.Err()
 }
 
+// ListAllTokens returns every token across users (admin views), with scopes,
+// owner id and expiry, so the API can surface which tokens reach a repository.
+func (s *Store) ListAllTokens(ctx context.Context) ([]Token, error) {
+	rows, err := s.h().QueryContext(ctx,
+		`SELECT id, user_id, name, description, '', scopes_json, expires_at, last_used_at, created_at FROM tokens ORDER BY created_at DESC`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []Token
+	for rows.Next() {
+		var t Token
+		var scopes string
+		var expires, lastUsed sql.NullString
+		var created string
+		if err := rows.Scan(&t.ID, &t.UserID, &t.Name, &t.Description, &t.Hash, &scopes, &expires, &lastUsed, &created); err != nil {
+			return nil, err
+		}
+		t.ScopesJSON = scopes
+		t.ExpiresAt = nullTimePtr(expires)
+		t.LastUsedAt = nullTimePtr(lastUsed)
+		t.CreatedAt = parseTime(created)
+		out = append(out, t)
+	}
+	return out, rows.Err()
+}
+
 // TouchToken records the last-used time of a token.
 func (s *Store) TouchToken(ctx context.Context, id int64) error {
 	_, err := s.h().ExecContext(ctx, `UPDATE tokens SET last_used_at = ? WHERE id = ?`, nowRFC3339(), id)
@@ -440,9 +519,9 @@ func (s *Store) CountUsers(ctx context.Context) (int, error) {
 
 func scanUser(row *sql.Row) (User, error) {
 	var u User
-	var disabled int
-	var created, updated, lastLogin string
-	err := row.Scan(&u.ID, &u.Username, &u.PasswordHash, &u.Source, &u.Email, &disabled, &created, &updated, &lastLogin)
+	var disabled, lockoutEnabled int
+	var created, updated, lastLogin, lockedAt string
+	err := row.Scan(&u.ID, &u.Username, &u.PasswordHash, &u.Source, &u.Email, &disabled, &created, &updated, &lastLogin, &lockoutEnabled, &u.FailedLoginCount, &lockedAt)
 	if errors.Is(err, sql.ErrNoRows) {
 		return User{}, ErrNotFound
 	}
@@ -453,20 +532,24 @@ func scanUser(row *sql.Row) (User, error) {
 	u.CreatedAt = parseTime(created)
 	u.UpdatedAt = parseTime(updated)
 	u.LastLoginAt = parseTime(lastLogin)
+	u.LockoutEnabled = lockoutEnabled != 0
+	u.LockedAt = parseTime(lockedAt)
 	return u, nil
 }
 
 func scanUserRows(rows *sql.Rows) (User, error) {
 	var u User
-	var disabled int
-	var created, updated, lastLogin string
-	if err := rows.Scan(&u.ID, &u.Username, &u.PasswordHash, &u.Source, &u.Email, &disabled, &created, &updated, &lastLogin); err != nil {
+	var disabled, lockoutEnabled int
+	var created, updated, lastLogin, lockedAt string
+	if err := rows.Scan(&u.ID, &u.Username, &u.PasswordHash, &u.Source, &u.Email, &disabled, &created, &updated, &lastLogin, &lockoutEnabled, &u.FailedLoginCount, &lockedAt); err != nil {
 		return User{}, err
 	}
 	u.Disabled = disabled != 0
 	u.CreatedAt = parseTime(created)
 	u.UpdatedAt = parseTime(updated)
 	u.LastLoginAt = parseTime(lastLogin)
+	u.LockoutEnabled = lockoutEnabled != 0
+	u.LockedAt = parseTime(lockedAt)
 	return u, nil
 }
 

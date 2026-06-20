@@ -24,6 +24,9 @@ func (m *Manager) handleMaven(w http.ResponseWriter, r *http.Request) {
 	if m.approvalGate(w, r, res, mavenPackage(res.path), mavenVersion(res.path)) {
 		return
 	}
+	if m.vulnGate(w, r, res, mavenPackage(res.path), mavenVersion(res.path)) {
+		return
+	}
 
 	switch r.Method {
 	case http.MethodGet, http.MethodHead:

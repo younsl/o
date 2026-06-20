@@ -37,6 +37,9 @@ func (m *Manager) handleNpm(w http.ResponseWriter, r *http.Request) {
 	if m.approvalGate(w, r, res, npmPackage(res.path), npmVersion(res.path)) {
 		return
 	}
+	if m.vulnGate(w, r, res, npmPackage(res.path), npmVersion(res.path)) {
+		return
+	}
 
 	if strings.Contains(res.path, "/-/") {
 		m.npmTarball(w, r, res)

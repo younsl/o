@@ -33,6 +33,9 @@ func (m *Manager) handleCargo(w http.ResponseWriter, r *http.Request) {
 	if m.approvalGate(w, r, res, cargoPackage(res.path), cargoVersion(res.path)) {
 		return
 	}
+	if m.vulnGate(w, r, res, cargoPackage(res.path), cargoVersion(res.path)) {
+		return
+	}
 
 	switch r.Method {
 	case http.MethodGet, http.MethodHead:

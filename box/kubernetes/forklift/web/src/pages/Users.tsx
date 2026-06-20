@@ -42,7 +42,7 @@ export function Users({ me }: { me: Me }) {
                 <td className="muted">{u.email || "-"}</td>
                 <td>
                   <div className="inline" style={{ flexWrap: "wrap", gap: 6 }}>
-                    {u.roles.map((r) => <span key={r.id} className="badge">{r.name}</span>)}
+                    {u.roles.map((r) => <Link key={r.id} className="badge" to={`/roles/${r.id}`}>{r.name}</Link>)}
                     {u.roles.length === 0 && <span className="muted">none</span>}
                   </div>
                 </td>

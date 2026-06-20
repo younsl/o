@@ -32,7 +32,7 @@ FROM scratch AS runtime
 
 LABEL org.opencontainers.image.title="forklift" \
       org.opencontainers.image.description="Lightweight Kubernetes-native artifact repository (Maven, npm, Cargo, Go) with proxy caching and supply-chain age policy" \
-      org.opencontainers.image.version="0.1.0" \
+      org.opencontainers.image.version="0.2.0" \
       org.opencontainers.image.licenses="Apache-2.0" \
       org.opencontainers.image.base.name="scratch" \
       org.opencontainers.image.deprecated="false"

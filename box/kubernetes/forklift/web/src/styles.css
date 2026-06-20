@@ -264,3 +264,53 @@ textarea { font-family: inherit; resize: vertical; }
 .login-card { width: 340px; }
 .checkbox { display: flex; align-items: center; gap: 8px; }
 .checkbox input { width: auto; }
+
+/* Toggle switch: a pill track with a sliding knob, accent-filled when on. */
+.switch-row { display: flex; align-items: center; gap: 10px; }
+.switch-row .switch-text { font-size: 14px; }
+.switch {
+  position: relative; flex: 0 0 auto; width: 40px; height: 22px; padding: 0;
+  border: 1px solid var(--border); border-radius: 999px; background: var(--panel-2);
+  cursor: pointer; transition: background 0.15s, border-color 0.15s;
+}
+.switch .switch-knob {
+  position: absolute; top: 2px; left: 2px; width: 16px; height: 16px; border-radius: 50%;
+  background: var(--muted); transition: transform 0.15s, background 0.15s;
+}
+.switch.on { background: var(--accent); border-color: var(--accent); }
+.switch.on .switch-knob { transform: translateX(18px); background: var(--bg); }
+.switch:disabled { opacity: 0.45; cursor: not-allowed; }
+
+/* Repository group tree: a caret toggle and indented member rows. The branch
+   connectors are drawn with CSS borders (not text glyphs) so they never wrap or
+   misalign when a member name spans multiple lines. */
+.tree-caret {
+  background: none; border: none; color: var(--muted); cursor: pointer;
+  padding: 0 2px; font-size: 11px; line-height: 1;
+}
+.tree-caret:hover { color: var(--text); }
+.tree-child > td { background: rgba(255, 255, 255, 0.02); }
+/* Members are indented to show grouping; no connector lines. */
+.tree-child > td:first-child { padding-left: 28px; }
+
+/* Repository table: fixed layout caps the table at the panel width (never wider,
+   so the panel never scrolls horizontally), and every cell stays on one line,
+   truncating with an ellipsis instead of forcing the table wider. */
+.repo-table { table-layout: fixed; width: 100%; }
+/* Tighter horizontal padding than the default table cell so long values (the
+   endpoint URL especially) fit on one line without truncating. */
+.repo-table th, .repo-table td { padding-left: 6px; padding-right: 6px; }
+.repo-table th:first-child, .repo-table td:first-child { padding-left: 12px; }
+/* Data cells stay on one line. Only the long-content columns (Name, Endpoint)
+   truncate with an ellipsis; the rest keep overflow visible so the Security
+   icons' hover tooltip is not clipped by the cell. */
+.repo-table td { white-space: nowrap; }
+.repo-table td:nth-child(1), .repo-table td:nth-child(4) {
+  overflow: hidden; text-overflow: ellipsis;
+}
+/* Headers wrap instead of truncating, so column names are never cut to "...". */
+.repo-table th { white-space: normal; }
+/* The group name cell is a flex row (caret + name + count); let it shrink and
+   clip rather than push the column wider. */
+.repo-table td .inline { min-width: 0; }
+.repo-table td .inline a { overflow: hidden; text-overflow: ellipsis; }

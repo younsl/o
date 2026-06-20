@@ -13,6 +13,9 @@ type Repository struct {
 	ConfigJSON  string
 	CreatedAt   time.Time
 	UpdatedAt   time.Time
+	// Disabled takes the repository offline: it stops serving the package
+	// protocols while keeping its config and stored artifacts.
+	Disabled bool
 }
 
 // Artifact is a stored path within a repository pointing at a content-addressed
@@ -51,7 +54,17 @@ type User struct {
 	CreatedAt    time.Time
 	UpdatedAt    time.Time
 	LastLoginAt  time.Time // zero when the user has never logged in
+	// LockoutEnabled opts the account into failed-password lockout. When on,
+	// FailedLoginCount consecutive local-password failures (reset on success)
+	// crossing the threshold set LockedAt, after which the account cannot
+	// authenticate until an admin unlocks it.
+	LockoutEnabled   bool
+	FailedLoginCount int
+	LockedAt         time.Time // zero when not locked
 }
+
+// Locked reports whether the account is currently locked out.
+func (u User) Locked() bool { return !u.LockedAt.IsZero() }
 
 // Role is a named bundle of repository permissions.
 type Role struct {

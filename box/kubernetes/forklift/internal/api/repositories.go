@@ -1,8 +1,10 @@
 package api
 
 import (
+	"context"
 	"encoding/json"
 	"net/http"
+	"net/url"
 	"strconv"
 	"strings"
 	"time"
@@ -10,6 +12,7 @@ import (
 	"github.com/go-chi/chi/v5"
 
 	"github.com/younsl/o/box/kubernetes/forklift/internal/audit"
+	"github.com/younsl/o/box/kubernetes/forklift/internal/auth"
 	"github.com/younsl/o/box/kubernetes/forklift/internal/meta"
 	repopkg "github.com/younsl/o/box/kubernetes/forklift/internal/repo"
 	"github.com/younsl/o/box/kubernetes/forklift/internal/repoconfig"
@@ -23,6 +26,7 @@ type repositoryDTO struct {
 	Type        string            `json:"type"`
 	UpstreamURL string            `json:"upstream_url"`
 	Config      repoconfig.Config `json:"config"`
+	Disabled    bool              `json:"disabled"`
 	CreatedAt   time.Time         `json:"created_at"`
 	UpdatedAt   time.Time         `json:"updated_at"`
 }
@@ -39,6 +43,7 @@ func toDTO(r meta.Repository) (repositoryDTO, error) {
 		Type:        r.Type,
 		UpstreamURL: r.UpstreamURL,
 		Config:      cfg,
+		Disabled:    r.Disabled,
 		CreatedAt:   r.CreatedAt,
 		UpdatedAt:   r.UpdatedAt,
 	}, nil
@@ -76,8 +81,14 @@ func (h *Handler) listRepositories(w http.ResponseWriter, r *http.Request) {
 		mapError(w, err)
 		return
 	}
+	// Non-admins see only repositories they can read. Admins (Can returns true
+	// for every repo) and the authz-disabled case (tests) see all.
+	p := auth.FromContext(r.Context())
 	out := make([]repositoryListItemDTO, 0, len(repos))
 	for _, repo := range repos {
+		if h.authz != nil && (p == nil || !p.Can(repo.Name, auth.ActionRead)) {
+			continue
+		}
 		dto, err := toDTO(repo)
 		if err != nil {
 			mapError(w, err)
@@ -194,6 +205,21 @@ func (h *Handler) createRepository(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusCreated, dto)
 }
 
+// canReadRepo enforces read access to a single repository for non-admins.
+// Admins (Can returns true for every repo) and the authz-disabled case (tests)
+// pass. It writes 403 and returns false when denied.
+func (h *Handler) canReadRepo(w http.ResponseWriter, r *http.Request, repoName string) bool {
+	if h.authz == nil {
+		return true
+	}
+	p := auth.FromContext(r.Context())
+	if p == nil || !p.Can(repoName, auth.ActionRead) {
+		writeError(w, http.StatusForbidden, "forbidden")
+		return false
+	}
+	return true
+}
+
 func (h *Handler) getRepository(w http.ResponseWriter, r *http.Request) {
 	id, ok := pathID(w, r)
 	if !ok {
@@ -202,6 +228,9 @@ func (h *Handler) getRepository(w http.ResponseWriter, r *http.Request) {
 	repo, err := h.store.GetRepository(r.Context(), id)
 	if err != nil {
 		mapError(w, err)
+		return
+	}
+	if !h.canReadRepo(w, r, repo.Name) {
 		return
 	}
 	dto, err := toDTO(repo)
@@ -279,6 +308,190 @@ func (h *Handler) updateRepository(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, dto)
 }
 
+type setDisabledReq struct {
+	Disabled bool `json:"disabled"`
+}
+
+// setRepositoryDisabled toggles a repository online/offline. A disabled
+// repository keeps its config and artifacts but stops serving the package
+// protocols (503), so it can be re-enabled later.
+func (h *Handler) setRepositoryDisabled(w http.ResponseWriter, r *http.Request) {
+	id, ok := pathID(w, r)
+	if !ok {
+		return
+	}
+	var req setDisabledReq
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid json body")
+		return
+	}
+	repo, err := h.store.GetRepository(r.Context(), id)
+	if err != nil {
+		mapError(w, err)
+		return
+	}
+	if err := h.store.SetRepositoryDisabled(r.Context(), id, req.Disabled); err != nil {
+		mapError(w, err)
+		return
+	}
+	h.audit(r, repo.Name, meta.EventRepoUpdate, http.StatusOK)
+	repo, err = h.store.GetRepository(r.Context(), id)
+	if err != nil {
+		mapError(w, err)
+		return
+	}
+	dto, err := toDTO(repo)
+	if err != nil {
+		mapError(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, dto)
+}
+
+type repoPermissionDTO struct {
+	RoleID    int64    `json:"role_id"`
+	Role      string   `json:"role"`
+	Pattern   string   `json:"repo_pattern"`
+	Actions   []string `json:"actions"`
+	UserCount int      `json:"user_count"`
+}
+
+// repositoryPermissions lists the role permissions that grant access to this
+// repository: every permission whose repo pattern matches the repository name,
+// with the granting role, the matched pattern, the actions, and how many users
+// hold that role. Admin-only (registered under the admin route group).
+func (h *Handler) repositoryPermissions(w http.ResponseWriter, r *http.Request) {
+	id, ok := pathID(w, r)
+	if !ok {
+		return
+	}
+	repo, err := h.store.GetRepository(r.Context(), id)
+	if err != nil {
+		mapError(w, err)
+		return
+	}
+	roles, err := h.store.ListRoles(r.Context())
+	if err != nil {
+		mapError(w, err)
+		return
+	}
+	perms, err := h.store.ListPermissions(r.Context())
+	if err != nil {
+		mapError(w, err)
+		return
+	}
+	rolesBy, err := h.store.RolesByUser(r.Context())
+	if err != nil {
+		mapError(w, err)
+		return
+	}
+	roleName := make(map[int64]string, len(roles))
+	for _, role := range roles {
+		roleName[role.ID] = role.Name
+	}
+	userCount := map[int64]int{}
+	for _, urs := range rolesBy {
+		for _, ur := range urs {
+			userCount[ur.ID]++
+		}
+	}
+	out := make([]repoPermissionDTO, 0)
+	for _, p := range perms {
+		if !auth.MatchRepoPattern(p.RepoPattern, repo.Name) {
+			continue
+		}
+		out = append(out, repoPermissionDTO{
+			RoleID:    p.RoleID,
+			Role:      roleName[p.RoleID],
+			Pattern:   p.RepoPattern,
+			Actions:   strings.Split(p.Actions, ","),
+			UserCount: userCount[p.RoleID],
+		})
+	}
+	writeJSON(w, http.StatusOK, out)
+}
+
+type repoTokenDTO struct {
+	TokenID    int64      `json:"token_id"`
+	Name       string     `json:"name"`
+	Owner      string     `json:"owner"`
+	Pattern    string     `json:"repo_pattern"`
+	Actions    []string   `json:"actions"`
+	Unscoped   bool       `json:"unscoped"`
+	ExpiresAt  *time.Time `json:"expires_at"`
+	LastUsedAt *time.Time `json:"last_used_at"`
+}
+
+// repositoryTokens lists personal access tokens that can reach this repository:
+// tokens with a scope whose pattern matches the repo (scoped grant), plus
+// unscoped tokens (which inherit the owner's role access to any repo). The
+// effective access of a scoped token is still bounded by its owner's roles.
+// Admin-only.
+func (h *Handler) repositoryTokens(w http.ResponseWriter, r *http.Request) {
+	id, ok := pathID(w, r)
+	if !ok {
+		return
+	}
+	repo, err := h.store.GetRepository(r.Context(), id)
+	if err != nil {
+		mapError(w, err)
+		return
+	}
+	tokens, err := h.store.ListAllTokens(r.Context())
+	if err != nil {
+		mapError(w, err)
+		return
+	}
+	users, err := h.store.ListUsers(r.Context())
+	if err != nil {
+		mapError(w, err)
+		return
+	}
+	owner := make(map[int64]string, len(users))
+	for _, u := range users {
+		owner[u.ID] = u.Username
+	}
+	out := make([]repoTokenDTO, 0)
+	for _, t := range tokens {
+		var scopes []struct {
+			RepoPattern string   `json:"repo_pattern"`
+			Actions     []string `json:"actions"`
+		}
+		_ = json.Unmarshal([]byte(t.ScopesJSON), &scopes)
+		if len(scopes) == 0 {
+			// Unscoped: inherits the owner's role access to any repository.
+			out = append(out, repoTokenDTO{
+				TokenID: t.ID, Name: t.Name, Owner: owner[t.UserID], Pattern: "*",
+				Unscoped: true, ExpiresAt: t.ExpiresAt, LastUsedAt: t.LastUsedAt,
+			})
+			continue
+		}
+		matched := ""
+		seen := map[string]bool{}
+		var actions []string
+		for _, sc := range scopes {
+			if !auth.MatchRepoPattern(sc.RepoPattern, repo.Name) {
+				continue
+			}
+			matched = sc.RepoPattern
+			for _, a := range sc.Actions {
+				if !seen[a] {
+					seen[a] = true
+					actions = append(actions, a)
+				}
+			}
+		}
+		if matched == "" {
+			continue
+		}
+		out = append(out, repoTokenDTO{
+			TokenID: t.ID, Name: t.Name, Owner: owner[t.UserID], Pattern: matched,
+			Actions: actions, ExpiresAt: t.ExpiresAt, LastUsedAt: t.LastUsedAt,
+		})
+	}
+	writeJSON(w, http.StatusOK, out)
+}
+
 type artifactDTO struct {
 	Path           string     `json:"path"`
 	Version        string     `json:"version"`
@@ -287,6 +500,10 @@ type artifactDTO struct {
 	PublishedAt    *time.Time `json:"published_at"`
 	CachedAt       time.Time  `json:"cached_at"`
 	LastAccessedAt time.Time  `json:"last_accessed_at"`
+	// Vulnerability scan result for this version, when scanned. MaxSeverity is
+	// empty/"none" when clean or not yet scanned.
+	MaxSeverity string   `json:"max_severity,omitempty"`
+	VulnIDs     []string `json:"vuln_ids,omitempty"`
 }
 
 // listArtifacts returns the artifacts stored (hosted or cached) in a repository,
@@ -294,6 +511,14 @@ type artifactDTO struct {
 func (h *Handler) listArtifacts(w http.ResponseWriter, r *http.Request) {
 	id, ok := pathID(w, r)
 	if !ok {
+		return
+	}
+	repo, err := h.store.GetRepository(r.Context(), id)
+	if err != nil {
+		mapError(w, err)
+		return
+	}
+	if !h.canReadRepo(w, r, repo.Name) {
 		return
 	}
 	prefix := r.URL.Query().Get("prefix")
@@ -306,10 +531,20 @@ func (h *Handler) listArtifacts(w http.ResponseWriter, r *http.Request) {
 	size, _ := h.store.RepoSize(r.Context(), id)
 	out := make([]artifactDTO, 0, len(arts))
 	for _, a := range arts {
-		out = append(out, artifactDTO{
+		dto := artifactDTO{
 			Path: a.Path, Version: a.Version, Size: a.Size, ContentType: a.ContentType,
 			PublishedAt: a.PublishedAt, CachedAt: a.CachedAt, LastAccessedAt: a.LastAccessedAt,
-		})
+		}
+		// Attach the stored vulnerability scan for this coordinate, if any.
+		if a.Version != "" {
+			if eco, pkg := repopkg.VulnCoordinate(repo.Format, a.Path); pkg != "" {
+				if scan, serr := h.store.GetVulnScan(r.Context(), eco, pkg, a.Version); serr == nil {
+					dto.MaxSeverity = scan.MaxSeverity
+					dto.VulnIDs = scan.VulnIDs
+				}
+			}
+		}
+		out = append(out, dto)
 	}
 	writeJSON(w, http.StatusOK, map[string]any{
 		"count": count, "total_size": size, "artifacts": out,
@@ -385,25 +620,52 @@ func (h *Handler) upstreamHealth(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusOK, map[string]any{"applicable": false})
 		return
 	}
+	writeJSON(w, http.StatusOK, h.probeUpstream(r.Context(), repo.UpstreamURL))
+}
 
-	start := time.Now()
-	req, err := http.NewRequestWithContext(r.Context(), http.MethodGet, repo.UpstreamURL, nil)
-	if err != nil {
-		writeJSON(w, http.StatusOK, map[string]any{"applicable": true, "reachable": false, "error": "bad upstream url"})
+type checkUpstreamReq struct {
+	URL string `json:"url"`
+}
+
+// checkUpstream probes an arbitrary upstream URL so the New repository form can
+// validate connectivity before the repository is created. Admin-only (the route
+// group), mirroring upstreamHealth's reachability semantics.
+func (h *Handler) checkUpstream(w http.ResponseWriter, r *http.Request) {
+	var req checkUpstreamReq
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid json body")
 		return
+	}
+	raw := strings.TrimSpace(req.URL)
+	if raw == "" {
+		writeError(w, http.StatusBadRequest, "url is required")
+		return
+	}
+	if u, err := url.Parse(raw); err != nil || (u.Scheme != "http" && u.Scheme != "https") || u.Host == "" {
+		writeJSON(w, http.StatusOK, map[string]any{
+			"applicable": true, "reachable": false, "error": "url must be http(s) with a host",
+		})
+		return
+	}
+	writeJSON(w, http.StatusOK, h.probeUpstream(r.Context(), raw))
+}
+
+// probeUpstream issues a short GET to rawURL and reports reachability, the HTTP
+// status, and latency. Any HTTP response (even 4xx) counts as reachable; only a
+// transport error is unreachable.
+func (h *Handler) probeUpstream(ctx context.Context, rawURL string) map[string]any {
+	start := time.Now()
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, rawURL, nil)
+	if err != nil {
+		return map[string]any{"applicable": true, "reachable": false, "error": "bad upstream url"}
 	}
 	resp, err := h.client.Do(req)
 	latency := time.Since(start).Milliseconds()
 	if err != nil {
-		writeJSON(w, http.StatusOK, map[string]any{
-			"applicable": true, "reachable": false, "latency_ms": latency, "error": err.Error(),
-		})
-		return
+		return map[string]any{"applicable": true, "reachable": false, "latency_ms": latency, "error": err.Error()}
 	}
 	defer resp.Body.Close()
-	writeJSON(w, http.StatusOK, map[string]any{
-		"applicable": true, "reachable": true, "status": resp.StatusCode, "latency_ms": latency,
-	})
+	return map[string]any{"applicable": true, "reachable": true, "status": resp.StatusCode, "latency_ms": latency}
 }
 
 func (h *Handler) deleteRepository(w http.ResponseWriter, r *http.Request) {

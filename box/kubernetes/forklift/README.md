@@ -17,6 +17,7 @@ Lightweight, Kubernetes-native artifact repository. A single static Go binary th
 - Age policy: quarantine freshly published upstream versions to mitigate supply-chain attacks
 - Package approval (quarantine): require an explicit admin decision before a proxy serves a package, with a pending-request queue, audit-only mode and auto-approve patterns
 - Version denies: block one exact package version (poisoned release, IOC) while the package stays approved, revoking cached copies immediately
+- Vulnerability policy: scan requested versions against OSV and block, warn, or audit by severity threshold, with periodic re-scanning so newly disclosed advisories surface (direct dependency coordinate match)
 - Per-repository audit log: every download, upload, delete and config change with user, status and client IP
 - React UI and OpenAPI 3.1 docs, both served by the binary
 - Active/standby HA via Kubernetes Lease leader election, on a shared RWX volume or with PV-based replication (per-pod RWO volumes, no RWX storage required)
@@ -191,6 +192,25 @@ curl -u admin:change-me -X POST http://forklift/api/v1/version-denies \
 - Blocks are counted in `forklift_version_deny_blocked_total{repo}`; changes and blocked attempts land in the repository audit log as `deny.create/delete/block` events.
 - Deny entries are deleted with their repository, so a recreated same-name repo does not inherit them.
 
+### Vulnerability policy (OSV)
+
+A proxy can gate package versions by known vulnerabilities, matched against the
+[OSV](https://osv.dev) database:
+
+```bash
+curl -u admin:change-me -X PUT http://forklift/api/v1/repositories/<id> \
+  -H 'Content-Type: application/json' \
+  -d '{"upstream_url":"https://registry.npmjs.org",
+       "config":{"vuln":{"enabled":true,"threshold":"high","action":"block","ignore":["CVE-2026-0001"]}}}'
+```
+
+- Scanning runs out of the serving path: a requested coordinate (ecosystem, package, version) is looked up against OSV by a background worker and the result cached; the request-time gate consults only the stored verdict. A periodic re-scanner refreshes results so newly disclosed advisories on already-cached versions surface.
+- `action`: `block` (403, refuse to serve), `warn` or `audit` (serve, record). The gate triggers when the highest non-ignored advisory severity meets `threshold` (`critical`/`high`/`medium`/`low`, default `high`). `ignore` lists accepted/false-positive advisory ids (CVE/GHSA/OSV).
+- A not-yet-scanned version is served while its scan is queued, unless `block_unscanned` is set under an enforcing (`block`) posture.
+- Scope (v1): direct dependency coordinate match only. Transitive dependencies, artifact integrity/provenance, and dependency-confusion are out of scope. A clean result means "no matching public OSV advisory", not a guarantee.
+- Configure `FORKLIFT_OSV_URL` (default `https://api.osv.dev`; empty disables scanning), `FORKLIFT_VULN_RESCAN_INTERVAL` (default `6h`), `FORKLIFT_VULN_TTL` (default `24h`).
+- Blocks are counted in `forklift_vuln_blocked_total{repo,action}` and scans in `forklift_vuln_scans_total{result}`; blocks land in the audit log as `vuln.block` events. Per-version severity shows in the repository's Artifacts tab.
+
 API reference: `http://forklift/api-docs` (Scalar) and `http://forklift/openapi.yaml`.
 
 ## Metrics
@@ -214,6 +234,8 @@ Prometheus metrics are exposed on `FORKLIFT_METRICS_ADDR` (`:8081` by default) a
 | `forklift_approval_blocked_total` | counter | `repo`, `mode` | Package approval gate blocks |
 | `forklift_approval_pending` | gauge | | Package approval requests pending |
 | `forklift_version_deny_blocked_total` | counter | `repo` | Version deny gate blocks |
+| `forklift_vuln_blocked_total` | counter | `repo`, `action` | Vulnerability policy blocks/warns/audits |
+| `forklift_vuln_scans_total` | counter | `result` | OSV scans by result (clean/vulnerable/error) |
 | `forklift_audit_events_dropped_total` | counter | | Audit events dropped (recorder queue full) |
 | `forklift_replication_*` | counter/gauge | | PV-based replication progress (when `replication.enabled`) |
 

@@ -211,8 +211,12 @@ func (m *Manager) pypiLocalSimple(w http.ResponseWriter, r *http.Request, res re
 func (m *Manager) pypiFile(w http.ResponseWriter, r *http.Request, res resolved) {
 	// The .metadata suffix (PEP 658) is stripped so a denied version's core
 	// metadata is blocked along with the distribution file itself.
-	if m.approvalGate(w, r, res, pypiPackageFromFilename(path.Base(res.path)),
-		pypiVersion(strings.TrimSuffix(path.Base(res.path), ".metadata"))) {
+	pypiPkg := pypiPackageFromFilename(path.Base(res.path))
+	pypiVer := pypiVersion(strings.TrimSuffix(path.Base(res.path), ".metadata"))
+	if m.approvalGate(w, r, res, pypiPkg, pypiVer) {
+		return
+	}
+	if m.vulnGate(w, r, res, pypiPkg, pypiVer) {
 		return
 	}
 	spec := fetchSpec{

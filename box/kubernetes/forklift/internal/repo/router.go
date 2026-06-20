@@ -12,6 +12,7 @@ import (
 	"github.com/younsl/o/box/kubernetes/forklift/internal/auth"
 	"github.com/younsl/o/box/kubernetes/forklift/internal/meta"
 	"github.com/younsl/o/box/kubernetes/forklift/internal/repoconfig"
+	"github.com/younsl/o/box/kubernetes/forklift/internal/vuln"
 )
 
 // Manager mounts the package-format protocol routes onto a router.
@@ -29,6 +30,14 @@ type Manager struct {
 	approvalBlocked *prometheus.CounterVec
 	denyBlocked     *prometheus.CounterVec
 	ttlExpired      *prometheus.CounterVec
+	vulnBlocked     *prometheus.CounterVec
+	vulnScans       *prometheus.CounterVec
+
+	// scanner performs vulnerability lookups; nil disables the vuln gate. Scan
+	// jobs are queued and processed by RunVulnWorker so the serving path never
+	// blocks on an advisory lookup.
+	scanner   vuln.Scanner
+	scanQueue chan scanJob
 }
 
 // NewManager creates a Manager. authz may be nil to disable authorization
@@ -53,12 +62,25 @@ func NewManager(engine *Engine, store *meta.Store, authz *auth.Service, rec *aud
 			Namespace: "forklift", Name: "ttl_expired_total",
 			Help: "Artifacts auto-deleted by the idle retention reaper.",
 		}, []string{"repo"}),
+		vulnBlocked: prometheus.NewCounterVec(prometheus.CounterOpts{
+			Namespace: "forklift", Name: "vuln_blocked_total",
+			Help: "Requests blocked (or counted in warn/audit mode) by the vulnerability policy.",
+		}, []string{"repo", "action"}),
+		vulnScans: prometheus.NewCounterVec(prometheus.CounterOpts{
+			Namespace: "forklift", Name: "vuln_scans_total",
+			Help: "Vulnerability scans performed, by result (clean|vulnerable|error).",
+		}, []string{"result"}),
+		scanQueue: make(chan scanJob, 256),
 	}
 	if reg != nil {
-		reg.MustRegister(m.approvalBlocked, m.denyBlocked, m.ttlExpired)
+		reg.MustRegister(m.approvalBlocked, m.denyBlocked, m.ttlExpired, m.vulnBlocked, m.vulnScans)
 	}
 	return m
 }
+
+// SetVulnScanner enables the vulnerability gate and background scanning. When
+// unset, the gate is a no-op (the feature is disabled).
+func (m *Manager) SetVulnScanner(s vuln.Scanner) { m.scanner = s }
 
 // authorize enforces RBAC for a repository request. action is read, write or
 // delete. It returns false and writes the response when access is denied.
@@ -225,6 +247,10 @@ func (m *Manager) resolveRepo(w http.ResponseWriter, r *http.Request, format str
 	}
 	if repo.Format != format {
 		http.Error(w, "repository format mismatch", http.StatusNotFound)
+		return resolved{}, false
+	}
+	if repo.Disabled {
+		http.Error(w, "repository disabled", http.StatusServiceUnavailable)
 		return resolved{}, false
 	}
 	cfg, err := repoconfig.Parse(repo.ConfigJSON)

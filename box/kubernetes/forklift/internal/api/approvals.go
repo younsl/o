@@ -9,6 +9,7 @@ import (
 	"github.com/younsl/o/box/kubernetes/forklift/internal/audit"
 	"github.com/younsl/o/box/kubernetes/forklift/internal/auth"
 	"github.com/younsl/o/box/kubernetes/forklift/internal/meta"
+	repopkg "github.com/younsl/o/box/kubernetes/forklift/internal/repo"
 )
 
 // approvalDTO is the JSON shape for one package approval row.
@@ -25,6 +26,10 @@ type approvalDTO struct {
 	FirstRequestedAt     time.Time  `json:"first_requested_at"`
 	LastRequestedAt      time.Time  `json:"last_requested_at"`
 	DecidedAt            *time.Time `json:"decided_at"`
+	// Vulnerability scan for the last requested version, when scanned. Lets a
+	// reviewer see known advisories before approving.
+	VulnSeverity string   `json:"vuln_severity,omitempty"`
+	VulnIDs      []string `json:"vuln_ids,omitempty"`
 }
 
 func approvalToDTO(a meta.PackageApproval) approvalDTO {
@@ -62,9 +67,26 @@ func (h *Handler) listApprovals(w http.ResponseWriter, r *http.Request) {
 		mapError(w, err)
 		return
 	}
+	// Map repo name -> OSV ecosystem so each approval's last requested version can
+	// be annotated with its stored vulnerability scan, if any.
+	ecoByRepo := map[string]string{}
+	if repos, rerr := h.store.ListRepositories(r.Context()); rerr == nil {
+		for _, repo := range repos {
+			ecoByRepo[repo.Name] = repopkg.OSVEcosystem(repo.Format)
+		}
+	}
 	out := make([]approvalDTO, 0, len(rows))
 	for _, a := range rows {
-		out = append(out, approvalToDTO(a))
+		dto := approvalToDTO(a)
+		if a.LastRequestedVersion != "" {
+			if eco := ecoByRepo[a.RepoName]; eco != "" {
+				if scan, serr := h.store.GetVulnScan(r.Context(), eco, a.Package, a.LastRequestedVersion); serr == nil {
+					dto.VulnSeverity = scan.MaxSeverity
+					dto.VulnIDs = scan.VulnIDs
+				}
+			}
+		}
+		out = append(out, dto)
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"count": count, "approvals": out})
 }

@@ -33,21 +33,21 @@ func (s *Store) CreateRepository(ctx context.Context, r Repository) (Repository,
 // GetRepository returns a repository by ID.
 func (s *Store) GetRepository(ctx context.Context, id int64) (Repository, error) {
 	return s.scanRepository(s.h().QueryRowContext(ctx,
-		`SELECT id, name, format, type, upstream_url, config_json, created_at, updated_at
+		`SELECT id, name, format, type, upstream_url, config_json, created_at, updated_at, disabled
          FROM repositories WHERE id = ?`, id))
 }
 
 // GetRepositoryByName returns a repository by name.
 func (s *Store) GetRepositoryByName(ctx context.Context, name string) (Repository, error) {
 	return s.scanRepository(s.h().QueryRowContext(ctx,
-		`SELECT id, name, format, type, upstream_url, config_json, created_at, updated_at
+		`SELECT id, name, format, type, upstream_url, config_json, created_at, updated_at, disabled
          FROM repositories WHERE name = ?`, name))
 }
 
 // ListRepositories returns all repositories ordered by name.
 func (s *Store) ListRepositories(ctx context.Context) ([]Repository, error) {
 	rows, err := s.h().QueryContext(ctx,
-		`SELECT id, name, format, type, upstream_url, config_json, created_at, updated_at
+		`SELECT id, name, format, type, upstream_url, config_json, created_at, updated_at, disabled
          FROM repositories ORDER BY name`)
 	if err != nil {
 		return nil, err
@@ -98,10 +98,22 @@ func (s *Store) DeleteRepository(ctx context.Context, id int64) error {
 	return tx.Commit()
 }
 
+// SetRepositoryDisabled toggles a repository's online/offline state.
+func (s *Store) SetRepositoryDisabled(ctx context.Context, id int64, disabled bool) error {
+	res, err := s.h().ExecContext(ctx,
+		`UPDATE repositories SET disabled = ?, updated_at = ? WHERE id = ?`,
+		boolToInt(disabled), nowRFC3339(), id)
+	if err != nil {
+		return err
+	}
+	return ensureAffected(res)
+}
+
 func (s *Store) scanRepository(row *sql.Row) (Repository, error) {
 	var r Repository
 	var created, updated string
-	err := row.Scan(&r.ID, &r.Name, &r.Format, &r.Type, &r.UpstreamURL, &r.ConfigJSON, &created, &updated)
+	var disabled int
+	err := row.Scan(&r.ID, &r.Name, &r.Format, &r.Type, &r.UpstreamURL, &r.ConfigJSON, &created, &updated, &disabled)
 	if errors.Is(err, sql.ErrNoRows) {
 		return Repository{}, ErrNotFound
 	}
@@ -110,17 +122,20 @@ func (s *Store) scanRepository(row *sql.Row) (Repository, error) {
 	}
 	r.CreatedAt = parseTime(created)
 	r.UpdatedAt = parseTime(updated)
+	r.Disabled = disabled != 0
 	return r, nil
 }
 
 func (s *Store) scanRepositoryRows(rows *sql.Rows) (Repository, error) {
 	var r Repository
 	var created, updated string
-	if err := rows.Scan(&r.ID, &r.Name, &r.Format, &r.Type, &r.UpstreamURL, &r.ConfigJSON, &created, &updated); err != nil {
+	var disabled int
+	if err := rows.Scan(&r.ID, &r.Name, &r.Format, &r.Type, &r.UpstreamURL, &r.ConfigJSON, &created, &updated, &disabled); err != nil {
 		return Repository{}, err
 	}
 	r.CreatedAt = parseTime(created)
 	r.UpdatedAt = parseTime(updated)
+	r.Disabled = disabled != 0
 	return r, nil
 }
 

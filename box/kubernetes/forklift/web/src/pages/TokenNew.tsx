@@ -34,9 +34,13 @@ export function TokenNew() {
   // Repository names for scope-pattern autocomplete. Available to any
   // authenticated user; "*" (all repositories) is offered as the first option.
   const [repoOptions, setRepoOptions] = useState<string[]>(["*"]);
+  const [repoTypes, setRepoTypes] = useState<Record<string, string>>({});
   useEffect(() => {
     api.listRepositoryNames()
-      .then((repos) => setRepoOptions(["*", ...repos.map((r) => r.name)]))
+      .then((repos) => {
+        setRepoOptions(["*", ...repos.map((r) => r.name)]);
+        setRepoTypes(Object.fromEntries(repos.map((r) => [r.name, `${r.format} · ${r.type}`])));
+      })
       .catch(() => setRepoOptions(["*"]));
   }, []);
 
@@ -128,7 +132,7 @@ export function TokenNew() {
         </div>
         <div className="inline" style={{ marginTop: 8, flexWrap: "wrap", gap: 8 }}>
           <Combobox style={{ width: 220 }} value={pattern} onChange={setPattern}
-            options={repoOptions} placeholder="repo pattern (* or maven-*)" />
+            options={repoOptions} hints={repoTypes} placeholder="repo pattern (* or maven-*)" />
           {ACTIONS.map((a) => (
             <label key={a} className="checkbox" style={{ margin: 0, fontSize: 12 }}>
               <input type="checkbox" checked={actions.includes(a)} onChange={() => toggle(a)} />

@@ -222,10 +222,15 @@ func TestRepositoryNamesForNonAdmin(t *testing.T) {
 		t.Fatalf("unexpected names: %+v", names)
 	}
 
-	// /repositories: still admin-only, so the same user is forbidden.
+	// /repositories: authenticated users may list, but the filter returns only
+	// repositories they can read — a role-less user sees an empty list.
 	resp = userDo(t, "dev1", "pw123456", http.MethodGet, srv.URL+"/repositories", "")
-	mustStatus(t, resp, http.StatusForbidden)
-	resp.Body.Close()
+	mustStatus(t, resp, http.StatusOK)
+	var visible []repositoryListItemDTO
+	decode(t, resp, &visible)
+	if len(visible) != 0 {
+		t.Fatalf("role-less user should see no repositories, got %+v", visible)
+	}
 }
 
 func TestGetRepositoryNotFound(t *testing.T) {
@@ -290,6 +295,32 @@ func TestUpstreamHealth(t *testing.T) {
 	}
 }
 
+func TestCheckUpstream(t *testing.T) {
+	srv := newTestServer(t)
+
+	// Reachable: probe the test server itself.
+	resp := adminDo(t, http.MethodPost, srv.URL+"/repositories/check-upstream",
+		`{"url":"`+srv.URL+`"}`)
+	var ok map[string]any
+	decode(t, resp, &ok)
+	if ok["applicable"] != true || ok["reachable"] != true {
+		t.Fatalf("check = %+v, want reachable", ok)
+	}
+
+	// Invalid scheme/host -> reachable false with an error, still HTTP 200.
+	resp = adminDo(t, http.MethodPost, srv.URL+"/repositories/check-upstream", `{"url":"not-a-url"}`)
+	var bad map[string]any
+	decode(t, resp, &bad)
+	if bad["reachable"] != false || bad["error"] == nil {
+		t.Fatalf("invalid url check = %+v, want reachable=false with error", bad)
+	}
+
+	// Empty url -> 400.
+	resp = adminDo(t, http.MethodPost, srv.URL+"/repositories/check-upstream", `{"url":""}`)
+	mustStatus(t, resp, http.StatusBadRequest)
+	resp.Body.Close()
+}
+
 func TestLogoutClearsSession(t *testing.T) {
 	srv := newTestServer(t)
 	resp, err := http.Post(srv.URL+"/logout", "application/json", nil)
@@ -308,5 +339,88 @@ func TestLogoutClearsSession(t *testing.T) {
 	}
 	if !cleared {
 		t.Fatalf("session cookie not cleared: %+v", resp.Cookies())
+	}
+}
+
+func TestRepositoryPermissions(t *testing.T) {
+	srv := newTestServer(t)
+
+	// A proxy repo and a role granting read on a matching pattern.
+	resp := adminDo(t, http.MethodPost, srv.URL+"/repositories",
+		`{"name":"maven-central","format":"maven","type":"proxy","upstream_url":"https://repo1.maven.org/maven2"}`)
+	var repo repositoryDTO
+	decode(t, resp, &repo)
+	resp = adminDo(t, http.MethodPost, srv.URL+"/roles",
+		`{"name":"maven-readers","permissions":[{"repo_pattern":"maven-*","actions":["read"]}]}`)
+	mustStatus(t, resp, http.StatusCreated)
+	resp.Body.Close()
+
+	// The matching role appears for this repo.
+	resp = adminDo(t, http.MethodGet, srv.URL+"/repositories/"+itoa(repo.ID)+"/permissions", "")
+	mustStatus(t, resp, http.StatusOK)
+	var perms []repoPermissionDTO
+	decode(t, resp, &perms)
+	found := false
+	for _, p := range perms {
+		if p.Role == "maven-readers" && p.Pattern == "maven-*" && len(p.Actions) == 1 && p.Actions[0] == "read" {
+			found = true
+		}
+	}
+	if !found {
+		t.Fatalf("maven-readers not matched for maven-central: %+v", perms)
+	}
+
+	// A non-matching repo does not list it.
+	resp = adminDo(t, http.MethodPost, srv.URL+"/repositories",
+		`{"name":"npm-proxy","format":"npm","type":"proxy","upstream_url":"https://registry.npmjs.org"}`)
+	var npm repositoryDTO
+	decode(t, resp, &npm)
+	resp = adminDo(t, http.MethodGet, srv.URL+"/repositories/"+itoa(npm.ID)+"/permissions", "")
+	decode(t, resp, &perms)
+	for _, p := range perms {
+		if p.Role == "maven-readers" {
+			t.Fatalf("maven-* must not match npm-proxy: %+v", perms)
+		}
+	}
+}
+
+func TestRepositoryTokens(t *testing.T) {
+	srv := newTestServer(t)
+	resp := adminDo(t, http.MethodPost, srv.URL+"/repositories",
+		`{"name":"maven-central","format":"maven","type":"proxy","upstream_url":"https://repo1.maven.org/maven2"}`)
+	var repo repositoryDTO
+	decode(t, resp, &repo)
+
+	// Admin (self) creates a scoped token matching the repo.
+	resp = adminDo(t, http.MethodPost, srv.URL+"/tokens",
+		`{"name":"ci","description":"ci","scopes":[{"repo_pattern":"maven-*","actions":["read"]}],"expires_in":"720h"}`)
+	mustStatus(t, resp, http.StatusCreated)
+	resp.Body.Close()
+
+	resp = adminDo(t, http.MethodGet, srv.URL+"/repositories/"+itoa(repo.ID)+"/tokens", "")
+	mustStatus(t, resp, http.StatusOK)
+	var toks []repoTokenDTO
+	decode(t, resp, &toks)
+	found := false
+	for _, tk := range toks {
+		if tk.Name == "ci" && tk.Pattern == "maven-*" && !tk.Unscoped && len(tk.Actions) == 1 && tk.Actions[0] == "read" {
+			found = true
+		}
+	}
+	if !found {
+		t.Fatalf("scoped token not listed for maven-central: %+v", toks)
+	}
+
+	// Non-matching repo excludes the scoped token.
+	resp = adminDo(t, http.MethodPost, srv.URL+"/repositories",
+		`{"name":"npm-proxy","format":"npm","type":"proxy","upstream_url":"https://registry.npmjs.org"}`)
+	var npm repositoryDTO
+	decode(t, resp, &npm)
+	resp = adminDo(t, http.MethodGet, srv.URL+"/repositories/"+itoa(npm.ID)+"/tokens", "")
+	decode(t, resp, &toks)
+	for _, tk := range toks {
+		if tk.Name == "ci" && !tk.Unscoped {
+			t.Fatalf("maven-* scoped token must not match npm-proxy: %+v", toks)
+		}
 	}
 }

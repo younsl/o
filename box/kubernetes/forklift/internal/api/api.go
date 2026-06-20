@@ -76,8 +76,15 @@ func (h *Handler) Routes() chi.Router {
 		r.Get("/tokens", h.listTokens)
 		r.Post("/tokens", h.createToken)
 		r.Delete("/tokens/{id}", h.deleteToken)
-		// Names only, for token-scope autocomplete (the full list is admin-only).
+		// Names only, for token-scope autocomplete.
 		r.Get("/repository-names", h.listRepositoryNames)
+		// Repository listing and read-only detail (config + artifact browse) are
+		// available to any authenticated user; the handlers filter to repositories
+		// the principal can read. Mutations, audit logs and remote-health stay
+		// admin-only (below). Mirrors Nexus browse/read vs admin privileges.
+		r.Get("/repositories", h.listRepositories)
+		r.Get("/repositories/{id}", h.getRepository)
+		r.Get("/repositories/{id}/artifacts", h.listArtifacts)
 	})
 
 	// Package approvals: administrators plus principals holding the approve
@@ -107,17 +114,19 @@ func (h *Handler) Routes() chi.Router {
 		if h.authz != nil {
 			r.Use(h.authz.RequireAdmin)
 		}
-		r.Route("/repositories", func(r chi.Router) {
-			r.Get("/", h.listRepositories)
-			r.Post("/", h.createRepository)
-			r.Get("/{id}", h.getRepository)
-			r.Put("/{id}", h.updateRepository)
-			r.Delete("/{id}", h.deleteRepository)
-			r.Get("/{id}/artifacts", h.listArtifacts)
-			r.Delete("/{id}/artifacts", h.deleteArtifact)
-			r.Get("/{id}/upstream-health", h.upstreamHealth)
-			r.Get("/{id}/audit-logs", h.listAuditLogs)
-		})
+		// Registered individually (not via Route) because GET /repositories lives
+		// in the authenticated group above; chi forbids mounting a subrouter on a
+		// path that already has a route. Mutations and detail stay admin-only.
+		r.Post("/repositories", h.createRepository)
+		r.Post("/repositories/check-upstream", h.checkUpstream)
+		r.Put("/repositories/{id}", h.updateRepository)
+		r.Post("/repositories/{id}/disabled", h.setRepositoryDisabled)
+		r.Delete("/repositories/{id}", h.deleteRepository)
+		r.Delete("/repositories/{id}/artifacts", h.deleteArtifact)
+		r.Get("/repositories/{id}/upstream-health", h.upstreamHealth)
+		r.Get("/repositories/{id}/audit-logs", h.listAuditLogs)
+		r.Get("/repositories/{id}/permissions", h.repositoryPermissions)
+		r.Get("/repositories/{id}/tokens", h.repositoryTokens)
 		r.Route("/users", func(r chi.Router) {
 			r.Get("/", h.listUsers)
 			r.Post("/", h.createUser)
@@ -146,9 +155,12 @@ func (h *Handler) Routes() chi.Router {
 // version reports the build-time version metadata so the web UI can show it in
 // the sidebar. Public: it leaks nothing sensitive and aids support triage.
 func (h *Handler) version(w http.ResponseWriter, _ *http.Request) {
-	writeJSON(w, http.StatusOK, map[string]string{
-		"version": version.Version,
-		"commit":  version.Commit,
+	// oidc_enabled drives the login page: the "Sign in with Keycloak" button is
+	// hidden when OIDC is not configured (its /auth/login route is unregistered).
+	writeJSON(w, http.StatusOK, map[string]any{
+		"version":      version.Version,
+		"commit":       version.Commit,
+		"oidc_enabled": h.authz != nil && h.authz.OIDCEnabled(),
 	})
 }
 

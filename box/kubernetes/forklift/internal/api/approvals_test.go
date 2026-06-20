@@ -252,8 +252,9 @@ func TestApproveActionForSecurityEngineers(t *testing.T) {
 	mustStatus(t, resp, http.StatusForbidden)
 	resp.Body.Close()
 
-	// No other admin surface leaks through.
-	resp = userDo(t, "sec1", "pw123456", http.MethodGet, srv.URL+"/repositories", "")
+	// No other admin surface leaks through (repository listing is now readable by
+	// any authenticated user, so probe a still-admin-only endpoint instead).
+	resp = userDo(t, "sec1", "pw123456", http.MethodGet, srv.URL+"/users", "")
 	mustStatus(t, resp, http.StatusForbidden)
 	resp.Body.Close()
 

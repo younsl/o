@@ -50,10 +50,25 @@ type Config struct {
 	// Audit configures the per-repository audit log.
 	Audit AuditConfig
 
+	// Vuln configures background vulnerability scanning (OSV). Scanning is
+	// disabled when OSVURL is empty; per-repository policy gates enforcement.
+	Vuln VulnConfig
+
 	// SeedDefaultRepos, on first run, creates default repositories: a proxy of
 	// each public registry (Maven Central, npm, crates.io, Go proxy) plus a local
 	// hosted repository per format, like a fresh Nexus install. Idempotent.
 	SeedDefaultRepos bool
+}
+
+// VulnConfig configures OSV-based vulnerability scanning.
+type VulnConfig struct {
+	// OSVURL is the OSV API base (e.g. https://api.osv.dev). Empty disables
+	// scanning entirely.
+	OSVURL string
+	// RescanInterval is how often stale scan results are re-queried.
+	RescanInterval time.Duration
+	// TTL marks a scan result stale (eligible for re-scan) once older than this.
+	TTL time.Duration
 }
 
 // AuthConfig configures local users, sessions, OIDC and anonymous access.
@@ -195,6 +210,11 @@ func Load() (*Config, error) {
 		Audit: AuditConfig{
 			Enabled:   envBool("FORKLIFT_AUDIT_ENABLED", true),
 			Retention: envDuration("FORKLIFT_AUDIT_RETENTION", 90*24*time.Hour),
+		},
+		Vuln: VulnConfig{
+			OSVURL:         env("FORKLIFT_OSV_URL", "https://api.osv.dev"),
+			RescanInterval: envDuration("FORKLIFT_VULN_RESCAN_INTERVAL", 6*time.Hour),
+			TTL:            envDuration("FORKLIFT_VULN_TTL", 24*time.Hour),
 		},
 		SeedDefaultRepos: envBool("FORKLIFT_SEED_DEFAULT_REPOS", true),
 	}

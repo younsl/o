@@ -125,6 +125,11 @@ func actionListContains(list []string, action string) bool {
 	return false
 }
 
+// MatchRepoPattern reports whether a permission's repo pattern matches a
+// repository name, using the same glob semantics as authorization. Exported so
+// the API can list which roles apply to a given repository.
+func MatchRepoPattern(pattern, name string) bool { return matchGlob(pattern, name) }
+
 // matchGlob matches a repository name against a pattern that may contain '*'
 // wildcards. Repository names contain no slashes, so '*' matches any run of
 // characters. An empty repo only matches a "*" pattern (global checks).

@@ -1,4 +1,4 @@
-import { FormEvent, useState } from "react";
+import { FormEvent, useEffect, useState } from "react";
 import { api } from "../api";
 import { Logo } from "../components/Logo";
 
@@ -7,6 +7,12 @@ export function Login({ onLogin }: { onLogin: () => void }) {
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
+  // Only offer Keycloak when OIDC is configured; otherwise /auth/login 404s.
+  const [oidcEnabled, setOidcEnabled] = useState(false);
+
+  useEffect(() => {
+    api.version().then((v) => setOidcEnabled(v.oidc_enabled)).catch(() => setOidcEnabled(false));
+  }, []);
 
   const submit = async (e: FormEvent) => {
     e.preventDefault();
@@ -36,11 +42,13 @@ export function Login({ onLogin }: { onLogin: () => void }) {
             {busy ? "Signing in…" : "Sign in"}
           </button>
         </div>
-        <div style={{ marginTop: 12 }}>
-          <a className="btn secondary" href="/auth/login" style={{ display: "block", width: "100%", textAlign: "center", boxSizing: "border-box", padding: "10px 14px" }}>
-            Sign in with Keycloak
-          </a>
-        </div>
+        {oidcEnabled && (
+          <div style={{ marginTop: 12 }}>
+            <a className="btn secondary" href="/auth/login" style={{ display: "block", width: "100%", textAlign: "center", boxSizing: "border-box", padding: "10px 14px" }}>
+              Sign in with Keycloak
+            </a>
+          </div>
+        )}
       </form>
     </div>
   );

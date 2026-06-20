@@ -26,6 +26,9 @@ func (m *Manager) handleGo(w http.ResponseWriter, r *http.Request) {
 	if m.approvalGate(w, r, res, goPackage(res.path), goVersion(res.path)) {
 		return
 	}
+	if m.vulnGate(w, r, res, goPackage(res.path), goVersion(res.path)) {
+		return
+	}
 
 	switch r.Method {
 	case http.MethodGet, http.MethodHead:

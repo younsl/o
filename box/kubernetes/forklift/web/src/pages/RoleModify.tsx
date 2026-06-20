@@ -1,25 +1,27 @@
 import { useEffect, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
-import { api, Role } from "../api";
+import { api, Role, User } from "../api";
 import { ConfirmModal } from "../components/ConfirmModal";
 import { Combobox } from "../components/Combobox";
 
 const ACTIONS = ["read", "write", "delete", "approve", "admin"];
 
-// Per-role modify page: permission mapping and the danger zone (delete). The
-// Roles list is read-only; all edits happen here.
+// Per-role modify page: permission mapping, assigned users, and the danger zone
+// (delete). The Roles list is read-only; all edits happen here.
 export function RoleModify() {
   const { id } = useParams();
   const navigate = useNavigate();
   const roleId = Number(id);
   const [role, setRole] = useState<Role | null>(null);
+  const [members, setMembers] = useState<User[]>([]);
   const [error, setError] = useState("");
 
   const load = () =>
-    api.listRoles()
-      .then((roles) => {
+    Promise.all([api.listRoles(), api.listUsers()])
+      .then(([roles, users]) => {
         const r = roles.find((x) => x.id === roleId) ?? null;
         setRole(r);
+        setMembers(users.filter((u) => u.roles.some((ur) => ur.id === roleId)));
         if (!r) setError("Role not found.");
       })
       .catch((e) => setError(e.message));
@@ -43,8 +45,57 @@ export function RoleModify() {
       {error && <div className="error">{error}</div>}
 
       <PermissionsPanel role={role} run={run} />
+      <AssignedUsersPanel members={members} />
       <DangerPanel role={role} onDeleted={() => navigate("/roles")} onError={setError} />
     </>
+  );
+}
+
+// AssignedUsersPanel lists the users that currently hold this role. Assignment
+// itself is managed on each user's Modify page, so this is read-only with links.
+function AssignedUsersPanel({ members }: { members: User[] }) {
+  return (
+    <div className="panel">
+      <h2 style={{ marginTop: 0 }}>
+        Assigned users <span className="badge" style={{ marginLeft: 6 }}>{members.length}</span>
+      </h2>
+      {members.length === 0
+        ? <p className="muted">No users have this role. Assign it from a user's Modify page.</p>
+        : (
+          // Same column structure and order as the Users page.
+          <table>
+            <thead>
+              <tr><th>Username</th><th>Source</th><th>Email</th><th>Roles</th><th>Status</th><th>Last login</th><th></th></tr>
+            </thead>
+            <tbody>
+              {members.map((u) => (
+                <tr key={u.id}>
+                  <td style={{ whiteSpace: "nowrap" }}>{u.username}</td>
+                  <td><span className="badge">{u.source}</span></td>
+                  <td className="muted">{u.email || "-"}</td>
+                  <td>
+                    <div className="inline" style={{ flexWrap: "wrap", gap: 6 }}>
+                      {u.roles.map((r) => <Link key={r.id} className="badge" to={`/roles/${r.id}`}>{r.name}</Link>)}
+                      {u.roles.length === 0 && <span className="muted">none</span>}
+                    </div>
+                  </td>
+                  <td>
+                    {u.disabled
+                      ? <span className="status"><span className="dot bad" /> disabled</span>
+                      : <span className="status"><span className="dot ok" /> active</span>}
+                  </td>
+                  <td className="muted" style={{ whiteSpace: "nowrap" }} title={u.last_login_at ?? undefined}>
+                    {u.last_login_at ? new Date(u.last_login_at).toLocaleString() : "never"}
+                  </td>
+                  <td style={{ textAlign: "right", whiteSpace: "nowrap" }}>
+                    <Link className="btn secondary" to={`/users/${u.id}`}>Modify</Link>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        )}
+    </div>
   );
 }
 
@@ -52,10 +103,14 @@ function PermissionsPanel({ role, run }: { role: Role; run: (p: Promise<unknown>
   const [pattern, setPattern] = useState("");
   const [actions, setActions] = useState<string[]>(["read"]);
   const [repoOptions, setRepoOptions] = useState<string[]>(["*"]);
+  const [repoTypes, setRepoTypes] = useState<Record<string, string>>({});
 
   useEffect(() => {
     api.listRepositoryNames()
-      .then((repos) => setRepoOptions(["*", ...repos.map((r) => r.name)]))
+      .then((repos) => {
+        setRepoOptions(["*", ...repos.map((r) => r.name)]);
+        setRepoTypes(Object.fromEntries(repos.map((r) => [r.name, `${r.format} · ${r.type}`])));
+      })
       .catch(() => setRepoOptions(["*"]));
   }, []);
 
@@ -83,7 +138,7 @@ function PermissionsPanel({ role, run }: { role: Role; run: (p: Promise<unknown>
       </div>
       <div className="inline" style={{ marginTop: 12, flexWrap: "wrap", gap: 8 }}>
         <Combobox style={{ width: 200 }} value={pattern} onChange={setPattern}
-          options={repoOptions} placeholder="repo pattern (* or maven-*)" />
+          options={repoOptions} hints={repoTypes} placeholder="repo pattern (* or maven-*)" />
         {ACTIONS.map((a) => (
           <label key={a} className="checkbox" style={{ margin: 0, fontSize: 12 }}>
             <input type="checkbox" checked={actions.includes(a)} onChange={() => toggle(a)} />

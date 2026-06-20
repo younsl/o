@@ -1,19 +1,14 @@
 import { useEffect, useState } from "react";
 import { Link, Navigate, useNavigate, useParams } from "react-router-dom";
-import { api, Artifact, ArtifactList, AuditLogList, humanSize, repoEndpoint, Repository } from "../api";
+import { api, Artifact, ArtifactList, AuditLogList, humanSize, Me, RepoPermission, RepoToken, repoEndpoint, Repository } from "../api";
 import { UpstreamStatus } from "../components/UpstreamStatus";
 import { ConfirmModal } from "../components/ConfirmModal";
 import { Select } from "../components/Select";
+import { Toggle } from "../components/Toggle";
 import { MemberList } from "./RepositoryNew";
 import { ApprovalList, VersionDenies } from "./Approvals";
 
-const TABS = [
-  { key: "artifacts", label: "Artifacts" },
-  { key: "audit", label: "Audit" },
-  { key: "settings", label: "Settings" },
-];
-
-export function RepositoryDetail() {
+export function RepositoryDetail({ me }: { me: Me }) {
   const { id, tab = "artifacts" } = useParams();
   const [repo, setRepo] = useState<Repository | null>(null);
   const [error, setError] = useState("");
@@ -24,13 +19,16 @@ export function RepositoryDetail() {
 
   if (!repo) return <div>{error || "Loading…"}</div>;
 
-  // The Approvals tab exists for every proxy repo: version denies apply even
-  // when the approval workflow is off, while the approval queue itself only
-  // renders with the policy enabled.
+  // Tabs follow Nexus-style privileges: every authenticated reader can browse
+  // Artifacts; Approvals needs the approve action; Audit and Settings are
+  // admin-only. Direct-URL access to a hidden tab redirects to Artifacts.
   const gated = repo.type === "proxy" && Boolean(repo.config.approval?.enabled);
-  const tabs = repo.type === "proxy"
-    ? [...TABS.slice(0, 2), { key: "approvals", label: "Approvals" }, ...TABS.slice(2)]
-    : TABS;
+  const canApprove = me.admin || me.approver;
+  const tabs = [
+    { key: "artifacts", label: "Artifacts" },
+    ...(repo.type === "proxy" && canApprove ? [{ key: "approvals", label: "Approvals" }] : []),
+    ...(me.admin ? [{ key: "permissions", label: "Permissions" }, { key: "audit", label: "Audit" }, { key: "settings", label: "Settings" }] : []),
+  ];
 
   if (!tabs.some((t) => t.key === tab)) {
     return <Navigate to={`/repositories/${id}/artifacts`} replace />;
@@ -59,7 +57,8 @@ export function RepositoryDetail() {
         ))}
       </nav>
 
-      {tab === "artifacts" && <Artifacts repoId={repo.id} />}
+      {tab === "artifacts" && <Artifacts repoId={repo.id} canDelete={!!me.admin} />}
+      {tab === "permissions" && <RepoPermissions repoId={repo.id} />}
       {tab === "audit" && <AuditLogs repoId={repo.id} />}
       {tab === "approvals" && repo.type === "proxy" && (
         <>
@@ -113,6 +112,7 @@ function Settings({ repo, setRepo }: { repo: Repository; setRepo: (r: Repository
   const age = repo.config.age_policy;
   // Older repos may predate the approval config section.
   const approval = repo.config.approval ?? { enabled: false, mode: "enforce", auto_approve: [] };
+  const vuln = repo.config.vuln ?? { enabled: false, action: "audit", threshold: "high", ignore: [] };
 
   return (
     <>
@@ -125,6 +125,23 @@ function Settings({ repo, setRepo }: { repo: Repository; setRepo: (r: Repository
         onConfirm={del}
         onCancel={() => setConfirmDelete(false)}
       />
+
+      <div className="panel">
+        <h2 style={{ marginTop: 0 }}>State</h2>
+        <p className="muted">
+          {repo.disabled
+            ? "This repository is offline: uploads and downloads are refused (503). Its config and artifacts are kept."
+            : "This repository is online and serving the package protocols."}
+        </p>
+        <Toggle
+          checked={!repo.disabled}
+          label={repo.disabled ? "Offline" : "Online"}
+          onChange={(online) => {
+            setError("");
+            api.setRepositoryDisabled(repo.id, !online).then(setRepo).catch((e) => setError((e as Error).message));
+          }}
+        />
+      </div>
 
       {(repo.type === "proxy" || repo.type === "group") && (
         <h2 className="section-title">Repository</h2>
@@ -224,9 +241,56 @@ function Settings({ repo, setRepo }: { repo: Repository; setRepo: (r: Repository
         </div>
       )}
 
+      {repo.type === "proxy" && (
+        <div className="panel">
+          <h2>Vulnerability policy <span className="muted" style={{ fontWeight: 400, fontSize: 12 }}>· OSV scan</span></h2>
+          <div className="checkbox">
+            <input type="checkbox" checked={vuln.enabled}
+              onChange={(e) => setRepo({ ...repo, config: { ...repo.config, vuln: { ...vuln, enabled: e.target.checked } } })} />
+            <span>Gate packages by known vulnerabilities</span>
+          </div>
+          <div className="row">
+            <div><label>Threshold</label>
+              <Select value={vuln.threshold || "high"}
+                onChange={(v) => setRepo({ ...repo, config: { ...repo.config, vuln: { ...vuln, threshold: v } } })}
+                options={[
+                  { value: "critical", label: "critical" },
+                  { value: "high", label: "high" },
+                  { value: "medium", label: "medium" },
+                  { value: "low", label: "low" },
+                ]} /></div>
+            <div><label>Action</label>
+              <Select value={vuln.action || "audit"}
+                onChange={(v) => setRepo({ ...repo, config: { ...repo.config, vuln: { ...vuln, action: v } } })}
+                options={[
+                  { value: "block", label: "block (refuse to serve)" },
+                  { value: "warn", label: "warn (serve, log)" },
+                  { value: "audit", label: "audit (serve, log)" },
+                ]} /></div>
+          </div>
+          <label>Ignore advisories (CVE/GHSA/OSV, one per line)</label>
+          <textarea rows={3} style={{ width: "100%" }}
+            value={(vuln.ignore ?? []).join("\n")}
+            placeholder={"CVE-2026-1234"}
+            onChange={(e) => setRepo({
+              ...repo,
+              config: {
+                ...repo.config,
+                vuln: { ...vuln, ignore: e.target.value.split("\n").map((s) => s.trim()).filter(Boolean) },
+              },
+            })} />
+          <div className="checkbox" style={{ marginTop: 8 }}>
+            <input type="checkbox" checked={!!vuln.block_unscanned}
+              onChange={(e) => setRepo({ ...repo, config: { ...repo.config, vuln: { ...vuln, block_unscanned: e.target.checked } } })} />
+            <span>Block versions not yet scanned (block action only)</span>
+          </div>
+          <p className="muted">Coordinate match against OSV (direct dependency only); transitive deps and artifact integrity are out of scope. Newly disclosed advisories surface on the next re-scan.</p>
+        </div>
+      )}
+
       {repo.type !== "group" && (
         <div className="panel">
-          <h2>Retention <span className="muted" style={{ fontWeight: 400, fontSize: 12 }}>· idle auto-delete</span></h2>
+          <h2>Artifact Retention <span className="muted" style={{ fontWeight: 400, fontSize: 12 }}>· idle auto-delete</span></h2>
           <div className="row">
             <div><label>Idle TTL (e.g. 7d, 2w, 0 = keep forever)</label>
               <input value={repo.config.retention?.idle_ttl ?? ""}
@@ -297,7 +361,106 @@ function GroupMembers({ repo, setRepo }: { repo: Repository; setRepo: (r: Reposi
   );
 }
 
-function Artifacts({ repoId }: { repoId: number }) {
+// SeverityBadge renders a coloured vulnerability badge for an artifact version,
+// or a muted dash when clean / not yet scanned. The advisory ids are tooltipped.
+function SeverityBadge({ severity, ids }: { severity?: string; ids?: string[] }) {
+  if (!severity || severity === "none") return <span className="muted">—</span>;
+  const bg: Record<string, string> = {
+    critical: "var(--danger)", high: "var(--danger)", medium: "#f5a623", low: "#9aa1ac",
+  };
+  const count = ids?.length ?? 0;
+  return (
+    <span className="badge" style={{ background: bg[severity] || "#9aa1ac", color: "#fff" }}
+      title={count ? ids!.join(", ") : severity}>
+      {severity}{count > 1 ? ` ×${count}` : ""}
+    </span>
+  );
+}
+
+// RepoPermissions lists, at a glance, which roles grant access to this
+// repository (every role permission whose pattern matches the repo name),
+// read-only. Admin-only tab. Assignment itself is managed on the Roles pages.
+function RepoPermissions({ repoId }: { repoId: number }) {
+  const [perms, setPerms] = useState<RepoPermission[] | null>(null);
+  const [tokens, setTokens] = useState<RepoToken[] | null>(null);
+  const [error, setError] = useState("");
+  useEffect(() => {
+    api.repositoryPermissions(repoId).then(setPerms).catch((e) => setError((e as Error).message));
+    api.repositoryTokens(repoId).then(setTokens).catch((e) => setError((e as Error).message));
+  }, [repoId]);
+
+  return (
+    <>
+      <div className="panel">
+        <h2 style={{ marginTop: 0 }}>
+          Roles <span className="muted" style={{ fontWeight: 400, fontSize: 12 }}>· granting access to this repository</span>
+        </h2>
+        {error && <div className="error">{error}</div>}
+        {!perms ? <div className="muted">Loading…</div> : perms.length === 0 ? (
+          <p className="muted">No role grants access to this repository. Add a permission on a role (Roles page) whose pattern matches this repository.</p>
+        ) : (
+          <table>
+            <thead>
+              <tr><th>Role</th><th>Matched pattern</th><th>Actions</th><th>Users</th></tr>
+            </thead>
+            <tbody>
+              {perms.map((p, i) => (
+                <tr key={`${p.role_id}-${i}`}>
+                  <td><Link to={`/roles/${p.role_id}`}>{p.role}</Link></td>
+                  <td style={{ fontFamily: "ui-monospace, monospace", fontSize: 13 }}>{p.repo_pattern}</td>
+                  <td>
+                    <div className="inline" style={{ flexWrap: "wrap", gap: 6 }}>
+                      {p.actions.map((a) => <span key={a} className="badge">{a}</span>)}
+                    </div>
+                  </td>
+                  <td>{p.user_count}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        )}
+      </div>
+
+      <div className="panel">
+        <h2 style={{ marginTop: 0 }}>
+          Access tokens <span className="muted" style={{ fontWeight: 400, fontSize: 12 }}>· reaching this repository</span>
+        </h2>
+        {!tokens ? <div className="muted">Loading…</div> : tokens.length === 0 ? (
+          <p className="muted">No access token reaches this repository.</p>
+        ) : (
+          <table>
+            <thead>
+              <tr><th>Token</th><th>Owner</th><th>Scope</th><th>Actions</th><th>Expires</th></tr>
+            </thead>
+            <tbody>
+              {tokens.map((t) => (
+                <tr key={t.token_id}>
+                  <td>{t.name}</td>
+                  <td>{t.owner || <span className="muted">unknown</span>}</td>
+                  <td style={{ fontFamily: "ui-monospace, monospace", fontSize: 13 }}>
+                    {t.unscoped
+                      ? <span className="muted" title="Unscoped token: inherits the owner's role access to every repository.">unscoped (inherits roles)</span>
+                      : t.repo_pattern}
+                  </td>
+                  <td>
+                    <div className="inline" style={{ flexWrap: "wrap", gap: 6 }}>
+                      {t.unscoped
+                        ? <span className="muted">per owner roles</span>
+                        : t.actions.map((a) => <span key={a} className="badge">{a}</span>)}
+                    </div>
+                  </td>
+                  <td className="muted">{t.expires_at ? new Date(t.expires_at).toLocaleDateString() : "never"}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        )}
+      </div>
+    </>
+  );
+}
+
+function Artifacts({ repoId, canDelete }: { repoId: number; canDelete: boolean }) {
   const [data, setData] = useState<ArtifactList | null>(null);
   const [prefix, setPrefix] = useState("");
   const [error, setError] = useState("");
@@ -333,23 +496,26 @@ function Artifacts({ repoId }: { repoId: number }) {
       {error && <div className="error">{error}</div>}
       <table style={{ marginTop: 12 }}>
         <thead>
-          <tr><th>Path</th><th>Version</th><th>Size</th><th>Type</th><th>Last accessed</th><th></th></tr>
+          <tr><th>Path</th><th>Version</th><th>Vuln</th><th>Size</th><th>Type</th><th>Last accessed</th>{canDelete && <th></th>}</tr>
         </thead>
         <tbody>
           {data?.artifacts.map((a) => (
             <tr key={a.path}>
               <td style={{ fontFamily: "ui-monospace, monospace", fontSize: 12 }}>{a.path}</td>
               <td>{a.version || "—"}</td>
+              <td><SeverityBadge severity={a.max_severity} ids={a.vuln_ids} /></td>
               <td className="muted">{humanSize(a.size)}</td>
               <td className="muted">{a.content_type}</td>
               <td className="muted">{a.last_accessed_at?.slice(0, 19).replace("T", " ")}</td>
-              <td style={{ textAlign: "right" }}>
-                <button className="btn secondary" onClick={() => setDeleting(a)}>Delete</button>
-              </td>
+              {canDelete && (
+                <td style={{ textAlign: "right" }}>
+                  <button className="btn secondary" onClick={() => setDeleting(a)}>Delete</button>
+                </td>
+              )}
             </tr>
           ))}
           {data && data.artifacts.length === 0 && (
-            <tr><td colSpan={6} className="muted">No cached artifacts yet. Pull through the endpoint above to populate the cache.</td></tr>
+            <tr><td colSpan={canDelete ? 7 : 6} className="muted">No cached artifacts yet. Pull through the endpoint above to populate the cache.</td></tr>
           )}
         </tbody>
       </table>

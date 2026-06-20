@@ -22,16 +22,21 @@ type Options struct {
 	// DefaultRole, when set, grants its permissions to every authenticated
 	// principal regardless of explicit role assignments (ArgoCD policy.default).
 	DefaultRole string
+	// BootstrapAdminUser names the seeded admin account, which is exempt from
+	// failed-password lockout so an operator can never lock themselves out of
+	// the only guaranteed admin.
+	BootstrapAdminUser string
 }
 
 // Service authenticates requests and resolves effective permissions.
 type Service struct {
-	store         *meta.Store
-	log           *slog.Logger
-	codec         *SessionCodec
-	oidc          *OIDCProvider
-	anonymousRead bool
-	defaultRole   string
+	store          *meta.Store
+	log            *slog.Logger
+	codec          *SessionCodec
+	oidc           *OIDCProvider
+	anonymousRead  bool
+	defaultRole    string
+	bootstrapAdmin string
 }
 
 // NewService builds a Service. If SessionSecret is empty, an ephemeral random
@@ -48,13 +53,20 @@ func NewService(store *meta.Store, log *slog.Logger, opts Options) *Service {
 		ttl = 12 * time.Hour
 	}
 	return &Service{
-		store:         store,
-		log:           log,
-		codec:         NewSessionCodec(secret, ttl),
-		oidc:          opts.OIDC,
-		anonymousRead: opts.AnonymousRead,
-		defaultRole:   opts.DefaultRole,
+		store:          store,
+		log:            log,
+		codec:          NewSessionCodec(secret, ttl),
+		oidc:           opts.OIDC,
+		anonymousRead:  opts.AnonymousRead,
+		defaultRole:    opts.DefaultRole,
+		bootstrapAdmin: opts.BootstrapAdminUser,
 	}
+}
+
+// IsProtectedAdmin reports whether username is the seeded bootstrap admin, which
+// is exempt from failed-password lockout.
+func (s *Service) IsProtectedAdmin(username string) bool {
+	return s.bootstrapAdmin != "" && username == s.bootstrapAdmin
 }
 
 // AnonymousRead reports whether unauthenticated reads are allowed.
@@ -63,14 +75,36 @@ func (s *Service) AnonymousRead() bool { return s.anonymousRead }
 // OIDCEnabled reports whether OIDC login is available.
 func (s *Service) OIDCEnabled() bool { return s.oidc != nil }
 
-// AuthenticateLocal verifies a username/password against a local user.
+// AuthenticateLocal verifies a username/password against a local user. When the
+// account opted into lockout, consecutive password failures are counted and the
+// account is refused once locked (even with the right password) until an admin
+// unlocks it; a success clears the count. The bootstrap admin is never locked.
 func (s *Service) AuthenticateLocal(ctx context.Context, username, password string) (meta.User, error) {
 	u, err := s.store.GetUserByUsername(ctx, username)
 	if err != nil {
 		return meta.User{}, ErrInvalidCredential
 	}
-	if u.Disabled || u.Source != meta.SourceLocal || u.PasswordHash == "" || !VerifyPassword(u.PasswordHash, password) {
+	if u.Disabled || u.Source != meta.SourceLocal || u.PasswordHash == "" {
 		return meta.User{}, ErrInvalidCredential
+	}
+	protected := s.IsProtectedAdmin(u.Username)
+	if u.Locked() && !protected {
+		return meta.User{}, ErrAccountLocked
+	}
+	if !VerifyPassword(u.PasswordHash, password) {
+		if !protected {
+			if err := s.store.RegisterFailedLogin(ctx, u.ID, MaxFailedLogins); err != nil {
+				s.log.Warn("record failed login", "user", u.Username, "err", err)
+			}
+		}
+		return meta.User{}, ErrInvalidCredential
+	}
+	// Success: clear any accumulated failures (write only when there is state to
+	// clear, so steady-state Basic-auth requests stay read-only).
+	if u.FailedLoginCount > 0 || u.Locked() {
+		if err := s.store.ResetFailedLogin(ctx, u.ID); err != nil {
+			s.log.Warn("reset failed login", "user", u.Username, "err", err)
+		}
 	}
 	return u, nil
 }

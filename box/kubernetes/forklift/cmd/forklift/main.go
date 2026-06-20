@@ -30,6 +30,7 @@ import (
 	"github.com/younsl/o/box/kubernetes/forklift/internal/server"
 	"github.com/younsl/o/box/kubernetes/forklift/internal/storage"
 	"github.com/younsl/o/box/kubernetes/forklift/internal/version"
+	"github.com/younsl/o/box/kubernetes/forklift/internal/vuln"
 	"github.com/younsl/o/box/kubernetes/forklift/internal/webui"
 )
 
@@ -105,11 +106,12 @@ func run() error {
 		}
 	}
 	authSvc := auth.NewService(store, log, auth.Options{
-		SessionSecret: []byte(cfg.Auth.SessionSecret),
-		SessionTTL:    cfg.Auth.SessionTTL,
-		AnonymousRead: cfg.Auth.AnonymousRead,
-		OIDC:          oidcProvider,
-		DefaultRole:   cfg.Auth.RBAC.DefaultRole,
+		SessionSecret:      []byte(cfg.Auth.SessionSecret),
+		SessionTTL:         cfg.Auth.SessionTTL,
+		AnonymousRead:      cfg.Auth.AnonymousRead,
+		OIDC:               oidcProvider,
+		DefaultRole:        cfg.Auth.RBAC.DefaultRole,
+		BootstrapAdminUser: cfg.Auth.BootstrapAdminUser,
 	})
 	if err := authSvc.BootstrapAdmin(ctx, cfg.Auth.BootstrapAdminUser, cfg.Auth.BootstrapAdminPassword); err != nil {
 		return fmt.Errorf("bootstrap admin: %w", err)
@@ -137,6 +139,10 @@ func run() error {
 	engine := repo.NewEngine(store, blobs, log, reg)
 	manager := repo.NewManager(engine, store, authSvc, recorder, reg)
 	manager.SetExternalURL(cfg.ExternalURL)
+	if cfg.Vuln.OSVURL != "" {
+		manager.SetVulnScanner(vuln.NewOSV(cfg.Vuln.OSVURL, nil))
+		log.Info("vulnerability scanning enabled", "osv_url", cfg.Vuln.OSVURL)
+	}
 
 	// Pending approvals, computed on scrape (one indexed COUNT). Needs no leader
 	// gating and stays accurate on standbys after a snapshot swap.
@@ -256,6 +262,9 @@ func run() error {
 		}
 		go engine.RunSweeper(leadCtx, 5*time.Minute)
 		go manager.RunIdleReaper(leadCtx, time.Hour)
+		// Vulnerability scan worker + periodic re-scanner (no-ops without a scanner).
+		go manager.RunVulnWorker(leadCtx)
+		go manager.RunVulnRescanner(leadCtx, cfg.Vuln.RescanInterval, cfg.Vuln.TTL)
 		if recorder != nil && cfg.Audit.Retention > 0 {
 			go recorder.RunRetention(leadCtx, time.Hour, cfg.Audit.Retention)
 		}

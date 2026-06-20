@@ -4,6 +4,23 @@ import { Approval, Repository, VersionDeny, api } from "../api";
 import { ConfirmModal } from "../components/ConfirmModal";
 import { Select } from "../components/Select";
 
+// ApprovalVulnBadge shows the OSV scan result for the requested version so a
+// reviewer sees known advisories before approving. Muted dash when clean or not
+// yet scanned.
+function ApprovalVulnBadge({ severity, ids }: { severity?: string; ids?: string[] }) {
+  if (!severity || severity === "none") return <span className="muted">—</span>;
+  const bg: Record<string, string> = {
+    critical: "var(--danger)", high: "var(--danger)", medium: "#f5a623", low: "#9aa1ac",
+  };
+  const count = ids?.length ?? 0;
+  return (
+    <span className="badge" style={{ background: bg[severity] || "#9aa1ac", color: "#fff" }}
+      title={count ? ids!.join(", ") : severity}>
+      {severity}{count > 1 ? ` ×${count}` : ""}
+    </span>
+  );
+}
+
 // repoLink renders a repository name as a link to its detail Approvals tab when
 // the id is known, falling back to plain text (non-admin approvers can't list
 // repositories, and the detail page is admin-only anyway).
@@ -100,6 +117,7 @@ export function ApprovalList({ repo = "", showRepo = true, reloadKey = 0, onRows
   const [status, setStatus] = useState("pending");
   const [rows, setRows] = useState<Approval[]>([]);
   const [count, setCount] = useState(0);
+  const [pendingCount, setPendingCount] = useState(0);
   const [offset, setOffset] = useState(0);
   const [error, setError] = useState("");
   const [deciding, setDeciding] = useState<{ row: Approval; action: "approve" | "reject" } | null>(null);
@@ -111,6 +129,8 @@ export function ApprovalList({ repo = "", showRepo = true, reloadKey = 0, onRows
     api.listApprovals(repo, status, PAGE, offset)
       .then((res) => { setRows(res.approvals); setCount(res.count); onRows?.(res.approvals); })
       .catch((err) => setError((err as Error).message));
+    // Pending count for the targetable scope drives the "Approve all" button.
+    api.approvalCount("pending", repo).then((c) => setPendingCount(c.count)).catch(() => setPendingCount(0));
     // onRows is a state setter from the parent; excluding it keeps load stable.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [repo, status, offset, reloadKey]);
@@ -133,6 +153,8 @@ export function ApprovalList({ repo = "", showRepo = true, reloadKey = 0, onRows
             queue too. Hidden only when there are no proxy repos to target. */}
         {repoNames.length > 0 && (
           <button className="btn" style={{ marginLeft: "auto" }}
+            disabled={pendingCount === 0}
+            title={pendingCount === 0 ? "No pending approvals" : undefined}
             onClick={() => setApprovingAll(true)}>Approve all pending</button>
         )}
       </div>
@@ -146,7 +168,7 @@ export function ApprovalList({ repo = "", showRepo = true, reloadKey = 0, onRows
             <thead>
               <tr>
                 {showRepo && <th>Repository</th>}
-                <th>Package</th><th>Version</th><th>Requested by</th><th>Requests</th>
+                <th>Package</th><th>Version</th><th>Vuln</th><th>Requested by</th><th>Requests</th>
                 <th>Last requested</th><th>Status</th><th></th>
               </tr>
             </thead>
@@ -156,6 +178,7 @@ export function ApprovalList({ repo = "", showRepo = true, reloadKey = 0, onRows
                   {showRepo && <td>{repoLink(a.repo_name, repoIds)}</td>}
                   <td style={{ fontFamily: "ui-monospace, monospace", fontSize: 13 }}>{a.package}</td>
                   <td style={{ fontFamily: "ui-monospace, monospace", fontSize: 13 }}>{a.last_requested_version || <span className="muted">—</span>}</td>
+                  <td><ApprovalVulnBadge severity={a.vuln_severity} ids={a.vuln_ids} /></td>
                   <td>{a.requested_by || <span className="muted">anonymous</span>}</td>
                   <td>{a.request_count}</td>
                   <td className="muted">{new Date(a.last_requested_at).toLocaleString()}</td>

@@ -2,6 +2,7 @@ package api
 
 import (
 	"encoding/json"
+	"errors"
 	"net/http"
 	"strings"
 	"time"
@@ -31,6 +32,10 @@ func (h *Handler) login(w http.ResponseWriter, r *http.Request) {
 	}
 	u, err := h.authz.AuthenticateLocal(r.Context(), req.Username, req.Password)
 	if err != nil {
+		if errors.Is(err, auth.ErrAccountLocked) {
+			writeError(w, http.StatusForbidden, "account locked: too many failed attempts, contact an administrator")
+			return
+		}
 		writeError(w, http.StatusUnauthorized, "invalid credentials")
 		return
 	}
@@ -213,9 +218,15 @@ type userDTO struct {
 	CreatedAt   time.Time    `json:"created_at"`
 	LastLoginAt *time.Time   `json:"last_login_at"` // null when the user has never logged in
 	Roles       []roleRefDTO `json:"roles"`
+	// Account lockout fields.
+	LockoutEnabled bool `json:"lockout_enabled"`
+	Locked         bool `json:"locked"`
+	// Protected is true for the bootstrap admin, which cannot be locked out and
+	// whose lockout toggle is disabled in the UI.
+	Protected bool `json:"protected"`
 }
 
-func toUserDTO(u meta.User, roles []meta.Role) userDTO {
+func (h *Handler) toUserDTO(u meta.User, roles []meta.Role) userDTO {
 	refs := make([]roleRefDTO, 0, len(roles))
 	for _, r := range roles {
 		refs = append(refs, roleRefDTO{ID: r.ID, Name: r.Name})
@@ -228,6 +239,8 @@ func toUserDTO(u meta.User, roles []meta.Role) userDTO {
 		ID: u.ID, Username: u.Username, Source: u.Source,
 		Email: u.Email, Disabled: u.Disabled, CreatedAt: u.CreatedAt,
 		LastLoginAt: lastLogin, Roles: refs,
+		LockoutEnabled: u.LockoutEnabled, Locked: u.Locked(),
+		Protected: h.authz != nil && h.authz.IsProtectedAdmin(u.Username),
 	}
 }
 
@@ -244,7 +257,7 @@ func (h *Handler) listUsers(w http.ResponseWriter, r *http.Request) {
 	}
 	out := make([]userDTO, 0, len(users))
 	for _, u := range users {
-		out = append(out, toUserDTO(u, rolesBy[u.ID]))
+		out = append(out, h.toUserDTO(u, rolesBy[u.ID]))
 	}
 	writeJSON(w, http.StatusOK, out)
 }
@@ -298,6 +311,14 @@ func (h *Handler) createUser(w http.ResponseWriter, r *http.Request) {
 		mapError(w, err)
 		return
 	}
+	// New local accounts get failed-password lockout on by default; an admin can
+	// turn it off from the user's detail page. The protected admin is exempt.
+	if h.authz == nil || !h.authz.IsProtectedAdmin(u.Username) {
+		if err := h.store.SetLockoutEnabled(r.Context(), u.ID, true); err != nil {
+			mapError(w, err)
+			return
+		}
+	}
 	for _, rid := range req.RoleIDs {
 		if err := h.store.AssignRole(r.Context(), u.ID, rid); err != nil {
 			mapError(w, err)
@@ -309,8 +330,10 @@ func (h *Handler) createUser(w http.ResponseWriter, r *http.Request) {
 
 // updateUserReq carries admin edits; nil fields are left unchanged.
 type updateUserReq struct {
-	Password *string `json:"password"`
-	Disabled *bool   `json:"disabled"`
+	Password       *string `json:"password"`
+	Disabled       *bool   `json:"disabled"`
+	LockoutEnabled *bool   `json:"lockout_enabled"`
+	Unlock         *bool   `json:"unlock"`
 }
 
 func (h *Handler) updateUser(w http.ResponseWriter, r *http.Request) {
@@ -358,6 +381,26 @@ func (h *Handler) updateUser(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
+	if req.LockoutEnabled != nil {
+		if *req.LockoutEnabled && target.Source != meta.SourceLocal {
+			writeError(w, http.StatusBadRequest, "lockout applies only to local-password accounts")
+			return
+		}
+		if *req.LockoutEnabled && h.authz != nil && h.authz.IsProtectedAdmin(target.Username) {
+			writeError(w, http.StatusBadRequest, "cannot enable lockout for the default admin account")
+			return
+		}
+		if err := h.store.SetLockoutEnabled(r.Context(), id, *req.LockoutEnabled); err != nil {
+			mapError(w, err)
+			return
+		}
+	}
+	if req.Unlock != nil && *req.Unlock {
+		if err := h.store.ResetFailedLogin(r.Context(), id); err != nil {
+			mapError(w, err)
+			return
+		}
+	}
 
 	target, err = h.store.GetUser(r.Context(), id)
 	if err != nil {
@@ -369,7 +412,7 @@ func (h *Handler) updateUser(w http.ResponseWriter, r *http.Request) {
 		mapError(w, err)
 		return
 	}
-	writeJSON(w, http.StatusOK, toUserDTO(target, rolesBy[id]))
+	writeJSON(w, http.StatusOK, h.toUserDTO(target, rolesBy[id]))
 }
 
 func (h *Handler) deleteUser(w http.ResponseWriter, r *http.Request) {
@@ -478,13 +521,16 @@ type roleDTO struct {
 	CreatedAt   time.Time       `json:"created_at"`
 	Managed     bool            `json:"managed"`
 	Permissions []permissionDTO `json:"permissions"`
+	// UserCount is how many users are assigned this role.
+	UserCount int `json:"user_count"`
 }
 
-func toRoleDTO(r meta.Role, perms []meta.Permission) roleDTO {
+func toRoleDTO(r meta.Role, perms []meta.Permission, userCount int) roleDTO {
 	out := roleDTO{
 		ID: r.ID, Name: r.Name, Description: r.Description, CreatedAt: r.CreatedAt,
 		Managed:     r.Managed,
 		Permissions: make([]permissionDTO, 0, len(perms)),
+		UserCount:   userCount,
 	}
 	for _, p := range perms {
 		out.Permissions = append(out.Permissions, permissionDTO{
@@ -509,9 +555,20 @@ func (h *Handler) listRoles(w http.ResponseWriter, r *http.Request) {
 	for _, p := range perms {
 		byRole[p.RoleID] = append(byRole[p.RoleID], p)
 	}
+	rolesBy, err := h.store.RolesByUser(r.Context())
+	if err != nil {
+		mapError(w, err)
+		return
+	}
+	userCount := map[int64]int{}
+	for _, urs := range rolesBy {
+		for _, ur := range urs {
+			userCount[ur.ID]++
+		}
+	}
 	out := make([]roleDTO, 0, len(roles))
 	for _, role := range roles {
-		out = append(out, toRoleDTO(role, byRole[role.ID]))
+		out = append(out, toRoleDTO(role, byRole[role.ID], userCount[role.ID]))
 	}
 	writeJSON(w, http.StatusOK, out)
 }
@@ -556,7 +613,8 @@ func (h *Handler) createRole(w http.ResponseWriter, r *http.Request) {
 		}
 		perms = append(perms, added)
 	}
-	writeJSON(w, http.StatusCreated, toRoleDTO(role, perms))
+	// A freshly created role has no users assigned yet.
+	writeJSON(w, http.StatusCreated, toRoleDTO(role, perms, 0))
 }
 
 func (h *Handler) deleteRole(w http.ResponseWriter, r *http.Request) {

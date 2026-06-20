@@ -38,9 +38,9 @@ export function App() {
       <div className="main">
         <Routes>
           <Route path="/" element={<Navigate to="/repositories" replace />} />
-          <Route path="/repositories" element={<Repositories />} />
+          <Route path="/repositories" element={<Repositories me={me} />} />
           <Route path="/repositories/new" element={<RepositoryNew />} />
-          <Route path="/repositories/:id/:tab?" element={<RepositoryDetail />} />
+          <Route path="/repositories/:id/:tab?" element={<RepositoryDetail me={me} />} />
           <Route path="/tokens" element={<Tokens />} />
           <Route path="/tokens/new" element={<TokenNew />} />
           {(me.admin || me.approver) && <Route path="/approvals" element={<Approvals />} />}
@@ -102,8 +102,8 @@ function Sidebar({ me, onLogout }: { me: Me; onLogout: () => void }) {
       )}
       {me.admin && <NavLink className="navlink" to="/users">Users</NavLink>}
       {me.admin && <NavLink className="navlink" to="/roles">Roles</NavLink>}
-      <a className="navlink" href="/api-docs" target="_blank" rel="noreferrer">API Docs ↗</a>
       <div className="spacer" />
+      <a className="navlink" href="/api-docs" target="_blank" rel="noreferrer">API Docs ↗</a>
       <div className="userbox">
         <div>{me.username} {me.admin ? "(admin)" : ""}</div>
         <button type="button" className="btn secondary logout-btn"

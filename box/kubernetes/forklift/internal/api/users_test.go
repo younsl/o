@@ -80,6 +80,9 @@ func TestUserAdminLifecycle(t *testing.T) {
 		readers.Permissions[0].RepoPattern != "*" || readers.Permissions[0].Actions[0] != "read" {
 		t.Fatalf("readers = %+v", readers)
 	}
+	if readers.UserCount != 1 {
+		t.Fatalf("readers user_count = %d, want 1", readers.UserCount)
+	}
 
 	// Disable, then re-enable, then reset the password.
 	resp = adminDo(t, http.MethodPut, fmt.Sprintf("%s/users/%d", srv.URL, userID), `{"disabled":true}`)
@@ -220,4 +223,40 @@ func TestUpdateUserValidation(t *testing.T) {
 	resp = adminDo(t, http.MethodPut, fmt.Sprintf("%s/users/%d", srv.URL, id), `{"password":""}`)
 	mustStatus(t, resp, http.StatusBadRequest)
 	resp.Body.Close()
+}
+
+func TestUserLockoutToggle(t *testing.T) {
+	srv := newTestServer(t)
+
+	resp := adminDo(t, http.MethodPost, srv.URL+"/users",
+		`{"username":"lockme","password":"pw123456"}`)
+	mustStatus(t, resp, http.StatusCreated)
+	id := int64(decodeAs[map[string]any](t, resp)["id"].(float64))
+
+	// New users get lockout enabled by default.
+	resp = adminDo(t, http.MethodGet, srv.URL+"/users", "")
+	var created *userDTO
+	for _, u := range decodeAs[[]userDTO](t, resp) {
+		if u.Username == "lockme" {
+			cp := u
+			created = &cp
+		}
+	}
+	if created == nil || !created.LockoutEnabled {
+		t.Fatalf("new user lockout default = %+v, want lockout_enabled true", created)
+	}
+	if created.Locked || created.Protected {
+		t.Fatalf("unexpected flags: %+v", created)
+	}
+
+	// Unlock is accepted (no-op here) and disabling clears the flag.
+	resp = adminDo(t, http.MethodPut, fmt.Sprintf("%s/users/%d", srv.URL, id), `{"unlock":true}`)
+	mustStatus(t, resp, http.StatusOK)
+	resp.Body.Close()
+
+	resp = adminDo(t, http.MethodPut, fmt.Sprintf("%s/users/%d", srv.URL, id), `{"lockout_enabled":false}`)
+	mustStatus(t, resp, http.StatusOK)
+	if decodeAs[map[string]any](t, resp)["lockout_enabled"] != false {
+		t.Fatal("lockout_enabled should be false after disable")
+	}
 }
