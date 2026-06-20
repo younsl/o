@@ -17,6 +17,20 @@
 {{- end }}
 {{- end }}
 
+{{/*
+Fully qualified container image reference, joining registry, repository and tag.
+The registry is optional: when empty the repository is used as-is (so it may
+itself carry a host). Tag defaults to the chart appVersion.
+*/}}
+{{- define "forklift.image" -}}
+{{- $tag := .Values.image.tag | default .Chart.AppVersion -}}
+{{- if .Values.image.registry -}}
+{{- printf "%s/%s:%s" .Values.image.registry .Values.image.repository $tag -}}
+{{- else -}}
+{{- printf "%s:%s" .Values.image.repository $tag -}}
+{{- end -}}
+{{- end }}
+
 {{- define "forklift.chart" -}}
 {{- printf "%s-%s" .Chart.Name .Chart.Version | replace "+" "_" | trunc 63 | trimSuffix "-" }}
 {{- end }}

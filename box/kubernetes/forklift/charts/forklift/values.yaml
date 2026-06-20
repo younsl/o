@@ -6,8 +6,11 @@ replicaCount: 2
 revisionHistoryLimit: 10
 
 image:
-  # -- (string) Container image repository.
-  repository: ghcr.io/younsl/forklift
+  # -- (string) Container image registry host. Set empty to fold the host into
+  # `repository` instead.
+  registry: ghcr.io
+  # -- (string) Container image repository (path under the registry).
+  repository: younsl/forklift
   # -- (string) Image pull policy.
   pullPolicy: IfNotPresent
   # -- (string) Image tag. Defaults to the chart appVersion when empty.

@@ -75,7 +75,8 @@ The following table lists the configurable parameters and their default values.
 |-----|------|---------|-------------|
 | replicaCount | int | `2` | Number of replicas. With 2+ replicas, enable ha to elect a single active writer. |
 | revisionHistoryLimit | int | `10` | Number of old ReplicaSets to retain for rollback. |
-| image.repository | string | `"ghcr.io/younsl/forklift"` | Container image repository. |
+| image.registry | string | `"ghcr.io"` | Container image registry host. Set empty to fold the host into `repository` instead. |
+| image.repository | string | `"younsl/forklift"` | Container image repository (path under the registry). |
 | image.pullPolicy | string | `"IfNotPresent"` | Image pull policy. |
 | image.tag | string | `""` | Image tag. Defaults to the chart appVersion when empty. |
 | imagePullSecrets | list | `[]` | Image pull secrets for private registries. |
