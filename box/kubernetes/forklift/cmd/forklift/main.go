@@ -262,8 +262,10 @@ func run() error {
 		}
 		go engine.RunSweeper(leadCtx, 5*time.Minute)
 		go manager.RunIdleReaper(leadCtx, time.Hour)
-		// Vulnerability scan worker + periodic re-scanner (no-ops without a scanner).
+		// Vulnerability scan worker + backfill (scans already-stored artifacts) +
+		// periodic re-scanner (no-ops without a scanner).
 		go manager.RunVulnWorker(leadCtx)
+		go manager.RunVulnBackfill(leadCtx, cfg.Vuln.RescanInterval)
 		go manager.RunVulnRescanner(leadCtx, cfg.Vuln.RescanInterval, cfg.Vuln.TTL)
 		if recorder != nil && cfg.Audit.Retention > 0 {
 			go recorder.RunRetention(leadCtx, time.Hour, cfg.Audit.Retention)

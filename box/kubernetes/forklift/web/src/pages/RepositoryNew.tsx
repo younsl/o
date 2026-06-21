@@ -126,7 +126,8 @@ export function RepositoryNew() {
           <>
             <label>Members (lookup order, first hit wins)<span className="req">*</span></label>
             <MemberList members={members} onChange={setMembers}
-              repoIndex={Object.fromEntries(repos.map((r) => [r.name, r.id]))} />
+              repoIndex={Object.fromEntries(repos.map((r) => [r.name, r.id]))}
+              repoTypes={Object.fromEntries(repos.map((r) => [r.name, r.type]))} />
             <div className="inline" style={{ marginTop: 8 }}>
               <Select value="" placeholder="add member…"
                 onChange={(v) => v && setMembers([...members, v])}
@@ -189,10 +190,11 @@ function ConnectivityHint({ checking, health, hasUrl }: {
 // MemberList renders an ordered member list with reorder and remove controls.
 // Shared by the create form and the settings tab. When repoIndex maps a member
 // name to a repository id, the name links to that repository's page.
-export function MemberList({ members, onChange, repoIndex }: {
+export function MemberList({ members, onChange, repoIndex, repoTypes }: {
   members: string[];
   onChange: (m: string[]) => void;
   repoIndex?: Record<string, number>;
+  repoTypes?: Record<string, string>;
 }) {
   const move = (i: number, dir: -1 | 1) => {
     const j = i + dir;
@@ -207,6 +209,7 @@ export function MemberList({ members, onChange, repoIndex }: {
       <tbody>
         {members.map((name, i) => {
           const id = repoIndex?.[name];
+          const type = repoTypes?.[name];
           return (
           <tr key={name}>
             <td className="muted" style={{ width: 24 }}>{i + 1}</td>
@@ -215,6 +218,7 @@ export function MemberList({ members, onChange, repoIndex }: {
                 ? <Link to={`/repositories/${id}`}>{name}</Link>
                 : name}
             </td>
+            <td>{type ? <span className={`badge ${type}`}>{type}</span> : <span className="muted">—</span>}</td>
             <td style={{ textAlign: "right", whiteSpace: "nowrap" }}>
               <button className="btn secondary" type="button" disabled={i === 0}
                 title="Move up" onClick={() => move(i, -1)}>↑</button>{" "}

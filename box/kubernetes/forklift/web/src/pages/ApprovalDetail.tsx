@@ -39,7 +39,7 @@ export function ApprovalDetail() {
       {error && <div className="error">{error}</div>}
 
       <div className="panel">
-        <h2 style={{ marginTop: 0 }}>Request</h2>
+        <h2>Request</h2>
         <dl className="kv">
           <dt>Repository</dt><dd>{row.repo_name}</dd>
           <dt>Package</dt><dd style={{ fontFamily: "ui-monospace, monospace" }}>{row.package}</dd>
@@ -83,7 +83,7 @@ function OvsAnalysis({ row }: { row: Approval }) {
   const clean = row.vuln_severity === "none";
   return (
     <div className="panel">
-      <h2 style={{ marginTop: 0 }}>Vulnerability analysis</h2>
+      <h2>Vulnerability analysis</h2>
       {row.vuln_severity === undefined ? (
         <p className="muted" style={{ marginBottom: 0 }}>
           Not scanned yet. The scan runs asynchronously after the request is
@@ -92,7 +92,7 @@ function OvsAnalysis({ row }: { row: Approval }) {
       ) : (
         <>
           <div style={{ margin: "8px 0 18px" }}>
-            <SeverityBar severity={row.vuln_severity} counts={row.vuln_counts} scope={row.vuln_scope} size="lg" />
+            <SeverityBar severity={row.vuln_severity} counts={row.vuln_counts} scope={row.vuln_scope} source={row.vuln_source} scannedAt={row.vuln_scanned_at} size="lg" />
           </div>
           <dl className="kv">
             <dt>Data source</dt>
@@ -223,7 +223,7 @@ function AdvisoryTable({ advisories }: { advisories: Advisory[] }) {
 function ReviewersPanel({ reviewers }: { reviewers?: string[] }) {
   return (
     <div className="panel">
-      <h2 style={{ marginTop: 0 }}>
+      <h2>
         Reviewers <span className="muted" style={{ fontWeight: 400, fontSize: 12 }}>· users who can approve this repository</span>
       </h2>
       {!reviewers || reviewers.length === 0 ? (

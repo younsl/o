@@ -70,6 +70,8 @@ export interface Repository {
   // Artifact aggregates, present in list responses only.
   artifact_count?: number;
   total_size?: number;
+  // Packages awaiting approval in this repository (list responses only).
+  pending_approval_count?: number;
 }
 
 // RepositoryName is the slim repository shape returned by /repository-names for
@@ -117,6 +119,9 @@ export interface Artifact {
   last_accessed_at: string;
   max_severity?: string;
   vuln_ids?: string[];
+  vuln_counts?: Record<string, number>;
+  vuln_source?: string;
+  vuln_scanned_at?: string | null;
 }
 
 export interface ArtifactList {
@@ -372,4 +377,12 @@ export const api = {
   listTokens: () => req<Token[]>("GET", "/tokens"),
   createToken: (body: unknown) => req<{ token: string; name: string }>("POST", "/tokens", body),
   deleteToken: (id: number) => req<void>("DELETE", `/tokens/${id}`),
+
+  // Admin/auditor: a target user's tokens, managed from the user detail page.
+  // Listing is read-only for auditors; create and revoke are admin-only.
+  listUserTokens: (userId: number) => req<Token[]>("GET", `/users/${userId}/tokens`),
+  createUserToken: (userId: number, body: unknown) =>
+    req<{ token: string; name: string }>("POST", `/users/${userId}/tokens`, body),
+  deleteUserToken: (userId: number, tokenId: number) =>
+    req<void>("DELETE", `/users/${userId}/tokens/${tokenId}`),
 };

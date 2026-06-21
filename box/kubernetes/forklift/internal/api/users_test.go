@@ -113,6 +113,166 @@ func TestUserAdminLifecycle(t *testing.T) {
 	resp.Body.Close()
 }
 
+// TestUserTokenAdminLifecycle covers an administrator managing a target user's
+// personal access tokens from the user detail page: create, list, the token
+// authenticating as that user, and revoke.
+func TestUserTokenAdminLifecycle(t *testing.T) {
+	srv := newTestServer(t)
+
+	resp := adminDo(t, http.MethodPost, srv.URL+"/users",
+		`{"username":"dev1","password":"pw123456"}`)
+	mustStatus(t, resp, http.StatusCreated)
+	userID := int64(decodeAs[map[string]any](t, resp)["id"].(float64))
+
+	// Admin issues a token for dev1; the plaintext is returned once.
+	resp = adminDo(t, http.MethodPost, fmt.Sprintf("%s/users/%d/tokens", srv.URL, userID),
+		`{"name":"ci","description":"dev1 ci","scopes":[{"repo_pattern":"*","actions":["read"]}],"expires_in":"720h"}`)
+	mustStatus(t, resp, http.StatusCreated)
+	token, _ := decodeAs[map[string]any](t, resp)["token"].(string)
+	if token == "" {
+		t.Fatal("no token returned")
+	}
+
+	// The token authenticates as dev1, not the admin who created it.
+	req, _ := http.NewRequest(http.MethodGet, srv.URL+"/me", nil)
+	req.Header.Set("Authorization", "Bearer "+token)
+	meResp, _ := http.DefaultClient.Do(req)
+	if me := decodeAs[map[string]any](t, meResp); me["username"] != "dev1" {
+		t.Fatalf("token me = %v, want dev1", me)
+	}
+
+	// Admin lists dev1's tokens.
+	resp = adminDo(t, http.MethodGet, fmt.Sprintf("%s/users/%d/tokens", srv.URL, userID), "")
+	mustStatus(t, resp, http.StatusOK)
+	list := decodeAs[[]map[string]any](t, resp)
+	if len(list) != 1 || list[0]["name"] != "ci" {
+		t.Fatalf("token list = %v", list)
+	}
+	tokenID := int64(list[0]["id"].(float64))
+
+	// Creating a token for an unknown user is a 404.
+	resp = adminDo(t, http.MethodPost, fmt.Sprintf("%s/users/%d/tokens", srv.URL, userID+9999),
+		`{"name":"x","description":"x","scopes":[{"repo_pattern":"*","actions":["read"]}],"expires_in":"1h"}`)
+	mustStatus(t, resp, http.StatusNotFound)
+	resp.Body.Close()
+
+	// Revoke, then the list is empty and the token no longer authenticates.
+	resp = adminDo(t, http.MethodDelete, fmt.Sprintf("%s/users/%d/tokens/%d", srv.URL, userID, tokenID), "")
+	mustStatus(t, resp, http.StatusNoContent)
+	resp.Body.Close()
+	resp = adminDo(t, http.MethodGet, fmt.Sprintf("%s/users/%d/tokens", srv.URL, userID), "")
+	mustStatus(t, resp, http.StatusOK)
+	if list := decodeAs[[]map[string]any](t, resp); len(list) != 0 {
+		t.Fatalf("token list after revoke = %v", list)
+	}
+}
+
+// TestUserTokenRBAC covers the access rules for the per-user token endpoints: an
+// auditor may list but not create or revoke; a plain user may do neither.
+func TestUserTokenRBAC(t *testing.T) {
+	srv := newTestServer(t)
+
+	resp := adminDo(t, http.MethodPost, srv.URL+"/users", `{"username":"dev1","password":"pw123456"}`)
+	mustStatus(t, resp, http.StatusCreated)
+	userID := int64(decodeAs[map[string]any](t, resp)["id"].(float64))
+
+	// Seed a token so the auditor has something to read.
+	resp = adminDo(t, http.MethodPost, fmt.Sprintf("%s/users/%d/tokens", srv.URL, userID),
+		`{"name":"ci","description":"d","scopes":[{"repo_pattern":"*","actions":["read"]}],"expires_in":"1h"}`)
+	mustStatus(t, resp, http.StatusCreated)
+	tokenID := int64(decodeAs[map[string]any](t, resp)["id"].(float64))
+
+	// Auditor: read action plus audit on all repos.
+	resp = adminDo(t, http.MethodPost, srv.URL+"/users", `{"username":"aud1","password":"pw123456"}`)
+	mustStatus(t, resp, http.StatusCreated)
+	audID := int64(decodeAs[map[string]any](t, resp)["id"].(float64))
+	resp = adminDo(t, http.MethodPost, srv.URL+"/roles", `{"name":"auditor","description":"ro"}`)
+	mustStatus(t, resp, http.StatusCreated)
+	audRole := decodeAs[roleDTO](t, resp)
+	resp = adminDo(t, http.MethodPost, fmt.Sprintf("%s/roles/%d/permissions", srv.URL, audRole.ID),
+		`{"repo_pattern":"*","actions":["read","audit"]}`)
+	mustStatus(t, resp, http.StatusCreated)
+	resp.Body.Close()
+	resp = adminDo(t, http.MethodPost, fmt.Sprintf("%s/users/%d/roles", srv.URL, audID),
+		fmt.Sprintf(`{"role_id":%d}`, audRole.ID))
+	mustStatus(t, resp, http.StatusNoContent)
+	resp.Body.Close()
+
+	tokensURL := fmt.Sprintf("%s/users/%d/tokens", srv.URL, userID)
+
+	// Auditor can list, but cannot create or revoke.
+	resp = userDo(t, "aud1", "pw123456", http.MethodGet, tokensURL, "")
+	mustStatus(t, resp, http.StatusOK)
+	resp.Body.Close()
+	resp = userDo(t, "aud1", "pw123456", http.MethodPost, tokensURL,
+		`{"name":"x","description":"d","scopes":[{"repo_pattern":"*","actions":["read"]}],"expires_in":"1h"}`)
+	mustStatus(t, resp, http.StatusForbidden)
+	resp.Body.Close()
+	resp = userDo(t, "aud1", "pw123456", http.MethodDelete, fmt.Sprintf("%s/%d", tokensURL, tokenID), "")
+	mustStatus(t, resp, http.StatusForbidden)
+	resp.Body.Close()
+
+	// Plain user (no audit) cannot even list.
+	resp = adminDo(t, http.MethodPost, srv.URL+"/users", `{"username":"plain","password":"pw123456"}`)
+	mustStatus(t, resp, http.StatusCreated)
+	resp.Body.Close()
+	resp = userDo(t, "plain", "pw123456", http.MethodGet, tokensURL, "")
+	mustStatus(t, resp, http.StatusForbidden)
+	resp.Body.Close()
+}
+
+// TestProtectedAdminCannotBeDisabled covers the default admin guard: even
+// another administrator cannot disable the bootstrap admin, keeping at least
+// one guaranteed admin account always able to sign in.
+func TestProtectedAdminCannotBeDisabled(t *testing.T) {
+	srv := newTestServerProtectedAdmin(t)
+
+	// Find the bootstrap admin's id.
+	resp := adminDo(t, http.MethodGet, srv.URL+"/users", "")
+	mustStatus(t, resp, http.StatusOK)
+	var adminID int64
+	for _, u := range decodeAs[[]userDTO](t, resp) {
+		if u.Username == adminUser {
+			adminID = u.ID
+			if !u.Protected {
+				t.Fatalf("bootstrap admin not marked protected: %+v", u)
+			}
+		}
+	}
+	if adminID == 0 {
+		t.Fatal("bootstrap admin not found")
+	}
+
+	// A second administrator (so the self-guard is not what blocks the request).
+	resp = adminDo(t, http.MethodPost, srv.URL+"/users", `{"username":"admin2","password":"pw123456"}`)
+	mustStatus(t, resp, http.StatusCreated)
+	admin2ID := int64(decodeAs[map[string]any](t, resp)["id"].(float64))
+	resp = adminDo(t, http.MethodPost, srv.URL+"/roles", `{"name":"superadmin","description":"admin"}`)
+	mustStatus(t, resp, http.StatusCreated)
+	role := decodeAs[roleDTO](t, resp)
+	resp = adminDo(t, http.MethodPost, fmt.Sprintf("%s/roles/%d/permissions", srv.URL, role.ID),
+		`{"repo_pattern":"*","actions":["admin"]}`)
+	mustStatus(t, resp, http.StatusCreated)
+	resp.Body.Close()
+	resp = adminDo(t, http.MethodPost, fmt.Sprintf("%s/users/%d/roles", srv.URL, admin2ID),
+		fmt.Sprintf(`{"role_id":%d}`, role.ID))
+	mustStatus(t, resp, http.StatusNoContent)
+	resp.Body.Close()
+
+	// admin2 cannot disable the bootstrap admin.
+	resp = userDo(t, "admin2", "pw123456", http.MethodPut, fmt.Sprintf("%s/users/%d", srv.URL, adminID), `{"disabled":true}`)
+	mustStatus(t, resp, http.StatusBadRequest)
+	resp.Body.Close()
+
+	// The bootstrap admin is still active.
+	resp = adminDo(t, http.MethodGet, srv.URL+"/users", "")
+	for _, u := range decodeAs[[]userDTO](t, resp) {
+		if u.ID == adminID && u.Disabled {
+			t.Fatal("bootstrap admin was disabled despite the guard")
+		}
+	}
+}
+
 // TestCreateUserWithRoles covers assigning roles at creation time: a valid role
 // is applied, and an unknown role id is rejected before the user is created.
 func TestCreateUserWithRoles(t *testing.T) {

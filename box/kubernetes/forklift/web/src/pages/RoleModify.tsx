@@ -52,7 +52,7 @@ export function RoleModify({ me }: { me: Me }) {
       {role.description && <p className="page-desc">{role.description}</p>}
       {role.managed && (
         <div className="panel" style={{ borderColor: "var(--accent)" }}>
-          <h2 style={{ marginTop: 0, display: "flex", alignItems: "center", gap: 8 }}>
+          <h2 style={{ display: "flex", alignItems: "center", gap: 8 }}>
             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor"
               strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"
               style={{ color: "var(--accent)" }}>
@@ -76,25 +76,26 @@ export function RoleModify({ me }: { me: Me }) {
 }
 
 // AssignedUsersPanel lists the users that currently hold this role. Assignment
-// itself is managed on each user's Modify page, so this is read-only with links.
+// itself is managed on each user's detail page, so this is read-only with links.
 function AssignedUsersPanel({ members }: { members: User[] }) {
   return (
     <div className="panel">
-      <h2 style={{ marginTop: 0 }}>
+      <h2>
         Assigned users <span className="badge" style={{ marginLeft: 6 }}>{members.length}</span>
       </h2>
       {members.length === 0
-        ? <p className="muted">No users have this role. Assign it from a user's Modify page.</p>
+        ? <p className="muted">No users have this role. Assign it from a user's detail page.</p>
         : (
-          // Same column structure and order as the Users page.
+          // Same column structure and order as the Users page; the username
+          // links to that user's detail page.
           <table>
             <thead>
-              <tr><th>Username</th><th>Source</th><th>Email</th><th>Roles</th><th>Status</th><th>Last login</th><th></th></tr>
+              <tr><th>Username</th><th>Source</th><th>Email</th><th>Roles</th><th>Status</th><th>Last login</th></tr>
             </thead>
             <tbody>
               {members.map((u) => (
                 <tr key={u.id}>
-                  <td style={{ whiteSpace: "nowrap" }}>{u.username}</td>
+                  <td style={{ whiteSpace: "nowrap" }}><Link to={`/users/${u.id}`}>{u.username}</Link></td>
                   <td><span className="badge">{u.source}</span></td>
                   <td className="muted">{u.email || "-"}</td>
                   <td>
@@ -110,9 +111,6 @@ function AssignedUsersPanel({ members }: { members: User[] }) {
                   </td>
                   <td className="muted" style={{ whiteSpace: "nowrap" }} title={u.last_login_at ?? undefined}>
                     {u.last_login_at ? new Date(u.last_login_at).toLocaleString() : "never"}
-                  </td>
-                  <td style={{ textAlign: "right", whiteSpace: "nowrap" }}>
-                    <Link className="btn secondary" to={`/users/${u.id}`}>Modify</Link>
                   </td>
                 </tr>
               ))}
@@ -149,7 +147,7 @@ function PermissionsPanel({ role, run, canWrite }: { role: Role; run: (p: Promis
 
   return (
     <div className="panel">
-      <h2 style={{ marginTop: 0 }}>Permissions</h2>
+      <h2>Permissions</h2>
       <div className="inline" style={{ flexWrap: "wrap", gap: 6 }}>
         {role.permissions.map((p) => (
           <span key={p.id} className="badge" style={{ fontFamily: "ui-monospace, monospace" }}>
@@ -194,7 +192,7 @@ function DangerPanel({ role, onDeleted, onError }: {
   };
   return (
     <div className="panel danger" style={{ marginTop: 18 }}>
-      <h2 style={{ marginTop: 0 }}>Danger zone</h2>
+      <h2>Danger zone</h2>
       <p className="muted">Users and group mappings holding this role lose its permissions immediately. This cannot be undone.</p>
       <button className="btn danger" type="button" onClick={() => setConfirm(true)}>Delete role</button>
       <ConfirmModal

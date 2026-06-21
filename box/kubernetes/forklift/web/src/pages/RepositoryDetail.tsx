@@ -6,7 +6,7 @@ import { ConfirmModal } from "../components/ConfirmModal";
 import { Select } from "../components/Select";
 import { Toggle } from "../components/Toggle";
 import { MemberList } from "./RepositoryNew";
-import { ApprovalList, VersionDenies } from "./Approvals";
+import { ApprovalList, SeverityBar, VersionDenies } from "./Approvals";
 
 export function RepositoryDetail({ me }: { me: Me }) {
   const { id, tab = "artifacts" } = useParams();
@@ -138,7 +138,7 @@ function Settings({ repo, setRepo, canWrite }: { repo: Repository; setRepo: (r: 
           they can read the configuration but not change it. */}
       <fieldset className="settings-fields" disabled={!canWrite}>
       <div className="panel">
-        <h2 style={{ marginTop: 0 }}>State</h2>
+        <h2>State</h2>
         <p className="muted">
           {repo.disabled
             ? "This repository is offline: uploads and downloads are refused (503). Its config and artifacts are kept."
@@ -165,7 +165,7 @@ function Settings({ repo, setRepo, canWrite }: { repo: Repository; setRepo: (r: 
       {repo.type === "proxy" && (
         <div className="panel">
           <div className="inline" style={{ justifyContent: "space-between" }}>
-            <h2 style={{ margin: 0 }}>Upstream</h2>
+            <h2 style={{ marginBottom: 0 }}>Upstream</h2>
             <UpstreamStatus repoId={repo.id} withButton />
           </div>
           <input style={{ marginTop: 12 }} value={repo.upstream_url}
@@ -335,7 +335,7 @@ function Settings({ repo, setRepo, canWrite }: { repo: Repository; setRepo: (r: 
       />
 
       <div className="panel danger" style={{ marginTop: 18 }}>
-        <h2 style={{ marginTop: 0 }}>Danger zone</h2>
+        <h2>Danger zone</h2>
         {repo.type !== "group" && (
           <>
             <p className="muted">Purging removes all cached/hosted artifacts but keeps the repository and its settings. This cannot be undone.</p>
@@ -372,34 +372,14 @@ function GroupMembers({ repo, setRepo }: { repo: Repository; setRepo: (r: Reposi
     <div className="panel">
       <h2>Members <span className="muted" style={{ fontWeight: 400, fontSize: 12 }}>· lookup order, first hit wins</span></h2>
       <MemberList members={members} onChange={setMembers}
-        repoIndex={Object.fromEntries(repos.map((r) => [r.name, r.id]))} />
+        repoIndex={Object.fromEntries(repos.map((r) => [r.name, r.id]))}
+        repoTypes={Object.fromEntries(repos.map((r) => [r.name, r.type]))} />
       <div className="inline" style={{ marginTop: 8 }}>
         <Select value="" placeholder="add member…"
           onChange={(v) => v && setMembers([...members, v])}
           options={candidates.map((r) => ({ value: r.name, label: `${r.name} (${r.type})` }))} />
       </div>
     </div>
-  );
-}
-
-// SeverityBadge renders a coloured vulnerability badge for an artifact version.
-// A scanned version with no advisories shows a green "clean" badge; a version
-// that has not been scanned yet shows muted "not scanned". The two states are
-// distinct: absent max_severity means unscanned, "none" means scanned-clean.
-// The advisory ids are tooltipped.
-function SeverityBadge({ severity, ids }: { severity?: string; ids?: string[] }) {
-  if (severity === undefined) return <span className="muted">not scanned</span>;
-  if (severity === "none")
-    return <span className="badge" style={{ background: "#2ea043", color: "#fff" }}>clean</span>;
-  const bg: Record<string, string> = {
-    critical: "var(--danger)", high: "var(--danger)", medium: "#f5a623", low: "#9aa1ac",
-  };
-  const count = ids?.length ?? 0;
-  return (
-    <span className="badge" style={{ background: bg[severity] || "#9aa1ac", color: "#fff" }}
-      title={count ? ids!.join(", ") : severity}>
-      {severity}{count > 1 ? ` ×${count}` : ""}
-    </span>
   );
 }
 
@@ -418,7 +398,7 @@ function RepoPermissions({ repoId }: { repoId: number }) {
   return (
     <>
       <div className="panel">
-        <h2 style={{ marginTop: 0 }}>
+        <h2>
           Roles <span className="muted" style={{ fontWeight: 400, fontSize: 12 }}>· granting access to this repository</span>
         </h2>
         {error && <div className="error">{error}</div>}
@@ -448,7 +428,7 @@ function RepoPermissions({ repoId }: { repoId: number }) {
       </div>
 
       <div className="panel">
-        <h2 style={{ marginTop: 0 }}>
+        <h2>
           Access tokens <span className="muted" style={{ fontWeight: 400, fontSize: 12 }}>· reaching this repository</span>
         </h2>
         {!tokens ? <div className="muted">Loading…</div> : tokens.length === 0 ? (
@@ -511,7 +491,7 @@ function Artifacts({ repoId, canDelete }: { repoId: number; canDelete: boolean }
   return (
     <div className="panel">
       <div className="inline" style={{ justifyContent: "space-between" }}>
-        <h2 style={{ margin: 0 }}>Artifacts</h2>
+        <h2 style={{ marginBottom: 0 }}>Artifacts</h2>
         {data && <span className="muted">{data.count} items · {humanSize(data.total_size)}</span>}
       </div>
       <form className="inline" style={{ marginTop: 12 }} onSubmit={(e) => { e.preventDefault(); load(); }}>
@@ -529,7 +509,7 @@ function Artifacts({ repoId, canDelete }: { repoId: number; canDelete: boolean }
             <tr key={a.path}>
               <td style={{ fontFamily: "ui-monospace, monospace", fontSize: 12, wordBreak: "break-all" }}>{a.path}</td>
               <td>{a.version || "—"}</td>
-              <td><SeverityBadge severity={a.max_severity} ids={a.vuln_ids} /></td>
+              <td><SeverityBar severity={a.max_severity} counts={a.vuln_counts} source={a.vuln_source} scannedAt={a.vuln_scanned_at} /></td>
               <td className="muted">{humanSize(a.size)}</td>
               <td className="muted">{a.content_type}</td>
               <td className="muted">{a.last_accessed_at?.slice(0, 19).replace("T", " ")}</td>
@@ -582,7 +562,7 @@ function AuditLogs({ repoId }: { repoId: number }) {
   return (
     <div className="panel">
       <div className="inline" style={{ justifyContent: "space-between" }}>
-        <h2 style={{ margin: 0 }}>Audit log</h2>
+        <h2 style={{ marginBottom: 0 }}>Audit log</h2>
         {data && <span className="muted">{data.count} events</span>}
       </div>
       <div className="inline" style={{ marginTop: 12 }}>
@@ -600,7 +580,7 @@ function AuditLogs({ repoId }: { repoId: number }) {
             <tr key={l.id}>
               <td className="muted">{l.created_at?.slice(0, 19).replace("T", " ")}</td>
               <td><span className="badge">{l.event}</span></td>
-              <td style={{ fontFamily: "ui-monospace, monospace", fontSize: 12 }}>{l.path || "-"}</td>
+              <td style={{ fontFamily: "ui-monospace, monospace", fontSize: 12, wordBreak: "break-all" }}>{l.path || "-"}</td>
               <td>{l.username || <span className="muted">anonymous</span>}</td>
               <td className={l.status >= 400 ? "status-err" : "muted"}>{l.status}</td>
               <td className="muted">{l.client_ip}</td>

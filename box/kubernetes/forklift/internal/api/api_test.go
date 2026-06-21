@@ -20,6 +20,20 @@ import (
 const adminUser, adminPass = "admin", "adminpw"
 
 func newTestServer(t *testing.T) *httptest.Server {
+	return newTestServerOpts(t, auth.Options{SessionSecret: []byte("test-secret-test-secret-test-secret")})
+}
+
+// newTestServerProtectedAdmin marks the bootstrap admin as the protected admin,
+// matching production wiring where the seeded admin is exempt from lockout and
+// cannot be disabled.
+func newTestServerProtectedAdmin(t *testing.T) *httptest.Server {
+	return newTestServerOpts(t, auth.Options{
+		SessionSecret:      []byte("test-secret-test-secret-test-secret"),
+		BootstrapAdminUser: adminUser,
+	})
+}
+
+func newTestServerOpts(t *testing.T, opts auth.Options) *httptest.Server {
 	t.Helper()
 	store, err := meta.Open(context.Background(), filepath.Join(t.TempDir(), "api.db"))
 	if err != nil {
@@ -27,7 +41,7 @@ func newTestServer(t *testing.T) *httptest.Server {
 	}
 	t.Cleanup(func() { store.Close() })
 	log := slog.New(slog.NewTextHandler(io.Discard, nil))
-	authSvc := auth.NewService(store, log, auth.Options{SessionSecret: []byte("test-secret-test-secret-test-secret")})
+	authSvc := auth.NewService(store, log, opts)
 	if err := authSvc.BootstrapAdmin(context.Background(), adminUser, adminPass); err != nil {
 		t.Fatal(err)
 	}

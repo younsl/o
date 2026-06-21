@@ -26,7 +26,7 @@ export function Users({ me }: { me: Me }) {
       {error && <div className="error">{error}</div>}
 
       <div className="panel">
-        <h2 style={{ marginTop: 0 }}>Users</h2>
+        <h2>Users</h2>
         <table>
           <thead>
             <tr><th>Username</th><th>Source</th><th>Email</th><th>Roles</th><th>Status</th><th>Last login</th><th></th></tr>

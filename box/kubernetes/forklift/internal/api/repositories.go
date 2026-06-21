@@ -55,6 +55,9 @@ type repositoryListItemDTO struct {
 	repositoryDTO
 	ArtifactCount int64 `json:"artifact_count"`
 	TotalSize     int64 `json:"total_size"`
+	// PendingApprovalCount is the number of packages awaiting approval in this
+	// repository (0 when none or when approval is not configured).
+	PendingApprovalCount int64 `json:"pending_approval_count"`
 }
 
 type createRepositoryReq struct {
@@ -81,6 +84,11 @@ func (h *Handler) listRepositories(w http.ResponseWriter, r *http.Request) {
 		mapError(w, err)
 		return
 	}
+	pending, err := h.store.PendingApprovalCountByRepo(r.Context())
+	if err != nil {
+		mapError(w, err)
+		return
+	}
 	// Non-admins see only repositories they can read. Admins (Can returns true
 	// for every repo) and the authz-disabled case (tests) see all.
 	p := auth.FromContext(r.Context())
@@ -96,9 +104,10 @@ func (h *Handler) listRepositories(w http.ResponseWriter, r *http.Request) {
 		}
 		st := stats[repo.ID]
 		out = append(out, repositoryListItemDTO{
-			repositoryDTO: dto,
-			ArtifactCount: st.ArtifactCount,
-			TotalSize:     st.TotalSize,
+			repositoryDTO:        dto,
+			ArtifactCount:        st.ArtifactCount,
+			TotalSize:            st.TotalSize,
+			PendingApprovalCount: pending[repo.Name],
 		})
 	}
 	writeJSON(w, http.StatusOK, out)
@@ -501,9 +510,15 @@ type artifactDTO struct {
 	CachedAt       time.Time  `json:"cached_at"`
 	LastAccessedAt time.Time  `json:"last_accessed_at"`
 	// Vulnerability scan result for this version, when scanned. MaxSeverity is
-	// empty/"none" when clean or not yet scanned.
-	MaxSeverity string   `json:"max_severity,omitempty"`
-	VulnIDs     []string `json:"vuln_ids,omitempty"`
+	// empty/"none" when clean or not yet scanned. VulnCounts is the per-severity
+	// advisory breakdown that powers the segmented severity bar (same shape the
+	// approvals view uses).
+	MaxSeverity string         `json:"max_severity,omitempty"`
+	VulnIDs     []string       `json:"vuln_ids,omitempty"`
+	VulnCounts  map[string]int `json:"vuln_counts,omitempty"`
+	// Provenance of the scan: the advisory source (e.g. "OSV") and when it ran.
+	VulnSource    string     `json:"vuln_source,omitempty"`
+	VulnScannedAt *time.Time `json:"vuln_scanned_at,omitempty"`
 }
 
 // listArtifacts returns the artifacts stored (hosted or cached) in a repository,
@@ -541,6 +556,12 @@ func (h *Handler) listArtifacts(w http.ResponseWriter, r *http.Request) {
 				if scan, serr := h.store.GetVulnScan(r.Context(), eco, pkg, a.Version); serr == nil {
 					dto.MaxSeverity = scan.MaxSeverity
 					dto.VulnIDs = scan.VulnIDs
+					dto.VulnCounts = scan.SeverityCounts
+					dto.VulnSource = scan.Source
+					if !scan.ScannedAt.IsZero() {
+						scannedAt := scan.ScannedAt
+						dto.VulnScannedAt = &scannedAt
+					}
 				}
 			}
 		}

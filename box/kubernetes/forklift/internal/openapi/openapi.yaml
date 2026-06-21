@@ -223,6 +223,38 @@ paths:
         - { name: roleID, in: path, required: true, schema: { type: integer } }
       responses:
         "204": { description: Removed }
+  /api/v1/users/{id}/tokens:
+    parameters:
+      - { name: id, in: path, required: true, schema: { type: integer } }
+    get:
+      tags: [tokens]
+      summary: List a user's personal access tokens (admin or auditor)
+      security: [{ basicAuth: [] }, { bearerAuth: [] }]
+      responses:
+        "200": { description: Tokens }
+        "404": { description: Not found }
+    post:
+      tags: [tokens]
+      summary: Create a personal access token for a user (admin); plaintext returned once
+      security: [{ basicAuth: [] }, { bearerAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/TokenCreate" }
+      responses:
+        "201": { description: Created }
+        "404": { description: Not found }
+  /api/v1/users/{id}/tokens/{tokenID}:
+    delete:
+      tags: [tokens]
+      summary: Revoke a user's personal access token (admin)
+      security: [{ basicAuth: [] }, { bearerAuth: [] }]
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: integer } }
+        - { name: tokenID, in: path, required: true, schema: { type: integer } }
+      responses:
+        "204": { description: Revoked }
   /api/v1/roles:
     get:
       tags: [roles]

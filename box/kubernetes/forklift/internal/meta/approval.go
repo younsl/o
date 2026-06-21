@@ -152,6 +152,30 @@ func (s *Store) CountApprovals(ctx context.Context, repoName, status string) (in
 	return n, wrap("count approvals", err)
 }
 
+// PendingApprovalCountByRepo returns the number of pending approval requests
+// per repository name, for repositories that have at least one. Repositories
+// with no pending requests are absent from the map. Used by the repository list
+// to flag repositories with packages awaiting approval.
+func (s *Store) PendingApprovalCountByRepo(ctx context.Context) (map[string]int64, error) {
+	rows, err := s.h().QueryContext(ctx,
+		`SELECT repo_name, COUNT(*) FROM package_approvals WHERE status = ? GROUP BY repo_name`,
+		ApprovalPending)
+	if err != nil {
+		return nil, wrap("pending approvals by repo", err)
+	}
+	defer rows.Close()
+	out := map[string]int64{}
+	for rows.Next() {
+		var name string
+		var n int64
+		if err := rows.Scan(&name, &n); err != nil {
+			return nil, err
+		}
+		out[name] = n
+	}
+	return out, rows.Err()
+}
+
 // DecideApproval sets a row's status (approved or rejected), recording who
 // decided and an optional note. Re-deciding is allowed (approve after reject
 // and vice versa).

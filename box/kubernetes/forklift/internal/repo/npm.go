@@ -280,6 +280,7 @@ func (m *Manager) npmPublish(w http.ResponseWriter, r *http.Request, res resolve
 				http.Error(w, "store tarball failed", http.StatusInternalServerError)
 				return
 			}
+			m.scanStored(res.repo, tarballPath)
 		}
 	}
 	delete(doc, "_attachments")

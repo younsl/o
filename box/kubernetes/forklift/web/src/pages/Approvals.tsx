@@ -41,27 +41,70 @@ export const SEV_COLOR: Record<string, string> = {
 // detail page) shows a wide bar with an "N vulns" label. "not scanned" and
 // "clean" reuse the badge styling; a scanned result without a per-level
 // histogram (older scan) falls back to the single badge.
-export function SeverityBar({ severity, counts, scope, size = "sm" }: {
-  severity?: string; counts?: Record<string, number>; scope?: string; size?: "sm" | "lg";
+//
+// Hovering the bar opens a detailed popover: a wider segmented bar plus a
+// per-severity count breakdown (how many critical/high/medium/low). The popover
+// is fixed-positioned from the trigger's rect so it is never clipped by a
+// scrolling table container.
+export function SeverityBar({ severity, counts, scope, source, scannedAt, size = "sm" }: {
+  severity?: string; counts?: Record<string, number>; scope?: string;
+  source?: string; scannedAt?: string | null; size?: "sm" | "lg";
 }) {
+  const [pop, setPop] = useState<{ top: number; left: number } | null>(null);
+  // Unscanned has no provenance to show, so it stays a plain muted label.
   if (severity === undefined) return <span className="muted">not scanned</span>;
-  if (severity === "none")
-    return <ApprovalVulnBadge severity={severity} scope={scope} />;
   const c = counts ?? {};
   const total = SEV_ORDER.reduce((n, s) => n + (c[s] ?? 0), 0);
-  if (total === 0) return <ApprovalVulnBadge severity={severity} scope={scope} />;
+  // Clean = scanned with no advisories (severity "none"), or a scanned result
+  // without a per-level histogram. Both render the green badge but still open a
+  // popover with the scan provenance (source + when).
+  const clean = severity === "none" || total === 0;
   const suffix = scope === "package" ? " · pkg" : "";
-  const title = SEV_ORDER.filter((s) => c[s]).map((s) => `${s} ${c[s]}`).join(", ")
-    + (scope === "package" ? " (package-level)" : "");
   const label = size === "lg" ? `${total} vuln${total !== 1 ? "s" : ""}${suffix}` : `${total}`;
+  const open = (e: { currentTarget: HTMLElement }) => {
+    const r = e.currentTarget.getBoundingClientRect();
+    setPop({ top: r.bottom + 8, left: r.left + r.width / 2 });
+  };
+  const segs = SEV_ORDER.map((s) => (c[s] ? (
+    <span key={s} className="sev-seg" style={{ flexGrow: c[s], background: SEV_COLOR[s] }} />
+  ) : null));
   return (
-    <span className={`sev-bar ${size}`} title={title}>
-      <span className="sev-bar-track">
-        {SEV_ORDER.map((s) => (c[s] ? (
-          <span key={s} className="sev-seg" style={{ flexGrow: c[s], background: SEV_COLOR[s] }} />
-        ) : null))}
-      </span>
-      <span className="sev-bar-count">{label}</span>
+    <span className={`sev-bar ${size}`} tabIndex={0}
+      onMouseEnter={open} onMouseLeave={() => setPop(null)}
+      onFocus={open} onBlur={() => setPop(null)}>
+      {clean ? (
+        <span className="badge" style={{ background: "#2ea043", color: "#fff" }}>clean{suffix}</span>
+      ) : (
+        <>
+          <span className="sev-bar-track">{segs}</span>
+          <span className="sev-bar-count">{label}</span>
+        </>
+      )}
+      {pop && (
+        <span className="sev-pop" role="tooltip" style={{ top: pop.top, left: pop.left }}>
+          <span className="sev-pop-title">
+            {clean
+              ? "No known advisories"
+              : `${total} vulnerabilit${total === 1 ? "y" : "ies"}`}
+            {scope === "package" ? " · package-level" : ""}
+          </span>
+          {!clean && <span className="sev-pop-bar">{segs}</span>}
+          {!clean && (
+            <span className="sev-pop-rows">
+              {SEV_ORDER.map((s) => (
+                <span key={s} className="sev-pop-row">
+                  <span className="sev-dot" style={{ background: SEV_COLOR[s] }} />
+                  <span className="sev-pop-label">{s}</span>
+                  <span className="sev-pop-num">{c[s] ?? 0}</span>
+                </span>
+              ))}
+            </span>
+          )}
+          <span className="sev-pop-meta">
+            Source {source || "OSV"} · scanned {scannedAt ? new Date(scannedAt).toLocaleString() : "n/a"}
+          </span>
+        </span>
+      )}
     </span>
   );
 }
@@ -222,7 +265,7 @@ export function ApprovalList({ repo = "", showRepo = true, reloadKey = 0, onRows
                   {showRepo && <td>{repoLink(a.repo_name, repoIds)}</td>}
                   <td style={{ fontFamily: "ui-monospace, monospace", fontSize: 13 }}>{a.package}</td>
                   <td style={{ fontFamily: "ui-monospace, monospace", fontSize: 13 }}>{a.last_requested_version || <span className="muted">unknown</span>}</td>
-                  <td><SeverityBar severity={a.vuln_severity} counts={a.vuln_counts} scope={a.vuln_scope} /></td>
+                  <td><SeverityBar severity={a.vuln_severity} counts={a.vuln_counts} scope={a.vuln_scope} source={a.vuln_source} scannedAt={a.vuln_scanned_at} /></td>
                   <td>{a.requested_by || <span className="muted">anonymous</span>}</td>
                   <td>{a.request_count}</td>
                   <td className="muted">{new Date(a.last_requested_at).toLocaleString()}</td>
@@ -304,7 +347,7 @@ function ApproveAllModal({ repoNames, initialRepo, onDone, onCancel }: {
   return (
     <div className="modal-overlay" onClick={onCancel}>
       <div className="modal" onClick={(e) => e.stopPropagation()}>
-        <h2 style={{ marginTop: 0 }}>Approve all pending</h2>
+        <h2>Approve all pending</h2>
         <form onSubmit={submit}>
           <label>Proxy repository</label>
           {single ? (
@@ -365,7 +408,7 @@ export function ReviewModal({ row, onDone, onCancel }: {
   return (
     <div className="modal-overlay" onClick={onCancel}>
       <div className="modal" onClick={(e) => e.stopPropagation()}>
-        <h2 style={{ marginTop: 0 }}>Review "{row.package}"</h2>
+        <h2>Review "{row.package}"</h2>
         <p className="muted">
           Approve to serve all versions from {row.repo_name} (age policy still
           applies); reject to block the package, including already-cached content.
@@ -436,7 +479,7 @@ export function VersionDenies({ repo = "", showRepo = true, repoNames, repoIds =
   return (
     <>
       <div className="page-head" style={{ marginTop: 32 }}>
-        <h2 style={{ margin: 0 }}>Version denies</h2>
+        <h2 style={{ marginBottom: 0 }}>Version denies</h2>
         <button className="btn danger" onClick={() => setAdding(true)}>Deny version</button>
       </div>
       <p className="muted" style={{ marginTop: 4 }}>
@@ -534,7 +577,7 @@ function DenyVersionModal({ repoNames, initialRepo, onDone, onCancel }: {
   return (
     <div className="modal-overlay" onClick={onCancel}>
       <div className="modal" onClick={(e) => e.stopPropagation()}>
-        <h2 style={{ marginTop: 0 }}>Deny version</h2>
+        <h2>Deny version</h2>
         <p className="muted">
           Only this exact version is blocked; other versions keep flowing.
           Cached copies stop being served immediately.
@@ -591,7 +634,7 @@ function PreApproveModal({ repoNames, onDone, onCancel }: {
   return (
     <div className="modal-overlay" onClick={onCancel}>
       <div className="modal" onClick={(e) => e.stopPropagation()}>
-        <h2 style={{ marginTop: 0 }}>Add decision</h2>
+        <h2>Add decision</h2>
         <form onSubmit={submit}>
           <label>Proxy repository</label>
           <Select value={repo} onChange={setRepo}

@@ -61,7 +61,9 @@ a[target="_blank"]:not(.btn):not(.navlink)::after {
   box-shadow: 0 6px 20px rgba(0, 0, 0, 0.35); pointer-events: none;
 }
 
-.app { display: flex; min-height: 100vh; }
+/* align-items: flex-start stops the sidebar from stretching to the height of a
+   tall main column; the sidebar pins itself to the viewport instead (below). */
+.app { display: flex; min-height: 100vh; align-items: flex-start; }
 
 .sidebar {
   width: 220px;
@@ -71,6 +73,12 @@ a[target="_blank"]:not(.btn):not(.navlink)::after {
   display: flex;
   flex-direction: column;
   gap: 4px;
+  /* Stay one viewport tall and fixed in place while the main column scrolls,
+     so a long page never drags the sidebar (and its border) down with it. */
+  position: sticky;
+  top: 0;
+  height: 100vh;
+  overflow-y: auto;
 }
 .brand-block { padding: 4px 8px 18px; }
 .brand { display: flex; align-items: center; gap: 10px; font-weight: 700; font-size: 23px; letter-spacing: 0.5px; color: var(--text); cursor: pointer; }
@@ -98,13 +106,16 @@ a[target="_blank"]:not(.btn):not(.navlink)::after {
    whole page past the viewport. */
 .main { flex: 1; min-width: 0; padding: 28px 36px; max-width: 1100px; }
 h1 { font-size: 22px; margin: 0 0 18px; }
+/* Section titles always sit flush with their container's top padding (panels,
+   modals, section groups). margin-top: 0 is the standard; bottom margin keeps
+   the gap to the body below. */
 /* List-page header: title left, action button right, vertically centered.
    The h1 margin moves to the row so the button doesn't sag below the title. */
 .page-head { display: flex; justify-content: space-between; align-items: center; gap: 10px; margin: 0 0 18px; }
 .page-head h1 { margin: 0; }
 /* One-line page summary shown under the page heading. */
 .page-desc { color: var(--muted); font-size: 13px; line-height: 1.5; max-width: 780px; margin: -8px 0 22px; }
-h2 { font-size: 16px; margin: 24px 0 12px; }
+h2 { font-size: 16px; margin: 0 0 12px; }
 
 /* Custom hover tooltip (in-app replacement for the native title attribute).
    Put .tooltip on the trigger and the text in data-tooltip. Appears centered
@@ -260,6 +271,19 @@ textarea { font-family: inherit; resize: vertical; }
 
 .badge { display: inline-block; padding: 2px 8px; border-radius: 99px; font-size: 12px; background: var(--panel-2); color: var(--muted); border: 1px solid var(--border); }
 .badge.proxy, .badge.hosted, .badge.group { color: var(--text); }
+
+/* Artifact count chip: a boxed number. The .pending variant (packages awaiting
+   approval) is a yellow dashed box with a short text label to draw attention. */
+.count-box {
+  display: inline-block; padding: 1px 5px; border-radius: 5px; font-size: 12px;
+  border: 1px solid var(--border); background: var(--panel-2);
+  font-variant-numeric: tabular-nums;
+}
+.count-box.empty { color: var(--muted); }
+.count-box.pending {
+  margin-left: 3px; background: transparent;
+  border-style: dashed; border-color: var(--accent); color: var(--accent); font-weight: 600;
+}
 .badge.approval-pending { color: var(--accent); border-color: var(--accent); }
 .badge.approval-approved { color: #22c55e; border-color: #22c55e; }
 .badge.approval-rejected { color: var(--danger); border-color: var(--danger); }
@@ -365,3 +389,26 @@ ul.advisory-list li { font-family: ui-monospace, monospace; font-size: 13px; bre
 .sev-bar.lg .sev-bar-count { font-size: 14px; }
 .sev-seg { height: 100%; min-width: 3px; }
 .sev-bar-count { font-size: 12px; color: var(--muted); font-variant-numeric: tabular-nums; }
+
+/* Hover popover for the severity bar: a wider segmented bar plus a per-severity
+   count breakdown. Fixed-positioned (coords set in JS) so a scrolling table
+   container never clips it. Matches the in-app .tooltip look. */
+.sev-bar { cursor: help; outline: none; }
+.sev-pop {
+  position: fixed; transform: translateX(-50%); z-index: 200; width: max-content;
+  background: #2c313b; color: var(--text);
+  border: 1px solid #3d434e; border-radius: var(--radius);
+  padding: 10px 12px; box-shadow: 0 10px 28px rgba(0, 0, 0, 0.6);
+  display: flex; flex-direction: column; gap: 9px; pointer-events: none;
+}
+.sev-pop-title { font-size: 12px; font-weight: 600; }
+.sev-pop-bar {
+  display: inline-flex; width: 200px; height: 10px;
+  border-radius: 5px; overflow: hidden; background: var(--border);
+}
+.sev-pop-rows { display: flex; flex-direction: column; gap: 4px; min-width: 150px; }
+.sev-pop-row { display: flex; align-items: center; gap: 9px; font-size: 12px; line-height: 1.2; }
+.sev-pop-row .sev-dot { width: 9px; height: 9px; border-radius: 2px; flex: 0 0 auto; }
+.sev-pop-label { text-transform: capitalize; color: var(--text); }
+.sev-pop-num { margin-left: auto; font-variant-numeric: tabular-nums; font-weight: 600; }
+.sev-pop-meta { font-size: 11px; color: var(--muted); border-top: 1px solid #3d434e; padding-top: 7px; }

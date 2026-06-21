@@ -101,6 +101,26 @@ func (s *Store) ListStaleVulnScans(ctx context.Context, before time.Time, limit 
 	return out, rows.Err()
 }
 
+// ScannedKeys returns the set of coordinates that already have a stored scan,
+// keyed as ecosystem\x00package\x00version, so a backfill can enqueue scans only
+// for artifacts that have never been scanned.
+func (s *Store) ScannedKeys(ctx context.Context) (map[string]struct{}, error) {
+	rows, err := s.h().QueryContext(ctx, `SELECT ecosystem, package, version FROM vuln_scans`)
+	if err != nil {
+		return nil, wrap("scanned keys", err)
+	}
+	defer rows.Close()
+	out := map[string]struct{}{}
+	for rows.Next() {
+		var eco, pkg, ver string
+		if err := rows.Scan(&eco, &pkg, &ver); err != nil {
+			return nil, err
+		}
+		out[eco+"\x00"+pkg+"\x00"+ver] = struct{}{}
+	}
+	return out, rows.Err()
+}
+
 func scanVulnRow(row *sql.Row) (VulnScan, error) {
 	var v VulnScan
 	var ids, counts, advisories, scanned string

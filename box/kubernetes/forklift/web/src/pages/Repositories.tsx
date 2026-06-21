@@ -3,11 +3,22 @@ import { Link } from "react-router-dom";
 import { api, humanSize, Me, repoEndpoint, Repository } from "../api";
 import { UpstreamStatus } from "../components/UpstreamStatus";
 
-// ArtifactCount shows the number of stored artifacts; empty repos (and group
-// repos, which store nothing themselves) render a muted 0.
+// ArtifactCount shows the number of stored artifacts in a boxed count; empty
+// repos (and group repos, which store nothing themselves) render a muted 0.
+// When a proxy has packages awaiting approval, an extra yellow dashed box flags
+// the pending count so the repository stands out to an approver.
 function ArtifactCount({ repo }: { repo: Repository }) {
   const count = repo.artifact_count ?? 0;
-  return <span className={count === 0 ? "muted" : undefined}>{count.toLocaleString()}</span>;
+  const pending = repo.pending_approval_count ?? 0;
+  const tip = `${pending.toLocaleString()} package${pending === 1 ? "" : "s"} awaiting approval`;
+  return (
+    <span style={{ whiteSpace: "nowrap" }}>
+      <span className={`count-box${count === 0 ? " empty" : ""}`}>{count.toLocaleString()}</span>
+      {pending > 0 && (
+        <span className="count-box pending" title={tip}>{pending.toLocaleString()}</span>
+      )}
+    </span>
+  );
 }
 
 // RepoSize shows stored bytes, human-readable (B/KB/MB/GB/TB); proxies with a

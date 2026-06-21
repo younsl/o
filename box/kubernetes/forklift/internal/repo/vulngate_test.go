@@ -141,6 +141,102 @@ func TestVulnGateDisabledWithoutScanner(t *testing.T) {
 	}
 }
 
+// recordingScanner records the coordinates it is queried for and returns a
+// clean finding, so a test can assert which artifacts the backfill scanned.
+type recordingScanner struct{ calls [][3]string }
+
+func (s *recordingScanner) Query(_ context.Context, eco, pkg, ver string) (vuln.Finding, error) {
+	s.calls = append(s.calls, [3]string{eco, pkg, ver})
+	return vuln.Finding{}, nil
+}
+func (s *recordingScanner) Source() string { return "rec" }
+
+// TestVulnBackfillScansStoredArtifacts verifies the backfill enqueues scans for
+// already-stored artifacts that have never been scanned, and skips ones that
+// already have a stored scan.
+func TestVulnBackfillScansStoredArtifacts(t *testing.T) {
+	m, _, store := newTestManager(t)
+	rec := &recordingScanner{}
+	m.SetVulnScanner(rec)
+	ctx := t.Context()
+
+	mkFormatRepo(t, store, "npmjs", meta.FormatNPM, meta.TypeProxy, "http://upstream.invalid", repoconfig.Default())
+	repo, err := store.GetRepositoryByName(ctx, "npmjs")
+	if err != nil {
+		t.Fatal(err)
+	}
+	put := func(path, version string) {
+		t.Helper()
+		if _, err := store.PutArtifact(ctx, meta.Artifact{
+			RepoID: repo.ID, Path: path, Version: version, BlobSHA256: path, Size: 4,
+		}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	// Two stored artifacts; "react" is already scanned, "lodash" is not.
+	put("lodash/-/lodash-4.17.99.tgz", "4.17.99")
+	put("react/-/react-18.0.0.tgz", "18.0.0")
+	if err := store.UpsertVulnScan(ctx, "npm", "react", "18.0.0", "none", nil, nil, 0, nil, "OSV"); err != nil {
+		t.Fatal(err)
+	}
+
+	m.backfillOnce(ctx)
+
+	// Drain the queue synchronously so the assertions don't race the worker.
+	for {
+		select {
+		case job := <-m.scanQueue:
+			m.runScan(ctx, job)
+			continue
+		default:
+		}
+		break
+	}
+
+	// Only the unscanned coordinate was queried, and its scan is now stored.
+	if len(rec.calls) != 1 || rec.calls[0] != [3]string{"npm", "lodash", "4.17.99"} {
+		t.Fatalf("backfill scanned %v, want only [npm lodash 4.17.99]", rec.calls)
+	}
+	if _, err := store.GetVulnScan(ctx, "npm", "lodash", "4.17.99"); err != nil {
+		t.Fatalf("lodash scan not stored: %v", err)
+	}
+}
+
+// TestHostedUploadTriggersScan verifies that publishing to a hosted repository
+// enqueues an immediate vulnerability scan for the uploaded coordinate.
+func TestHostedUploadTriggersScan(t *testing.T) {
+	m, _, store := newTestManager(t)
+	rec := &recordingScanner{}
+	m.SetVulnScanner(rec)
+	mkFormatRepo(t, store, "mvn", meta.FormatMaven, meta.TypeHosted, "", repoconfig.Default())
+	h := mux(m)
+	ctx := t.Context()
+
+	w := httptest.NewRecorder()
+	h.ServeHTTP(w, httptest.NewRequest(http.MethodPut,
+		"/maven/mvn/com/example/app/1.2.3/app-1.2.3.jar", strings.NewReader("JARDATA")))
+	if w.Code != http.StatusCreated {
+		t.Fatalf("upload code=%d", w.Code)
+	}
+
+	// Drain the queue synchronously so the assertion doesn't race the worker.
+	for {
+		select {
+		case job := <-m.scanQueue:
+			m.runScan(ctx, job)
+			continue
+		default:
+		}
+		break
+	}
+	if len(rec.calls) != 1 || rec.calls[0] != [3]string{"Maven", "com.example:app", "1.2.3"} {
+		t.Fatalf("scan calls = %v, want [[Maven com.example:app 1.2.3]]", rec.calls)
+	}
+	if _, err := store.GetVulnScan(ctx, "Maven", "com.example:app", "1.2.3"); err != nil {
+		t.Fatalf("scan not stored: %v", err)
+	}
+}
+
 func TestDisabledRepositoryRefusesServing(t *testing.T) {
 	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		io.WriteString(w, "tarball-bytes")

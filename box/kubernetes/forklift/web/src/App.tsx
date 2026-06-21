@@ -48,6 +48,7 @@ export function App() {
           {(me.admin || me.approver) && <Route path="/approvals/:id" element={<ApprovalDetail />} />}
           {(me.admin || me.auditor) && <Route path="/users" element={<Users me={me} />} />}
           {me.admin && <Route path="/users/new" element={<UserNew />} />}
+          {me.admin && <Route path="/users/:id/tokens/new" element={<TokenNew />} />}
           {(me.admin || me.auditor) && <Route path="/users/:id" element={<UserModify me={me} />} />}
           {(me.admin || me.auditor) && <Route path="/roles" element={<Roles me={me} />} />}
           {me.admin && <Route path="/roles/new" element={<RoleNew />} />}

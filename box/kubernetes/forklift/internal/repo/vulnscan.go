@@ -31,6 +31,45 @@ func VulnCoordinate(format, artifactPath string) (ecosystem, pkg string) {
 	return "", ""
 }
 
+// scanStored enqueues an immediate vulnerability scan for a freshly stored
+// artifact, so a hosted upload is scanned right away instead of waiting for the
+// periodic backfill. The version is derived from the artifact path. It is a
+// no-op without a scanner, for unscannable formats, or for paths that carry no
+// version (e.g. an npm packument index), and deduplicates like any enqueue.
+func (m *Manager) scanStored(repo meta.Repository, artifactPath string) {
+	if m.scanner == nil {
+		return
+	}
+	eco, pkg := VulnCoordinate(repo.Format, artifactPath)
+	if pkg == "" {
+		return
+	}
+	version := versionForPath(repo.Format, artifactPath)
+	if version == "" {
+		return
+	}
+	m.enqueueScan(eco, pkg, version)
+}
+
+// versionForPath extracts the version from a stored artifact path using the
+// per-format rules, mirroring how the format handlers derive it. Returns "" when
+// the path carries no version (metadata/index paths).
+func versionForPath(format, artifactPath string) string {
+	switch format {
+	case meta.FormatMaven:
+		return mavenVersion(artifactPath)
+	case meta.FormatNPM:
+		return npmVersion(artifactPath)
+	case meta.FormatCargo:
+		return cargoVersion(artifactPath)
+	case meta.FormatGo:
+		return goVersion(artifactPath)
+	case meta.FormatPyPI:
+		return pypiVersion(path.Base(artifactPath))
+	}
+	return ""
+}
+
 // scanJob is a queued vulnerability scan for one package coordinate.
 type scanJob struct {
 	ecosystem string
@@ -120,6 +159,65 @@ func (m *Manager) runScan(ctx context.Context, job scanJob) {
 	if err := m.store.UpsertVulnScan(ctx, job.ecosystem, job.pkg, job.version, f.Max.String(), f.IDs, f.SeverityCounts(), durationMS, advisories, m.scanner.Source()); err != nil {
 		m.engine.log.Error("store vuln scan failed",
 			"ecosystem", job.ecosystem, "package", job.pkg, "version", job.version, "err", err)
+	}
+}
+
+// RunVulnBackfill scans already-stored artifacts that have never been scanned,
+// so vulnerability data exists for packages uploaded (hosted) or cached (proxy)
+// before a scan ever covered them. It sweeps once immediately and then every
+// interval. Leader-gated by the caller (only one instance should drive the
+// queue). A no-op without a scanner.
+func (m *Manager) RunVulnBackfill(ctx context.Context, interval time.Duration) {
+	if m.scanner == nil {
+		return
+	}
+	m.backfillOnce(ctx)
+	ticker := time.NewTicker(interval)
+	defer ticker.Stop()
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-ticker.C:
+			m.backfillOnce(ctx)
+		}
+	}
+}
+
+// backfillOnce enqueues a scan for every stored artifact coordinate that has no
+// scan yet. Already-scanned coordinates are skipped (the rescanner refreshes
+// those); unscannable formats are ignored. Coordinates dropped because the
+// queue was full are re-enqueued on the next sweep, since they remain unscanned.
+func (m *Manager) backfillOnce(ctx context.Context) {
+	scanned, err := m.store.ScannedKeys(ctx)
+	if err != nil {
+		m.engine.log.Error("vuln backfill: load scanned keys failed", "err", err)
+		return
+	}
+	enqueued := 0
+	for offset := 0; ; offset += reapBatch {
+		targets, err := m.store.ListScanTargets(ctx, reapBatch, offset)
+		if err != nil {
+			m.engine.log.Error("vuln backfill: list targets failed", "err", err)
+			return
+		}
+		for _, t := range targets {
+			eco, pkg := VulnCoordinate(t.Format, t.Path)
+			if pkg == "" {
+				continue
+			}
+			if _, ok := scanned[eco+"\x00"+pkg+"\x00"+t.Version]; ok {
+				continue
+			}
+			m.enqueueScan(eco, pkg, t.Version)
+			enqueued++
+		}
+		if len(targets) < reapBatch {
+			break
+		}
+	}
+	if enqueued > 0 {
+		m.engine.log.Info("vuln backfill enqueued scans for stored artifacts", "count", enqueued)
 	}
 }
 

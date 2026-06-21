@@ -20,7 +20,7 @@ export function Roles({ me }: { me: Me }) {
       </div>
       <p className="page-desc">
         Bundle repository permissions (read, write, delete, approve, audit, admin) over name patterns.
-        Open a role to map permissions; roles are assigned to users on each user's Modify page.
+        Open a role to map permissions; roles are assigned to users on each user's detail page.
       </p>
       {error && <div className="error">{error}</div>}
 

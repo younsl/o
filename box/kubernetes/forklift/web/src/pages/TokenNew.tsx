@@ -1,5 +1,5 @@
 import { FormEvent, useEffect, useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useParams } from "react-router-dom";
 import { api } from "../api";
 import { Combobox } from "../components/Combobox";
 
@@ -15,10 +15,16 @@ function dateStr(d: Date): string {
   return d.toISOString().slice(0, 10);
 }
 
-// Token creation page, reached from the New token button on /tokens. All
+// Token creation page. Reached from the New token button on /tokens
+// (self-service for the current user) or from a user's detail page at
+// /users/:id/tokens/new (admin creating a token for that user). The presence of
+// the :id route param selects the target and where Done/Cancel return to. All
 // fields are required; expiry is capped at one year by the API.
 export function TokenNew() {
   const navigate = useNavigate();
+  const { id } = useParams();
+  const forUserId = id ? Number(id) : null;
+  const backTo = forUserId ? `/users/${forUserId}` : "/tokens";
   const [name, setName] = useState("");
   const [description, setDescription] = useState("");
   const [scopes, setScopes] = useState<Scope[]>([]);
@@ -70,12 +76,15 @@ export function TokenNew() {
     e.preventDefault();
     setError("");
     try {
-      const res = await api.createToken({
+      const body = {
         name: name.trim(),
         description: description.trim(),
         scopes,
         expires_in: expiresIn(),
-      });
+      };
+      const res = forUserId !== null
+        ? await api.createUserToken(forUserId, body)
+        : await api.createToken(body);
       setCreated(res.token);
     } catch (err) {
       setError((err as Error).message);
@@ -101,7 +110,7 @@ export function TokenNew() {
             </button>
           </div>
           <div style={{ marginTop: 18 }}>
-            <button className="btn" onClick={() => navigate("/tokens")}>Done</button>
+            <button className="btn" onClick={() => navigate(backTo)}>Done</button>
           </div>
         </div>
       </>
@@ -110,7 +119,7 @@ export function TokenNew() {
 
   return (
     <>
-      <h1>Create token</h1>
+      <h1>{forUserId !== null ? "Create token for user" : "Create token"}</h1>
       <form className="panel" onSubmit={submit} style={{ maxWidth: 640 }}>
         <label>Token name<span className="req">*</span></label>
         <input value={name} onChange={(e) => setName(e.target.value)} placeholder="ci" autoFocus required
@@ -151,7 +160,7 @@ export function TokenNew() {
         {error && <div className="error">{error}</div>}
         <div style={{ marginTop: 18 }} className="inline">
           <button className="btn" type="submit" disabled={!valid}>Create</button>
-          <button className="btn secondary" type="button" onClick={() => navigate("/tokens")}>Cancel</button>
+          <button className="btn secondary" type="button" onClick={() => navigate(backTo)}>Cancel</button>
         </div>
       </form>
     </>

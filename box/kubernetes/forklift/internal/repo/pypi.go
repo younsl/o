@@ -280,6 +280,7 @@ func (m *Manager) pypiUpload(w http.ResponseWriter, r *http.Request, res resolve
 		http.Error(w, "store failed", http.StatusInternalServerError)
 		return
 	}
+	m.scanStored(res.repo, p)
 	w.WriteHeader(http.StatusCreated)
 }
 

@@ -97,10 +97,7 @@ func (h *Handler) listTokens(w http.ResponseWriter, r *http.Request) {
 	}
 	out := make([]map[string]any, 0, len(tokens))
 	for _, t := range tokens {
-		out = append(out, map[string]any{
-			"id": t.ID, "name": t.Name, "description": t.Description, "scopes_json": t.ScopesJSON,
-			"expires_at": t.ExpiresAt, "last_used_at": t.LastUsedAt, "created_at": t.CreatedAt,
-		})
+		out = append(out, tokenSummary(t))
 	}
 	writeJSON(w, http.StatusOK, out)
 }
@@ -110,64 +107,75 @@ func (h *Handler) createToken(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	var req createTokenReq
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		writeError(w, http.StatusBadRequest, "invalid json body")
-		return
-	}
+	h.issueToken(w, r, u.ID)
+}
+
+// validateTokenReq checks a create-token request and returns the parsed expiry
+// and serialized scopes. A non-empty msg means the request is invalid (the
+// caller should respond 400 with it).
+func validateTokenReq(req createTokenReq) (expiresAt time.Time, scopesJSON, msg string) {
 	if !validName(strings.TrimSpace(req.Name)) {
-		writeError(w, http.StatusBadRequest, "invalid token name: "+nameRuleMsg)
-		return
+		return time.Time{}, "", "invalid token name: " + nameRuleMsg
 	}
 	if strings.TrimSpace(req.Description) == "" {
-		writeError(w, http.StatusBadRequest, "token description required")
-		return
+		return time.Time{}, "", "token description required"
 	}
 	if len(req.Scopes) == 0 {
-		writeError(w, http.StatusBadRequest, "at least one scope required")
-		return
+		return time.Time{}, "", "at least one scope required"
 	}
 	for _, s := range req.Scopes {
 		if strings.TrimSpace(s.RepoPattern) == "" {
-			writeError(w, http.StatusBadRequest, "scope repo_pattern required")
-			return
+			return time.Time{}, "", "scope repo_pattern required"
 		}
 		if len(s.Actions) == 0 {
-			writeError(w, http.StatusBadRequest, "scope actions required")
-			return
+			return time.Time{}, "", "scope actions required"
 		}
 		for _, a := range s.Actions {
 			switch a {
 			case auth.ActionRead, auth.ActionWrite, auth.ActionDelete:
 			default:
-				writeError(w, http.StatusBadRequest, "invalid scope action: "+a)
-				return
+				return time.Time{}, "", "invalid scope action: " + a
 			}
 		}
 	}
 	if req.ExpiresIn == "" {
-		writeError(w, http.StatusBadRequest, "expires_in required")
-		return
+		return time.Time{}, "", "expires_in required"
 	}
 	d, err := time.ParseDuration(req.ExpiresIn)
 	if err != nil || d <= 0 {
-		writeError(w, http.StatusBadRequest, "invalid expires_in")
-		return
+		return time.Time{}, "", "invalid expires_in"
 	}
 	if d > maxTokenTTL {
-		writeError(w, http.StatusBadRequest, "expires_in exceeds the one year maximum")
+		return time.Time{}, "", "expires_in exceeds the one year maximum"
+	}
+	b, _ := json.Marshal(req.Scopes)
+	return time.Now().Add(d), string(b), ""
+}
+
+// issueToken validates the request body and creates a personal access token
+// owned by userID, returning the plaintext exactly once. It is shared by the
+// self-service create (current user) and the admin create (a target user).
+// Token scopes only ever narrow the owner's role permissions (enforced at auth
+// time via Principal.Can), so an admin issuing a token cannot escalate the
+// target user's effective access.
+func (h *Handler) issueToken(w http.ResponseWriter, r *http.Request, userID int64) {
+	var req createTokenReq
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid json body")
 		return
 	}
-	expiresAt := time.Now().Add(d)
-	b, _ := json.Marshal(req.Scopes)
-	scopesJSON := string(b)
+	expiresAt, scopesJSON, msg := validateTokenReq(req)
+	if msg != "" {
+		writeError(w, http.StatusBadRequest, msg)
+		return
+	}
 	plaintext, hash, err := auth.GenerateToken()
 	if err != nil {
 		mapError(w, err)
 		return
 	}
 	t, err := h.store.CreateToken(r.Context(), meta.Token{
-		UserID: u.ID, Name: req.Name, Description: req.Description,
+		UserID: userID, Name: req.Name, Description: req.Description,
 		Hash: hash, ScopesJSON: scopesJSON, ExpiresAt: &expiresAt,
 	})
 	if err != nil {
@@ -190,6 +198,71 @@ func (h *Handler) deleteToken(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err := h.store.DeleteToken(r.Context(), u.ID, id); err != nil {
+		mapError(w, err)
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
+}
+
+// --- user tokens (admin/auditor) ---
+//
+// The per-user token endpoints let an administrator manage another user's
+// personal access tokens from that user's detail page; an auditor may list them
+// read-only. They reuse the user-id-keyed store methods, so a token is always
+// scoped to (and deletable only within) the target user.
+
+// tokenSummary is the list shape for a token, hash and plaintext excluded.
+func tokenSummary(t meta.Token) map[string]any {
+	return map[string]any{
+		"id": t.ID, "name": t.Name, "description": t.Description, "scopes_json": t.ScopesJSON,
+		"expires_at": t.ExpiresAt, "last_used_at": t.LastUsedAt, "created_at": t.CreatedAt,
+	}
+}
+
+func (h *Handler) listUserTokens(w http.ResponseWriter, r *http.Request) {
+	id, ok := pathID(w, r)
+	if !ok {
+		return
+	}
+	if _, err := h.store.GetUser(r.Context(), id); err != nil {
+		mapError(w, err)
+		return
+	}
+	tokens, err := h.store.ListTokens(r.Context(), id)
+	if err != nil {
+		mapError(w, err)
+		return
+	}
+	out := make([]map[string]any, 0, len(tokens))
+	for _, t := range tokens {
+		out = append(out, tokenSummary(t))
+	}
+	writeJSON(w, http.StatusOK, out)
+}
+
+func (h *Handler) createUserToken(w http.ResponseWriter, r *http.Request) {
+	id, ok := pathID(w, r)
+	if !ok {
+		return
+	}
+	if _, err := h.store.GetUser(r.Context(), id); err != nil {
+		mapError(w, err)
+		return
+	}
+	h.issueToken(w, r, id)
+}
+
+func (h *Handler) deleteUserToken(w http.ResponseWriter, r *http.Request) {
+	id, ok := pathID(w, r)
+	if !ok {
+		return
+	}
+	tokenID, err := parseID(chi.URLParam(r, "tokenID"))
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "invalid token id")
+		return
+	}
+	if err := h.store.DeleteToken(r.Context(), id, tokenID); err != nil {
 		mapError(w, err)
 		return
 	}
@@ -354,6 +427,10 @@ func (h *Handler) updateUser(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if req.Disabled != nil {
+		if *req.Disabled && h.authz != nil && h.authz.IsProtectedAdmin(target.Username) {
+			writeError(w, http.StatusBadRequest, "cannot disable the default admin account")
+			return
+		}
 		if h.isSelf(r, id) && *req.Disabled {
 			writeError(w, http.StatusBadRequest, "cannot disable your own account")
 			return

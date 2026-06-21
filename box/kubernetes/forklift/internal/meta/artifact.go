@@ -291,6 +291,38 @@ type RepoStats struct {
 	TotalSize     int64
 }
 
+// ScanTarget is a stored artifact's repository format with its path and
+// version, enough to derive an OSV scan coordinate for backfill scanning.
+type ScanTarget struct {
+	Format  string
+	Path    string
+	Version string
+}
+
+// ListScanTargets returns stored artifacts that carry a version, joined with
+// their repository format, paged by artifact id (ascending). Used by the
+// backfill worker to scan already-uploaded packages.
+func (s *Store) ListScanTargets(ctx context.Context, limit, offset int) ([]ScanTarget, error) {
+	rows, err := s.h().QueryContext(ctx,
+		`SELECT r.format, a.path, a.version
+		   FROM artifacts a JOIN repositories r ON a.repo_id = r.id
+		  WHERE a.version != ''
+		  ORDER BY a.id LIMIT ? OFFSET ?`, limit, offset)
+	if err != nil {
+		return nil, wrap("list scan targets", err)
+	}
+	defer rows.Close()
+	var out []ScanTarget
+	for rows.Next() {
+		var t ScanTarget
+		if err := rows.Scan(&t.Format, &t.Path, &t.Version); err != nil {
+			return nil, err
+		}
+		out = append(out, t)
+	}
+	return out, rows.Err()
+}
+
 // AllRepoStats returns artifact count and total size for every repository that
 // has artifacts, in one query (repositories without artifacts are absent).
 func (s *Store) AllRepoStats(ctx context.Context) (map[int64]RepoStats, error) {
