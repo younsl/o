@@ -29,6 +29,9 @@ type StorageCollector struct {
 	artifacts    *prometheus.Desc
 	blobs        *prometheus.Desc
 	storageBytes *prometheus.Desc
+
+	repoArtifacts *prometheus.Desc
+	repoSizeBytes *prometheus.Desc
 }
 
 // NewStorageCollector builds a collector backed by the metadata store.
@@ -45,6 +48,12 @@ func NewStorageCollector(r Reader) *StorageCollector {
 			"Deduplicated content-addressed blobs in the blob store.", nil, nil),
 		storageBytes: prometheus.NewDesc("forklift_storage_bytes",
 			"Physical bytes used by deduplicated blobs.", nil, nil),
+		repoArtifacts: prometheus.NewDesc("forklift_repository_artifacts",
+			"Logical artifacts stored per repository.",
+			[]string{"repository", "format", "type"}, nil),
+		repoSizeBytes: prometheus.NewDesc("forklift_repository_size_bytes",
+			"Logical (pre-dedup) bytes of artifacts stored per repository.",
+			[]string{"repository", "format", "type"}, nil),
 	}
 }
 
@@ -54,6 +63,8 @@ func (c *StorageCollector) Describe(ch chan<- *prometheus.Desc) {
 	ch <- c.artifacts
 	ch <- c.blobs
 	ch <- c.storageBytes
+	ch <- c.repoArtifacts
+	ch <- c.repoSizeBytes
 }
 
 // Collect implements prometheus.Collector. Individual query failures skip only
@@ -62,7 +73,8 @@ func (c *StorageCollector) Collect(ch chan<- prometheus.Metric) {
 	ctx, cancel := context.WithTimeout(context.Background(), c.timeout)
 	defer cancel()
 
-	if repos, err := c.r.ListRepositories(ctx); err == nil {
+	repos, repoErr := c.r.ListRepositories(ctx)
+	if repoErr == nil {
 		counts := map[[2]string]int{}
 		for _, r := range repos {
 			counts[[2]string{r.Format, r.Type}]++
@@ -73,12 +85,27 @@ func (c *StorageCollector) Collect(ch chan<- prometheus.Metric) {
 		}
 	}
 
-	if stats, err := c.r.AllRepoStats(ctx); err == nil {
+	stats, statsErr := c.r.AllRepoStats(ctx)
+	if statsErr == nil {
 		var total int64
 		for _, st := range stats {
 			total += st.ArtifactCount
 		}
 		ch <- prometheus.MustNewConstMetric(c.artifacts, prometheus.GaugeValue, float64(total))
+	}
+
+	// Per-repository inventory needs both the repo list (for name/format/type)
+	// and the stats keyed by id; repos with no artifacts are absent from stats
+	// and report zero. Sizes here are logical (sum of artifact sizes) and so
+	// differ from forklift_storage_bytes, which is deduplicated physical usage.
+	if repoErr == nil && statsErr == nil {
+		for _, r := range repos {
+			st := stats[r.ID]
+			ch <- prometheus.MustNewConstMetric(c.repoArtifacts,
+				prometheus.GaugeValue, float64(st.ArtifactCount), r.Name, r.Format, r.Type)
+			ch <- prometheus.MustNewConstMetric(c.repoSizeBytes,
+				prometheus.GaugeValue, float64(st.TotalSize), r.Name, r.Format, r.Type)
+		}
 	}
 
 	if count, bytes, err := c.r.BlobStats(ctx); err == nil {

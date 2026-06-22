@@ -43,9 +43,9 @@ func (f *fakeReader) BlobStats(context.Context) (int64, int64, error) {
 func TestStorageCollector(t *testing.T) {
 	c := NewStorageCollector(&fakeReader{
 		repos: []meta.Repository{
-			{Format: "npm", Type: "hosted"},
-			{Format: "npm", Type: "proxy"},
-			{Format: "maven", Type: "hosted"},
+			{ID: 1, Name: "npm-hosted", Format: "npm", Type: "hosted"},
+			{ID: 2, Name: "npm-proxy", Format: "npm", Type: "proxy"},
+			{ID: 3, Name: "maven-hosted", Format: "maven", Type: "hosted"},
 		},
 		stats: map[int64]meta.RepoStats{
 			1: {ArtifactCount: 4, TotalSize: 100},
@@ -67,6 +67,16 @@ forklift_blobs 7
 forklift_repositories{format="maven",type="hosted"} 1
 forklift_repositories{format="npm",type="hosted"} 1
 forklift_repositories{format="npm",type="proxy"} 1
+# HELP forklift_repository_artifacts Logical artifacts stored per repository.
+# TYPE forklift_repository_artifacts gauge
+forklift_repository_artifacts{format="maven",repository="maven-hosted",type="hosted"} 0
+forklift_repository_artifacts{format="npm",repository="npm-hosted",type="hosted"} 4
+forklift_repository_artifacts{format="npm",repository="npm-proxy",type="proxy"} 6
+# HELP forklift_repository_size_bytes Logical (pre-dedup) bytes of artifacts stored per repository.
+# TYPE forklift_repository_size_bytes gauge
+forklift_repository_size_bytes{format="maven",repository="maven-hosted",type="hosted"} 0
+forklift_repository_size_bytes{format="npm",repository="npm-hosted",type="hosted"} 100
+forklift_repository_size_bytes{format="npm",repository="npm-proxy",type="proxy"} 200
 # HELP forklift_storage_bytes Physical bytes used by deduplicated blobs.
 # TYPE forklift_storage_bytes gauge
 forklift_storage_bytes 4096
