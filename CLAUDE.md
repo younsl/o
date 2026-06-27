@@ -28,7 +28,7 @@ Types: `feat`, `fix`, `refactor`, `docs`, `test`, `chore`, etc.
 
 ### Rust Projects
 
-Standard Makefile patterns for Rust tools (ij, kuo, gss, filesystem-cleaner, elasticache-backup, redis-console, trivy-collector):
+Standard Makefile patterns for Rust tools (ij, kuo, gss, filesystem-cleaner, elasticache-backup, trivy-collector):
 
 ```bash
 # Core build commands
@@ -85,7 +85,7 @@ terraform destroy   # Destroy resources
 
 ### Helm Charts
 
-Standard Makefile patterns for Helm charts (grafana-dashboards, gss, elasticache-backup, redis-console, trivy-collector):
+Standard Makefile patterns for Helm charts (grafana-dashboards, gss, elasticache-backup, trivy-collector):
 
 ```bash
 # Development
@@ -125,7 +125,6 @@ box/
 │   ├── gss/               # GHES scheduled workflow scanner (Rust, container)
 │   ├── kubernetes-upgrade-operator/ # EKS declarative upgrade operator (Rust, container)
 │   ├── logstash-with-opensearch-plugin/ # Logstash with OpenSearch plugin for ECK (JVM)
-│   ├── redis-console/     # Interactive Redis cluster management CLI (Rust, CLI + container)
 │   └── trivy-collector/   # Multi-cluster Trivy report collector/viewer (Rust, container)
 ├── tools/                 # CLI utilities
 │   └── ij/                # Interactive EC2 SSM connection tool (Rust)
@@ -332,82 +331,6 @@ helm install elasticache-backup ./box/kubernetes/elasticache-backup/charts/elast
 
 **Workflow**: Snapshot Creation → Wait → S3 Export → Wait → Cleanup
 
-### redis-console - Interactive Redis Cluster Management CLI (Rust)
-
-An interactive REPL for managing multiple Redis and AWS ElastiCache clusters from a single terminal session.
-
-```bash
-# Local usage with default config
-redis-console
-
-# Specify custom config
-redis-console --config /path/to/config.yaml
-
-# Container usage
-docker run --rm -it \
-  -v $(pwd)/config.yaml:/etc/redis/clusters/config.yaml \
-  ghcr.io/younsl/redis-console:latest
-
-# Kubernetes deployment
-kubectl exec -it -n redis-console redis-console-xxxxxx -- redis-console
-```
-
-**Configuration Format** (`~/.config/redis-console/config.yaml` or `/etc/redis/clusters/config.yaml` in containers):
-
-```yaml
-clusters:
-  - alias: production
-    host: redis-prod.example.com
-    port: 6379
-    password: ""           # Optional
-    tls: false            # Optional
-    cluster_mode: false   # Optional
-    description: "Production Redis"
-
-  - alias: staging
-    host: redis-staging.example.com
-    port: 6379
-    password: "my-password"
-    tls: true
-    cluster_mode: false
-
-aws_region: ap-northeast-2  # For ElastiCache
-```
-
-**REPL Commands**:
-- `help`, `h` - Show help message
-- `list`, `ls`, `l` - List all clusters with health status
-- `connect <id|name>`, `c` - Connect to cluster by ID or alias
-- `info` - Show Redis server info (when connected)
-- `quit`, `exit`, `q` - Disconnect or exit
-- Any Redis command when connected (e.g., `GET key`, `SET key value`, `KEYS *`)
-
-**Technical Details**:
-- Built with rustyline for REPL interface
-- Multi-cluster management with seamless switching
-- Health monitoring with Redis version and mode detection
-- Command history navigation (↑/↓ keys)
-- Colorized output with tabled formatting
-- TLS and Redis Cluster mode support
-- TTY detection for Kubernetes compatibility
-- AWS ElastiCache integration via IRSA
-
-**Build Commands**:
-```bash
-make build      # Debug build
-make release    # Optimized release build
-make run        # Build and run
-make install    # Install to ~/.cargo/bin/
-```
-
-**Deployment** (Kubernetes with IRSA for ElastiCache):
-```bash
-helm install redis-console ./charts/redis-console \
-  --namespace redis-console \
-  --create-namespace \
-  --set serviceAccount.annotations."eks\.amazonaws\.com/role-arn"=arn:aws:iam::ACCOUNT:role/redis-console-role
-```
-
 ### trivy-collector - Multi-cluster Trivy Report Collector (Rust)
 
 Collects Trivy Operator reports (VulnerabilityReports, SbomReports) from multiple Kubernetes clusters and provides a centralized web UI.
@@ -604,7 +527,6 @@ Triggered automatically when the `org.opencontainers.image.version` label in a D
 # - gss                               (Rust scratch+zigbuild)       — _release-rust-scratch-containers.yml
 # - kuo                               (Rust scratch+zigbuild)       — _release-rust-scratch-containers.yml
 # - elasticache-backup                (Rust scratch+zigbuild)       — _release-rust-scratch-containers.yml
-# - redis-console                     (Rust alpine in-Docker)       — _release-rust-containers.yml
 # - external-ebs-autoresizer          (Go scratch)                  — release-go-scratch-containers.yml
 ```
 
@@ -630,7 +552,6 @@ git tag ij/1.0.0 && git push --tags
 
 ```bash
 # - release-containers.yml                   (backstage, logstash — version label trigger)
-# - _release-rust-containers.yml             (redis-console — version label trigger)
 # - _release-rust-scratch-containers.yml     (Rust scratch+zigbuild containers — version label trigger)
 # - release-go-scratch-containers.yml        (external-ebs-autoresizer — version label trigger)
 # - _release-charts.yml                      (All Helm charts to OCI registry — Chart.yaml change trigger)
