@@ -31,6 +31,9 @@ export interface LogExtractRequest {
   errorMessage: string | null;
   downloadable: boolean;
   approvalDeadline: string | null;
+  extractionDurationMs: number | null;
+  progressCurrent: number | null;
+  progressTotal: number | null;
   createdAt: string;
   updatedAt: string;
 }

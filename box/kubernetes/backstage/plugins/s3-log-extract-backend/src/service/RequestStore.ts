@@ -50,6 +50,10 @@ export class RequestStore {
         table.string('first_timestamp');
         table.string('last_timestamp');
         table.text('error_message');
+        table.timestamp('extraction_started_at');
+        table.timestamp('extraction_finished_at');
+        table.integer('progress_current');
+        table.integer('progress_total');
         table.timestamp('created_at').notNullable();
         table.timestamp('updated_at').notNullable();
       });
@@ -60,6 +64,19 @@ export class RequestStore {
         await this.db.schema.alterTable(TABLE_NAME, table => {
           table.string('first_timestamp');
           table.string('last_timestamp');
+        });
+      }
+
+      const hasExtractionStarted = await this.db.schema.hasColumn(
+        TABLE_NAME,
+        'extraction_started_at',
+      );
+      if (!hasExtractionStarted) {
+        await this.db.schema.alterTable(TABLE_NAME, table => {
+          table.timestamp('extraction_started_at');
+          table.timestamp('extraction_finished_at');
+          table.integer('progress_current');
+          table.integer('progress_total');
         });
       }
     }
@@ -93,6 +110,9 @@ export class RequestStore {
       approvalDeadline: new Date(
         new Date(now).getTime() + APPROVAL_TIMEOUT_MS,
       ).toISOString(),
+      extractionDurationMs: null,
+      progressCurrent: null,
+      progressTotal: null,
       createdAt: now,
       updatedAt: now,
     };
@@ -153,6 +173,8 @@ export class RequestStore {
       firstTimestamp?: string;
       lastTimestamp?: string;
       errorMessage?: string;
+      progressCurrent?: number;
+      progressTotal?: number;
     },
   ): Promise<LogExtractRequest | undefined> {
     const now = new Date().toISOString();
@@ -160,6 +182,15 @@ export class RequestStore {
       status,
       updated_at: now,
     };
+
+    // Stamp extraction lifecycle timestamps so elapsed time can be derived.
+    if (status === 'extracting') {
+      updateData.extraction_started_at = now;
+      updateData.extraction_finished_at = null;
+    }
+    if (status === 'completed' || status === 'failed') {
+      updateData.extraction_finished_at = now;
+    }
 
     if (updates?.reviewerRef !== undefined) updateData.reviewer_ref = updates.reviewerRef;
     if (updates?.reviewComment !== undefined) updateData.review_comment = updates.reviewComment;
@@ -169,10 +200,23 @@ export class RequestStore {
     if (updates?.firstTimestamp !== undefined) updateData.first_timestamp = updates.firstTimestamp;
     if (updates?.lastTimestamp !== undefined) updateData.last_timestamp = updates.lastTimestamp;
     if (updates?.errorMessage !== undefined) updateData.error_message = updates.errorMessage;
+    if (updates?.progressCurrent !== undefined) updateData.progress_current = updates.progressCurrent;
+    if (updates?.progressTotal !== undefined) updateData.progress_total = updates.progressTotal;
 
     await this.db(TABLE_NAME).where({ id }).update(updateData);
 
     return this.getRequest(id);
+  }
+
+  /** Update extraction progress counters without touching status/updated_at. */
+  async updateProgress(
+    id: string,
+    current: number,
+    total?: number,
+  ): Promise<void> {
+    const updateData: Record<string, unknown> = { progress_current: current };
+    if (total !== undefined) updateData.progress_total = total;
+    await this.db(TABLE_NAME).where({ id }).update(updateData);
   }
 
   private isDownloadable(row: Record<string, unknown>): boolean {
@@ -201,6 +245,14 @@ export class RequestStore {
         ? new Date(new Date(createdAt).getTime() + APPROVAL_TIMEOUT_MS).toISOString()
         : null;
 
+    const extractionStartedAt = (row.extraction_started_at as string) ?? null;
+    const extractionFinishedAt = (row.extraction_finished_at as string) ?? null;
+    const extractionDurationMs =
+      extractionStartedAt && extractionFinishedAt
+        ? new Date(extractionFinishedAt).getTime() -
+          new Date(extractionStartedAt).getTime()
+        : null;
+
     return {
       id: row.id as string,
       source: (row.source as LogExtractRequest['source']) ?? 'k8s',
@@ -222,6 +274,9 @@ export class RequestStore {
       errorMessage: (row.error_message as string) ?? null,
       downloadable: this.isDownloadable(row),
       approvalDeadline,
+      extractionDurationMs,
+      progressCurrent: (row.progress_current as number) ?? null,
+      progressTotal: (row.progress_total as number) ?? null,
       createdAt,
       updatedAt: row.updated_at as string,
     };

@@ -165,6 +165,38 @@ describe('RequestStore', () => {
       const updated = await store.updateStatus('non-existent', 'approved');
       expect(updated).toBeUndefined();
     });
+
+    it('derives extractionDurationMs from extracting to completed', async () => {
+      const created = await store.createRequest(baseInput, 'user:default/alice');
+
+      const extracting = await store.updateStatus(created.id, 'extracting');
+      expect(extracting!.extractionDurationMs).toBeNull();
+
+      await new Promise(r => setTimeout(r, 15));
+
+      const completed = await store.updateStatus(created.id, 'completed', {
+        fileCount: 1,
+        archiveSize: 100,
+        archivePath: '/tmp/logs.tar.gz',
+      });
+
+      expect(completed!.extractionDurationMs).not.toBeNull();
+      expect(completed!.extractionDurationMs!).toBeGreaterThanOrEqual(0);
+    });
+
+    it('tracks progress counters', async () => {
+      const created = await store.createRequest(baseInput, 'user:default/alice');
+
+      await store.updateStatus(created.id, 'extracting', {
+        progressCurrent: 0,
+        progressTotal: 3,
+      });
+      await store.updateProgress(created.id, 2);
+
+      const fetched = await store.getRequest(created.id);
+      expect(fetched!.progressCurrent).toBe(2);
+      expect(fetched!.progressTotal).toBe(3);
+    });
   });
 
   describe('rowToRequest edge cases', () => {

@@ -191,6 +191,7 @@ export class S3LogService {
     apps: string[],
     startTime: string,
     endTime: string,
+    options?: { onProgress?: (current: number, total: number) => void },
   ): Promise<{
     archivePath: string;
     fileCount: number;
@@ -224,6 +225,8 @@ export class S3LogService {
 
     let fileCount = 0;
     const tsTracker = { minMs: Infinity, maxMs: -Infinity };
+    const onAppDone = (done: number) =>
+      options?.onProgress?.(done, apps.length);
 
     if (source === 'k8s') {
       fileCount = await this.extractK8sLogs(
@@ -234,6 +237,7 @@ export class S3LogService {
         endMs,
         pack,
         tsTracker,
+        onAppDone,
       );
     } else {
       fileCount = await this.extractEc2Logs(
@@ -244,6 +248,7 @@ export class S3LogService {
         endMs,
         pack,
         tsTracker,
+        onAppDone,
       );
     }
 
@@ -274,8 +279,10 @@ export class S3LogService {
     endMs: number,
     pack: tar.Pack,
     tsTracker: { minMs: number; maxMs: number },
+    onAppDone?: (done: number) => void,
   ): Promise<number> {
     let fileCount = 0;
+    let appsProcessed = 0;
 
     // KST range can span multiple UTC dates; scan with buffer
     const scanStartUtc = new Date(startMs - 60 * 60 * 1000);
@@ -317,6 +324,8 @@ export class S3LogService {
           }
         }
       }
+      appsProcessed++;
+      onAppDone?.(appsProcessed);
     }
 
     return fileCount;
@@ -334,8 +343,10 @@ export class S3LogService {
     endMs: number,
     pack: tar.Pack,
     tsTracker: { minMs: number; maxMs: number },
+    onAppDone?: (done: number) => void,
   ): Promise<number> {
     let fileCount = 0;
+    let appsProcessed = 0;
 
     // ec2 directory uses UTC dates; scan with buffer
     const scanStartUtc = new Date(startMs - 60 * 60 * 1000);
@@ -378,6 +389,8 @@ export class S3LogService {
           }
         }
       }
+      appsProcessed++;
+      onAppDone?.(appsProcessed);
     }
 
     return fileCount;

@@ -741,10 +741,14 @@ const RequestList = ({
     return api.listRequests();
   }, [refreshKey]);
 
+  const hasExtracting = (requests ?? []).some(r => r.status === 'extracting');
+
   useEffect(() => {
-    const id = setInterval(() => retry(), 30_000);
+    // Poll faster while an extraction is in progress so the progress
+    // counter and elapsed time stay current.
+    const id = setInterval(() => retry(), hasExtracting ? 3_000 : 30_000);
     return () => clearInterval(id);
-  }, [retry]);
+  }, [retry, hasExtracting]);
 
   const { value: adminStatus } = useAsyncRetry(async () => {
     return api.getAdminStatus();
@@ -849,6 +853,19 @@ const RequestList = ({
   const formatTimestamp = (iso: string) => {
     const d = new Date(iso);
     return d.toLocaleString('ko-KR', { timeZone: 'Asia/Seoul' });
+  };
+
+  const formatDuration = (ms: number | null) => {
+    if (ms === null || ms < 0) return '-';
+    const totalSeconds = Math.round(ms / 1000);
+    const h = Math.floor(totalSeconds / 3600);
+    const m = Math.floor((totalSeconds % 3600) / 60);
+    const s = totalSeconds % 60;
+    const parts: string[] = [];
+    if (h > 0) parts.push(`${h}h`);
+    if (m > 0) parts.push(`${m}m`);
+    parts.push(`${s}s`);
+    return parts.join(' ');
   };
 
   const formatSize = (bytes: number | null) => {
@@ -1080,6 +1097,11 @@ const RequestList = ({
                         <Text variant="body-small">
                           {request.fileCount} files ({formatSize(request.archiveSize)})
                         </Text>
+                        {request.extractionDurationMs !== null && (
+                          <Text variant="body-small" color="secondary">
+                            &middot; took {formatDuration(request.extractionDurationMs)}
+                          </Text>
+                        )}
                         <TooltipTrigger closeDelay={100}>
                           <Button
                             variant="tertiary"
@@ -1094,6 +1116,12 @@ const RequestList = ({
                                 <div>
                                   <span style={{ fontWeight: 700 }}>Log period: </span>
                                   {formatTimestamp(request.firstTimestamp)} ~ {formatTimestamp(request.lastTimestamp)}
+                                </div>
+                              )}
+                              {request.extractionDurationMs !== null && (
+                                <div>
+                                  <span style={{ fontWeight: 700 }}>Duration: </span>
+                                  {formatDuration(request.extractionDurationMs)}
                                 </div>
                               )}
                               {request.archivePath && (
@@ -1144,6 +1172,10 @@ const RequestList = ({
                     </div>
                     <span className={getStatusClassName(request.status)}>
                       {request.status}
+                      {request.status === 'extracting' &&
+                        request.progressTotal != null &&
+                        request.progressTotal > 0 &&
+                        ` (${request.progressCurrent ?? 0}/${request.progressTotal})`}
                       {getStatusIcon(request.status)}
                     </span>
                   </div>

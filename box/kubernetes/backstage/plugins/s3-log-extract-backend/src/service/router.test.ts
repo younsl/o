@@ -9,6 +9,7 @@ const mockStore = {
   getRequest: jest.fn(),
   listRequests: jest.fn(),
   updateStatus: jest.fn(),
+  updateProgress: jest.fn(),
 };
 
 const mockS3LogService = {
@@ -61,6 +62,9 @@ function makeRequest(overrides: Partial<LogExtractRequest> = {}): LogExtractRequ
     errorMessage: null,
     downloadable: false,
     approvalDeadline: '2026-03-06T00:00:00.000Z',
+    extractionDurationMs: null,
+    progressCurrent: null,
+    progressTotal: null,
     createdAt: '2026-03-05T00:00:00.000Z',
     updatedAt: '2026-03-05T00:00:00.000Z',
     ...overrides,
@@ -410,7 +414,10 @@ describe('router', () => {
         reviewerRef: 'user:default/admin',
         reviewComment: 'Approved',
       });
-      expect(mockStore.updateStatus).toHaveBeenCalledWith('req-001', 'extracting');
+      expect(mockStore.updateStatus).toHaveBeenCalledWith('req-001', 'extracting', {
+        progressCurrent: 0,
+        progressTotal: 1,
+      });
       expect(mockS3LogService.extractLogs).toHaveBeenCalledWith(
         'k8s',
         'prd',
@@ -418,6 +425,7 @@ describe('router', () => {
         ['order-api'],
         '09:00',
         '10:00',
+        expect.objectContaining({ onProgress: expect.any(Function) }),
       );
     });
   });

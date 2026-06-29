@@ -287,7 +287,10 @@ export async function createRouter(options: RouterOptions): Promise<Router> {
           reviewComment: input.comment,
         });
 
-        await store.updateStatus(id, 'extracting');
+        await store.updateStatus(id, 'extracting', {
+          progressCurrent: 0,
+          progressTotal: existing.apps.length,
+        });
 
         logger.info(
           `Request approved [${id}] by ${reviewerRef}, starting extraction`,
@@ -301,6 +304,15 @@ export async function createRouter(options: RouterOptions): Promise<Router> {
             existing.apps,
             existing.startTime,
             existing.endTime,
+            {
+              onProgress: (current, total) => {
+                store.updateProgress(id, current, total).catch(err => {
+                  logger.warn(
+                    `Failed to update progress [${id}]: ${err}`,
+                  );
+                });
+              },
+            },
           )
           .then(async result => {
             await store.updateStatus(id, 'completed', {
