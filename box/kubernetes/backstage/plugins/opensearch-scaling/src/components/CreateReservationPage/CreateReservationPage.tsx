@@ -361,38 +361,44 @@ export const CreateReservationPage = () => {
                   />
                 ))}
 
-              <Combobox
-                label="Data node instance type"
-                isRequired
-                allowsCustomValue
-                isDisabled={!domain}
-                placeholder={
-                  domain
-                    ? 'Select or type an instance type'
-                    : 'Select a domain first'
-                }
-                options={instanceTypeOptions}
-                inputValue={instanceType}
-                onInputChange={setInstanceType}
-              />
-
-              <Flex gap="3" direction="row">
-                <TextField
-                  label="Data node count"
-                  isRequired
-                  inputMode="numeric"
-                  value={instanceCount}
-                  onChange={setInstanceCount}
-                  placeholder="e.g. 3"
-                />
-                <TextField
-                  label="EBS volume per node (GB)"
-                  isRequired
-                  inputMode="numeric"
-                  value={volumeSizeGb}
-                  onChange={setVolumeSizeGb}
-                  placeholder="e.g. 100"
-                />
+              {/* Instance type, node count, and EBS volume on one row */}
+              <Flex gap="3" direction="row" align="start">
+                <div style={{ flex: 2, minWidth: 0 }}>
+                  <Combobox
+                    label="Data node instance type"
+                    isRequired
+                    allowsCustomValue
+                    isDisabled={!domain}
+                    placeholder={
+                      domain
+                        ? 'Select or type an instance type'
+                        : 'Select a domain first'
+                    }
+                    options={instanceTypeOptions}
+                    inputValue={instanceType}
+                    onInputChange={setInstanceType}
+                  />
+                </div>
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <TextField
+                    label="Data node count"
+                    isRequired
+                    inputMode="numeric"
+                    value={instanceCount}
+                    onChange={setInstanceCount}
+                    placeholder="e.g. 3"
+                  />
+                </div>
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <TextField
+                    label="EBS volume per node (GB)"
+                    isRequired
+                    inputMode="numeric"
+                    value={volumeSizeGb}
+                    onChange={setVolumeSizeGb}
+                    placeholder="e.g. 100"
+                  />
+                </div>
               </Flex>
 
               {detail && (
