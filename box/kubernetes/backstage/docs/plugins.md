@@ -61,4 +61,5 @@ Most custom plugins ship as `<name>` (frontend) plus `<name>-backend` (backend).
 | Grafana Dashboard Map | `grafana-dashboard-map` | Map Grafana dashboards onto a system architecture diagram |
 | GitLab Token Audit | `gitlab-token-audit` | Audit GitLab personal/project/group access tokens with expiry alerts via Slack webhook |
 | OpenSearch | `opensearch-account` | Self-service OpenSearch Security internal user create/list/delete/modify with admin approval, RBAC, and audit trail |
+| Capacity | `opensearch-scaling` | Self-service reserved scaling of OpenSearch Service domains (instance type, node count, EBS) at a scheduled time with in-progress pre-validation |
 | Build Info | — | Settings page showing build metadata, installed plugins, BUI migration progress |

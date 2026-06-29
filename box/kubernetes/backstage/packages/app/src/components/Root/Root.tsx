@@ -16,6 +16,7 @@ import AttachMoneyIcon from '@material-ui/icons/AttachMoney';
 import FindInPageIcon from '@material-ui/icons/FindInPage';
 import DashboardIcon from '@material-ui/icons/Dashboard';
 import VpnKeyIcon from '@material-ui/icons/VpnKey';
+import TrendingUpIcon from '@material-ui/icons/TrendingUp';
 import { siApachekafka, siArgo, siGitlab, siKubernetes } from 'simple-icons';
 import { createIcon } from '@dweber019/backstage-plugin-simple-icons';
 
@@ -410,6 +411,7 @@ export const Root = ({ children }: PropsWithChildren<{}>) => {
   const grafanaDashboardMapEnabled = config.getOptionalBoolean('app.plugins.grafanaDashboardMap') ?? true;
   const gitlabTokenAuditEnabled = config.getOptionalBoolean('app.plugins.gitlabTokenAudit') ?? true;
   const opensearchAccountEnabled = config.getOptionalBoolean('app.plugins.opensearchAccount') ?? true;
+  const opensearchScalingEnabled = config.getOptionalBoolean('app.plugins.opensearchScaling') ?? true;
 
   return (
   <SidebarPage>
@@ -446,6 +448,9 @@ export const Root = ({ children }: PropsWithChildren<{}>) => {
         {iamUserAuditEnabled && <IamAuditSidebarItem />}
         {opensearchAccountEnabled && (
           <SidebarItem icon={VpnKeyIcon} to="opensearch" text="OpenSearch" />
+        )}
+        {opensearchScalingEnabled && (
+          <SidebarItem icon={TrendingUpIcon} to="opensearch-scaling" text="Capacity" />
         )}
         {s3LogExtractEnabled && <S3LogExtractSidebarItem />}
       </FoldableSection>

@@ -63,6 +63,8 @@ backend.add(import('@internal/plugin-grafana-dashboard-map-backend'));
 
 backend.add(import('@internal/plugin-opensearch-account-backend'));
 
+backend.add(import('@internal/plugin-opensearch-scaling-backend'));
+
 if (!disableGitlab) {
   backend.add(import('@internal/plugin-gitlab-token-audit-backend'));
 }

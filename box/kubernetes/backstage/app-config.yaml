@@ -13,6 +13,7 @@ app:
     grafanaDashboardMap: true
     gitlabTokenAudit: true
     opensearchAccount: true
+    opensearchScaling: true
   platforms:
     - name: Grafana
       category: Observability
@@ -273,6 +274,34 @@ opensearchAccount:
   tls:
     # -- (bool) Reject invalid/self-signed certs. Set false for self-signed clusters
     rejectUnauthorized: true
+
+opensearchScaling:
+  # -- (string) AWS region of the OpenSearch Service domains
+  region: ap-northeast-2
+  # -- (string) Optional IAM role to assume for OpenSearch Service API calls (omit to use IRSA/instance profile)
+  # assumeRoleArn: arn:aws:iam::123456789012:role/backstage-opensearch-scaling
+  # -- (string) Default IANA timezone shown in the reservation form
+  defaultTimezone: Asia/Seoul
+  # -- (string[]) Selectable IANA timezones for the reservation form
+  timezones:
+    - Asia/Seoul
+    - UTC
+    - America/New_York
+  # -- (string[]) Fallback instance types. Types are normally fetched from the AWS
+  #    API (ListInstanceTypeDetails) for the selected domain's engine version; this
+  #    list is used only before a domain is selected or if that call returns nothing.
+  instanceTypes:
+    - r6g.large.search
+    - r6g.xlarge.search
+    - r6g.2xlarge.search
+    - r6g.4xlarge.search
+    - m6g.large.search
+    - m6g.xlarge.search
+    - m6g.2xlarge.search
+    - c6g.large.search
+    - c6g.xlarge.search
+  # -- (number) Hours after the reserved time to keep retrying when a change is already in progress
+  executionGraceHours: 2
 
 gitlabTokenAudit:
   # -- (bool) Enable the GitLab Token Audit plugin

@@ -79,6 +79,12 @@
       "path": "plugins/opensearch-account-backend"
     },
     {
+      "path": "plugins/opensearch-scaling"
+    },
+    {
+      "path": "plugins/opensearch-scaling-backend"
+    },
+    {
       "path": "plugins/s3-log-extract"
     },
     {

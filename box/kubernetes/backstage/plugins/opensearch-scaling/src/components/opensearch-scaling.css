@@ -1,0 +1,298 @@
+/* Shared styles for the OpenSearch Scaling plugin page */
+
+.osc-section {
+  background: var(--bui-color-surface-2, rgba(255, 255, 255, 0.05));
+  border: 1px solid var(--bui-color-border, rgba(255, 255, 255, 0.1));
+  border-radius: 8px;
+  padding: 16px;
+}
+
+.osc-current {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.osc-mono {
+  font-family: var(--bui-font-mono, ui-monospace, SFMono-Regular, monospace);
+}
+
+.osc-domain {
+  font-weight: 600;
+}
+
+.osc-warn {
+  color: #fca5a5;
+}
+
+.osc-small {
+  font-size: 0.75rem;
+}
+
+.osc-muted {
+  color: var(--bui-color-text-secondary, rgba(255, 255, 255, 0.45));
+}
+
+/* Reservations table */
+.osc-table-wrap {
+  overflow-x: auto;
+}
+
+.osc-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.8125rem;
+}
+
+.osc-table th {
+  text-align: left;
+  font-weight: 600;
+  padding: 6px 12px;
+  white-space: nowrap;
+  color: var(--bui-color-text-secondary, rgba(255, 255, 255, 0.6));
+  border-bottom: 1px solid var(--bui-color-border, rgba(255, 255, 255, 0.12));
+}
+
+.osc-table td {
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--bui-color-border, rgba(255, 255, 255, 0.06));
+  vertical-align: top;
+}
+
+.osc-table tbody tr:hover {
+  background: var(--bui-color-surface-3, rgba(255, 255, 255, 0.04));
+}
+
+.osc-actions {
+  text-align: right;
+  white-space: nowrap;
+}
+
+/* Sortable column headers */
+.osc-th-sort {
+  cursor: pointer;
+  user-select: none;
+}
+
+.osc-th-sort:hover {
+  color: var(--bui-color-text-primary, #fff);
+}
+
+.osc-sort-ind {
+  font-size: 0.6875rem;
+  opacity: 0.7;
+}
+
+.osc-error-msg {
+  margin-top: 4px;
+  max-width: 280px;
+}
+
+/* Reservation rows */
+.osc-row {
+  background: var(--bui-color-surface-1, rgba(0, 0, 0, 0.2));
+  border: 1px solid var(--bui-color-border, rgba(255, 255, 255, 0.08));
+  border-radius: 8px;
+  padding: 12px 14px;
+}
+
+/* Before/after change preview */
+.osc-diff {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 12px 14px;
+  border: 1px solid var(--bui-color-border, rgba(255, 255, 255, 0.12));
+  border-radius: 8px;
+  background: var(--bui-color-surface-1, rgba(0, 0, 0, 0.2));
+}
+
+/* 3-column layout: [Current] --[deployment]--> [After] */
+.osc-diff-cols {
+  display: flex;
+  align-items: stretch;
+  gap: 8px;
+}
+
+.osc-diff-col {
+  flex: 1 1 0;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.osc-diff-colhead {
+  font-size: 0.75rem;
+  font-weight: 700;
+  color: var(--bui-color-text-secondary, rgba(255, 255, 255, 0.6));
+  padding-bottom: 6px;
+  border-bottom: 1px solid var(--bui-color-border, rgba(255, 255, 255, 0.1));
+}
+
+.osc-diff-line {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 30px;
+  font-size: 0.8125rem;
+}
+
+.osc-diff-col-left .osc-diff-colhead {
+  text-align: right;
+}
+
+.osc-diff-col-left .osc-diff-line {
+  justify-content: space-between;
+}
+
+.osc-diff-col-right .osc-diff-line {
+  justify-content: flex-start;
+}
+
+.osc-diff-rowlabel {
+  color: var(--bui-color-text-secondary, rgba(255, 255, 255, 0.55));
+}
+
+/* Center column: a single arrow connecting before and after through the badge */
+.osc-diff-mid {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0 8px;
+}
+
+.osc-diff-track {
+  display: flex;
+  align-items: center;
+}
+
+/* Short line segments on each side of the badge, forming one continuous shaft. */
+.osc-diff-seg {
+  flex: 0 0 auto;
+  width: 20px;
+  height: 0;
+  border-top: 2px solid var(--bui-color-border, rgba(147, 197, 253, 0.55));
+}
+
+/* Arrowhead at the end of the shaft. */
+.osc-diff-tip {
+  width: 0;
+  height: 0;
+  border-top: 5px solid transparent;
+  border-bottom: 5px solid transparent;
+  border-left: 9px solid var(--bui-color-border, rgba(147, 197, 253, 0.55));
+  margin-left: -1px;
+}
+
+.osc-diff-changed {
+  display: inline-block;
+  padding: 1px 8px;
+  border-radius: 6px;
+  background: rgba(59, 130, 246, 0.18);
+  border: 1px solid rgba(59, 130, 246, 0.4);
+  color: #cfe3ff;
+  font-weight: 600;
+}
+
+.osc-delta {
+  font-size: 0.75rem;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.osc-up {
+  color: #6ee7b7;
+}
+
+.osc-down {
+  color: #fcd34d;
+}
+
+/* Deployment simulation block (inside the before/after panel) */
+.osc-sim {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-top: 12px;
+  padding-top: 12px;
+  border-top: 1px dashed var(--bui-color-border, rgba(255, 255, 255, 0.14));
+}
+
+/* Deployment-type badge shown between Current and After */
+.osc-deploy {
+  display: inline-block;
+  padding: 2px 10px;
+  border-radius: 12px;
+  font-size: 0.6875rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.3px;
+  border: 1px solid transparent;
+}
+
+.osc-deploy-loading {
+  color: var(--bui-color-text-secondary, rgba(255, 255, 255, 0.55));
+  text-transform: none;
+  font-weight: 400;
+}
+
+.osc-deploy-warning {
+  background: rgba(245, 158, 11, 0.22);
+  border-color: rgba(245, 158, 11, 0.5);
+  color: #fcd34d;
+}
+
+.osc-deploy-success {
+  background: rgba(16, 185, 129, 0.22);
+  border-color: rgba(16, 185, 129, 0.5);
+  color: #6ee7b7;
+}
+
+.osc-deploy-info {
+  background: rgba(148, 163, 184, 0.22);
+  border-color: rgba(148, 163, 184, 0.5);
+  color: #cbd5e1;
+}
+
+/* Status badges */
+.osc-status {
+  display: inline-block;
+  padding: 1px 8px;
+  border-radius: 10px;
+  font-size: 0.6875rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.3px;
+}
+
+.osc-status-scheduled {
+  background: rgba(59, 130, 246, 0.22);
+  color: #93c5fd;
+}
+
+.osc-status-validating {
+  background: rgba(245, 158, 11, 0.22);
+  color: #fcd34d;
+}
+
+.osc-status-in_progress {
+  background: rgba(168, 85, 247, 0.22);
+  color: #d8b4fe;
+}
+
+.osc-status-completed {
+  background: rgba(16, 185, 129, 0.22);
+  color: #6ee7b7;
+}
+
+.osc-status-failed {
+  background: rgba(239, 68, 68, 0.22);
+  color: #fca5a5;
+}
+
+.osc-status-cancelled {
+  background: rgba(148, 163, 184, 0.22);
+  color: #cbd5e1;
+}
