@@ -13,8 +13,14 @@ import * as path from 'path';
 import * as zlib from 'zlib';
 import { Readable } from 'stream';
 import { pipeline } from 'stream/promises';
+import { promisify } from 'util';
 import * as tar from 'tar-stream';
 import { LogSource } from './types';
+
+// Async gzip decompression so the event loop is not blocked (vs zlib.gunzipSync).
+// Runs on the libuv threadpool; bump UV_THREADPOOL_SIZE (deployment env) to
+// parallelize decompression beyond the default of 4 threads.
+const gunzipAsync = promisify(zlib.gunzip);
 
 export class S3LogService {
   private client: S3Client;
@@ -23,6 +29,19 @@ export class S3LogService {
   private readonly bucket: string;
   private readonly prefix: string;
   private credentialExpiry: Date | null = null;
+
+  // Number of S3 objects downloaded/decompressed concurrently.
+  private static readonly DOWNLOAD_CONCURRENCY = 16;
+
+  // Buffer applied when pre-filtering keys by their filename timestamp.
+  // The epoch in the filename is the batch END time, not the exact span of log
+  // lines inside, so we widen the window to avoid dropping edge files.
+  private static readonly KEY_BUFFER_MS = 10 * 60 * 1000; // 10m: batch end time, high granularity
+
+  // Object key (both k8s and ec2-shortterm):
+  //   .../{YYYY}/{MM}/{DD}/{epochSeconds}-{uuid}.log.gz
+  // The epoch is the batch END time (UTC), matching the last log line in the file.
+  private static readonly KEY_TS_RE = /\/(\d{10})-[0-9a-fA-F-]+\.log\.gz$/;
 
   constructor(options: { config: Config; logger: LoggerService }) {
     this.config = options.config;
@@ -150,9 +169,10 @@ export class S3LogService {
     return Array.from(apps).sort();
   }
 
-  private async listEc2Apps(env: string, date: string): Promise<string[]> {
-    const [yyyy, mm, dd] = date.split('-');
-    const prefixPath = `${this.prefix}/ec2/${yyyy}/${mm}/${dd}/`;
+  // ec2 logs now live under ec2-shortterm/{env}.{app}/java/... with apps listed
+  // at the top level (like k8s), so the date argument is unused here.
+  private async listEc2Apps(env: string, _date: string): Promise<string[]> {
+    const prefixPath = `${this.prefix}/ec2-shortterm/`;
     const envPrefix = `${env}.`;
     const apps = new Set<string>();
     let continuationToken: string | undefined;
@@ -289,51 +309,46 @@ export class S3LogService {
     const scanEndUtc = new Date(endMs + 60 * 60 * 1000);
     const datesToScan = this.getUtcDateRange(scanStartUtc, scanEndUtc);
 
+    // Gather candidate keys across all apps/dates, pre-filtered by the filename
+    // timestamp so we only download objects that can overlap the time window.
+    const work: Array<{ app: string; key: string }> = [];
+    let scanned = 0;
     for (const app of apps) {
       const appDir = `${env}.${app}`;
       for (const scanDate of datesToScan) {
         const [sy, sm, sd] = scanDate.split('-');
         const prefixPath = `${this.prefix}/k8s/${appDir}/${sy}/${sm}/${sd}/`;
-
         const keys = await this.listAllKeys(prefixPath);
-
+        scanned += keys.length;
         for (const key of keys) {
-          try {
-            const gzData = await this.downloadObject(key);
-            const textData = zlib.gunzipSync(gzData);
-            const result = this.filterK8sLogEntries(
-              textData.toString('utf-8'),
-              startMs,
-              endMs,
-            );
-
-            if (result) {
-              const { text: filtered, minTs, maxTs } = result;
-              if (minTs < tsTracker.minMs) tsTracker.minMs = minTs;
-              if (maxTs > tsTracker.maxMs) tsTracker.maxMs = maxTs;
-              const rawName =
-                (key.split('/').pop() ?? 'unknown').replace(/\.gz$/, '') +
-                '.ndjson';
-              const fileName = `${app}/${rawName}`;
-              const buf = Buffer.from(filtered, 'utf-8');
-              pack.entry({ name: fileName, size: buf.length }, buf);
-              fileCount++;
-            }
-          } catch (err) {
-            this.logger.warn(`Failed to process ${key}: ${err}`);
-          }
+          if (this.keyInRange(key, startMs, endMs)) work.push({ app, key });
         }
       }
       appsProcessed++;
       onAppDone?.(appsProcessed);
     }
+    this.logger.info(
+      `k8s extract: ${work.length}/${scanned} objects in range, downloading with concurrency ${S3LogService.DOWNLOAD_CONCURRENCY}`,
+    );
 
-    return fileCount;
+    return this.downloadFilterPack(
+      work,
+      pack,
+      tsTracker,
+      content => this.filterJsonLogEntries(content, startMs, endMs),
+      (app, key) =>
+        `${app}/${(key.split('/').pop() ?? 'unknown').replace(/\.gz$/, '')}.ndjson`,
+    );
   }
 
   /**
-   * ec2 logs: app-logs/ec2/{YYYY}/{MM}/{DD}/{env}.{app}/logs/java/{app}/{app}.log/ls.s3.{uuid}.{date}T{HH}.{MM}.part{N}.txt.gz
-   * Content: Plain text log lines with UTC timestamp prefix.
+   * ec2 logs: app-logs/ec2-shortterm/{env}.{app}/java/{YYYY}/{MM}/{DD}/{epochSeconds}-{uuid}.log.gz
+   * Content: JSON array of filebeat entries (UTC `@timestamp`).
+   *
+   * Same filename/partition scheme as k8s (epoch batch-end, UTC date dirs); the
+   * only differences are the `ec2-shortterm` prefix, the `/java/` segment, and
+   * the `@timestamp` field name (handled by the shared JSON filter). The legacy
+   * `ec2/` prefix (plain-text `ls.s3.*.txt.gz`) is no longer used.
    */
   private async extractEc2Logs(
     env: string,
@@ -349,67 +364,63 @@ export class S3LogService {
     let appsProcessed = 0;
 
     // ec2 directory uses UTC dates; scan with buffer
+    // Date dirs are UTC; a KST request window can span two UTC dates, so scan
+    // with a 1h buffer on each side.
     const scanStartUtc = new Date(startMs - 60 * 60 * 1000);
     const scanEndUtc = new Date(endMs + 60 * 60 * 1000);
     const datesToScan = this.getUtcDateRange(scanStartUtc, scanEndUtc);
 
+    // Gather candidate keys, pre-filtered by the filename epoch (batch end, UTC).
+    const work: Array<{ app: string; key: string }> = [];
+    let scanned = 0;
     for (const app of apps) {
       for (const scanDate of datesToScan) {
         const [sy, sm, sd] = scanDate.split('-');
-        // Only extract from logs/java/ (exclude var/log/)
-        const prefixPath = `${this.prefix}/ec2/${sy}/${sm}/${sd}/${env}.${app}/logs/java/`;
-
+        // Only the java/ log stream (exclude json/, nginx/, system/).
+        const prefixPath = `${this.prefix}/ec2-shortterm/${env}.${app}/java/${sy}/${sm}/${sd}/`;
         const keys = await this.listAllKeys(prefixPath);
-
+        scanned += keys.length;
         for (const key of keys) {
-          try {
-            const gzData = await this.downloadObject(key);
-            const textData = zlib.gunzipSync(gzData);
-            const result = this.filterEc2LogLines(
-              textData.toString('utf-8'),
-              startMs,
-              endMs,
-            );
-
-            if (result) {
-              const { text: filtered, minTs, maxTs } = result;
-              if (minTs < tsTracker.minMs) tsTracker.minMs = minTs;
-              if (maxTs > tsTracker.maxMs) tsTracker.maxMs = maxTs;
-              const rawName = (key.split('/').pop() ?? 'unknown').replace(
-                /\.gz$/,
-                '',
-              );
-              const fileName = `${app}/${rawName}`;
-              const buf = Buffer.from(filtered, 'utf-8');
-              pack.entry({ name: fileName, size: buf.length }, buf);
-              fileCount++;
-            }
-          } catch (err) {
-            this.logger.warn(`Failed to process ${key}: ${err}`);
-          }
+          if (this.keyInRange(key, startMs, endMs)) work.push({ app, key });
         }
       }
       appsProcessed++;
       onAppDone?.(appsProcessed);
     }
+    this.logger.info(
+      `ec2 extract: ${work.length}/${scanned} objects in range, downloading with concurrency ${S3LogService.DOWNLOAD_CONCURRENCY}`,
+    );
 
-    return fileCount;
+    return this.downloadFilterPack(
+      work,
+      pack,
+      tsTracker,
+      content => this.filterJsonLogEntries(content, startMs, endMs),
+      (app, key) =>
+        `${app}/${(key.split('/').pop() ?? 'unknown').replace(/\.gz$/, '')}.ndjson`,
+    );
   }
 
   /**
-   * Filter k8s JSON log entries by timestamp.
+   * Filter a JSON-array log file by timestamp. Shared by k8s and ec2-shortterm.
    *
-   * k8s log files contain a JSON array of entries:
-   *   [{"timestamp": "2026-03-05T00:48:50.536Z", "message": "...", ...}, ...]
+   * Both store a JSON array of entries with a UTC ISO timestamp; the field is
+   * `timestamp` for k8s and `@timestamp` for ec2-shortterm (filebeat):
+   *   k8s : [{"timestamp":  "2026-03-05T00:48:50.536Z", "message": "...", ...}]
+   *   ec2 : [{"@timestamp": "2026-06-27T00:00:01.496Z", "message": "...", ...}]
    *
-   * Timestamp is UTC. Returns NDJSON (newline-delimited JSON) of matching entries.
+   * Returns NDJSON (newline-delimited JSON) of matching entries.
    */
-  private filterK8sLogEntries(
+  private filterJsonLogEntries(
     content: string,
     startMs: number,
     endMs: number,
   ): { text: string; minTs: number; maxTs: number } | null {
-    let entries: Array<{ timestamp?: string; [key: string]: unknown }>;
+    let entries: Array<{
+      timestamp?: string;
+      '@timestamp'?: string;
+      [key: string]: unknown;
+    }>;
     try {
       entries = JSON.parse(content);
     } catch {
@@ -423,8 +434,9 @@ export class S3LogService {
     let maxTs = -Infinity;
 
     const filtered = entries.filter(entry => {
-      if (!entry.timestamp) return false;
-      const ts = new Date(entry.timestamp).getTime();
+      const tsRaw = entry.timestamp ?? entry['@timestamp'];
+      if (!tsRaw) return false;
+      const ts = new Date(tsRaw).getTime();
       if (isNaN(ts) || ts < startMs || ts > endMs) return false;
       if (ts < minTs) minTs = ts;
       if (ts > maxTs) maxTs = ts;
@@ -438,67 +450,6 @@ export class S3LogService {
       minTs,
       maxTs,
     };
-  }
-
-  /**
-   * Filter ec2 plain text log lines by timestamp.
-   *
-   * ec2 log line format:
-   *   2026-03-05T00:00:54.943Z {name=...} 2026-03-05 09:00:52.184  INFO ...
-   *
-   * First timestamp is UTC (ISO 8601 with Z). Used for filtering.
-   * Lines without a leading timestamp (stack traces) inherit previous state.
-   */
-  private filterEc2LogLines(
-    content: string,
-    startMs: number,
-    endMs: number,
-  ): { text: string; minTs: number; maxTs: number } | null {
-    const lines = content.split('\n');
-    const filtered: string[] = [];
-    let inRange = false;
-    let minTs = Infinity;
-    let maxTs = -Infinity;
-
-    for (const line of lines) {
-      const ts = this.parseEc2Timestamp(line);
-      if (ts !== null) {
-        inRange = ts >= startMs && ts <= endMs;
-        if (inRange) {
-          if (ts < minTs) minTs = ts;
-          if (ts > maxTs) maxTs = ts;
-        }
-      }
-      if (inRange) {
-        filtered.push(line);
-      }
-    }
-
-    while (filtered.length > 0 && filtered[filtered.length - 1] === '') {
-      filtered.pop();
-    }
-
-    if (filtered.length === 0) return null;
-
-    return {
-      text: filtered.join('\n') + '\n',
-      minTs,
-      maxTs,
-    };
-  }
-
-  /**
-   * Parse UTC timestamp from ec2 log line prefix.
-   * Format: "2026-03-05T00:00:54.943Z ..."
-   */
-  private static readonly EC2_TS_RE =
-    /^(\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d+Z)\s/;
-
-  private parseEc2Timestamp(line: string): number | null {
-    const match = line.match(S3LogService.EC2_TS_RE);
-    if (!match) return null;
-    const d = new Date(match[1]);
-    return isNaN(d.getTime()) ? null : d.getTime();
   }
 
   /** Returns all UTC dates between two Date objects inclusive. */
@@ -522,6 +473,100 @@ export class S3LogService {
       current.setUTCDate(current.getUTCDate() + 1);
     }
     return dates;
+  }
+
+  /**
+   * Keep a key only if its filename epoch (batch end, UTC) could overlap the
+   * requested window. Drops keys outside [start, end] (± buffer) so we download
+   * a small slice of the day instead of every object. Shared by k8s and
+   * ec2-shortterm (identical `{epoch}-{uuid}.log.gz` naming). Unparseable keys
+   * are kept so nothing is silently lost.
+   */
+  private keyInRange(key: string, startMs: number, endMs: number): boolean {
+    const m = key.match(S3LogService.KEY_TS_RE);
+    if (!m) return true;
+    const fileMs = parseInt(m[1], 10) * 1000;
+    if (isNaN(fileMs)) return true;
+    return (
+      fileMs >= startMs - S3LogService.KEY_BUFFER_MS &&
+      fileMs <= endMs + S3LogService.KEY_BUFFER_MS
+    );
+  }
+
+  /** Promisified tar pack.entry — resolves once the entry has been written. */
+  private packEntry(pack: tar.Pack, name: string, buf: Buffer): Promise<void> {
+    return new Promise((resolve, reject) => {
+      pack.entry({ name, size: buf.length }, buf, err =>
+        err ? reject(err) : resolve(),
+      );
+    });
+  }
+
+  /**
+   * Download, decompress, and time-filter the work items with bounded
+   * concurrency, streaming each surviving result into the tar pack as soon as
+   * it is ready. The pack is a single stream, so writes are serialized through
+   * a promise chain while decompression/filtering still run in parallel.
+   *
+   * Critically we do NOT hold every decompressed file in memory at once: each
+   * worker waits for its packed entry to flush before fetching the next object,
+   * so peak memory is bounded to ~DOWNLOAD_CONCURRENCY in-flight files. This is
+   * what keeps large extractions (thousands of objects, e.g. high-traffic prd
+   * apps) from exhausting the Node heap.
+   */
+  private async downloadFilterPack(
+    work: Array<{ app: string; key: string }>,
+    pack: tar.Pack,
+    tsTracker: { minMs: number; maxMs: number },
+    filterContent: (
+      content: string,
+    ) => { text: string; minTs: number; maxTs: number } | null,
+    buildName: (app: string, key: string) => string,
+  ): Promise<number> {
+    let fileCount = 0;
+    let next = 0;
+    // Serializes tar writes (the pack is one stream); workers append here and
+    // await it so they don't outrun the packer and accumulate buffers.
+    let packChain: Promise<void> = Promise.resolve();
+
+    const workerCount = Math.max(
+      1,
+      Math.min(S3LogService.DOWNLOAD_CONCURRENCY, work.length),
+    );
+    const workers = Array.from({ length: workerCount }, async () => {
+      while (true) {
+        const i = next++;
+        if (i >= work.length) break;
+        const { app, key } = work[i];
+
+        let result: { text: string; minTs: number; maxTs: number } | null;
+        try {
+          const gzData = await this.downloadObject(key);
+          const textData = await gunzipAsync(gzData);
+          result = filterContent(textData.toString('utf-8'));
+        } catch (err) {
+          this.logger.warn(`Failed to process ${key}: ${err}`);
+          continue;
+        }
+        if (!result) continue;
+
+        const { text, minTs, maxTs } = result;
+        if (minTs < tsTracker.minMs) tsTracker.minMs = minTs;
+        if (maxTs > tsTracker.maxMs) tsTracker.maxMs = maxTs;
+        fileCount++;
+
+        const buf = Buffer.from(text, 'utf-8');
+        const name = buildName(app, key);
+        // Queue this entry behind any pending writes, then wait for the pack to
+        // drain it before this worker downloads its next object (backpressure).
+        packChain = packChain.then(() => this.packEntry(pack, name, buf));
+        await packChain;
+      }
+    });
+
+    await Promise.all(workers);
+    await packChain;
+    return fileCount;
   }
 
   /** List all S3 keys under a prefix. */
