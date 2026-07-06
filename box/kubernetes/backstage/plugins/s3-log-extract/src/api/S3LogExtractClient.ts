@@ -1,6 +1,11 @@
 import { DiscoveryApi, FetchApi } from '@backstage/core-plugin-api';
 import { ResponseError } from '@backstage/errors';
-import { S3LogExtractApi, S3Config, S3HealthStatus } from './S3LogExtractApi';
+import {
+  S3LogExtractApi,
+  S3Config,
+  S3HealthStatus,
+  PrecheckResult,
+} from './S3LogExtractApi';
 import { LogExtractRequest } from './types';
 
 export class S3LogExtractClient implements S3LogExtractApi {
@@ -51,6 +56,34 @@ export class S3LogExtractClient implements S3LogExtractApi {
     return response.json();
   }
 
+  async precheck(input: {
+    source: string;
+    env: string;
+    date: string;
+    apps: string[];
+    startTime: string;
+    endTime: string;
+  }): Promise<PrecheckResult> {
+    const baseUrl = await this.getBaseUrl();
+    const params = new URLSearchParams({
+      source: input.source,
+      env: input.env,
+      date: input.date,
+      apps: input.apps.join(','),
+      startTime: input.startTime,
+      endTime: input.endTime,
+    });
+    const response = await this.fetchApi.fetch(
+      `${baseUrl}/precheck?${params.toString()}`,
+    );
+
+    if (!response.ok) {
+      throw await ResponseError.fromResponse(response as any);
+    }
+
+    return response.json();
+  }
+
   async createRequest(input: {
     source: string;
     env: string;
@@ -59,6 +92,7 @@ export class S3LogExtractClient implements S3LogExtractApi {
     startTime: string;
     endTime: string;
     reason: string;
+    encryption: string;
   }): Promise<LogExtractRequest> {
     const baseUrl = await this.getBaseUrl();
     const response = await this.fetchApi.fetch(`${baseUrl}/requests`, {
@@ -132,6 +166,24 @@ export class S3LogExtractClient implements S3LogExtractApi {
 
     const blob = await response.blob();
     return URL.createObjectURL(blob);
+  }
+
+  async revealPassword(id: string): Promise<{ password: string }> {
+    const baseUrl = await this.getBaseUrl();
+    const response = await this.fetchApi.fetch(
+      `${baseUrl}/requests/${id}/reveal-password`,
+      { method: 'POST' },
+    );
+
+    if (!response.ok) {
+      const body = await response.json().catch(() => ({}));
+      throw new Error(
+        (body as any).error ??
+          `Failed to reveal password: ${response.statusText}`,
+      );
+    }
+
+    return response.json();
   }
 
   async getAdminStatus(): Promise<{ isAdmin: boolean }> {

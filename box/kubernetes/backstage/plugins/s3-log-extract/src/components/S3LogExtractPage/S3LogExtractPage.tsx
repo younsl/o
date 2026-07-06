@@ -40,7 +40,7 @@ import { useApi, identityApiRef } from '@backstage/core-plugin-api';
 import { useAsyncRetry } from 'react-use';
 import { s3LogExtractApiRef } from '../../api';
 import { Environment, LogExtractRequest, RequestStatus } from '../../api/types';
-import { S3Config } from '../../api/S3LogExtractApi';
+import { PrecheckResult, S3Config } from '../../api/S3LogExtractApi';
 import {
   RiAddLine,
   RiArrowLeftLine,
@@ -48,9 +48,13 @@ import {
   RiCheckLine,
   RiCloseLine,
   RiDownloadLine,
+  RiEyeLine,
+  RiEyeOffLine,
   RiFileCopyLine,
   RiInformationLine,
   RiLoader4Line,
+  RiLockPasswordLine,
+  RiShieldCheckLine,
   RiTimeLine,
 } from '@remixicon/react';
 import './S3LogExtractPage.css';
@@ -106,6 +110,18 @@ const buildS3Uris = (
   });
 };
 
+const formatSize = (bytes: number | null): string => {
+  if (bytes === null) return '-';
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+};
+
+const formatLocal = (iso: string): string => new Date(iso).toLocaleString();
+
+const formatTimestampKst = (iso: string): string =>
+  new Date(iso).toLocaleString('ko-KR', { timeZone: 'Asia/Seoul' });
+
 const formatRemaining = (deadlineMs: number, nowMs: number): string => {
   const diff = deadlineMs - nowMs;
   if (diff <= 0) return 'Expired';
@@ -129,6 +145,15 @@ const envOptions = [
   { value: 'prd', label: 'prd' },
 ];
 
+// Human-readable label for a stored encryption method value. Single source of
+// truth so the label is never hardcoded at each display site.
+const encryptionLabel = (method: string): string =>
+  method === 'aes256' ? 'AES-256' : method.toUpperCase();
+
+// Only AES-256 is offered: legacy ZipCrypto is trivially crackable and would
+// defeat the leak-protection goal of the encrypted archive.
+const encryptionOptions = [{ value: 'aes256', label: encryptionLabel('aes256') }];
+
 interface ReviewDialogProps {
   request: LogExtractRequest;
   s3Config: S3Config | undefined;
@@ -149,6 +174,38 @@ const ReviewDialog = ({
   const [comment, setComment] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  // Re-check availability at review time (fresher than the request-time
+  // check, since batched logs may have arrived since submission).
+  const [precheck, setPrecheck] = useState<PrecheckResult | null>(null);
+  const [precheckLoading, setPrecheckLoading] = useState(false);
+
+  useEffect(() => {
+    if (!open) return undefined;
+    let cancelled = false;
+    setPrecheckLoading(true);
+    api
+      .precheck({
+        source: request.source,
+        env: request.env,
+        date: request.date,
+        apps: request.apps,
+        startTime: request.startTime,
+        endTime: request.endTime,
+      })
+      .then(result => {
+        if (!cancelled) setPrecheck(result);
+      })
+      .catch(() => {
+        if (!cancelled) setPrecheck(null);
+      })
+      .finally(() => {
+        if (!cancelled) setPrecheckLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [api, open, request]);
 
   useEffect(() => {
     if (open) {
@@ -217,11 +274,36 @@ const ReviewDialog = ({
           <Text as="p" variant="body-small" color="secondary">
             <strong>Reason:</strong> {request.reason}
           </Text>
+          <Text as="p" variant="body-small" color="secondary">
+            <strong>Encryption:</strong>{' '}
+            {encryptionLabel(request.encryption)}
+          </Text>
           {buildS3Uris(request, s3Config).map(uri => (
             <Text key={uri} as="p" variant="body-small" color="secondary">
               <strong>S3 URI:</strong> {uri} <CopyButton value={uri} />
             </Text>
           ))}
+          <Text as="p" variant="body-small" color="secondary">
+            <strong>Log availability:</strong>{' '}
+            {precheckLoading ? (
+              'checking...'
+            ) : precheck ? (
+              precheck.candidateCount === 0 ? (
+                <Text as="span" variant="body-small" color="danger">
+                  No matching objects (extraction would return 0 files)
+                </Text>
+              ) : (
+                `${precheck.candidateCount} candidate objects` +
+                (request.apps.length > 1
+                  ? ` (${request.apps
+                      .map(app => `${app}: ${precheck.appCounts[app] ?? 0}`)
+                      .join(', ')})`
+                  : '')
+              )
+            ) : (
+              'unavailable'
+            )}
+          </Text>
         </Box>
 
         <Box mt="3">
@@ -306,6 +388,282 @@ const ReviewDialog = ({
   );
 };
 
+interface DownloadModalProps {
+  request: LogExtractRequest;
+  fileName: string;
+  onClose: () => void;
+  onRevealed: () => void;
+}
+
+// Download gate + one-time archive password modal (IAM secret key style).
+// Opening the modal reveals the password once (if not already revealed); the
+// actual file download only happens when the user presses Download here.
+const DownloadModal = ({
+  request,
+  fileName,
+  onClose,
+  onRevealed,
+}: DownloadModalProps) => {
+  const api = useApi(s3LogExtractApiRef);
+  const [visible, setVisible] = useState(false);
+  const [password, setPassword] = useState<string | null>(null);
+  // Was the password already revealed before this modal opened (or lost the
+  // reveal race)? Then it can never be shown again.
+  const [alreadyRevealed, setAlreadyRevealed] = useState(
+    !request.passwordAvailable,
+  );
+  const [revealing, setRevealing] = useState(request.passwordAvailable);
+  const [downloading, setDownloading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const revealStarted = useRef(false);
+
+  useEffect(() => {
+    document.body.style.overflow = 'hidden';
+    return () => {
+      document.body.style.overflow = '';
+    };
+  }, []);
+
+  // Reveal once on open. The password is destroyed server-side after this, so
+  // subsequent opens (by anyone) land in the already-revealed branch.
+  useEffect(() => {
+    if (!request.passwordAvailable || revealStarted.current) return;
+    revealStarted.current = true;
+    let cancelled = false;
+    api
+      .revealPassword(request.id)
+      .then(({ password: pw }) => {
+        if (cancelled) return;
+        setPassword(pw);
+        onRevealed();
+      })
+      .catch(err => {
+        if (cancelled) return;
+        const msg = err instanceof Error ? err.message : String(err);
+        if (msg.includes('already revealed')) {
+          setAlreadyRevealed(true);
+          onRevealed();
+        } else {
+          setError(msg);
+        }
+      })
+      .finally(() => {
+        if (!cancelled) setRevealing(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [api, request.id, request.passwordAvailable, onRevealed]);
+
+  const handleDownload = async () => {
+    setDownloading(true);
+    setError(null);
+    try {
+      const blobUrl = await api.downloadUrl(request.id);
+      const a = document.createElement('a');
+      a.href = blobUrl;
+      a.download = fileName;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(blobUrl);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Download failed');
+    } finally {
+      setDownloading(false);
+    }
+  };
+
+  return (
+    <div className="sle-overlay" onClick={onClose}>
+      <div className="sle-dialog" onClick={e => e.stopPropagation()}>
+        <Flex align="center" gap="2">
+          <RiLockPasswordLine size={18} />
+          <Text as="h3" variant="body-large" weight="bold">
+            Download Encrypted Archive
+          </Text>
+        </Flex>
+
+        <Box mt="3">
+          <Text
+            variant="body-medium"
+            weight="bold"
+            style={{ display: 'block', marginBottom: 4 }}
+          >
+            File
+          </Text>
+          <Text variant="body-small" className="sle-request-id">
+            {fileName}
+          </Text>
+        </Box>
+
+        <Box mt="3">
+          <Text
+            variant="body-medium"
+            weight="bold"
+            style={{ display: 'block', marginBottom: 6 }}
+          >
+            Log metadata
+          </Text>
+          <div className="sle-meta-grid">
+            <Text variant="body-x-small" color="secondary">
+              Files
+            </Text>
+            <Text variant="body-small">{request.fileCount ?? 0}</Text>
+
+            <Text variant="body-x-small" color="secondary">
+              Size
+            </Text>
+            <Text variant="body-small">{formatSize(request.archiveSize)}</Text>
+
+            <Text variant="body-x-small" color="secondary">
+              Encryption
+            </Text>
+            <Flex align="center" gap="1">
+              <span
+                className="sle-encrypted-badge"
+                title={`${encryptionLabel(request.encryption)} encrypted`}
+              >
+                <RiShieldCheckLine size={14} />
+              </span>
+              <Text variant="body-small">
+                {encryptionLabel(request.encryption)}
+              </Text>
+            </Flex>
+
+            {request.firstTimestamp && request.lastTimestamp && (
+              <>
+                <Text variant="body-x-small" color="secondary">
+                  Log period
+                </Text>
+                <Text variant="body-small">
+                  {formatTimestampKst(request.firstTimestamp)} ~{' '}
+                  {formatTimestampKst(request.lastTimestamp)} (KST)
+                </Text>
+              </>
+            )}
+          </div>
+        </Box>
+
+        <Box mt="3">
+          <Text
+            variant="body-medium"
+            weight="bold"
+            style={{ display: 'block', marginBottom: 4 }}
+          >
+            Password
+          </Text>
+          {revealing ? (
+            <Flex align="center" gap="1">
+              <RiLoader4Line size={14} className="sle-spin" />
+              <Text variant="body-small" color="secondary">
+                Revealing password...
+              </Text>
+            </Flex>
+          ) : password ? (
+            <>
+              <Box mb="2">
+                <Alert
+                  status="warning"
+                  title="This password is shown only once. It cannot be recovered after you close this dialog, so copy it now."
+                />
+              </Box>
+              <Flex align="center" gap="2">
+                <code className="sle-password-field">
+                  {visible ? password : '•'.repeat(password.length)}
+                </code>
+                <button
+                  type="button"
+                  className="sle-password-toggle"
+                  onClick={() => setVisible(v => !v)}
+                  aria-label={visible ? 'Hide password' : 'Show password'}
+                  title={visible ? 'Hide' : 'Show'}
+                >
+                  {visible ? (
+                    <RiEyeOffLine size={14} />
+                  ) : (
+                    <RiEyeLine size={14} />
+                  )}
+                  {visible ? 'Hide' : 'Show'}
+                </button>
+                <CopyButton value={password} />
+              </Flex>
+            </>
+          ) : (
+            <Alert
+              status="warning"
+              className="sle-alert-compact"
+              title={
+                request.passwordRevealedTo
+                  ? `Password was already revealed to ${request.passwordRevealedTo}${
+                      request.passwordRevealedAt
+                        ? ` at ${formatLocal(request.passwordRevealedAt)}`
+                        : ''
+                    }. It cannot be shown again, so ask them for it, or submit a new request to get a fresh one.`
+                  : 'Password was already revealed and cannot be shown again, so ask whoever downloaded it first, or submit a new request to get a fresh one.'
+              }
+            />
+          )}
+        </Box>
+
+        <Box mt="3">
+          <Text
+            variant="body-medium"
+            weight="bold"
+            style={{ display: 'block', marginBottom: 4 }}
+          >
+            How to extract
+          </Text>
+          <Text
+            variant="body-x-small"
+            color="secondary"
+            style={{ display: 'block', marginBottom: 4, opacity: 0.8 }}
+          >
+            The logs are encrypted with{' '}
+            {encryptionLabel(request.encryption)},
+            so you must decompress the archive separately to read them. Use an
+            AES-capable tool such as 7-Zip, Keka, or p7zip (7z recommended);
+            macOS Finder cannot open it.
+          </Text>
+          <div className="sle-codecard">
+            <div className="sle-codecard-header">
+              <span className="sle-codecard-tab">macOS</span>
+              <CopyButton value={`brew install p7zip\n7z x ${fileName}`} />
+            </div>
+            <pre className="sle-codecard-body">
+              {`brew install p7zip\n7z x ${fileName}`}
+            </pre>
+          </div>
+        </Box>
+
+        {error && (
+          <Box mt="2">
+            <Text variant="body-small" color="danger">
+              {error}
+            </Text>
+          </Box>
+        )}
+
+        <Flex gap="2" justify="end" mt="4">
+          <Button variant="secondary" onPress={onClose} isDisabled={downloading}>
+            Close
+          </Button>
+          <Button
+            variant="primary"
+            onPress={handleDownload}
+            isDisabled={revealing || downloading}
+          >
+            <Flex align="center" gap="1">
+              <RiDownloadLine size={14} />
+              {downloading ? 'Downloading...' : 'Download'}
+            </Flex>
+          </Button>
+        </Flex>
+      </div>
+    </div>
+  );
+};
+
 const RequestForm = ({
   onSubmitted,
   maxTimeRangeMinutes,
@@ -316,6 +674,7 @@ const RequestForm = ({
   const api = useApi(s3LogExtractApiRef);
   const [source, setSource] = useState('k8s');
   const [env, setEnv] = useState('dev');
+  const [encryption, setEncryption] = useState('aes256');
   const [date, setDate] = useState('');
   const [startTime, setStartTime] = useState('');
   const [endTime, setEndTime] = useState('');
@@ -393,14 +752,30 @@ const RequestForm = ({
     }
   };
 
+  // Syntax-highlight the dots in app names (e.g. env.app separators) so the
+  // segments read like tokens.
+  const styleDots = (text: string) =>
+    text.split('.').flatMap((part, i) =>
+      i === 0
+        ? [part]
+        : [
+            <span key={`dot-${i}`} className="sle-app-dot">
+              .
+            </span>,
+            part,
+          ],
+    );
+
   const highlightMatch = (text: string, query: string) => {
     const idx = text.toLowerCase().indexOf(query.toLowerCase());
-    if (idx === -1) return text;
+    if (idx === -1) return styleDots(text);
     return (
       <>
-        {text.slice(0, idx)}
-        <mark className="sle-highlight">{text.slice(idx, idx + query.length)}</mark>
-        {text.slice(idx + query.length)}
+        {styleDots(text.slice(0, idx))}
+        <mark className="sle-highlight">
+          {styleDots(text.slice(idx, idx + query.length))}
+        </mark>
+        {styleDots(text.slice(idx + query.length))}
       </>
     );
   };
@@ -424,6 +799,7 @@ const RequestForm = ({
         startTime,
         endTime,
         reason,
+        encryption,
       });
       setSuccess(true);
       setSelectedApps([]);
@@ -460,14 +836,76 @@ const RequestForm = ({
       ? `Maximum ${formatMinutes(maxTimeRangeMinutes)} allowed, but ${formatMinutes(timeRangeMinutes)} selected`
       : null;
 
+  // Advisory availability pre-check (List-only on the backend). Runs once all
+  // fields are filled; zero candidates warns but does not block submission,
+  // since logs can still arrive later due to batch upload delays.
+  const [precheckResult, setPrecheckResult] = useState<PrecheckResult | null>(
+    null,
+  );
+  const [precheckLoading, setPrecheckLoading] = useState(false);
+  const precheckDebounceRef = useRef<ReturnType<typeof setTimeout>>();
+
+  useEffect(() => {
+    if (precheckDebounceRef.current) clearTimeout(precheckDebounceRef.current);
+    setPrecheckResult(null);
+
+    const timeOk = (t: string) => /^\d{2}:\d{2}$/.test(t);
+    if (
+      !/^\d{4}-\d{2}-\d{2}$/.test(date) ||
+      selectedApps.length === 0 ||
+      !timeOk(startTime) ||
+      !timeOk(endTime) ||
+      timeRangeError
+    ) {
+      setPrecheckLoading(false);
+      return undefined;
+    }
+
+    setPrecheckLoading(true);
+    precheckDebounceRef.current = setTimeout(async () => {
+      try {
+        const result = await api.precheck({
+          source,
+          env,
+          date,
+          apps: selectedApps,
+          startTime,
+          endTime,
+        });
+        setPrecheckResult(result);
+      } catch {
+        // Advisory only; stay silent when the check itself fails
+        setPrecheckResult(null);
+      } finally {
+        setPrecheckLoading(false);
+      }
+    }, 800);
+    return () => {
+      if (precheckDebounceRef.current) {
+        clearTimeout(precheckDebounceRef.current);
+      }
+    };
+  }, [api, source, env, date, selectedApps, startTime, endTime, timeRangeError]);
+
+  // Apps with zero candidate objects in the window (per-app breakdown).
+  const emptyApps = useMemo(() => {
+    if (!precheckResult) return [];
+    return selectedApps.filter(app => (precheckResult.appCounts[app] ?? 0) === 0);
+  }, [precheckResult, selectedApps]);
+
   const isValid =
     env &&
+    encryption &&
     date &&
     selectedApps.length > 0 &&
     startTime &&
     endTime &&
     reason.trim() &&
-    !timeRangeError;
+    !timeRangeError &&
+    // Hard block: no logs in the window means the extraction would be empty.
+    // Fail open when the pre-check itself errored (precheckResult null).
+    !precheckLoading &&
+    (precheckResult === null || precheckResult.candidateCount > 0);
 
   return (
     <Box mt="4">
@@ -680,7 +1118,7 @@ const RequestForm = ({
                       <span className="sle-app-name">
                         {appSearch
                           ? highlightMatch(app, appSearch)
-                          : app}
+                          : styleDots(app)}
                       </span>
                     </button>
                   ))}
@@ -688,6 +1126,48 @@ const RequestForm = ({
             </>
           )}
         </Box>
+
+        <Box>
+          <div className="sle-required-field" style={{ maxWidth: 240 }}>
+            <Select
+              label="Encryption"
+              options={encryptionOptions}
+              selectedKey={encryption}
+              onSelectionChange={key => setEncryption(key as string)}
+            />
+          </div>
+          <Text
+            variant="body-x-small"
+            color="secondary"
+            style={{ display: 'block', marginTop: 4 }}
+          >
+            AES-256: the archive is a password-protected zip. Extraction
+            requires an AES-capable tool such as 7-Zip, Keka, or p7zip (7z x);
+            macOS Finder cannot open it.
+          </Text>
+        </Box>
+
+        {precheckLoading ? (
+          <Text variant="body-x-small" color="secondary">
+            Checking log availability...
+          </Text>
+        ) : precheckResult ? (
+          precheckResult.candidateCount === 0 ? (
+            <Alert
+              status="danger"
+              title="No logs found for this range. Adjust the date, time range, or apps. Logs may arrive later due to batch upload delays."
+            />
+          ) : emptyApps.length > 0 ? (
+            <Alert
+              status="warning"
+              title={`No logs in this range for: ${emptyApps.join(', ')}. These apps would contribute nothing to the archive.`}
+            />
+          ) : (
+            <Text variant="body-x-small" color="secondary">
+              ~{precheckResult.candidateCount} log objects found in this range
+            </Text>
+          )
+        ) : null}
 
         <div className="sle-required-field">
           <TextField
@@ -796,24 +1276,18 @@ const RequestList = ({
 
   const isAdmin = adminStatus?.isAdmin ?? false;
 
-  const [downloadError, setDownloadError] = useState<string | null>(null);
+  const [downloadModal, setDownloadModal] = useState<{
+    request: LogExtractRequest;
+    fileName: string;
+  } | null>(null);
 
-  const handleDownload = async (id: string) => {
-    try {
-      setDownloadError(null);
-      const blobUrl = await api.downloadUrl(id);
-      const a = document.createElement('a');
-      a.href = blobUrl;
-      a.download = `logs-${id}.tar.gz`;
-      document.body.appendChild(a);
-      a.click();
-      document.body.removeChild(a);
-      URL.revokeObjectURL(blobUrl);
-    } catch (err) {
-      setDownloadError(
-        err instanceof Error ? err.message : 'Download failed',
-      );
-    }
+  // Clicking Download always opens the modal; the password reveal and the
+  // actual file download both happen inside it.
+  const openDownload = (request: LogExtractRequest) => {
+    setDownloadModal({
+      request,
+      fileName: `backstage-s3logs-${request.env}-${request.date}.zip`,
+    });
   };
 
   const getStatusClassName = (status: string): string => {
@@ -866,13 +1340,6 @@ const RequestList = ({
     if (m > 0) parts.push(`${m}m`);
     parts.push(`${s}s`);
     return parts.join(' ');
-  };
-
-  const formatSize = (bytes: number | null) => {
-    if (bytes === null) return '-';
-    if (bytes < 1024) return `${bytes} B`;
-    if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
-    return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
   };
 
   if (loading) {
@@ -950,14 +1417,6 @@ const RequestList = ({
           </Flex>
         </Flex>
 
-        {downloadError && (
-          <Alert
-            status="danger"
-            title={downloadError}
-            style={{ marginBottom: 12 }}
-          />
-        )}
-
         {filteredRequests.length === 0 ? (
           <div className="sle-empty-state">
             <Text variant="body-medium" color="secondary">
@@ -986,16 +1445,33 @@ const RequestList = ({
                     </div>
                     {request.status === 'completed' &&
                       (currentUserRef === request.requesterRef || isAdmin) && (
-                      <span className={!request.downloadable ? 'sle-btn-expired' : ''}>
+                      <span
+                        className={
+                          !request.downloadable || request.fileCount === 0
+                            ? 'sle-btn-expired'
+                            : ''
+                        }
+                      >
                         <Button
                           variant="secondary"
                           size="small"
-                          isDisabled={!request.downloadable}
-                          onPress={() => handleDownload(request.id)}
+                          isDisabled={
+                            !request.downloadable || request.fileCount === 0
+                          }
+                          onPress={() => openDownload(request)}
                         >
                           <Flex align="center" gap="1">
-                            <RiDownloadLine size={14} />
-                            {request.downloadable ? 'Download' : 'Expired'}
+                            <span
+                              className="sle-encrypted-badge"
+                              title={`${encryptionLabel(request.encryption)} encrypted`}
+                            >
+                              <RiShieldCheckLine size={14} />
+                            </span>
+                            {request.fileCount === 0
+                              ? 'No logs'
+                              : request.downloadable
+                                ? 'Download'
+                                : 'Expired'}
                           </Flex>
                         </Button>
                       </span>
@@ -1136,6 +1612,29 @@ const RequestList = ({
                           </Tooltip>
                         </TooltipTrigger>
                       </Flex>
+                      {request.fileCount === 0 ? (
+                        <Text
+                          variant="body-x-small"
+                          color="danger"
+                          style={{ display: 'block', marginTop: 4 }}
+                        >
+                          No logs matched the requested time range
+                        </Text>
+                      ) : request.passwordAvailable ? (
+                        <Text
+                          variant="body-x-small"
+                          color="secondary"
+                          style={{
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: 4,
+                            marginTop: 4,
+                          }}
+                        >
+                          <RiLockPasswordLine size={12} style={{ flexShrink: 0 }} />
+                          Encrypted zip, password shown once on first download
+                        </Text>
+                      ) : null}
                     </div>
                   )}
 
@@ -1210,6 +1709,15 @@ const RequestList = ({
         </div>
         )}
       </Box>
+
+      {downloadModal && (
+        <DownloadModal
+          request={downloadModal.request}
+          fileName={downloadModal.fileName}
+          onClose={() => setDownloadModal(null)}
+          onRevealed={retry}
+        />
+      )}
 
       {reviewTarget && (
         <ReviewDialog

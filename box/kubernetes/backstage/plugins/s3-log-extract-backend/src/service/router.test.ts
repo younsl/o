@@ -10,11 +10,13 @@ const mockStore = {
   listRequests: jest.fn(),
   updateStatus: jest.fn(),
   updateProgress: jest.fn(),
+  revealPassword: jest.fn(),
 };
 
 const mockS3LogService = {
   listApps: jest.fn(),
   extractLogs: jest.fn(),
+  countCandidateObjects: jest.fn(),
 };
 
 const mockHttpAuth = {
@@ -51,6 +53,7 @@ function makeRequest(overrides: Partial<LogExtractRequest> = {}): LogExtractRequ
     endTime: '10:00',
     requesterRef: 'user:default/alice',
     reason: 'Investigate errors',
+    encryption: 'aes256',
     status: 'pending',
     reviewerRef: null,
     reviewComment: null,
@@ -61,6 +64,9 @@ function makeRequest(overrides: Partial<LogExtractRequest> = {}): LogExtractRequ
     lastTimestamp: null,
     errorMessage: null,
     downloadable: false,
+    passwordAvailable: false,
+    passwordRevealedTo: null,
+    passwordRevealedAt: null,
     approvalDeadline: '2026-03-06T00:00:00.000Z',
     extractionDurationMs: null,
     progressCurrent: null,
@@ -174,6 +180,59 @@ describe('router', () => {
     });
   });
 
+  describe('GET /precheck', () => {
+    const validQuery =
+      'env=prd&date=2026-03-05&apps=order-api,payment-api&startTime=09:00&endTime=10:00';
+
+    it('returns 400 when required params are missing', async () => {
+      const res = await request(app).get('/precheck?env=prd&date=2026-03-05');
+      expect(res.status).toBe(400);
+      expect(res.body.error).toContain('required');
+    });
+
+    it('returns 400 for invalid source', async () => {
+      const res = await request(app).get(`/precheck?${validQuery}&source=lambda`);
+      expect(res.status).toBe(400);
+      expect(res.body.error).toContain('source must be');
+    });
+
+    it('returns candidate counts', async () => {
+      mockS3LogService.countCandidateObjects.mockResolvedValue({
+        candidateCount: 12,
+        scannedCount: 480,
+        appCounts: { 'order-api': 12, 'payment-api': 0 },
+      });
+
+      const res = await request(app).get(`/precheck?${validQuery}`);
+
+      expect(res.status).toBe(200);
+      expect(res.body).toEqual({
+        candidateCount: 12,
+        scannedCount: 480,
+        appCounts: { 'order-api': 12, 'payment-api': 0 },
+      });
+      expect(mockS3LogService.countCandidateObjects).toHaveBeenCalledWith(
+        'k8s',
+        'prd',
+        '2026-03-05',
+        ['order-api', 'payment-api'],
+        '09:00',
+        '10:00',
+      );
+    });
+
+    it('returns 500 when the S3 scan fails', async () => {
+      mockS3LogService.countCandidateObjects.mockRejectedValue(
+        new Error('Access Denied'),
+      );
+
+      const res = await request(app).get(`/precheck?${validQuery}`);
+
+      expect(res.status).toBe(500);
+      expect(res.body.error).toBe('Access Denied');
+    });
+  });
+
   describe('POST /requests', () => {
     const validBody = {
       source: 'k8s',
@@ -183,6 +242,7 @@ describe('router', () => {
       startTime: '09:00',
       endTime: '10:00',
       reason: 'Investigate errors',
+      encryption: 'aes256',
     };
 
     it('creates a request and returns 201', async () => {
@@ -222,6 +282,32 @@ describe('router', () => {
 
       expect(res.status).toBe(400);
       expect(res.body.error).toContain('source must be');
+    });
+
+    // Use a dedicated app instance: the shared one's submit rate limiter
+    // (max 5 per window) would return 429 for these extra POSTs.
+    it('returns 400 when encryption is missing', async () => {
+      setAuth('user:default/alice');
+      const freshApp = await createTestApp();
+
+      const res = await request(freshApp)
+        .post('/requests')
+        .send({ ...validBody, encryption: undefined });
+
+      expect(res.status).toBe(400);
+      expect(res.body.error).toContain('encryption');
+    });
+
+    it('returns 400 for unsupported encryption method', async () => {
+      setAuth('user:default/alice');
+      const freshApp = await createTestApp();
+
+      const res = await request(freshApp)
+        .post('/requests')
+        .send({ ...validBody, encryption: 'zip20' });
+
+      expect(res.status).toBe(400);
+      expect(res.body.error).toContain('encryption must be "aes256"');
     });
 
     it('falls back to unknown user when unauthenticated', async () => {
@@ -464,6 +550,119 @@ describe('router', () => {
 
       expect(res.status).toBe(403);
       expect(res.body.error).toContain('Only the requester');
+    });
+
+    it('returns 400 when the archive contains no logs', async () => {
+      setAuth('user:default/alice');
+      mockStore.getRequest.mockResolvedValue(
+        makeRequest({
+          status: 'completed',
+          archivePath: '/tmp/test.zip',
+          fileCount: 0,
+        }),
+      );
+
+      const res = await request(app).get('/requests/req-001/download');
+
+      expect(res.status).toBe(400);
+      expect(res.body.error).toContain('no logs');
+    });
+  });
+
+  describe('POST /requests/:id/reveal-password', () => {
+    const completed = () =>
+      makeRequest({
+        status: 'completed',
+        archivePath: '/tmp/logs.zip',
+        passwordAvailable: true,
+      });
+
+    it('returns 404 when request not found', async () => {
+      setAuth('user:default/alice');
+      mockStore.getRequest.mockResolvedValue(undefined);
+
+      const res = await request(app).post('/requests/req-001/reveal-password');
+
+      expect(res.status).toBe(404);
+    });
+
+    it('returns 403 when user is not the requester', async () => {
+      setAuth('user:default/bob');
+      mockStore.getRequest.mockResolvedValue(completed());
+
+      const res = await request(app).post('/requests/req-001/reveal-password');
+
+      expect(res.status).toBe(403);
+      expect(res.body.error).toContain('Only the requester');
+      expect(mockStore.revealPassword).not.toHaveBeenCalled();
+    });
+
+    it('returns 400 when request is not completed', async () => {
+      setAuth('user:default/alice');
+      mockStore.getRequest.mockResolvedValue(makeRequest({ status: 'extracting' }));
+
+      const res = await request(app).post('/requests/req-001/reveal-password');
+
+      expect(res.status).toBe(400);
+      expect(res.body.error).toContain('not ready');
+    });
+
+    it('returns 400 when the archive contains no logs', async () => {
+      setAuth('user:default/alice');
+      mockStore.getRequest.mockResolvedValue(
+        makeRequest({ ...completed(), fileCount: 0 }),
+      );
+
+      const res = await request(app).post('/requests/req-001/reveal-password');
+
+      expect(res.status).toBe(400);
+      expect(res.body.error).toContain('no logs');
+      expect(mockStore.revealPassword).not.toHaveBeenCalled();
+    });
+
+    it('reveals the password to the requester on first call', async () => {
+      setAuth('user:default/alice');
+      mockStore.getRequest.mockResolvedValue(completed());
+      mockStore.revealPassword.mockResolvedValue('super-secret');
+
+      const res = await request(app).post('/requests/req-001/reveal-password');
+
+      expect(res.status).toBe(200);
+      expect(res.body).toEqual({ password: 'super-secret' });
+      expect(mockStore.revealPassword).toHaveBeenCalledWith(
+        'req-001',
+        'user:default/alice',
+      );
+    });
+
+    it('allows admin to reveal', async () => {
+      setAuth('user:default/admin');
+      mockStore.getRequest.mockResolvedValue(completed());
+      mockStore.revealPassword.mockResolvedValue('super-secret');
+
+      const res = await request(app).post('/requests/req-001/reveal-password');
+
+      expect(res.status).toBe(200);
+    });
+
+    it('returns 410 when password was already revealed', async () => {
+      setAuth('user:default/alice');
+      mockStore.getRequest.mockResolvedValue(
+        makeRequest({
+          status: 'completed',
+          archivePath: '/tmp/logs.zip',
+          passwordAvailable: false,
+          passwordRevealedTo: 'user:default/alice',
+          passwordRevealedAt: '2026-03-05T02:00:00.000Z',
+        }),
+      );
+      mockStore.revealPassword.mockResolvedValue(null);
+
+      const res = await request(app).post('/requests/req-001/reveal-password');
+
+      expect(res.status).toBe(410);
+      expect(res.body.error).toContain('already revealed');
+      expect(res.body.revealedTo).toBe('user:default/alice');
     });
   });
 

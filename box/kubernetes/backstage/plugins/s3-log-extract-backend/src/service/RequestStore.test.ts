@@ -14,6 +14,7 @@ describe('RequestStore', () => {
     startTime: '09:00',
     endTime: '10:00',
     reason: 'Investigate OOM errors',
+    encryption: 'aes256',
   };
 
   beforeEach(async () => {
@@ -42,6 +43,7 @@ describe('RequestStore', () => {
       expect(req.endTime).toBe('10:00');
       expect(req.requesterRef).toBe('user:default/alice');
       expect(req.reason).toBe('Investigate OOM errors');
+      expect(req.encryption).toBe('aes256');
       expect(req.status).toBe('pending');
       expect(req.reviewerRef).toBeNull();
       expect(req.reviewComment).toBeNull();
@@ -196,6 +198,53 @@ describe('RequestStore', () => {
       const fetched = await store.getRequest(created.id);
       expect(fetched!.progressCurrent).toBe(2);
       expect(fetched!.progressTotal).toBe(3);
+    });
+  });
+
+  describe('archive password lifecycle', () => {
+    it('stores password on completion and exposes only passwordAvailable', async () => {
+      const created = await store.createRequest(baseInput, 'user:default/alice');
+
+      const updated = await store.updateStatus(created.id, 'completed', {
+        archivePath: '/tmp/logs.zip',
+        archivePassword: 'super-secret',
+      });
+
+      expect(updated!.passwordAvailable).toBe(true);
+      expect(updated!.passwordRevealedTo).toBeNull();
+      expect(updated!.passwordRevealedAt).toBeNull();
+      // The plaintext password must never appear on the request object.
+      expect(JSON.stringify(updated)).not.toContain('super-secret');
+    });
+
+    it('reveals the password exactly once and records the audit trail', async () => {
+      const created = await store.createRequest(baseInput, 'user:default/alice');
+      await store.updateStatus(created.id, 'completed', {
+        archivePassword: 'super-secret',
+      });
+
+      const first = await store.revealPassword(created.id, 'user:default/alice');
+      expect(first).toBe('super-secret');
+
+      const second = await store.revealPassword(created.id, 'user:default/bob');
+      expect(second).toBeNull();
+
+      const fetched = await store.getRequest(created.id);
+      expect(fetched!.passwordAvailable).toBe(false);
+      expect(fetched!.passwordRevealedTo).toBe('user:default/alice');
+      expect(fetched!.passwordRevealedAt).not.toBeNull();
+    });
+
+    it('returns null when no password was ever stored', async () => {
+      const created = await store.createRequest(baseInput, 'user:default/alice');
+
+      const result = await store.revealPassword(created.id, 'user:default/alice');
+      expect(result).toBeNull();
+    });
+
+    it('returns null for non-existent request', async () => {
+      const result = await store.revealPassword('non-existent', 'user:default/alice');
+      expect(result).toBeNull();
     });
   });
 

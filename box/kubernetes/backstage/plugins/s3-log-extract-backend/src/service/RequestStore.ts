@@ -41,6 +41,7 @@ export class RequestStore {
         table.string('end_time').notNullable();
         table.string('requester_ref').notNullable();
         table.text('reason').notNullable();
+        table.string('encryption').notNullable().defaultTo('aes256');
         table.string('status').notNullable().defaultTo('pending');
         table.string('reviewer_ref');
         table.text('review_comment');
@@ -50,6 +51,9 @@ export class RequestStore {
         table.string('first_timestamp');
         table.string('last_timestamp');
         table.text('error_message');
+        table.text('archive_password');
+        table.string('password_revealed_to');
+        table.timestamp('password_revealed_at');
         table.timestamp('extraction_started_at');
         table.timestamp('extraction_finished_at');
         table.integer('progress_current');
@@ -79,6 +83,28 @@ export class RequestStore {
           table.integer('progress_total');
         });
       }
+
+      const hasArchivePassword = await this.db.schema.hasColumn(
+        TABLE_NAME,
+        'archive_password',
+      );
+      if (!hasArchivePassword) {
+        await this.db.schema.alterTable(TABLE_NAME, table => {
+          table.text('archive_password');
+          table.string('password_revealed_to');
+          table.timestamp('password_revealed_at');
+        });
+      }
+
+      const hasEncryption = await this.db.schema.hasColumn(
+        TABLE_NAME,
+        'encryption',
+      );
+      if (!hasEncryption) {
+        await this.db.schema.alterTable(TABLE_NAME, table => {
+          table.string('encryption').notNullable().defaultTo('aes256');
+        });
+      }
     }
   }
 
@@ -97,6 +123,7 @@ export class RequestStore {
       endTime: input.endTime,
       requesterRef,
       reason: input.reason,
+      encryption: input.encryption,
       status: 'pending',
       reviewerRef: null,
       reviewComment: null,
@@ -107,6 +134,9 @@ export class RequestStore {
       lastTimestamp: null,
       errorMessage: null,
       downloadable: false,
+      passwordAvailable: false,
+      passwordRevealedTo: null,
+      passwordRevealedAt: null,
       approvalDeadline: new Date(
         new Date(now).getTime() + APPROVAL_TIMEOUT_MS,
       ).toISOString(),
@@ -127,6 +157,7 @@ export class RequestStore {
       end_time: request.endTime,
       requester_ref: request.requesterRef,
       reason: request.reason,
+      encryption: request.encryption,
       status: request.status,
       reviewer_ref: request.reviewerRef,
       review_comment: request.reviewComment,
@@ -173,6 +204,7 @@ export class RequestStore {
       firstTimestamp?: string;
       lastTimestamp?: string;
       errorMessage?: string;
+      archivePassword?: string;
       progressCurrent?: number;
       progressTotal?: number;
     },
@@ -200,6 +232,7 @@ export class RequestStore {
     if (updates?.firstTimestamp !== undefined) updateData.first_timestamp = updates.firstTimestamp;
     if (updates?.lastTimestamp !== undefined) updateData.last_timestamp = updates.lastTimestamp;
     if (updates?.errorMessage !== undefined) updateData.error_message = updates.errorMessage;
+    if (updates?.archivePassword !== undefined) updateData.archive_password = updates.archivePassword;
     if (updates?.progressCurrent !== undefined) updateData.progress_current = updates.progressCurrent;
     if (updates?.progressTotal !== undefined) updateData.progress_total = updates.progressTotal;
 
@@ -217,6 +250,33 @@ export class RequestStore {
     const updateData: Record<string, unknown> = { progress_current: current };
     if (total !== undefined) updateData.progress_total = total;
     await this.db(TABLE_NAME).where({ id }).update(updateData);
+  }
+
+  /**
+   * One-time password reveal (IAM secret key style). Atomically clears the
+   * plaintext password while recording who revealed it, so concurrent clicks
+   * can never both receive it. Returns null if already revealed (or the
+   * request has no password), after which no one (admin included) can
+   * recover it.
+   */
+  async revealPassword(id: string, userRef: string): Promise<string | null> {
+    const row = await this.db(TABLE_NAME).where({ id }).first();
+    const password = (row?.archive_password as string) ?? null;
+    if (!password) return null;
+
+    const affected = await this.db(TABLE_NAME)
+      .where({ id })
+      .whereNotNull('archive_password')
+      .update({
+        archive_password: null,
+        password_revealed_to: userRef,
+        password_revealed_at: new Date().toISOString(),
+      });
+
+    // Lost the race against another reveal — do not disclose the password.
+    if (affected === 0) return null;
+
+    return password;
   }
 
   private isDownloadable(row: Record<string, unknown>): boolean {
@@ -263,6 +323,8 @@ export class RequestStore {
       endTime: row.end_time as string,
       requesterRef: row.requester_ref as string,
       reason: row.reason as string,
+      encryption:
+        (row.encryption as LogExtractRequest['encryption']) ?? 'aes256',
       status,
       reviewerRef: (row.reviewer_ref as string) ?? null,
       reviewComment: (row.review_comment as string) ?? null,
@@ -273,6 +335,11 @@ export class RequestStore {
       lastTimestamp: (row.last_timestamp as string) ?? null,
       errorMessage: (row.error_message as string) ?? null,
       downloadable: this.isDownloadable(row),
+      // Plaintext password is intentionally never mapped onto the request
+      // object; it is only handed out once via revealPassword().
+      passwordAvailable: !!row.archive_password,
+      passwordRevealedTo: (row.password_revealed_to as string) ?? null,
+      passwordRevealedAt: (row.password_revealed_at as string) ?? null,
       approvalDeadline,
       extractionDurationMs,
       progressCurrent: (row.progress_current as number) ?? null,

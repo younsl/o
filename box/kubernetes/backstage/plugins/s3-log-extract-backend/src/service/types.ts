@@ -10,6 +10,12 @@ export type Environment = 'dev' | 'stg' | 'sb' | 'prd';
 
 export type LogSource = 'k8s' | 'ec2';
 
+/**
+ * Archive encryption method. Only AES-256 is offered: the legacy ZipCrypto
+ * alternative is trivially crackable and defeats the leak-protection goal.
+ */
+export type EncryptionMethod = 'aes256';
+
 export interface LogExtractRequest {
   id: string;
   source: LogSource;
@@ -20,6 +26,7 @@ export interface LogExtractRequest {
   endTime: string;
   requesterRef: string;
   reason: string;
+  encryption: EncryptionMethod;
   status: RequestStatus;
   reviewerRef: string | null;
   reviewComment: string | null;
@@ -30,6 +37,11 @@ export interface LogExtractRequest {
   lastTimestamp: string | null;
   errorMessage: string | null;
   downloadable: boolean;
+  // Whether the one-time archive password is still unrevealed. The plaintext
+  // password itself is never included in this type (reveal endpoint only).
+  passwordAvailable: boolean;
+  passwordRevealedTo: string | null;
+  passwordRevealedAt: string | null;
   approvalDeadline: string | null;
   extractionDurationMs: number | null;
   progressCurrent: number | null;
@@ -46,6 +58,7 @@ export interface CreateLogExtractInput {
   startTime: string;
   endTime: string;
   reason: string;
+  encryption: EncryptionMethod;
 }
 
 export interface ReviewLogExtractInput {

@@ -10,6 +10,9 @@ export type Environment = 'dev' | 'stg' | 'sb' | 'prd';
 
 export type LogSource = 'k8s' | 'ec2';
 
+/** Archive encryption method. Only AES-256 is offered. */
+export type EncryptionMethod = 'aes256';
+
 export interface LogExtractRequest {
   id: string;
   source: LogSource;
@@ -20,6 +23,7 @@ export interface LogExtractRequest {
   endTime: string;
   requesterRef: string;
   reason: string;
+  encryption: EncryptionMethod;
   status: RequestStatus;
   reviewerRef: string | null;
   reviewComment: string | null;
@@ -30,6 +34,10 @@ export interface LogExtractRequest {
   lastTimestamp: string | null;
   errorMessage: string | null;
   downloadable: boolean;
+  // True while the one-time archive password has not been revealed yet.
+  passwordAvailable: boolean;
+  passwordRevealedTo: string | null;
+  passwordRevealedAt: string | null;
   approvalDeadline: string | null;
   extractionDurationMs: number | null;
   progressCurrent: number | null;

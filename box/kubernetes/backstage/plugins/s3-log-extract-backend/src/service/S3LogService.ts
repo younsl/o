@@ -222,20 +222,13 @@ export class S3LogService {
     this.ensureConfigured();
     await this.refreshClient();
 
-    // Build KST Date boundaries for log line comparison
-    const startKst = new Date(`${date}T${startTime}:00+09:00`);
-    let endKst = new Date(`${date}T${endTime}:00+09:00`);
-
-    // Cross-midnight: endTime < startTime means end is next day
-    if (endKst <= startKst) {
-      endKst = new Date(endKst.getTime() + 24 * 60 * 60 * 1000);
-    }
-
-    const startMs = startKst.getTime();
-    const endMs = endKst.getTime();
+    const { startMs, endMs } = this.timeRangeToMs(date, startTime, endTime);
 
     const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 's3-log-extract-'));
-    const archivePath = path.join(tempDir, `logs-${env}-${date}.tar.gz`);
+    const archivePath = path.join(
+      tempDir,
+      `backstage-s3logs-${env}-${date}.tar.gz`,
+    );
 
     const pack = tar.pack();
     const gzip = zlib.createGzip();
@@ -243,34 +236,20 @@ export class S3LogService {
 
     const pipelinePromise = pipeline(pack, gzip, output);
 
-    let fileCount = 0;
     const tsTracker = { minMs: Infinity, maxMs: -Infinity };
     const onAppDone = (done: number) =>
       options?.onProgress?.(done, apps.length);
 
-    if (source === 'k8s') {
-      fileCount = await this.extractK8sLogs(
-        env,
-        date,
-        apps,
-        startMs,
-        endMs,
-        pack,
-        tsTracker,
-        onAppDone,
-      );
-    } else {
-      fileCount = await this.extractEc2Logs(
-        env,
-        date,
-        apps,
-        startMs,
-        endMs,
-        pack,
-        tsTracker,
-        onAppDone,
-      );
-    }
+    const fileCount = await this.extractFilteredLogs(
+      source,
+      env,
+      apps,
+      startMs,
+      endMs,
+      pack,
+      tsTracker,
+      onAppDone,
+    );
 
     pack.finalize();
     await pipelinePromise;
@@ -288,96 +267,104 @@ export class S3LogService {
   }
 
   /**
-   * k8s logs: app-logs/k8s/{env}.{app}/{YYYY}/{MM}/{DD}/{ts}-{uuid}.log.gz
-   * Content: JSON array of log entries with UTC timestamps.
+   * Advisory pre-check used at request/review time: counts the S3 objects
+   * whose filename epoch overlaps the requested window, without downloading
+   * anything. Zero candidates means extraction would definitely return zero
+   * files (logs may still arrive later due to batch upload delays).
    */
-  private async extractK8sLogs(
+  async countCandidateObjects(
+    source: LogSource,
     env: string,
     date: string,
     apps: string[],
-    startMs: number,
-    endMs: number,
-    pack: tar.Pack,
-    tsTracker: { minMs: number; maxMs: number },
-    onAppDone?: (done: number) => void,
-  ): Promise<number> {
-    let fileCount = 0;
-    let appsProcessed = 0;
+    startTime: string,
+    endTime: string,
+  ): Promise<{
+    candidateCount: number;
+    scannedCount: number;
+    appCounts: Record<string, number>;
+  }> {
+    this.ensureConfigured();
+    await this.refreshClient();
 
-    // KST range can span multiple UTC dates; scan with buffer
-    const scanStartUtc = new Date(startMs - 60 * 60 * 1000);
-    const scanEndUtc = new Date(endMs + 60 * 60 * 1000);
-    const datesToScan = this.getUtcDateRange(scanStartUtc, scanEndUtc);
+    const { startMs, endMs } = this.timeRangeToMs(date, startTime, endTime);
+    const { work, scanned } = await this.collectCandidateKeys(
+      source,
+      env,
+      apps,
+      startMs,
+      endMs,
+    );
 
-    // Gather candidate keys across all apps/dates, pre-filtered by the filename
-    // timestamp so we only download objects that can overlap the time window.
-    const work: Array<{ app: string; key: string }> = [];
-    let scanned = 0;
-    for (const app of apps) {
-      const appDir = `${env}.${app}`;
-      for (const scanDate of datesToScan) {
-        const [sy, sm, sd] = scanDate.split('-');
-        const prefixPath = `${this.prefix}/k8s/${appDir}/${sy}/${sm}/${sd}/`;
-        const keys = await this.listAllKeys(prefixPath);
-        scanned += keys.length;
-        for (const key of keys) {
-          if (this.keyInRange(key, startMs, endMs)) work.push({ app, key });
-        }
-      }
-      appsProcessed++;
-      onAppDone?.(appsProcessed);
+    // Per-app breakdown so multi-app requests can flag exactly which apps
+    // have no logs in the window instead of hiding them in the total.
+    const appCounts: Record<string, number> = {};
+    for (const app of apps) appCounts[app] = 0;
+    for (const { app } of work) appCounts[app] += 1;
+
+    return { candidateCount: work.length, scannedCount: scanned, appCounts };
+  }
+
+  /** Convert a KST date + time range into epoch-ms boundaries (cross-midnight aware). */
+  private timeRangeToMs(
+    date: string,
+    startTime: string,
+    endTime: string,
+  ): { startMs: number; endMs: number } {
+    const startKst = new Date(`${date}T${startTime}:00+09:00`);
+    let endKst = new Date(`${date}T${endTime}:00+09:00`);
+
+    // Cross-midnight: endTime < startTime means end is next day
+    if (endKst <= startKst) {
+      endKst = new Date(endKst.getTime() + 24 * 60 * 60 * 1000);
     }
-    this.logger.info(
-      `k8s extract: ${work.length}/${scanned} objects in range, downloading with concurrency ${S3LogService.DOWNLOAD_CONCURRENCY}`,
-    );
 
-    return this.downloadFilterPack(
-      work,
-      pack,
-      tsTracker,
-      content => this.filterJsonLogEntries(content, startMs, endMs),
-      (app, key) =>
-        `${app}/${(key.split('/').pop() ?? 'unknown').replace(/\.gz$/, '')}.ndjson`,
-    );
+    return { startMs: startKst.getTime(), endMs: endKst.getTime() };
   }
 
   /**
-   * ec2 logs: app-logs/ec2-shortterm/{env}.{app}/java/{YYYY}/{MM}/{DD}/{epochSeconds}-{uuid}.log.gz
-   * Content: JSON array of filebeat entries (UTC `@timestamp`).
-   *
-   * Same filename/partition scheme as k8s (epoch batch-end, UTC date dirs); the
-   * only differences are the `ec2-shortterm` prefix, the `/java/` segment, and
-   * the `@timestamp` field name (handled by the shared JSON filter). The legacy
-   * `ec2/` prefix (plain-text `ls.s3.*.txt.gz`) is no longer used.
+   * Object layouts (same `{epoch}-{uuid}.log.gz` naming, epoch = batch end UTC):
+   *   k8s : app-logs/k8s/{env}.{app}/{YYYY}/{MM}/{DD}/
+   *   ec2 : app-logs/ec2-shortterm/{env}.{app}/java/{YYYY}/{MM}/{DD}/
+   * ec2 scans only the java/ log stream (excludes json/, nginx/, system/).
    */
-  private async extractEc2Logs(
+  private buildScanPrefix(
+    source: LogSource,
     env: string,
-    date: string,
+    app: string,
+    scanDate: string,
+  ): string {
+    const [sy, sm, sd] = scanDate.split('-');
+    if (source === 'k8s') {
+      return `${this.prefix}/k8s/${env}.${app}/${sy}/${sm}/${sd}/`;
+    }
+    return `${this.prefix}/ec2-shortterm/${env}.${app}/java/${sy}/${sm}/${sd}/`;
+  }
+
+  /**
+   * Gather candidate keys across all apps, pre-filtered by the filename
+   * timestamp so only objects that can overlap the time window survive.
+   * Date dirs are UTC; a KST request window can span two UTC dates, so scan
+   * with a 1h buffer on each side.
+   */
+  private async collectCandidateKeys(
+    source: LogSource,
+    env: string,
     apps: string[],
     startMs: number,
     endMs: number,
-    pack: tar.Pack,
-    tsTracker: { minMs: number; maxMs: number },
     onAppDone?: (done: number) => void,
-  ): Promise<number> {
-    let fileCount = 0;
-    let appsProcessed = 0;
-
-    // ec2 directory uses UTC dates; scan with buffer
-    // Date dirs are UTC; a KST request window can span two UTC dates, so scan
-    // with a 1h buffer on each side.
+  ): Promise<{ work: Array<{ app: string; key: string }>; scanned: number }> {
     const scanStartUtc = new Date(startMs - 60 * 60 * 1000);
     const scanEndUtc = new Date(endMs + 60 * 60 * 1000);
     const datesToScan = this.getUtcDateRange(scanStartUtc, scanEndUtc);
 
-    // Gather candidate keys, pre-filtered by the filename epoch (batch end, UTC).
     const work: Array<{ app: string; key: string }> = [];
     let scanned = 0;
+    let appsProcessed = 0;
     for (const app of apps) {
       for (const scanDate of datesToScan) {
-        const [sy, sm, sd] = scanDate.split('-');
-        // Only the java/ log stream (exclude json/, nginx/, system/).
-        const prefixPath = `${this.prefix}/ec2-shortterm/${env}.${app}/java/${sy}/${sm}/${sd}/`;
+        const prefixPath = this.buildScanPrefix(source, env, app, scanDate);
         const keys = await this.listAllKeys(prefixPath);
         scanned += keys.length;
         for (const key of keys) {
@@ -387,8 +374,34 @@ export class S3LogService {
       appsProcessed++;
       onAppDone?.(appsProcessed);
     }
+    return { work, scanned };
+  }
+
+  /**
+   * Scan, download, time-filter, and pack logs for either source. Content is a
+   * JSON array of entries with a UTC ISO timestamp (`timestamp` for k8s,
+   * `@timestamp` for ec2 filebeat), handled by the shared JSON filter.
+   */
+  private async extractFilteredLogs(
+    source: LogSource,
+    env: string,
+    apps: string[],
+    startMs: number,
+    endMs: number,
+    pack: tar.Pack,
+    tsTracker: { minMs: number; maxMs: number },
+    onAppDone?: (done: number) => void,
+  ): Promise<number> {
+    const { work, scanned } = await this.collectCandidateKeys(
+      source,
+      env,
+      apps,
+      startMs,
+      endMs,
+      onAppDone,
+    );
     this.logger.info(
-      `ec2 extract: ${work.length}/${scanned} objects in range, downloading with concurrency ${S3LogService.DOWNLOAD_CONCURRENCY}`,
+      `${source} extract: ${work.length}/${scanned} objects in range, downloading with concurrency ${S3LogService.DOWNLOAD_CONCURRENCY}`,
     );
 
     return this.downloadFilterPack(

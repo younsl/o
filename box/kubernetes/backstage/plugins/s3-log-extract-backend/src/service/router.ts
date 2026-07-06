@@ -10,6 +10,10 @@ import { parseEntityRef } from '@backstage/catalog-model';
 import { Config } from '@backstage/config';
 import { RequestStore } from './RequestStore';
 import { S3LogService } from './S3LogService';
+import {
+  encryptArchive,
+  generateArchivePassword,
+} from './ArchiveEncryptor';
 import { CreateLogExtractInput, ReviewLogExtractInput } from './types';
 
 export interface RouterOptions {
@@ -119,6 +123,57 @@ export async function createRouter(options: RouterOptions): Promise<Router> {
     }
   });
 
+  const precheckLimiter = rateLimit({
+    windowMs: 15 * 60 * 1000,
+    max: 30,
+    standardHeaders: true,
+    legacyHeaders: false,
+    message: { error: 'Too many requests, please try again later' },
+  });
+
+  // Advisory availability check (List-only, no downloads): how many S3
+  // objects could overlap the requested window. Zero is a definitive "no
+  // logs yet"; logs may still arrive later due to batch upload delays.
+  router.get('/precheck', precheckLimiter, async (req, res) => {
+    try {
+      const env = req.query.env as string;
+      const date = req.query.date as string;
+      const source = (req.query.source as string) || 'k8s';
+      const startTime = req.query.startTime as string;
+      const endTime = req.query.endTime as string;
+      const apps = String(req.query.apps ?? '')
+        .split(',')
+        .filter(Boolean);
+
+      if (!env || !date || !startTime || !endTime || apps.length === 0) {
+        res.status(400).json({
+          error: 'env, date, apps, startTime, and endTime are required',
+        });
+        return;
+      }
+
+      if (source !== 'k8s' && source !== 'ec2') {
+        res.status(400).json({ error: 'source must be "k8s" or "ec2"' });
+        return;
+      }
+
+      const result = await s3LogService.countCandidateObjects(
+        source,
+        env,
+        date,
+        apps,
+        startTime,
+        endTime,
+      );
+      res.json(result);
+    } catch (error) {
+      logger.error(`Failed to precheck: ${error}`);
+      res.status(500).json({
+        error: error instanceof Error ? error.message : 'Unknown error',
+      });
+    }
+  });
+
   const submitLimiter = rateLimit({
     windowMs: 15 * 60 * 1000,
     max: 5,
@@ -139,17 +194,24 @@ export async function createRouter(options: RouterOptions): Promise<Router> {
         !input.apps?.length ||
         !input.startTime ||
         !input.endTime ||
-        !input.reason
+        !input.reason ||
+        !input.encryption
       ) {
         res.status(400).json({
           error:
-            'source, env, date, apps, startTime, endTime, and reason are required',
+            'source, env, date, apps, startTime, endTime, reason, and encryption are required',
         });
         return;
       }
 
       if (input.source !== 'k8s' && input.source !== 'ec2') {
         res.status(400).json({ error: 'source must be "k8s" or "ec2"' });
+        return;
+      }
+
+      // Only AES-256 is offered; reject anything else explicitly.
+      if (input.encryption !== 'aes256') {
+        res.status(400).json({ error: 'encryption must be "aes256"' });
         return;
       }
 
@@ -315,15 +377,24 @@ export async function createRouter(options: RouterOptions): Promise<Router> {
             },
           )
           .then(async result => {
+            // Leak protection: re-wrap the tar.gz into an AES-256 encrypted
+            // zip and delete the plaintext archive, so from completion on
+            // Backstage only holds the password-protected file.
+            const password = generateArchivePassword();
+            const { zipPath, zipSize } = await encryptArchive(
+              result.archivePath,
+              password,
+            );
             await store.updateStatus(id, 'completed', {
               fileCount: result.fileCount,
-              archiveSize: result.archiveSize,
-              archivePath: result.archivePath,
+              archiveSize: zipSize,
+              archivePath: zipPath,
+              archivePassword: password,
               firstTimestamp: result.firstTimestamp ?? undefined,
               lastTimestamp: result.lastTimestamp ?? undefined,
             });
             logger.info(
-              `Extraction completed [${id}]: ${result.fileCount} files, ${result.archiveSize} bytes`,
+              `Extraction completed [${id}]: ${result.fileCount} files, ${zipSize} bytes (AES-256 encrypted zip)`,
             );
           })
           .catch(async err => {
@@ -373,6 +444,12 @@ export async function createRouter(options: RouterOptions): Promise<Router> {
           return;
         }
 
+        // No logs matched the window: there is nothing worth downloading.
+        if (request.fileCount === 0) {
+          res.status(400).json({ error: 'Archive contains no logs' });
+          return;
+        }
+
         if (!request.archivePath || !fs.existsSync(request.archivePath)) {
           res.status(404).json({ error: 'Archive file not found' });
           return;
@@ -385,8 +462,8 @@ export async function createRouter(options: RouterOptions): Promise<Router> {
           return;
         }
 
-        const fileName = `logs-${request.env}-${request.date}.tar.gz`;
-        res.setHeader('Content-Type', 'application/gzip');
+        const fileName = `backstage-s3logs-${request.env}-${request.date}.zip`;
+        res.setHeader('Content-Type', 'application/zip');
         res.setHeader(
           'Content-Disposition',
           `attachment; filename="${fileName}"`,
@@ -397,6 +474,69 @@ export async function createRouter(options: RouterOptions): Promise<Router> {
         stream.pipe(res);
       } catch (error) {
         logger.error(`Failed to download: ${error}`);
+        res.status(500).json({
+          error: error instanceof Error ? error.message : 'Unknown error',
+        });
+      }
+    },
+  );
+
+  const revealLimiter = rateLimit({
+    windowMs: 10 * 60 * 1000,
+    max: 10,
+    standardHeaders: true,
+    legacyHeaders: false,
+    message: { error: 'Too many reveal requests, please try again later' },
+  });
+
+  // One-time password reveal (IAM secret key style): only the first caller
+  // ever receives the plaintext; the store atomically destroys it afterwards.
+  router.post(
+    '/requests/:id/reveal-password',
+    revealLimiter,
+    async (req, res) => {
+      try {
+        const id = req.params.id as string;
+        const userRef = await tryGetUserRef(req);
+        const request = await store.getRequest(id);
+
+        if (!request) {
+          res.status(404).json({ error: 'Request not found' });
+          return;
+        }
+
+        if (!userRef || (userRef !== request.requesterRef && !admins.includes(userRef))) {
+          res.status(403).json({
+            error: 'Only the requester or admin can reveal the password',
+          });
+          return;
+        }
+
+        if (request.status !== 'completed') {
+          res.status(400).json({ error: 'Archive is not ready' });
+          return;
+        }
+
+        // Don't burn the one-time password on an empty archive.
+        if (request.fileCount === 0) {
+          res.status(400).json({ error: 'Archive contains no logs' });
+          return;
+        }
+
+        const password = await store.revealPassword(id, userRef);
+        if (!password) {
+          res.status(410).json({
+            error: 'Password already revealed and cannot be shown again',
+            revealedTo: request.passwordRevealedTo,
+            revealedAt: request.passwordRevealedAt,
+          });
+          return;
+        }
+
+        logger.info(`Archive password revealed [${id}] to ${userRef}`);
+        res.json({ password });
+      } catch (error) {
+        logger.error(`Failed to reveal password: ${error}`);
         res.status(500).json({
           error: error instanceof Error ? error.message : 'Unknown error',
         });

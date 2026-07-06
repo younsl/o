@@ -1,5 +1,8 @@
 /* Required field indicator (red asterisk) */
-.sle-required-field label::after {
+/* BUI Select renders its label as a <span class="bui-FieldLabel"> (react-aria
+   labels a <button> via aria-labelledby), so match both element and class. */
+.sle-required-field label::after,
+.sle-required-field .bui-FieldLabel::after {
   content: " *";
   color: var(--bui-color-danger, #e53e3e);
   font-weight: bold;
@@ -269,6 +272,12 @@
   padding: 0 1px;
 }
 
+/* Syntax-highlighted dot separator in app names (env.app) */
+.sle-app-dot {
+  color: #f97316;
+  font-weight: 700;
+}
+
 /* Request cards grid */
 .sle-grid {
   display: grid;
@@ -504,7 +513,7 @@
   border: 1px solid #444;
   border-radius: 8px;
   padding: 20px;
-  width: 480px;
+  width: 528px;
   max-width: 90vw;
   box-shadow: 0 8px 32px rgba(0, 0, 0, 0.6);
 }
@@ -577,3 +586,98 @@
   background-color: #9ca3af;
 }
 
+
+/* One-time archive password modal */
+.sle-password-field {
+  flex: 1;
+  padding: 6px 10px;
+  border: 1px solid var(--bui-border-1, #444);
+  border-radius: var(--bui-radius-2, 4px);
+  background-color: var(--bui-bg-neutral-2);
+  font-family: var(--bui-font-monospace);
+  font-size: var(--bui-font-size-2);
+  letter-spacing: 0.5px;
+  word-break: break-all;
+  user-select: all;
+}
+
+.sle-password-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 6px 10px;
+  border: 1px solid var(--bui-border-1, #444);
+  border-radius: var(--bui-radius-2, 4px);
+  background: transparent;
+  color: inherit;
+  font-family: inherit;
+  font-size: var(--bui-font-size-2);
+  cursor: pointer;
+  white-space: nowrap;
+  transition: background-color 0.15s, color 0.15s;
+}
+
+.sle-password-toggle:hover {
+  background-color: var(--bui-bg-neutral-2);
+}
+
+/* Command code card: header tab + copy on top, monospace body below */
+.sle-codecard {
+  border: 1px solid var(--bui-border-1, #444);
+  border-radius: 6px;
+  overflow: hidden;
+  background: var(--bui-bg-neutral-1, #171717);
+}
+
+.sle-codecard-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 3px 6px 3px 12px;
+  background: var(--bui-bg-neutral-2);
+  border-bottom: 1px solid var(--bui-border-1, #444);
+}
+
+.sle-codecard-tab {
+  font-family: var(--bui-font-monospace);
+  font-size: var(--bui-font-size-2);
+  font-weight: 700;
+  color: var(--bui-color-text-primary);
+}
+
+.sle-codecard-body {
+  margin: 0;
+  padding: 10px 12px;
+  font-family: var(--bui-font-monospace);
+  font-size: var(--bui-font-size-2);
+  line-height: 1.6;
+  white-space: pre;
+  overflow-x: auto;
+  color: var(--bui-color-text-primary);
+}
+
+/* Green shield marking an encrypted, downloadable archive */
+.sle-encrypted-badge {
+  display: inline-flex;
+  align-items: center;
+  color: #22c55e;
+}
+
+/* Expired / no-logs archive: gray out the shield to match the disabled button */
+.sle-btn-expired .sle-encrypted-badge {
+  color: #9ca3af;
+}
+
+/* Smaller title text for a compact inline alert */
+.sle-alert-compact .bui-AlertTitle {
+  font-size: var(--bui-font-size-2);
+  line-height: 1.4;
+}
+
+/* Log metadata: aligned label/value rows */
+.sle-meta-grid {
+  display: grid;
+  grid-template-columns: max-content 1fr;
+  gap: 4px 16px;
+  align-items: baseline;
+}

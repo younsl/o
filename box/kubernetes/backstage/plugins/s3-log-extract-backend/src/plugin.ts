@@ -75,6 +75,10 @@ export const s3LogExtractPlugin = createBackendPlugin({
           allow: 'unauthenticated',
         });
         httpRouter.addAuthPolicy({
+          path: '/precheck',
+          allow: 'unauthenticated',
+        });
+        httpRouter.addAuthPolicy({
           path: '/requests',
           allow: 'unauthenticated',
         });
