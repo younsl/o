@@ -392,7 +392,6 @@ interface DownloadModalProps {
   request: LogExtractRequest;
   fileName: string;
   onClose: () => void;
-  onRevealed: () => void;
 }
 
 // Download gate + one-time archive password modal (IAM secret key style).
@@ -402,7 +401,6 @@ const DownloadModal = ({
   request,
   fileName,
   onClose,
-  onRevealed,
 }: DownloadModalProps) => {
   const api = useApi(s3LogExtractApiRef);
   const [visible, setVisible] = useState(false);
@@ -425,7 +423,8 @@ const DownloadModal = ({
   }, []);
 
   // Reveal once on open. The password is destroyed server-side after this, so
-  // subsequent opens (by anyone) land in the already-revealed branch.
+  // subsequent opens (by anyone) land in the already-revealed branch. Deps are
+  // kept stable so a list refresh can't unmount this modal and re-fire reveal.
   useEffect(() => {
     if (!request.passwordAvailable || revealStarted.current) return;
     revealStarted.current = true;
@@ -435,14 +434,12 @@ const DownloadModal = ({
       .then(({ password: pw }) => {
         if (cancelled) return;
         setPassword(pw);
-        onRevealed();
       })
       .catch(err => {
         if (cancelled) return;
         const msg = err instanceof Error ? err.message : String(err);
         if (msg.includes('already revealed')) {
           setAlreadyRevealed(true);
-          onRevealed();
         } else {
           setError(msg);
         }
@@ -453,7 +450,7 @@ const DownloadModal = ({
     return () => {
       cancelled = true;
     };
-  }, [api, request.id, request.passwordAvailable, onRevealed]);
+  }, [api, request.id, request.passwordAvailable]);
 
   const handleDownload = async () => {
     setDownloading(true);
@@ -1342,7 +1339,9 @@ const RequestList = ({
     return parts.join(' ');
   };
 
-  if (loading) {
+  // Skeleton only on initial load; background refetches keep the tree (and any
+  // open modal) mounted since useAsyncRetry retains the previous value.
+  if (loading && !requests) {
     return (
       <Box mt="4">
         <Skeleton width="100%" height={120} />
@@ -1714,8 +1713,11 @@ const RequestList = ({
         <DownloadModal
           request={downloadModal.request}
           fileName={downloadModal.fileName}
-          onClose={() => setDownloadModal(null)}
-          onRevealed={retry}
+          onClose={() => {
+            setDownloadModal(null);
+            // Refresh on close so the row reflects the consumed one-time password.
+            retry();
+          }}
         />
       )}
 
