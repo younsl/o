@@ -1,0 +1,19 @@
+{{ include "opensearch-conflict-viewer.fullname" . }} is deployed.
+
+OpenSearch endpoint: {{ .Values.config.opensearchUrl }}
+Index targets: {{ .Values.config.indexTargets }}
+Refresh interval: {{ .Values.config.refreshInterval }}
+
+Open the UI:
+  kubectl -n {{ .Release.Namespace }} port-forward svc/{{ include "opensearch-conflict-viewer.fullname" . }} {{ .Values.ports.http }}
+  open http://localhost:{{ .Values.ports.http }}
+
+Query metrics:
+  curl -s localhost:{{ .Values.ports.http }}/metrics | grep opensearch_mapping_conflict
+
+{{- if not .Values.auth.existingSecret }}
+
+WARNING: auth.existingSecret is empty, so requests are sent without basic
+auth. Set it to a Secret holding the OpenSearch credentials if the endpoint
+requires authentication.
+{{- end }}
