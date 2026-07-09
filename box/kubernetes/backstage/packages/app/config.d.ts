@@ -35,6 +35,11 @@ export interface Config {
        * @visibility frontend
        */
       opencost?: boolean;
+      /**
+       * Enable or disable OpenSearch Viewer plugin
+       * @visibility frontend
+       */
+      opensearchViewer?: boolean;
     };
     /**
      * Internal platform services for developers

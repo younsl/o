@@ -13,5 +13,6 @@ export {
   OpenSearchAccountCreatePage,
   OpenSearchAccountApprovalsPage,
 } from './plugin';
+export { OpenSearchNav } from './components/OpenSearchNav';
 export { opensearchAccountApiRef } from './api';
 export * from './api/types';

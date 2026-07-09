@@ -45,6 +45,7 @@
     "@internal/plugin-opencost-backend": "workspace:*",
     "@internal/plugin-opensearch-account-backend": "workspace:*",
     "@internal/plugin-opensearch-scaling-backend": "workspace:*",
+    "@internal/plugin-opensearch-viewer-backend": "workspace:*",
     "@internal/plugin-s3-log-extract-backend": "workspace:*",
     "better-sqlite3": "^12.6.2",
     "pg": "^8.11.3"

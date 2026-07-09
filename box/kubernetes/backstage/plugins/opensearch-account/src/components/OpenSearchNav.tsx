@@ -1,6 +1,6 @@
 import React from 'react';
 import { Link } from 'react-router-dom';
-import { useRouteRef } from '@backstage/core-plugin-api';
+import { configApiRef, useApi, useRouteRef } from '@backstage/core-plugin-api';
 import { Flex } from '@backstage/ui';
 import {
   rootRouteRef,
@@ -9,11 +9,11 @@ import {
 } from '../routes';
 import './opensearch-account.css';
 
-export type NavKey = 'accounts' | 'create' | 'approvals';
+export type NavKey = 'accounts' | 'create' | 'approvals' | 'conflicts';
 
 /**
- * Top navigation across the three pages. Accounts and Requests are admin-only;
- * regular users only see Create User.
+ * Top navigation for the OpenSearch pages. Accounts is admin-only;
+ * regular users can create accounts, inspect their requests, and view field conflicts.
  */
 export const OpenSearchNav = ({
   current,
@@ -22,9 +22,12 @@ export const OpenSearchNav = ({
   current: NavKey;
   isAdmin: boolean;
 }) => {
+  const config = useApi(configApiRef);
   const accountsLink = useRouteRef(rootRouteRef);
   const createLink = useRouteRef(createAccountRouteRef);
   const approvalsLink = useRouteRef(approvalsRouteRef);
+  const conflictsEnabled =
+    config.getOptionalBoolean('app.plugins.opensearchViewer') ?? true;
 
   const cls = (key: NavKey) => `osa-tab ${current === key ? 'osa-tab-active' : ''}`;
 
@@ -41,6 +44,11 @@ export const OpenSearchNav = ({
       <Link className={cls('approvals')} to={approvalsLink()}>
         Requests
       </Link>
+      {conflictsEnabled && (
+        <Link className={cls('conflicts')} to="/opensearch/conflicts">
+          Field Conflicts
+        </Link>
+      )}
     </Flex>
   );
 };

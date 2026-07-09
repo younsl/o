@@ -85,6 +85,12 @@
       "path": "plugins/opensearch-scaling-backend"
     },
     {
+      "path": "plugins/opensearch-viewer"
+    },
+    {
+      "path": "plugins/opensearch-viewer-backend"
+    },
+    {
       "path": "plugins/s3-log-extract"
     },
     {

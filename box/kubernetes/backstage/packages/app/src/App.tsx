@@ -55,6 +55,7 @@ import {
   OpenSearchScalingPage,
   OpenSearchScalingCreatePage,
 } from '@internal/plugin-opensearch-scaling';
+import { OpenSearchViewerPage } from '@internal/plugin-opensearch-viewer';
 import { GitlabTokenAuditPage } from '@internal/plugin-gitlab-token-audit';
 import { BuiThemerPage } from '@backstage/plugin-mui-to-bui';
 import { BuildInfoSettings } from './components/settings/AboutSettings';
@@ -144,6 +145,7 @@ const routes = (
     <Route path="/opensearch" element={<OpenSearchAccountPage />} />
     <Route path="/opensearch/create" element={<OpenSearchAccountCreatePage />} />
     <Route path="/opensearch/approvals" element={<OpenSearchAccountApprovalsPage />} />
+    <Route path="/opensearch/conflicts" element={<OpenSearchViewerPage />} />
     <Route path="/opensearch-scaling" element={<OpenSearchScalingPage />} />
     <Route path="/opensearch-scaling/create" element={<OpenSearchScalingCreatePage />} />
     <Route path="/gitlab-token-audit/*" element={<GitlabTokenAuditPage />} />

@@ -13,6 +13,7 @@ app:
     grafanaDashboardMap: true
     gitlabTokenAudit: true
     opensearchAccount: true
+    opensearchViewer: true
     opensearchScaling: true
   platforms:
     - name: Grafana
@@ -302,6 +303,27 @@ opensearchScaling:
     - c6g.xlarge.search
   # -- (number) Hours after the reserved time to keep retrying when a change is already in progress
   executionGraceHours: 2
+
+opensearchViewer:
+  # -- (string) OpenSearch endpoint to scan. Defaults to opensearchAccount.endpoint
+  # endpoint: ${OPENSEARCH_ENDPOINT}
+  # -- (string) OpenSearch API username. Defaults to opensearchAccount.username
+  # username: ${OPENSEARCH_ADMIN_USERNAME}
+  # -- (string) OpenSearch API password. Defaults to opensearchAccount.password
+  # password: ${OPENSEARCH_ADMIN_PASSWORD}
+  # -- (object[]) Index patterns scanned independently for field type conflicts
+  targets:
+    - name: All indices
+      indexPattern: '*'
+  # -- (string[]) Index patterns excluded from conflict impact calculations
+  ignoredIndexPatterns:
+    - .kibana*
+    - .opensearch-*
+  # -- (string) Cron for automatic conflict impact refresh
+  scanCron: '*/15 * * * *'
+  tls:
+    # -- (bool) Reject invalid/self-signed certs. Defaults to opensearchAccount.tls.rejectUnauthorized
+    rejectUnauthorized: true
 
 gitlabTokenAudit:
   # -- (bool) Enable the GitLab Token Audit plugin

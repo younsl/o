@@ -19,7 +19,7 @@ backstage:
   image:
     registry: ghcr.io
     repository: younsl/backstage
-    tag: "latest"
+    tag: "1.52.1-2"
     pullPolicy: IfNotPresent
 
   extraEnvVars:
@@ -68,6 +68,7 @@ backstage:
         catalogHealth: true
         argocdAppSet: true
         iamUserAudit: true
+        opensearchViewer: true
 
     organization:
       name: DevOps Portal
@@ -189,6 +190,20 @@ backstage:
       schedule:
         # How often to scan GitLab (default: every 1 hour)
         cron: '0 * * * *'
+
+    opensearchViewer:
+      # Defaults to opensearchAccount.endpoint/username/password when those are configured.
+      # endpoint: ${OPENSEARCH_ENDPOINT}
+      # username: ${OPENSEARCH_ADMIN_USERNAME}
+      # password: ${OPENSEARCH_ADMIN_PASSWORD}
+      targets:
+        - name: All indices
+          indexPattern: '*'
+      ignoredIndexPatterns:
+        - .kibana*
+        - .opensearch-*
+      # Periodic automatic refresh for field type conflict impact snapshots.
+      scanCron: '*/15 * * * *'
 
     proxy:
       endpoints: {}

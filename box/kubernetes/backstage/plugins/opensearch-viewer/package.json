@@ -1,0 +1,32 @@
+{
+  "name": "@internal/plugin-opensearch-viewer",
+  "version": "1.0.0",
+  "main": "src/index.ts",
+  "types": "src/index.ts",
+  "private": true,
+  "backstage": {
+    "role": "frontend-plugin"
+  },
+  "scripts": {
+    "start": "backstage-cli package start",
+    "build": "backstage-cli package build",
+    "clean": "backstage-cli package clean"
+  },
+  "dependencies": {
+    "@backstage/core-plugin-api": "^1.12.7",
+    "@backstage/errors": "^1.3.1",
+    "@backstage/ui": "^0.16.0",
+    "@internal/plugin-opensearch-account": "workspace:*",
+    "@remixicon/react": "^4.6.0",
+    "react": "^18.3.1",
+    "react-router-dom": "^6.26.0",
+    "react-use": "^17.6.0"
+  },
+  "devDependencies": {
+    "@backstage/cli": "^0.36.3",
+    "@types/react": "^19.2.9"
+  },
+  "peerDependencies": {
+    "react": "^18.3.1"
+  }
+}
