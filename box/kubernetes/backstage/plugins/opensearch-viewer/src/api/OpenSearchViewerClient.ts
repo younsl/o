@@ -66,4 +66,11 @@ export class OpenSearchViewerClient implements OpenSearchViewerApi {
       manualRefresh: true,
     });
   }
+
+  deleteIndex(index: string): Promise<{ deleted: boolean; index: string }> {
+    return this.postJson<{ deleted: boolean; index: string }>(
+      '/indices/delete',
+      { index, confirm: index },
+    );
+  }
 }

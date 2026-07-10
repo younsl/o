@@ -803,6 +803,31 @@
   outline-offset: 1px;
 }
 
+.osv-index-delete {
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  padding: 0;
+  color: var(--bui-color-text-secondary, rgba(255, 255, 255, 0.55));
+  background: transparent;
+  border: 0;
+  border-radius: 4px;
+  cursor: pointer;
+}
+
+.osv-index-delete:hover {
+  color: #fca5a5;
+  background: rgba(248, 113, 113, 0.15);
+}
+
+.osv-index-delete:focus-visible {
+  outline: 2px solid rgba(248, 113, 113, 0.7);
+  outline-offset: 1px;
+}
+
 .osv-list {
   margin: 0;
   padding-left: 17px;
@@ -873,4 +898,152 @@
   .osv-metrics {
     grid-template-columns: 1fr;
   }
+}
+
+.osv-modal-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 1400;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 16px;
+  background: rgba(0, 0, 0, 0.55);
+}
+
+.osv-modal {
+  width: 100%;
+  max-width: 440px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 20px;
+  border: 1px solid var(--bui-color-border, rgba(255, 255, 255, 0.12));
+  border-radius: 10px;
+  background: var(--bui-color-surface-1, #1b1f27);
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.45);
+}
+
+.osv-modal-title {
+  margin: 0;
+  font-size: 1rem;
+  font-weight: 600;
+  color: var(--bui-color-text-primary, #f8fafc);
+}
+
+.osv-modal-text {
+  margin: 0;
+  font-size: 0.8125rem;
+  line-height: 1.5;
+  color: var(--bui-color-text-secondary, rgba(255, 255, 255, 0.72));
+}
+
+.osv-modal-strong {
+  font-family: var(--bui-font-mono, ui-monospace, SFMono-Regular, monospace);
+  color: var(--bui-color-text-primary, #f8fafc);
+  overflow-wrap: anywhere;
+}
+
+.osv-modal-context {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 10px 12px;
+  border: 1px solid var(--bui-color-border, rgba(255, 255, 255, 0.12));
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.03);
+}
+
+.osv-modal-context-label {
+  font-size: 0.6875rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--bui-color-text-secondary, rgba(255, 255, 255, 0.55));
+}
+
+.osv-modal-context-row {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.osv-modal-context-field {
+  font-family: var(--bui-font-mono, ui-monospace, SFMono-Regular, monospace);
+  font-size: 0.8125rem;
+  font-weight: 600;
+  color: var(--bui-color-text-primary, #f8fafc);
+  overflow-wrap: anywhere;
+}
+
+.osv-modal-context-as {
+  font-size: 0.75rem;
+  color: var(--bui-color-text-secondary, rgba(255, 255, 255, 0.6));
+}
+
+.osv-modal-index {
+  font-family: var(--bui-font-mono, ui-monospace, SFMono-Regular, monospace);
+  color: #fca5a5;
+  overflow-wrap: anywhere;
+}
+
+.osv-modal-input {
+  width: 100%;
+  padding: 8px 10px;
+  border: 1px solid var(--bui-color-border, rgba(255, 255, 255, 0.16));
+  border-radius: 6px;
+  color: var(--bui-color-text-primary, #f8fafc);
+  background: rgba(0, 0, 0, 0.25);
+  font-family: var(--bui-font-mono, ui-monospace, SFMono-Regular, monospace);
+  font-size: 0.8125rem;
+}
+
+.osv-modal-input:focus-visible {
+  outline: 2px solid rgba(248, 113, 113, 0.7);
+  outline-offset: 1px;
+}
+
+.osv-modal-error {
+  font-size: 0.75rem;
+  color: #fca5a5;
+}
+
+.osv-modal-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 4px;
+}
+
+.osv-modal-btn {
+  padding: 7px 14px;
+  border: 1px solid var(--bui-color-border, rgba(255, 255, 255, 0.16));
+  border-radius: 6px;
+  color: var(--bui-color-text-primary, #f8fafc);
+  background: transparent;
+  font-size: 0.8125rem;
+  cursor: pointer;
+}
+
+.osv-modal-btn:hover:not(:disabled) {
+  background: rgba(255, 255, 255, 0.08);
+}
+
+.osv-modal-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.osv-modal-btn-danger {
+  border-color: rgba(248, 113, 113, 0.5);
+  color: #fca5a5;
+}
+
+.osv-modal-btn-danger:hover:not(:disabled) {
+  background: rgba(248, 113, 113, 0.15);
+}
+
+.osv-modal-btn-danger:focus-visible {
+  outline: 2px solid rgba(248, 113, 113, 0.7);
+  outline-offset: 1px;
 }

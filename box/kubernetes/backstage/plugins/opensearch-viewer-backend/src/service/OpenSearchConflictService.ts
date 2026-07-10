@@ -69,6 +69,20 @@ export class OpenSearchConflictService {
     return (await this.listSnapshots()).find(snapshot => snapshot.target.id === targetId);
   }
 
+  async deleteIndex(index: string): Promise<void> {
+    if (!this.options.client) {
+      throw new Error('OpenSearch Viewer is not configured with an endpoint');
+    }
+    const target = index.trim();
+    if (!target) {
+      throw new Error('Index name is required');
+    }
+    await this.options.client.deleteIndex(target);
+    this.options.logger.info(
+      `OpenSearch index '${target}' deleted via field conflict viewer`,
+    );
+  }
+
   async scanAll(): Promise<OpenSearchConflictSnapshot[]> {
     const results: OpenSearchConflictSnapshot[] = [];
     for (const target of this.options.targets) {

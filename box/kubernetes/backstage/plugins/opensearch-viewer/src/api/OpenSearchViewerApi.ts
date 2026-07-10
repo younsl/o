@@ -10,6 +10,7 @@ export interface OpenSearchViewerApi {
   getSnapshot(targetId: string): Promise<OpenSearchConflictSnapshot>;
   scanTarget(targetId: string): Promise<OpenSearchConflictSnapshot>;
   scanAll(): Promise<OpenSearchConflictSnapshot[]>;
+  deleteIndex(index: string): Promise<{ deleted: boolean; index: string }>;
 }
 
 export const opensearchViewerApiRef = createApiRef<OpenSearchViewerApi>({

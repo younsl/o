@@ -30,6 +30,7 @@ import {
   RiCheckLine,
   RiCloseLine,
   RiDatabase2Line,
+  RiDeleteBinLine,
   RiFileCopyLine,
   RiRefreshLine,
 } from '@remixicon/react';
@@ -366,7 +367,15 @@ const TypeDistributionBar = ({
   );
 };
 
-const FamilyList = ({ indices }: { indices: string[] }) => {
+const FamilyList = ({
+  indices,
+  isAdmin,
+  onDeleteIndex,
+}: {
+  indices: string[];
+  isAdmin?: boolean;
+  onDeleteIndex?: (index: string) => void;
+}) => {
   const families = groupIndicesByFamily(indices);
   const [copiedIndex, setCopiedIndex] = useState<string | null>(null);
 
@@ -414,6 +423,17 @@ const FamilyList = ({ indices }: { indices: string[] }) => {
                     <RiFileCopyLine size={13} />
                   )}
                 </button>
+                {isAdmin && onDeleteIndex && (
+                  <button
+                    type="button"
+                    className="osv-index-delete"
+                    aria-label={`Delete ${index}`}
+                    title="Delete index"
+                    onClick={() => onDeleteIndex(index)}
+                  >
+                    <RiDeleteBinLine size={13} />
+                  </button>
+                )}
               </span>
             ))}
           </div>
@@ -423,7 +443,20 @@ const FamilyList = ({ indices }: { indices: string[] }) => {
   );
 };
 
-const GroupSummary = ({ group }: { group: ConflictTypeGroup }) => (
+const GroupSummary = ({
+  group,
+  field,
+  isAdmin,
+  onDeleteIndex,
+}: {
+  group: ConflictTypeGroup;
+  field?: string;
+  isAdmin?: boolean;
+  onDeleteIndex?: (
+    index: string,
+    context: { field: string; type: string },
+  ) => void;
+}) => (
   <div className="osv-group">
     <div className="osv-group-main">
       <TypePill type={group.type} />
@@ -436,7 +469,15 @@ const GroupSummary = ({ group }: { group: ConflictTypeGroup }) => (
       <span>{group.searchable ? 'searchable' : 'not searchable'}</span>
       <span>{group.aggregatable ? 'aggregatable' : 'not aggregatable'}</span>
     </div>
-    <FamilyList indices={group.indices} />
+    <FamilyList
+      indices={group.indices}
+      isAdmin={isAdmin}
+      onDeleteIndex={
+        onDeleteIndex && field
+          ? index => onDeleteIndex(index, { field, type: group.type })
+          : undefined
+      }
+    />
   </div>
 );
 
@@ -445,11 +486,18 @@ const ConflictDetails = ({
   snapshot,
   onClose,
   deepLink,
+  isAdmin,
+  onDeleteIndex,
 }: {
   conflict: FieldConflict | null;
   snapshot: OpenSearchConflictSnapshot | undefined;
   onClose: () => void;
   deepLink: string | null;
+  isAdmin: boolean;
+  onDeleteIndex: (
+    index: string,
+    context: { field: string; type: string },
+  ) => void;
 }) => {
   const [copied, setCopied] = useState(false);
   const [copiedDeepLink, setCopiedDeepLink] = useState(false);
@@ -550,9 +598,20 @@ const ConflictDetails = ({
         <section className="osv-analysis-block">
           <div className="osv-block-title">Mapped types</div>
           <TypeDistributionBar groups={groups} />
-          <GroupSummary group={dominant} />
+          <GroupSummary
+            group={dominant}
+            field={conflict.field}
+            isAdmin={isAdmin}
+            onDeleteIndex={onDeleteIndex}
+          />
           {divergent.map(group => (
-            <GroupSummary key={group.type} group={group} />
+            <GroupSummary
+              key={group.type}
+              group={group}
+              field={conflict.field}
+              isAdmin={isAdmin}
+              onDeleteIndex={onDeleteIndex}
+            />
           ))}
         </section>
       )}
@@ -593,6 +652,103 @@ const ConflictDetails = ({
   );
 };
 
+const DeleteIndexModal = ({
+  index,
+  field,
+  type,
+  confirmText,
+  onConfirmTextChange,
+  onConfirm,
+  onCancel,
+  busy,
+  error,
+}: {
+  index: string;
+  field: string;
+  type: string;
+  confirmText: string;
+  onConfirmTextChange: (value: string) => void;
+  onConfirm: () => void;
+  onCancel: () => void;
+  busy: boolean;
+  error: string | null;
+}) => {
+  const matches = confirmText.trim() === index;
+
+  if (typeof document === 'undefined') return null;
+
+  return createPortal(
+    <div
+      className="osv-modal-backdrop"
+      role="presentation"
+      onClick={() => {
+        if (!busy) onCancel();
+      }}
+    >
+      <div
+        className="osv-modal"
+        role="dialog"
+        aria-modal="true"
+        aria-label={`Delete index ${index}`}
+        onClick={event => event.stopPropagation()}
+      >
+        <h2 className="osv-modal-title">Delete index</h2>
+        <div className="osv-modal-context">
+          <span className="osv-modal-context-label">Resolving conflict on</span>
+          <div className="osv-modal-context-row">
+            <span className="osv-modal-context-field">{field}</span>
+            <span className="osv-modal-context-as">mapped as</span>
+            <TypePill type={type} />
+          </div>
+        </div>
+        <p className="osv-modal-text">
+          This permanently deletes the OpenSearch index{' '}
+          <span className="osv-modal-index">{index}</span> and every document it
+          contains, removing its <span className="osv-modal-strong">{type}</span>{' '}
+          mapping for field <span className="osv-modal-strong">{field}</span>.
+          This action cannot be undone. To confirm, type the index name below.
+        </p>
+        <input
+          className="osv-modal-input"
+          value={confirmText}
+          onChange={event => onConfirmTextChange(event.target.value)}
+          placeholder={index}
+          aria-label="Type the index name to confirm deletion"
+          autoFocus
+          spellCheck={false}
+          disabled={busy}
+          onKeyDown={event => {
+            if (event.key === 'Enter' && matches && !busy) {
+              event.preventDefault();
+              onConfirm();
+            }
+          }}
+        />
+        {error && <div className="osv-modal-error">{error}</div>}
+        <div className="osv-modal-actions">
+          <button
+            type="button"
+            className="osv-modal-btn"
+            onClick={onCancel}
+            disabled={busy}
+          >
+            Cancel
+          </button>
+          <button
+            type="button"
+            className="osv-modal-btn osv-modal-btn-danger"
+            onClick={onConfirm}
+            disabled={busy || !matches}
+          >
+            {busy ? 'Deleting' : 'Delete index'}
+          </button>
+        </div>
+      </div>
+    </div>,
+    document.body,
+  );
+};
+
 export const OpenSearchViewerPage = () => {
   const api = useApi(opensearchViewerApiRef);
   const accountApi = useApi(opensearchAccountApiRef);
@@ -615,6 +771,16 @@ export const OpenSearchViewerPage = () => {
   const [scanError, setScanError] = useState<string | null>(null);
   const [scanning, setScanning] = useState(false);
   const [detailOpen, setDetailOpen] = useState(Boolean(deepLink.field));
+  const [deleteTarget, setDeleteTarget] = useState<{
+    index: string;
+    field: string;
+    type: string;
+  } | null>(null);
+  const [deleteConfirmText, setDeleteConfirmText] = useState('');
+  const [deleting, setDeleting] = useState(false);
+  const [deleteError, setDeleteError] = useState<string | null>(null);
+
+  const isAdmin = userRole.value?.isAdmin ?? false;
 
   const updateDeepLink = useCallback(
     (
@@ -851,6 +1017,40 @@ export const OpenSearchViewerPage = () => {
     }
   }, [api, selectedSnapshot, snapshots]);
 
+  const requestDeleteIndex = useCallback(
+    (index: string, context: { field: string; type: string }) => {
+      setDeleteError(null);
+      setDeleteConfirmText('');
+      setDeleteTarget({ index, field: context.field, type: context.type });
+    },
+    [],
+  );
+
+  const cancelDeleteIndex = useCallback(() => {
+    if (deleting) return;
+    setDeleteTarget(null);
+    setDeleteConfirmText('');
+    setDeleteError(null);
+  }, [deleting]);
+
+  const confirmDeleteIndex = useCallback(async () => {
+    if (!deleteTarget || deleteConfirmText.trim() !== deleteTarget.index) return;
+    setDeleting(true);
+    setDeleteError(null);
+    try {
+      await api.deleteIndex(deleteTarget.index);
+      setDeleteTarget(null);
+      setDeleteConfirmText('');
+      setDeleting(false);
+      // Re-run the same Refresh flow so the page re-renders with the latest
+      // scan: the deleted index drops out and summary metrics update.
+      await runScan();
+    } catch (error: any) {
+      setDeleteError(error?.message ?? 'Failed to delete index');
+      setDeleting(false);
+    }
+  }, [api, deleteConfirmText, deleteTarget, runScan]);
+
   const highCount =
     selectedSnapshot?.conflicts.filter(
       conflict => conflict.analysis.severity === 'high',
@@ -874,10 +1074,7 @@ export const OpenSearchViewerPage = () => {
       />
       <Container>
         <Flex direction="column" gap="3" p="3">
-          <OpenSearchNav
-            current="conflicts"
-            isAdmin={userRole.value?.isAdmin ?? false}
-          />
+          <OpenSearchNav current="conflicts" isAdmin={isAdmin} />
 
           {config.value && !config.value.configured && (
             <Alert
@@ -1153,6 +1350,8 @@ export const OpenSearchViewerPage = () => {
                         snapshot={selectedSnapshot}
                         onClose={closeDetails}
                         deepLink={selectedDeepLink}
+                        isAdmin={isAdmin}
+                        onDeleteIndex={requestDeleteIndex}
                       />
                     </div>
                   </div>
@@ -1162,6 +1361,19 @@ export const OpenSearchViewerPage = () => {
           )}
         </Flex>
       </Container>
+      {deleteTarget && (
+        <DeleteIndexModal
+          index={deleteTarget.index}
+          field={deleteTarget.field}
+          type={deleteTarget.type}
+          confirmText={deleteConfirmText}
+          onConfirmTextChange={setDeleteConfirmText}
+          onConfirm={confirmDeleteIndex}
+          onCancel={cancelDeleteIndex}
+          busy={deleting}
+          error={deleteError}
+        />
+      )}
     </>
   );
 };

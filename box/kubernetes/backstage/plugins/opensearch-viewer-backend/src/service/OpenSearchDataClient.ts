@@ -128,6 +128,48 @@ export class OpenSearchDataClient {
     }
   }
 
+  /**
+   * Deletes a single concrete index. Wildcard, comma-separated, or `_all`
+   * expressions are rejected so a delete can never fan out across indices.
+   */
+  async deleteIndex(index: string): Promise<void> {
+    const target = index.trim();
+    if (!target) {
+      throw new Error('Index name is required');
+    }
+    if (/[*,?\s]/.test(target) || target === '_all' || target === '*') {
+      throw new Error(
+        `Refusing to delete unsafe index expression '${index}'; a single concrete index name is required`,
+      );
+    }
+
+    const response = await fetch(
+      `${this.endpoint}/${encodeURIComponent(target)}`,
+      {
+        method: 'DELETE',
+        headers: {
+          ...(this.authHeader ? { Authorization: this.authHeader } : {}),
+        },
+        agent: this.agent,
+        timeout: this.timeoutMs,
+      } as any,
+    );
+
+    const text = await response.text();
+    if (!response.ok) {
+      let detail: string = text;
+      try {
+        const body = JSON.parse(text);
+        detail = body?.error?.reason ?? body?.message ?? body?.raw ?? text;
+      } catch {
+        // keep raw text
+      }
+      throw new Error(`OpenSearch returned ${response.status}: ${detail}`);
+    }
+
+    this.logger.info(`Deleted OpenSearch index '${target}'`);
+  }
+
   async getFieldCaps(indexExpression: string): Promise<FieldCapsResponse> {
     const params = new URLSearchParams({
       fields: '*',

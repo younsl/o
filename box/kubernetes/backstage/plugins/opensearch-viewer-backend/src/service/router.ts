@@ -21,6 +21,7 @@ export async function createRouter(options: RouterOptions): Promise<Router> {
     config.getOptionalBoolean(
       'backend.auth.dangerouslyDisableDefaultAuthPolicy',
     ) ?? false;
+  const admins = config.getOptionalStringArray('permission.admins') ?? [];
 
   async function requireUser(
     req: express.Request,
@@ -34,6 +35,31 @@ export async function createRouter(options: RouterOptions): Promise<Router> {
       res.status(401).json({ error: 'Authentication required' });
       return false;
     }
+  }
+
+  /** Returns true only for authenticated users listed in `permission.admins`. */
+  async function requireAdmin(
+    req: express.Request,
+    res: express.Response,
+  ): Promise<boolean> {
+    let userRef: string | undefined;
+    try {
+      const credentials = await httpAuth.credentials(req as any, {
+        allow: ['user'],
+      });
+      userRef = credentials.principal.userEntityRef;
+    } catch {
+      userRef = isDevMode ? 'user:development/guest' : undefined;
+    }
+    if (!userRef) {
+      res.status(401).json({ error: 'Authentication required' });
+      return false;
+    }
+    if (!admins.includes(userRef)) {
+      res.status(403).json({ error: 'Admin access required' });
+      return false;
+    }
+    return true;
   }
 
   function requireManualRefresh(
@@ -102,6 +128,33 @@ export async function createRouter(options: RouterOptions): Promise<Router> {
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       res.status(message.includes('already running') ? 409 : 500).json({ error: message });
+    }
+  });
+
+  // Admin-only, type-to-confirm index deletion. The confirmation string must
+  // equal the index name both here (defense in depth) and in the UI modal.
+  router.post('/indices/delete', async (req, res) => {
+    if (!(await requireAdmin(req, res))) return;
+
+    const index = (req.body?.index as string | undefined)?.trim();
+    const confirm = (req.body?.confirm as string | undefined)?.trim();
+    if (!index) {
+      res.status(400).json({ error: 'index is required' });
+      return;
+    }
+    if (confirm !== index) {
+      res
+        .status(400)
+        .json({ error: 'Confirmation does not match the index name' });
+      return;
+    }
+
+    try {
+      await service.deleteIndex(index);
+      res.json({ deleted: true, index });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      res.status(500).json({ error: message });
     }
   });
 
