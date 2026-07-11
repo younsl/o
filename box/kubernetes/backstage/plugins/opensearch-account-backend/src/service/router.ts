@@ -266,6 +266,12 @@ export async function createRouter(options: RouterOptions): Promise<Router> {
       return;
     }
 
+    // Delete requires a justification reason recorded in the audit log.
+    if (action === 'delete' && !reason) {
+      res.status(400).json({ error: 'reason is required' });
+      return;
+    }
+
     // Create requires a requester-supplied password (stored only as a bcrypt
     // hash) and a justification reason.
     let passwordHash: string | null = null;

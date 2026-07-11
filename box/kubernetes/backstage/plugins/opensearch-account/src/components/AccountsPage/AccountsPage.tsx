@@ -51,6 +51,7 @@ export const AccountsPage = () => {
   const [password, setPassword] = useState<{ user: string; value: string } | null>(null);
   const [confirmDelete, setConfirmDelete] = useState<string | null>(null);
   const [deleteConfirmText, setDeleteConfirmText] = useState('');
+  const [deleteReason, setDeleteReason] = useState('');
   const [busy, setBusy] = useState(false);
 
   const [modifyTarget, setModifyTarget] = useState<InternalUser | null>(null);
@@ -82,13 +83,18 @@ export const AccountsPage = () => {
   }, [userRole.loading, isAdmin, navigate, createLink]);
 
   const submitDelete = useCallback(
-    async (name: string) => {
+    async (name: string, reason: string) => {
       clearFeedback();
       setConfirmDelete(null);
       setDeleteConfirmText('');
+      setDeleteReason('');
       setBusy(true);
       try {
-        const result = await api.createRequest({ action: 'delete', username: name });
+        const result = await api.createRequest({
+          action: 'delete',
+          username: name,
+          reason,
+        });
         setNotice(
           result.status === 'executed'
             ? `Account '${name}' deleted.`
@@ -254,6 +260,7 @@ export const AccountsPage = () => {
                                       onClick={() => {
                                         clearFeedback();
                                         setDeleteConfirmText('');
+                                        setDeleteReason('');
                                         setConfirmDelete(u.username);
                                       }}
                                     >
@@ -281,12 +288,16 @@ export const AccountsPage = () => {
           confirmLabel="Delete"
           danger
           busy={busy}
-          confirmDisabled={deleteConfirmText.trim() !== confirmDelete}
+          confirmDisabled={
+            deleteConfirmText.trim() !== confirmDelete ||
+            deleteReason.trim().length === 0
+          }
           onCancel={() => {
             setConfirmDelete(null);
             setDeleteConfirmText('');
+            setDeleteReason('');
           }}
-          onConfirm={() => submitDelete(confirmDelete)}
+          onConfirm={() => submitDelete(confirmDelete, deleteReason.trim())}
         >
           <Text variant="body-medium" color="secondary">
             This permanently deletes the OpenSearch account and is recorded in
@@ -299,6 +310,16 @@ export const AccountsPage = () => {
             onChange={e => setDeleteConfirmText(e.target.value)}
             placeholder={confirmDelete}
             aria-label="Type the username to confirm deletion"
+          />
+          <label className="osa-label osa-mt">
+            Reason <span className="osa-required">*</span>
+          </label>
+          <input
+            className="osa-input"
+            value={deleteReason}
+            onChange={e => setDeleteReason(e.target.value)}
+            placeholder="Why is this account being deleted?"
+            aria-label="Reason for deletion"
           />
         </Modal>
       )}
