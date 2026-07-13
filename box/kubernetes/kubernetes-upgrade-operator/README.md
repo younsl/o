@@ -403,6 +403,7 @@ Hub Account (111111111111)           Spoke Account (222222222222)
 
 | Metric | Type | Labels |
 |--------|------|--------|
+| `kuo_build_info` | Info | version, revision, rust_version, arch |
 | `kuo_reconcile_total` | Counter | cluster_name, region, result |
 | `kuo_reconcile_duration_seconds` | Histogram | cluster_name, region |
 | `kuo_phase_duration_seconds` | Histogram | cluster_name, region, phase |

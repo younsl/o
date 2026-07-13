@@ -30,6 +30,8 @@ use crd::EKSUpgrade;
 pub const VERSION: &str = env!("CARGO_PKG_VERSION");
 pub const COMMIT: &str = env!("BUILD_COMMIT");
 pub const BUILD_DATE: &str = env!("BUILD_DATE");
+pub const RUSTC_VERSION: &str = env!("BUILD_RUSTC_VERSION");
+pub const ARCH: &str = env!("BUILD_ARCH");
 
 #[tokio::main]
 async fn main() {
@@ -75,6 +77,7 @@ async fn run() -> Result<()> {
 
     // Initialize Prometheus metrics
     let mut registry = prometheus_client::registry::Registry::default();
+    telemetry::metrics::register_build_info(&mut registry, VERSION, COMMIT, RUSTC_VERSION, ARCH);
     let metrics = Arc::new(telemetry::metrics::Metrics::new(&mut registry));
     let registry = Arc::new(registry);
 

@@ -31,6 +31,22 @@ All metrics include `cluster_name` and `region` labels, enabling per-cluster fil
 
 ## Metrics
 
+### kuo_build_info
+
+Build information exposed as constant labels with a value of `1`. Useful for tracking deployed versions across clusters and joining with other metrics via `group_left`.
+
+| Property | Value |
+|----------|-------|
+| Type | Info (gauge with constant value 1) |
+| Labels | `version`, `revision`, `rust_version`, `arch` |
+
+| Label | Source | Example |
+|-------|--------|---------|
+| `version` | `CARGO_PKG_VERSION` | `0.3.0` |
+| `revision` | Git short commit hash at build time | `0a80f15` |
+| `rust_version` | rustc version at build time | `1.96.0` |
+| `arch` | `CARGO_CFG_TARGET_ARCH` at build time | `x86_64`, `aarch64` |
+
 ### kuo_reconcile_total
 
 Total number of reconcile calls.

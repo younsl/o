@@ -13,6 +13,7 @@ use prometheus_client::metrics::counter::Counter;
 use prometheus_client::metrics::family::Family;
 use prometheus_client::metrics::gauge::Gauge;
 use prometheus_client::metrics::histogram::Histogram;
+use prometheus_client::metrics::info::Info;
 use prometheus_client::registry::Registry;
 
 /// Labels for reconcile metrics.
@@ -36,6 +37,33 @@ pub struct PhaseLabels {
     pub cluster_name: String,
     pub region: String,
     pub phase: String,
+}
+
+/// Labels for the build info metric.
+#[derive(Clone, Debug, Hash, PartialEq, Eq, EncodeLabelSet)]
+pub struct BuildInfoLabels {
+    pub version: String,
+    pub revision: String,
+    pub rust_version: String,
+    pub arch: String,
+}
+
+/// Register the `kuo_build_info` metric exposing version, git revision,
+/// rustc version, and target architecture as labels with a constant value of 1.
+pub fn register_build_info(
+    registry: &mut Registry,
+    version: &str,
+    revision: &str,
+    rust_version: &str,
+    arch: &str,
+) {
+    let build_info = Info::new(BuildInfoLabels {
+        version: version.to_string(),
+        revision: revision.to_string(),
+        rust_version: rust_version.to_string(),
+        arch: arch.to_string(),
+    });
+    registry.register("kuo_build", "kuo build information", build_info);
 }
 
 /// Key for tracking per-cluster phase start times.
@@ -266,6 +294,22 @@ mod tests {
                 region: "us-east-1".to_string(),
             })
             .inc();
+    }
+
+    #[test]
+    fn test_build_info_encoding() {
+        let mut registry = Registry::default();
+        register_build_info(&mut registry, "0.3.0", "0a80f15", "1.96.0", "aarch64");
+
+        let mut buf = String::new();
+        encode(&mut buf, &registry).unwrap();
+        assert!(buf.contains("# TYPE kuo_build info"));
+        assert!(
+            buf.contains(
+                r#"kuo_build_info{version="0.3.0",revision="0a80f15",rust_version="1.96.0",arch="aarch64"} 1"#
+            ),
+            "missing kuo_build_info series: {buf}"
+        );
     }
 
     #[test]
