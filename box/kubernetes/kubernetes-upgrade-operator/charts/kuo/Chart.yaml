@@ -3,8 +3,8 @@ name: kuo
 description: Kubernetes Upgrade Operator for EKS clusters
 type: application
 deprecated: false
-version: 0.2.0
-appVersion: "0.2.0"
+version: 0.3.0
+appVersion: "0.3.0"
 home: https://github.com/younsl/o
 sources:
   - https://github.com/younsl/o/tree/main/box/kubernetes/kubernetes-upgrade-operator
@@ -21,4 +21,8 @@ keywords:
 annotations:
   artifacthub.io/changes: |
     - kind: added
-      description: "Add extraObjects value for deploying additional Kubernetes resources"
+      description: "Auto-rollback unpinned add-ons to the target minor's default compatible version on rollback (downgrade only)"
+    - kind: added
+      description: "Reject consecutive rollbacks in planning (Failed) until a forward upgrade runs"
+    - kind: changed
+      description: "Require upgradeMode as an explicit field on the EKSUpgrade CR"
