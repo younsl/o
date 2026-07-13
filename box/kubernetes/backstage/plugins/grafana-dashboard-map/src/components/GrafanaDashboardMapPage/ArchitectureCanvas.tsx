@@ -45,6 +45,9 @@ const NODE_TYPES = {
 const GRID = 16;
 const snap = (n: number) => Math.round(n / GRID) * GRID;
 
+const newNodeId = (prefix: string) =>
+  `${prefix}_${Date.now()}_${crypto.randomUUID().slice(0, 8)}`;
+
 const EMPTY_COUNTS = { L1: 0, L2: 0, L3: 0, NONE: 0, total: 0 };
 const HOST_TYPES: NodeType[] = ['box', 'group'];
 
@@ -468,7 +471,7 @@ const InnerCanvas = ({
           x: window.innerWidth / 2,
           y: window.innerHeight / 2,
         });
-        const id = `n_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`;
+        const id = newNodeId('n');
         const w = 240;
         const h = 192;
         const newNode: Node = {
@@ -494,7 +497,7 @@ const InnerCanvas = ({
           x: window.innerWidth / 2,
           y: window.innerHeight / 2,
         });
-        const id = `u_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`;
+        const id = newNodeId('u');
         const w = 240;
         const h = 192;
         const newNode: Node = {
@@ -520,7 +523,7 @@ const InnerCanvas = ({
           x: window.innerWidth / 2,
           y: window.innerHeight / 2,
         });
-        const id = `a_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`;
+        const id = newNodeId('a');
         const w = 384;
         const h = 256;
         const newNode: Node = {
