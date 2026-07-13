@@ -32,8 +32,8 @@ root EBS volume when usage crosses a threshold. One full scan is called a
 6. `resize` extend the filesystem with `growpart` and `resize2fs`.
 
 The addon publishes its metrics on the `/metrics` HTTP path. The default port is
-`8081` and can be changed with `METRICS_PORT`. Prometheus scrapes that endpoint
-on its own schedule. All metric names share the prefix
+`8081` and can be changed with `metricsPort` in the config file. Prometheus
+scrapes that endpoint on its own schedule. All metric names share the prefix
 `external_ebs_autoresizer_`.
 
 A short reminder on metric types:
@@ -69,36 +69,54 @@ drops after a resize.
 ### external_ebs_autoresizer_resize_total
 
 - Type: Counter
-- Labels: `result`
+- Labels: `result`, `policy`
 
-The total number of resize attempts, split by outcome. The `result` label is
-either `success` or `failure`. A `success` is counted only after the filesystem
-is fully extended. Any failure during `modify`, `wait`, or `resize` is counted
-as `failure`.
+The total number of resize attempts, split by outcome and the resize policy that
+matched the instance. The `result` label is either `success` or `failure`. A
+`success` is counted only after the filesystem is fully extended. Any failure
+during `modify`, `wait`, or `resize` is counted as `failure`. The `policy` label
+is the matched policy name, or `default` for instances matching no named policy.
 
-Use it to track how many resizes happen over time and to catch a rising failure
-rate.
+Use it to track how many resizes happen over time, to catch a rising failure
+rate, and to break both down per policy.
 
 ### external_ebs_autoresizer_skip_total
 
 - Type: Counter
-- Labels: `reason`
+- Labels: `reason`, `policy`
 
 The total number of instances that the addon looked at but did not resize,
-grouped by why it held back. The `reason` label is one of:
+grouped by why it held back and by the matched policy. The `reason` label is one
+of:
 
 | Reason | Meaning |
 |--------|---------|
-| `below_threshold` | Root usage was under `USAGE_THRESHOLD_PERCENT`, so nothing was needed. This is the normal healthy case and grows on every pass. |
-| `max_size` | The target size would exceed `MAX_VOLUME_SIZE_GIB`, so the volume was left as is. |
+| `below_threshold` | Root usage was under the effective `usageThresholdPercent`, so nothing was needed. This is the normal healthy case and grows on every pass. |
+| `max_size` | The target size would exceed the effective `maxVolumeSizeGiB`, so the volume was left as is. |
 | `cooldown` | The volume was modified within the AWS 6-hour window, or is still modifying, so it could not be grown yet. |
-| `dry_run` | `DRY_RUN` is enabled, so the addon only logged what it would have done. |
+| `dry_run` | `dryRun` is enabled, so the addon only logged what it would have done. |
+| `paused` | The matched policy (or `defaultPolicy`) has `paused: true`, so the instance is out of scope and never measured. |
 
-This metric makes the addon's silent decisions visible. `resize_total` and
-`error_total` say nothing when an instance is above threshold but skipped, so
-without `skip_total` a disk can keep filling up at the `max_size` ceiling with no
-signal at all. Watch `reason="max_size"` together with `root_usage_percent` to
-catch volumes that are stuck and need a manual size bump.
+The `policy` label is the matched policy name, or `default`. This metric makes
+the addon's silent decisions visible. `resize_total` and `error_total` say
+nothing when an instance is above threshold but skipped, so without `skip_total`
+a disk can keep filling up at the `max_size` ceiling with no signal at all.
+Watch `reason="max_size"` together with `root_usage_percent` to catch volumes
+that are stuck and need a manual size bump.
+
+### external_ebs_autoresizer_policy_instances
+
+- Type: Gauge
+- Labels: `policy`
+
+The number of discovered instances each resize policy matched in the latest
+reconcile pass. The `policy` label is a named policy or `default` (instances
+matching no named policy). Every configured policy is reported each pass, set to
+`0` when it matches nothing, so a policy whose selector stops matching is
+immediately visible.
+
+Use it to confirm a policy's reach after a config change, and to alert when a
+policy you expect to cover instances drops to `0`.
 
 ### external_ebs_autoresizer_error_total
 
@@ -120,7 +138,7 @@ permissions problem, not a volume problem.
 - Labels: none
 
 The total number of reconcile passes that have started. It increases by one each
-interval (set by `RECONCILE_INTERVAL`, default `5m`).
+interval (set by `reconcileInterval`, default `5m`).
 
 Use it as a liveness signal. If this counter stops growing, the reconcile loop
 has stalled, even if the Pod still looks healthy.
@@ -160,13 +178,14 @@ increase(external_ebs_autoresizer_reconcile_total[15m]) == 0
 
 ## Conclusion
 
-The addon exposes five metrics, and together they answer five simple questions:
+The addon exposes six metrics, and together they answer six simple questions:
 
 - How full are the disks? `root_usage_percent`
 - Are resizes succeeding? `resize_total`
 - When the addon holds back, why? `skip_total`
 - If something fails, where? `error_total`
 - Is the loop still running? `reconcile_total`
+- Which policy covers which instances? `policy_instances`
 
 A good starting point is one dashboard panel per metric, plus three alerts: one
 on a rising `resize_total{result="failure"}` rate, one on a stalled

@@ -12,29 +12,30 @@ import (
 
 func TestMetricsObservations(t *testing.T) {
 	m := NewMetrics()
-	m.ObserveResize(true)
-	m.ObserveResize(false)
-	m.ObserveResize(true)
+	m.ObserveResize(true, "default")
+	m.ObserveResize(false, "db")
+	m.ObserveResize(true, "default")
 	m.ObserveError("measure")
 	m.ObserveReconcile()
-	m.ObserveSkip("cooldown")
-	m.ObserveSkip("max_size")
-	m.ObserveSkip("max_size")
+	m.ObserveSkip("cooldown", "default")
+	m.ObserveSkip("max_size", "db")
+	m.ObserveSkip("max_size", "db")
 	m.ObserveUsage("i-1", "/dev/xvda", "vol-1", "web-1", 73)
+	m.ObservePolicyInstances(map[string]int{"default": 3, "db": 2})
 
-	if got := testutil.ToFloat64(m.resizeTotal.WithLabelValues("success")); got != 2 {
+	if got := testutil.ToFloat64(m.resizeTotal.WithLabelValues("success", "default")); got != 2 {
 		t.Errorf("resize success = %v, want 2", got)
 	}
-	if got := testutil.ToFloat64(m.resizeTotal.WithLabelValues("failure")); got != 1 {
+	if got := testutil.ToFloat64(m.resizeTotal.WithLabelValues("failure", "db")); got != 1 {
 		t.Errorf("resize failure = %v, want 1", got)
 	}
 	if got := testutil.ToFloat64(m.errorTotal.WithLabelValues("measure")); got != 1 {
 		t.Errorf("error measure = %v, want 1", got)
 	}
-	if got := testutil.ToFloat64(m.skipTotal.WithLabelValues("cooldown")); got != 1 {
+	if got := testutil.ToFloat64(m.skipTotal.WithLabelValues("cooldown", "default")); got != 1 {
 		t.Errorf("skip cooldown = %v, want 1", got)
 	}
-	if got := testutil.ToFloat64(m.skipTotal.WithLabelValues("max_size")); got != 2 {
+	if got := testutil.ToFloat64(m.skipTotal.WithLabelValues("max_size", "db")); got != 2 {
 		t.Errorf("skip max_size = %v, want 2", got)
 	}
 	if got := testutil.ToFloat64(m.reconcileTotal); got != 1 {
@@ -42,6 +43,9 @@ func TestMetricsObservations(t *testing.T) {
 	}
 	if got := testutil.ToFloat64(m.usage.WithLabelValues("i-1", "/dev/xvda", "vol-1", "web-1")); got != 73 {
 		t.Errorf("usage = %v, want 73", got)
+	}
+	if got := testutil.ToFloat64(m.policyInstances.WithLabelValues("db")); got != 2 {
+		t.Errorf("policy_instances{db} = %v, want 2", got)
 	}
 }
 

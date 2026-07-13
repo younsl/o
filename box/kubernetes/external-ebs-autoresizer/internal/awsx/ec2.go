@@ -70,12 +70,12 @@ func newInstance(inst ec2types.Instance) Instance {
 	out := Instance{
 		ID:             aws.ToString(inst.InstanceId),
 		RootDeviceName: aws.ToString(inst.RootDeviceName),
+		Tags:           make(map[string]string, len(inst.Tags)),
 	}
 	for _, tag := range inst.Tags {
-		if aws.ToString(tag.Key) == "Name" {
-			out.Name = aws.ToString(tag.Value)
-		}
+		out.Tags[aws.ToString(tag.Key)] = aws.ToString(tag.Value)
 	}
+	out.Name = out.Tags["Name"]
 	for _, bdm := range inst.BlockDeviceMappings {
 		if aws.ToString(bdm.DeviceName) == out.RootDeviceName && bdm.Ebs != nil {
 			out.RootVolumeID = aws.ToString(bdm.Ebs.VolumeId)

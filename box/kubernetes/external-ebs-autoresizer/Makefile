@@ -8,8 +8,9 @@ LDFLAGS     := -s -w \
 ECR_REGISTRY ?= ghcr.io/younsl
 IMAGE        := $(ECR_REGISTRY)/$(BINARY)
 COVER_MIN   ?= 70
+CONFIG      ?= config.example.yaml
 
-.PHONY: all build run dev test coverage fmt lint vet tidy clean docker-build docker-push
+.PHONY: all build run dev test coverage fmt lint vet tidy clean docker-build docker-push validate policies instances
 
 all: fmt vet lint test build
 
@@ -17,13 +18,25 @@ all: fmt vet lint test build
 build:
 	CGO_ENABLED=0 go build -trimpath -ldflags="$(LDFLAGS)" -o bin/$(BINARY) $(PKG)
 
-## run: build and run with example settings
+## run: build and run the controller with the example config (CONFIG=path to override)
 run: build
-	AWS_REGION=ap-northeast-2 TAG_FILTERS=Environment=dev DRY_RUN=true LOG_FORMAT=text ./bin/$(BINARY)
+	CONFIG_FILE=$(CONFIG) LOG_FORMAT=text ./bin/$(BINARY)
 
-## dev: run with debug logging
+## dev: run the controller with debug logging and the example config
 dev:
-	AWS_REGION=ap-northeast-2 TAG_FILTERS=Environment=dev DRY_RUN=true LOG_FORMAT=text LOG_LEVEL=debug go run $(PKG)
+	CONFIG_FILE=$(CONFIG) LOG_FORMAT=text LOG_LEVEL=debug go run $(PKG)
+
+## validate: validate the config file via the built-in CLI (no AWS)
+validate:
+	go run $(PKG) validate --config $(CONFIG)
+
+## policies: print resolved resize policies via the built-in CLI (no AWS)
+policies:
+	go run $(PKG) policies --config $(CONFIG)
+
+## instances: list discovered instances grouped by matched policy (needs AWS credentials)
+instances:
+	go run $(PKG) instances --config $(CONFIG)
 
 ## test: run tests with race detector
 test:

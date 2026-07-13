@@ -6,6 +6,7 @@ import "time"
 type Instance struct {
 	ID                string
 	Name              string
+	Tags              map[string]string
 	RootDeviceName    string
 	RootVolumeID      string
 	RootVolumeSizeGiB int32

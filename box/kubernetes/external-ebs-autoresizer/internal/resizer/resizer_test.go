@@ -12,6 +12,7 @@ import (
 
 	"github.com/younsl/o/box/kubernetes/external-ebs-autoresizer/internal/awsx"
 	"github.com/younsl/o/box/kubernetes/external-ebs-autoresizer/internal/config"
+	"github.com/younsl/o/box/kubernetes/external-ebs-autoresizer/internal/policy"
 	"github.com/younsl/o/box/kubernetes/external-ebs-autoresizer/scripts"
 )
 
@@ -33,8 +34,8 @@ func TestTargetSize(t *testing.T) {
 		{200, 50, 300},
 	}
 	for _, tt := range tests {
-		cfg := &config.Config{GrowMode: config.GrowModePercent, GrowPercent: tt.grow}
-		if got := TargetSize(tt.current, cfg); got != tt.want {
+		eff := policy.Effective{GrowMode: config.GrowModePercent, GrowPercent: tt.grow}
+		if got := TargetSize(tt.current, eff); got != tt.want {
 			t.Errorf("TargetSize(%d, percent %d) = %d, want %d", tt.current, tt.grow, got, tt.want)
 		}
 	}
@@ -52,8 +53,8 @@ func TestTargetSizeAbsolute(t *testing.T) {
 		{100, 0, 101}, // zero increment still grows by at least 1 GiB
 	}
 	for _, tt := range tests {
-		cfg := &config.Config{GrowMode: config.GrowModeAbsolute, GrowAmountGiB: tt.amountGiB}
-		if got := TargetSize(tt.current, cfg); got != tt.want {
+		eff := policy.Effective{GrowMode: config.GrowModeAbsolute, GrowAmountGiB: tt.amountGiB}
+		if got := TargetSize(tt.current, eff); got != tt.want {
 			t.Errorf("TargetSize(%d, absolute %d GiB) = %d, want %d", tt.current, tt.amountGiB, got, tt.want)
 		}
 	}
@@ -103,9 +104,11 @@ type fakeSSM struct {
 	usage     int
 	runErr    error
 	resizeOut string
+	scripts   []string
 }
 
 func (f *fakeSSM) RunScript(_ context.Context, _, script string, _ time.Duration) (awsx.CommandResult, error) {
+	f.scripts = append(f.scripts, script)
 	if f.runErr != nil {
 		return awsx.CommandResult{}, f.runErr
 	}
@@ -135,22 +138,32 @@ func itoa(n int) string {
 }
 
 type fakeRecorder struct {
-	resizeSuccess int
-	resizeFail    int
-	skips         []string
-	errors        []string
+	resizeSuccess  int
+	resizeFail     int
+	skips          []string
+	errors         []string
+	resizePolicies []string
+	skipPolicies   []string
+	policyCounts   map[string]int
 }
 
 func (r *fakeRecorder) ObserveUsage(string, string, string, string, float64) {}
-func (r *fakeRecorder) ObserveResize(success bool) {
+func (r *fakeRecorder) ObserveResize(success bool, policy string) {
 	if success {
 		r.resizeSuccess++
 	} else {
 		r.resizeFail++
 	}
+	r.resizePolicies = append(r.resizePolicies, policy)
 }
-func (r *fakeRecorder) ObserveSkip(reason string) { r.skips = append(r.skips, reason) }
+func (r *fakeRecorder) ObserveSkip(reason, policy string) {
+	r.skips = append(r.skips, reason)
+	r.skipPolicies = append(r.skipPolicies, policy)
+}
 func (r *fakeRecorder) ObserveError(stage string) { r.errors = append(r.errors, stage) }
+func (r *fakeRecorder) ObservePolicyInstances(counts map[string]int) {
+	r.policyCounts = counts
+}
 
 // fakeEmitter records the reasons of emitted Kubernetes Events.
 type fakeEmitter struct {
@@ -209,7 +222,7 @@ func sampleInstance() awsx.Instance {
 
 func newResizer(t *testing.T, cfg *config.Config, ec2 EC2API, ssm SSMAPI, rec Recorder) *Resizer {
 	t.Helper()
-	return New(cfg, ec2, ssm, rec, nil, nil, nil, discardLogger())
+	return New(cfg, nil, ec2, ssm, rec, nil, nil, nil, discardLogger())
 }
 
 func TestReconcileBelowThreshold(t *testing.T) {
@@ -322,6 +335,29 @@ func TestReconcileMaxSizeSkips(t *testing.T) {
 	}
 }
 
+func TestReconcilePausedSkips(t *testing.T) {
+	cfg := baseConfig()
+	cfg.Paused = true
+	ec2 := &fakeEC2{instances: []awsx.Instance{sampleInstance()}}
+	ssm := &fakeSSM{usage: 95}
+	rec := &fakeRecorder{}
+	// nil resolver -> effective policy is the default, which is paused.
+	r := newResizer(t, cfg, ec2, ssm, rec)
+
+	if _, err := r.Reconcile(context.Background()); err != nil {
+		t.Fatalf("Reconcile error: %v", err)
+	}
+	if len(ec2.modifyCalls) != 0 {
+		t.Errorf("paused policy modified volume: %v", ec2.modifyCalls)
+	}
+	if len(ssm.scripts) != 0 {
+		t.Errorf("paused policy ran SSM scripts: %v (should not even measure)", ssm.scripts)
+	}
+	if want := []string{"paused"}; !slices.Equal(rec.skips, want) {
+		t.Errorf("skips = %v, want %v", rec.skips, want)
+	}
+}
+
 func TestReconcileNoRootVolume(t *testing.T) {
 	inst := sampleInstance()
 	inst.RootVolumeID = ""
@@ -377,7 +413,7 @@ func reasonsEqual(got, want []string) bool {
 func TestReconcileEmitsStartedAndCompletedEvents(t *testing.T) {
 	ec2 := &fakeEC2{instances: []awsx.Instance{sampleInstance()}}
 	ev := &fakeEmitter{}
-	r := New(baseConfig(), ec2, &fakeSSM{usage: 85}, &fakeRecorder{}, ev, nil, nil, discardLogger())
+	r := New(baseConfig(), nil, ec2, &fakeSSM{usage: 85}, &fakeRecorder{}, ev, nil, nil, discardLogger())
 
 	if _, err := r.Reconcile(context.Background()); err != nil {
 		t.Fatalf("Reconcile error: %v", err)
@@ -391,7 +427,7 @@ func TestReconcileEmitsStartedAndCompletedEvents(t *testing.T) {
 func TestReconcileEmitsFailedEvent(t *testing.T) {
 	ec2 := &fakeEC2{instances: []awsx.Instance{sampleInstance()}, modifyErr: errors.New("nope")}
 	ev := &fakeEmitter{}
-	r := New(baseConfig(), ec2, &fakeSSM{usage: 90}, &fakeRecorder{}, ev, nil, nil, discardLogger())
+	r := New(baseConfig(), nil, ec2, &fakeSSM{usage: 90}, &fakeRecorder{}, ev, nil, nil, discardLogger())
 
 	if _, err := r.Reconcile(context.Background()); err != nil {
 		t.Fatalf("Reconcile should swallow per-instance error, got %v", err)
@@ -405,7 +441,7 @@ func TestReconcileEmitsFailedEvent(t *testing.T) {
 func TestReconcileSendsCompletedAlert(t *testing.T) {
 	ec2 := &fakeEC2{instances: []awsx.Instance{sampleInstance()}}
 	n := &fakeNotifier{}
-	r := New(baseConfig(), ec2, &fakeSSM{usage: 85}, &fakeRecorder{}, nil, n, nil, discardLogger())
+	r := New(baseConfig(), nil, ec2, &fakeSSM{usage: 85}, &fakeRecorder{}, nil, n, nil, discardLogger())
 
 	if _, err := r.Reconcile(context.Background()); err != nil {
 		t.Fatalf("Reconcile error: %v", err)
@@ -434,7 +470,7 @@ func TestReconcileSendsCompletedAlert(t *testing.T) {
 func TestReconcileSendsFailedAlert(t *testing.T) {
 	ec2 := &fakeEC2{instances: []awsx.Instance{sampleInstance()}, modifyErr: errors.New("nope")}
 	n := &fakeNotifier{}
-	r := New(baseConfig(), ec2, &fakeSSM{usage: 90}, &fakeRecorder{}, nil, n, nil, discardLogger())
+	r := New(baseConfig(), nil, ec2, &fakeSSM{usage: 90}, &fakeRecorder{}, nil, n, nil, discardLogger())
 
 	if _, err := r.Reconcile(context.Background()); err != nil {
 		t.Fatalf("Reconcile should swallow per-instance error, got %v", err)
@@ -452,7 +488,7 @@ func TestReconcileNotifyOnFailureSuppressesSuccess(t *testing.T) {
 	cfg.AlertmanagerNotifyOn = config.NotifyOnFailure
 	ec2 := &fakeEC2{instances: []awsx.Instance{sampleInstance()}}
 	n := &fakeNotifier{}
-	r := New(cfg, ec2, &fakeSSM{usage: 85}, &fakeRecorder{}, nil, n, nil, discardLogger())
+	r := New(cfg, nil, ec2, &fakeSSM{usage: 85}, &fakeRecorder{}, nil, n, nil, discardLogger())
 
 	if _, err := r.Reconcile(context.Background()); err != nil {
 		t.Fatalf("Reconcile error: %v", err)
@@ -467,7 +503,7 @@ func TestReconcileNotifyOnSuccessSuppressesFailure(t *testing.T) {
 	cfg.AlertmanagerNotifyOn = config.NotifyOnSuccess
 	ec2 := &fakeEC2{instances: []awsx.Instance{sampleInstance()}, modifyErr: errors.New("nope")}
 	n := &fakeNotifier{}
-	r := New(cfg, ec2, &fakeSSM{usage: 90}, &fakeRecorder{}, nil, n, nil, discardLogger())
+	r := New(cfg, nil, ec2, &fakeSSM{usage: 90}, &fakeRecorder{}, nil, n, nil, discardLogger())
 
 	if _, err := r.Reconcile(context.Background()); err != nil {
 		t.Fatalf("Reconcile should swallow per-instance error, got %v", err)
@@ -482,7 +518,7 @@ func TestReconcileDryRunSendsNoAlerts(t *testing.T) {
 	cfg.DryRun = true
 	ec2 := &fakeEC2{instances: []awsx.Instance{sampleInstance()}}
 	n := &fakeNotifier{}
-	r := New(cfg, ec2, &fakeSSM{usage: 95}, &fakeRecorder{}, nil, n, nil, discardLogger())
+	r := New(cfg, nil, ec2, &fakeSSM{usage: 95}, &fakeRecorder{}, nil, n, nil, discardLogger())
 
 	if _, err := r.Reconcile(context.Background()); err != nil {
 		t.Fatalf("Reconcile error: %v", err)
@@ -497,7 +533,7 @@ func TestReconcileDryRunEmitsNoEvents(t *testing.T) {
 	cfg.DryRun = true
 	ec2 := &fakeEC2{instances: []awsx.Instance{sampleInstance()}}
 	ev := &fakeEmitter{}
-	r := New(cfg, ec2, &fakeSSM{usage: 95}, &fakeRecorder{}, ev, nil, nil, discardLogger())
+	r := New(cfg, nil, ec2, &fakeSSM{usage: 95}, &fakeRecorder{}, ev, nil, nil, discardLogger())
 
 	if _, err := r.Reconcile(context.Background()); err != nil {
 		t.Fatalf("Reconcile error: %v", err)
@@ -514,7 +550,7 @@ func tagsContain(tags []string, want string) bool {
 func TestReconcilePostsCompletedRegionAnnotation(t *testing.T) {
 	ec2 := &fakeEC2{instances: []awsx.Instance{sampleInstance()}}
 	a := &fakeAnnotator{}
-	r := New(baseConfig(), ec2, &fakeSSM{usage: 85}, &fakeRecorder{}, nil, nil, a, discardLogger())
+	r := New(baseConfig(), nil, ec2, &fakeSSM{usage: 85}, &fakeRecorder{}, nil, nil, a, discardLogger())
 
 	if _, err := r.Reconcile(context.Background()); err != nil {
 		t.Fatalf("Reconcile error: %v", err)
@@ -537,7 +573,7 @@ func TestReconcilePostsCompletedRegionAnnotation(t *testing.T) {
 func TestReconcilePostsFailedPointAnnotation(t *testing.T) {
 	ec2 := &fakeEC2{instances: []awsx.Instance{sampleInstance()}, modifyErr: errors.New("nope")}
 	a := &fakeAnnotator{}
-	r := New(baseConfig(), ec2, &fakeSSM{usage: 90}, &fakeRecorder{}, nil, nil, a, discardLogger())
+	r := New(baseConfig(), nil, ec2, &fakeSSM{usage: 90}, &fakeRecorder{}, nil, nil, a, discardLogger())
 
 	if _, err := r.Reconcile(context.Background()); err != nil {
 		t.Fatalf("Reconcile should swallow per-instance error, got %v", err)
@@ -559,7 +595,7 @@ func TestReconcileAnnotateOnFailureSuppressesSuccess(t *testing.T) {
 	cfg.GrafanaAnnotateOn = config.AnnotateOnFailure
 	ec2 := &fakeEC2{instances: []awsx.Instance{sampleInstance()}}
 	a := &fakeAnnotator{}
-	r := New(cfg, ec2, &fakeSSM{usage: 85}, &fakeRecorder{}, nil, nil, a, discardLogger())
+	r := New(cfg, nil, ec2, &fakeSSM{usage: 85}, &fakeRecorder{}, nil, nil, a, discardLogger())
 
 	if _, err := r.Reconcile(context.Background()); err != nil {
 		t.Fatalf("Reconcile error: %v", err)
@@ -574,7 +610,7 @@ func TestReconcileAnnotateOnSuccessSuppressesFailure(t *testing.T) {
 	cfg.GrafanaAnnotateOn = config.AnnotateOnSuccess
 	ec2 := &fakeEC2{instances: []awsx.Instance{sampleInstance()}, modifyErr: errors.New("nope")}
 	a := &fakeAnnotator{}
-	r := New(cfg, ec2, &fakeSSM{usage: 90}, &fakeRecorder{}, nil, nil, a, discardLogger())
+	r := New(cfg, nil, ec2, &fakeSSM{usage: 90}, &fakeRecorder{}, nil, nil, a, discardLogger())
 
 	if _, err := r.Reconcile(context.Background()); err != nil {
 		t.Fatalf("Reconcile should swallow per-instance error, got %v", err)
@@ -589,7 +625,7 @@ func TestReconcileDryRunPostsNoAnnotations(t *testing.T) {
 	cfg.DryRun = true
 	ec2 := &fakeEC2{instances: []awsx.Instance{sampleInstance()}}
 	a := &fakeAnnotator{}
-	r := New(cfg, ec2, &fakeSSM{usage: 95}, &fakeRecorder{}, nil, nil, a, discardLogger())
+	r := New(cfg, nil, ec2, &fakeSSM{usage: 95}, &fakeRecorder{}, nil, nil, a, discardLogger())
 
 	if _, err := r.Reconcile(context.Background()); err != nil {
 		t.Fatalf("Reconcile error: %v", err)

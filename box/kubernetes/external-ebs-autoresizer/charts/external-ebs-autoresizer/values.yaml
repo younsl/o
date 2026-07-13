@@ -30,6 +30,9 @@ strategy:
     # -- (string|int) Max Pods unavailable during an update
     maxUnavailable: 25%
 
+# All fields below (except the grafanaAnnotation Secret fields and the process
+# ports) are rendered verbatim into a single config.yaml, published as a
+# ConfigMap and mounted at /etc/external-ebs-autoresizer/config.yaml.
 config:
   # -- (string) AWS region to operate in (required)
   region: ""
@@ -41,16 +44,43 @@ config:
   reconcileInterval: "5m"
   # -- (int) Max instances reconciled in parallel per pass
   reconcileConcurrency: 10
-  # -- (int) Root filesystem usage percent that triggers a resize
-  usageThresholdPercent: 80
-  # -- (string) Growth mode: "percent" grows by growPercent, "absolute" grows by growAmount
-  growMode: percent
-  # -- (int) EBS volume growth percent per resize (used when growMode is percent)
-  growPercent: 10
-  # -- (string) Absolute growth per resize with a MiB or GiB unit, e.g. 10GiB or 5120MiB (used when growMode is absolute); MiB rounds up to whole GiB
-  growAmount: "10GiB"
-  # -- (int) Maximum volume size in GiB; resizes that would exceed it are skipped
-  maxVolumeSizeGiB: 1000
+  # -- (object) Default-policy volume-expansion settings applied to every instance not matched by a named policy. usageThresholdPercent and growMode are REQUIRED; the rest are optional.
+  defaultPolicy:
+    # -- (int) REQUIRED. Root filesystem usage percent that triggers a resize
+    usageThresholdPercent: 80
+    # -- (string) REQUIRED. Growth mode: "percent" grows by growPercent, "absolute" grows by growAmount
+    growMode: percent
+    # -- (bool) Pause the default policy: skip (never resize) every instance not matched by a named policy
+    paused: false
+    # -- (int) EBS volume growth percent per resize (used when growMode is percent)
+    growPercent: 10
+    # -- (string) Absolute growth per resize with a MiB or GiB unit, e.g. 10GiB or 5120MiB (used when growMode is absolute); MiB rounds up to whole GiB
+    growAmount: "10GiB"
+    # -- (int) Maximum volume size in GiB; resizes that would exceed it are skipped
+    maxVolumeSizeGiB: 1000
+  # -- (list) Per-instance-group resize policies. Each entry selects a group of instances via instanceSelector (tag equality and/or a Name regex) and overrides a subset of the default-policy resize settings for that group under its own resize block. When several policies match one instance the highest weight wins; ties fall back to list order. Instances matching no policy use defaultPolicy. Empty means all instances use defaultPolicy.
+  policies: []
+    # - name: db-nodes
+    #   # Higher weight wins when multiple policies match one instance
+    #   weight: 10
+    #   instanceSelector:
+    #     # tags and nameRegex are ANDed; at least one is required
+    #     tags:
+    #       Role: database
+    #     nameRegex: "^prod-db-.*"
+    #   resize:
+    #     usageThresholdPercent: 70
+    #     growMode: absolute
+    #     growAmount: 50GiB
+    #     maxVolumeSizeGiB: 2000
+    # - name: batch-workers
+    #   weight: 1
+    #   instanceSelector:
+    #     nameRegex: "^batch-.*"
+    #   resize:
+    #     # pause this group without deleting its config
+    #     paused: true
+    #     growPercent: 30
   # -- (string) SSM command poll timeout as a Go duration
   ssmCommandTimeout: "5m"
   # -- (string) Delay between SSM command and volume modification status polls as a Go duration
@@ -70,8 +100,8 @@ config:
     url: ""
     # -- (string) Timeout for each Alertmanager POST as a Go duration
     timeout: "5s"
-    # -- (string) Comma-separated Key=Value static labels merged into every alert for routing (e.g. cluster=prod,env=production)
-    labels: ""
+    # -- (object) Static Key: Value labels merged into every alert for routing (e.g. cluster: prod)
+    labels: {}
     # -- (string) Which resize outcomes to alert: all, success, or failure
     notifyOn: "success"
     # -- (string) Optional dashboard URL template appended to each alert's description as a Slack link; supports {instance_id}, {volume_id}, {device}, {instance_name} placeholders. Empty disables the link
@@ -83,11 +113,12 @@ config:
     url: "http://grafana.monitoring:3000"
     # -- (string) Timeout for each Grafana annotation POST as a Go duration
     timeout: "5s"
-    # -- (string) Comma-separated base tags merged into every annotation and subscribed to by dashboards
-    tags: "event:ebs-resize"
+    # -- (list) Base tags merged into every annotation and subscribed to by dashboards
+    tags:
+      - event:ebs-resize
     # -- (string) Which resize outcomes to annotate: all, success, or failure
     annotateOn: "all"
-    # -- (string) Grafana service account token; ignored when existingSecret is set. Stored in a generated Secret. For production prefer existingSecret.
+    # -- (string) Grafana service account token; ignored when existingSecret is set. Stored in a generated Secret and injected via GRAFANA_API_TOKEN env, never written to the config file. For production prefer existingSecret.
     apiToken: ""
     # -- (string) Name of an existing Secret holding the Grafana token; takes precedence over apiToken
     existingSecret: ""

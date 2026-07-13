@@ -16,12 +16,13 @@ import (
 // Metrics holds the application's Prometheus collectors and implements
 // resizer.Recorder.
 type Metrics struct {
-	registry       *prometheus.Registry
-	usage          *prometheus.GaugeVec
-	resizeTotal    *prometheus.CounterVec
-	skipTotal      *prometheus.CounterVec
-	errorTotal     *prometheus.CounterVec
-	reconcileTotal prometheus.Counter
+	registry        *prometheus.Registry
+	usage           *prometheus.GaugeVec
+	resizeTotal     *prometheus.CounterVec
+	skipTotal       *prometheus.CounterVec
+	errorTotal      *prometheus.CounterVec
+	reconcileTotal  prometheus.Counter
+	policyInstances *prometheus.GaugeVec
 }
 
 // NewMetrics builds the collectors and registers them on a private registry.
@@ -34,12 +35,12 @@ func NewMetrics() *Metrics {
 		}, []string{"instance_id", "device", "volume_id", "name"}),
 		resizeTotal: prometheus.NewCounterVec(prometheus.CounterOpts{
 			Name: "external_ebs_autoresizer_resize_total",
-			Help: "Total resize attempts by result.",
-		}, []string{"result"}),
+			Help: "Total resize attempts by result and matched resize policy.",
+		}, []string{"result", "policy"}),
 		skipTotal: prometheus.NewCounterVec(prometheus.CounterOpts{
 			Name: "external_ebs_autoresizer_skip_total",
-			Help: "Total instances skipped without a resize attempt, by reason.",
-		}, []string{"reason"}),
+			Help: "Total instances skipped without a resize attempt, by reason and matched resize policy.",
+		}, []string{"reason", "policy"}),
 		errorTotal: prometheus.NewCounterVec(prometheus.CounterOpts{
 			Name: "external_ebs_autoresizer_error_total",
 			Help: "Total errors by reconcile stage.",
@@ -48,8 +49,12 @@ func NewMetrics() *Metrics {
 			Name: "external_ebs_autoresizer_reconcile_total",
 			Help: "Total reconcile passes started.",
 		}),
+		policyInstances: prometheus.NewGaugeVec(prometheus.GaugeOpts{
+			Name: "external_ebs_autoresizer_policy_instances",
+			Help: "Number of discovered instances matched by each resize policy in the latest pass (policy=default for instances matching no named policy).",
+		}, []string{"policy"}),
 	}
-	m.registry.MustRegister(m.usage, m.resizeTotal, m.skipTotal, m.errorTotal, m.reconcileTotal)
+	m.registry.MustRegister(m.usage, m.resizeTotal, m.skipTotal, m.errorTotal, m.reconcileTotal, m.policyInstances)
 	return m
 }
 
@@ -58,19 +63,30 @@ func (m *Metrics) ObserveUsage(instanceID, device, volumeID, name string, percen
 	m.usage.WithLabelValues(instanceID, device, volumeID, name).Set(percent)
 }
 
-// ObserveResize counts a resize attempt by outcome.
-func (m *Metrics) ObserveResize(success bool) {
+// ObserveResize counts a resize attempt by outcome and matched policy.
+func (m *Metrics) ObserveResize(success bool, policy string) {
 	result := "failure"
 	if success {
 		result = "success"
 	}
-	m.resizeTotal.WithLabelValues(result).Inc()
+	m.resizeTotal.WithLabelValues(result, policy).Inc()
 }
 
 // ObserveSkip counts an instance skipped without a resize attempt. reason is
-// one of: below_threshold, max_size, cooldown, dry_run.
-func (m *Metrics) ObserveSkip(reason string) {
-	m.skipTotal.WithLabelValues(reason).Inc()
+// one of: below_threshold, max_size, cooldown, dry_run. policy is the matched
+// resize policy.
+func (m *Metrics) ObserveSkip(reason, policy string) {
+	m.skipTotal.WithLabelValues(reason, policy).Inc()
+}
+
+// ObservePolicyInstances records, per resize policy, how many discovered
+// instances matched it in the latest reconcile pass. Policies that matched
+// nothing this pass are set to 0 so stale counts do not linger.
+func (m *Metrics) ObservePolicyInstances(counts map[string]int) {
+	m.policyInstances.Reset()
+	for policy, n := range counts {
+		m.policyInstances.WithLabelValues(policy).Set(float64(n))
+	}
 }
 
 // ObserveError counts an error in the given reconcile stage.

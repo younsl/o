@@ -1,0 +1,30 @@
+# Example config for local CLI verification (make validate/policies/instances).
+# Mirrors the ConfigMap the Helm chart renders to
+# /etc/external-ebs-autoresizer/config.yaml.
+region: ap-northeast-2
+tagFilters: ""            # empty scans every instance in the account/region
+excludeEKSNodes: true
+reconcileInterval: 5m
+dryRun: true
+
+defaultPolicy:
+  usageThresholdPercent: 80
+  growMode: percent
+  growPercent: 10
+  maxVolumeSizeGiB: 1000
+
+policies:
+  - name: bastion
+    weight: 5
+    instanceSelector:
+      nameRegex: bastion
+    resize:
+      paused: true
+      usageThresholdPercent: 60
+  - name: shared
+    weight: 1
+    instanceSelector:
+      nameRegex: "^shared-"
+    resize:
+      growMode: absolute
+      growAmount: 50GiB

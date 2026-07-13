@@ -13,6 +13,7 @@ import (
 
 	"github.com/younsl/o/box/kubernetes/external-ebs-autoresizer/internal/awsx"
 	"github.com/younsl/o/box/kubernetes/external-ebs-autoresizer/internal/config"
+	"github.com/younsl/o/box/kubernetes/external-ebs-autoresizer/internal/policy"
 	"github.com/younsl/o/box/kubernetes/external-ebs-autoresizer/scripts"
 )
 
@@ -38,9 +39,10 @@ type SSMAPI interface {
 // Recorder receives metrics observations. observability.Metrics implements it.
 type Recorder interface {
 	ObserveUsage(instanceID, device, volumeID, name string, percent float64)
-	ObserveResize(success bool)
-	ObserveSkip(reason string)
+	ObserveResize(success bool, policy string)
+	ObserveSkip(reason, policy string)
 	ObserveError(stage string)
+	ObservePolicyInstances(counts map[string]int)
 }
 
 // Skip reasons reported via Recorder.ObserveSkip when an instance is above the
@@ -52,6 +54,7 @@ const (
 	skipMaxSize        = "max_size"
 	skipCooldown       = "cooldown"
 	skipDryRun         = "dry_run"
+	skipPaused         = "paused"
 )
 
 // EventEmitter publishes Kubernetes Events about resize operations.
@@ -101,6 +104,7 @@ const (
 // Resizer holds dependencies for one reconcile pass.
 type Resizer struct {
 	cfg       *config.Config
+	resolver  *policy.Resolver
 	ec2       EC2API
 	ssm       SSMAPI
 	rec       Recorder
@@ -110,11 +114,21 @@ type Resizer struct {
 	logger    *slog.Logger
 }
 
-// New constructs a Resizer. events may be nil to disable Kubernetes Events;
-// notifier may be nil to disable Alertmanager alerting; annotator may be nil to
-// disable Grafana annotations.
-func New(cfg *config.Config, ec2 EC2API, ssm SSMAPI, rec Recorder, events EventEmitter, notifier AlertNotifier, annotator Annotator, logger *slog.Logger) *Resizer {
-	return &Resizer{cfg: cfg, ec2: ec2, ssm: ssm, rec: rec, events: events, notifier: notifier, annotator: annotator, logger: logger}
+// New constructs a Resizer. resolver may be nil to run every instance on the
+// global settings; events may be nil to disable Kubernetes Events; notifier
+// may be nil to disable Alertmanager alerting; annotator may be nil to disable
+// Grafana annotations.
+func New(cfg *config.Config, resolver *policy.Resolver, ec2 EC2API, ssm SSMAPI, rec Recorder, events EventEmitter, notifier AlertNotifier, annotator Annotator, logger *slog.Logger) *Resizer {
+	return &Resizer{cfg: cfg, resolver: resolver, ec2: ec2, ssm: ssm, rec: rec, events: events, notifier: notifier, annotator: annotator, logger: logger}
+}
+
+// effective returns the resize settings for one instance: the matched policy's
+// overlay when a resolver is set, otherwise the global settings.
+func (r *Resizer) effective(inst awsx.Instance) policy.Effective {
+	if r.resolver == nil {
+		return policy.FromConfig(r.cfg)
+	}
+	return r.resolver.Resolve(inst.Name, inst.Tags)
 }
 
 // emit publishes a Kubernetes Event when an emitter is configured.
@@ -216,6 +230,26 @@ func (r *Resizer) Reconcile(ctx context.Context) (int, error) {
 	}
 	r.logger.Info("discovered target instances", "count", len(instances))
 
+	// Resolve each instance's effective policy once, up front, and record how
+	// many instances each policy identified so the policy configuration is
+	// verifiable from the logs and metrics on every pass (including the
+	// immediate pass at startup). Seed every named policy (and the default
+	// bucket) at 0 so a policy that matches nothing this pass still reports 0
+	// rather than vanishing.
+	effs := make([]policy.Effective, len(instances))
+	counts := map[string]int{policy.DefaultPolicyName: 0}
+	if r.resolver != nil {
+		for _, name := range r.resolver.Names() {
+			counts[name] = 0
+		}
+	}
+	for i, inst := range instances {
+		effs[i] = r.effective(inst)
+		counts[effs[i].Policy]++
+	}
+	r.logPolicyCounts(counts)
+	r.rec.ObservePolicyInstances(counts)
+
 	// Reconcile instances concurrently with a bounded worker pool. Each instance
 	// targets an independent EBS volume, so parallelism is safe; the semaphore
 	// caps in-flight SSM/EC2 calls to stay within API rate limits. Per-instance
@@ -223,57 +257,77 @@ func (r *Resizer) Reconcile(ctx context.Context) (int, error) {
 	concurrency := max(r.cfg.ReconcileConcurrency, 1)
 	sem := make(chan struct{}, concurrency)
 	var wg sync.WaitGroup
-	for _, inst := range instances {
+	for i, inst := range instances {
 		if ctx.Err() != nil {
 			break
 		}
 		sem <- struct{}{}
 		wg.Add(1)
-		go func(inst awsx.Instance) {
+		go func(inst awsx.Instance, eff policy.Effective) {
 			defer wg.Done()
 			defer func() { <-sem }()
-			if err := r.reconcileInstance(ctx, inst); err != nil {
+			if err := r.reconcileInstance(ctx, inst, eff); err != nil {
 				r.logger.Error("instance reconcile failed", "instance", inst.ID, "name", inst.Name, "error", err)
 			}
-		}(inst)
+		}(inst, effs[i])
 	}
 	wg.Wait()
 	return len(instances), ctx.Err()
 }
 
-func (r *Resizer) reconcileInstance(ctx context.Context, inst awsx.Instance) error {
-	log := r.logger.With("instance", inst.ID, "name", inst.Name)
+// logPolicyCounts logs how many discovered instances each policy matched. It is
+// a no-op detail when no named policies are configured (every instance resolves
+// to the default), but always emitted when policies exist so their reach is
+// visible on each pass.
+func (r *Resizer) logPolicyCounts(counts map[string]int) {
+	if r.resolver == nil || r.resolver.Len() == 0 {
+		return
+	}
+	// One line per policy, named policies in configured order then the default
+	// bucket, so output is stable across passes and filterable by the policy field.
+	for _, name := range r.resolver.Names() {
+		r.logger.Info("instances matched by resize policy", "policy_name", name, "instance_count", counts[name])
+	}
+	r.logger.Info("instances matched by resize policy", "policy_name", policy.DefaultPolicyName, "instance_count", counts[policy.DefaultPolicyName])
+}
+
+func (r *Resizer) reconcileInstance(ctx context.Context, inst awsx.Instance, eff policy.Effective) error {
+	log := r.logger.With("instance", inst.ID, "name", inst.Name, "policy", eff.Policy)
 
 	if inst.RootVolumeID == "" {
 		log.Warn("no root EBS volume resolved, skipping")
 		return nil
 	}
 
-	// 1. Measure.
+	// A paused policy takes the instance entirely out of scope: no measurement,
+	// no resize.
+	if eff.Paused {
+		log.Info("resize policy paused, skipping")
+		r.rec.ObserveSkip(skipPaused, eff.Policy)
+		return nil
+	}
+
 	usage, err := r.measure(ctx, inst.ID)
 	if err != nil {
 		r.rec.ObserveError("measure")
 		return fmt.Errorf("measure usage: %w", err)
 	}
 	r.rec.ObserveUsage(inst.ID, inst.RootDeviceName, inst.RootVolumeID, inst.Name, float64(usage))
-	log.Debug("measured root usage", "usage_percent", usage, "threshold_percent", r.cfg.UsageThresholdPercent)
+	log.Debug("measured root usage", "usage_percent", usage, "threshold_percent", eff.UsageThresholdPercent)
 
-	// 2. Decide.
-	if usage < r.cfg.UsageThresholdPercent {
+	if usage < eff.UsageThresholdPercent {
 		log.Debug("usage below threshold, nothing to do")
-		r.rec.ObserveSkip(skipBelowThreshold)
+		r.rec.ObserveSkip(skipBelowThreshold, eff.Policy)
 		return nil
 	}
 
-	// 3. Target size.
 	current := inst.RootVolumeSizeGiB
-	target := TargetSize(current, r.cfg)
+	target := TargetSize(current, eff)
 	log = log.With("volume", inst.RootVolumeID, "current_gib", current, "target_gib", target)
 
-	// 4. Safety guards.
-	if int(target) > r.cfg.MaxVolumeSizeGiB {
-		log.Warn("target exceeds max volume size, skipping", "max_gib", r.cfg.MaxVolumeSizeGiB)
-		r.rec.ObserveSkip(skipMaxSize)
+	if int(target) > eff.MaxVolumeSizeGiB {
+		log.Warn("target exceeds max volume size, skipping", "max_gib", eff.MaxVolumeSizeGiB)
+		r.rec.ObserveSkip(skipMaxSize, eff.Policy)
 		return nil
 	}
 	skip, err := r.withinCooldown(ctx, inst.RootVolumeID)
@@ -283,24 +337,23 @@ func (r *Resizer) reconcileInstance(ctx context.Context, inst awsx.Instance) err
 	}
 	if skip {
 		log.Info("volume modified within cooldown window, skipping")
-		r.rec.ObserveSkip(skipCooldown)
+		r.rec.ObserveSkip(skipCooldown, eff.Policy)
 		return nil
 	}
 
 	if r.cfg.DryRun {
 		log.Info("dry-run: would modify volume and resize filesystem")
-		r.rec.ObserveSkip(skipDryRun)
+		r.rec.ObserveSkip(skipDryRun, eff.Policy)
 		return nil
 	}
 
-	// 5. Grow the EBS volume.
 	start := time.Now()
 	r.emit(eventTypeNormal, reasonResizeStarted,
 		"Resizing root filesystem on device %s of instance %s (%s) by growing volume %s from %d GiB to %d GiB (usage %d%%)",
 		inst.RootDeviceName, inst.Name, inst.ID, inst.RootVolumeID, current, target, usage)
 	if err := r.ec2.ModifyVolume(ctx, inst.RootVolumeID, target); err != nil {
 		r.rec.ObserveError("modify")
-		r.rec.ObserveResize(false)
+		r.rec.ObserveResize(false, eff.Policy)
 		r.emit(eventTypeWarning, reasonResizeFailed,
 			"ModifyVolume failed for volume %s (device %s on instance %s): %v", inst.RootVolumeID, inst.RootDeviceName, inst.ID, err)
 		r.notify(ctx, severityWarning, alertResizeFailed,
@@ -312,10 +365,9 @@ func (r *Resizer) reconcileInstance(ctx context.Context, inst awsx.Instance) err
 	}
 	log.Info("requested volume modification")
 
-	// 6. Wait until the modification is usable.
 	if err := r.ec2.WaitForModification(ctx, inst.RootVolumeID, r.cfg.VolumeModifyTimeout); err != nil {
 		r.rec.ObserveError("wait")
-		r.rec.ObserveResize(false)
+		r.rec.ObserveResize(false, eff.Policy)
 		r.emit(eventTypeWarning, reasonResizeFailed,
 			"Volume %s (device %s on instance %s) did not reach optimizing: %v", inst.RootVolumeID, inst.RootDeviceName, inst.ID, err)
 		r.notify(ctx, severityWarning, alertResizeFailed,
@@ -327,11 +379,10 @@ func (r *Resizer) reconcileInstance(ctx context.Context, inst awsx.Instance) err
 	}
 	log.Info("volume modification optimizing", "elapsed", time.Since(start).String())
 
-	// 7. Extend the filesystem in place.
 	res, err := r.ssm.RunScript(ctx, inst.ID, scripts.ResizeRootFS, r.cfg.SSMCommandTimeout)
 	if err != nil {
 		r.rec.ObserveError("resize")
-		r.rec.ObserveResize(false)
+		r.rec.ObserveResize(false, eff.Policy)
 		r.emit(eventTypeWarning, reasonResizeFailed,
 			"Resize of root filesystem on device %s failed on instance %s (volume %s now %d GiB): %v", inst.RootDeviceName, inst.ID, inst.RootVolumeID, target, err)
 		r.notify(ctx, severityWarning, alertResizeFailed,
@@ -343,14 +394,13 @@ func (r *Resizer) reconcileInstance(ctx context.Context, inst awsx.Instance) err
 	}
 	log.Info("filesystem resize completed", "stdout", strings.TrimSpace(res.Stdout))
 
-	// 8. Verify.
 	after, err := r.measure(ctx, inst.ID)
 	if err != nil {
 		log.Warn("post-resize verification failed", "error", err)
 	} else {
 		log.Info("resize verified", "usage_before_percent", usage, "usage_after_percent", after, "new_size_gib", target)
 	}
-	r.rec.ObserveResize(true)
+	r.rec.ObserveResize(true, eff.Policy)
 	r.emit(eventTypeNormal, reasonResizeCompleted,
 		"Resized root filesystem on device %s of instance %s (%s) to %d GiB in %s. Disk usage changed from %d%% to %d%%",
 		inst.RootDeviceName, inst.Name, inst.ID, target, time.Since(start).Round(time.Second), usage, after)
@@ -395,16 +445,16 @@ func (r *Resizer) withinCooldown(ctx context.Context, volumeID string) (bool, er
 }
 
 // TargetSize returns the new volume size in GiB after growing current per the
-// configured grow mode. In "percent" mode it grows current by GrowPercent,
+// effective grow mode. In "percent" mode it grows current by GrowPercent,
 // rounded up; in "absolute" mode it adds GrowAmountGiB. The result is always at
 // least one GiB larger than current.
-func TargetSize(current int32, cfg *config.Config) int32 {
+func TargetSize(current int32, eff policy.Effective) int32 {
 	var grown int
-	switch cfg.GrowMode {
+	switch eff.GrowMode {
 	case config.GrowModeAbsolute:
-		grown = int(current) + int(cfg.GrowAmountGiB)
+		grown = int(current) + int(eff.GrowAmountGiB)
 	default:
-		grown = (int(current)*(100+cfg.GrowPercent) + 99) / 100
+		grown = (int(current)*(100+eff.GrowPercent) + 99) / 100
 	}
 	if grown < int(current)+1 {
 		grown = int(current) + 1

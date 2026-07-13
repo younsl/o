@@ -20,15 +20,23 @@ import (
 	"github.com/younsl/o/box/kubernetes/external-ebs-autoresizer/internal/grafana"
 	"github.com/younsl/o/box/kubernetes/external-ebs-autoresizer/internal/leader"
 	"github.com/younsl/o/box/kubernetes/external-ebs-autoresizer/internal/observability"
+	"github.com/younsl/o/box/kubernetes/external-ebs-autoresizer/internal/policy"
 	"github.com/younsl/o/box/kubernetes/external-ebs-autoresizer/internal/resizer"
 	"github.com/younsl/o/box/kubernetes/external-ebs-autoresizer/internal/version"
 )
 
 func main() {
-	cfg, err := config.Load(os.Args[1:])
-	if err != nil {
-		slog.Error("configuration error", "error", err)
+	if err := newRootCommand().Execute(); err != nil {
 		os.Exit(1)
+	}
+}
+
+// runDaemon loads the config at path and runs the controller until signalled.
+func runDaemon(configFile string) error {
+	cfg, err := config.Load(configFile)
+	if err != nil {
+		slog.Error("configuration error", "file", configFile, "error", err)
+		return err
 	}
 
 	logger := newLogger(cfg.LogLevel, cfg.LogFormat)
@@ -38,13 +46,25 @@ func main() {
 		"dry_run", cfg.DryRun)
 	logResizePolicy(logger, cfg)
 
+	// Per-instance-group resize policies. Validation failures are fatal so a
+	// broken policy entry never silently falls back to the global settings.
+	resolver, err := policy.New(cfg)
+	if err != nil {
+		logger.Error("policy configuration error", "file", configFile, "error", err)
+		return err
+	}
+	if resolver.Len() > 0 {
+		logger.Info("instance-group resize policies loaded",
+			"count", resolver.Len(), "policies", resolver.Summaries())
+	}
+
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
 
 	clients, err := awsx.New(ctx, cfg.Region)
 	if err != nil {
 		logger.Error("failed to initialize AWS clients", "error", err)
-		os.Exit(1)
+		return err
 	}
 	clients.PollInterval = cfg.SSMPollInterval
 
@@ -105,7 +125,7 @@ func main() {
 		}
 	}()
 
-	rsz := resizer.New(cfg, clients, clients, metrics, emitter, notifier, annotator, logger)
+	rsz := resizer.New(cfg, resolver, clients, clients, metrics, emitter, notifier, annotator, logger)
 	health.SetReady(true)
 
 	runLoop := func(ctx context.Context) {
@@ -126,7 +146,7 @@ func main() {
 		}, logger, runLoop)
 		if err != nil {
 			logger.Error("leader election failed", "error", err)
-			os.Exit(1)
+			return err
 		}
 	} else {
 		if cfg.LeaderElect {
@@ -137,6 +157,7 @@ func main() {
 
 	health.SetReady(false)
 	logger.Info("shutdown complete")
+	return nil
 }
 
 // logResizePolicy logs the effective volume growth policy (mode and amount) at

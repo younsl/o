@@ -36,17 +36,13 @@ spec:
         - name: {{ .Chart.Name }}
           image: "{{ .Values.image.registry }}/{{ .Values.image.repository }}:{{ .Values.image.tag | default .Chart.AppVersion }}"
           imagePullPolicy: {{ .Values.image.pullPolicy }}
+          {{- with .Values.extraEnvFrom }}
           envFrom:
-            - configMapRef:
-                name: {{ include "external-ebs-autoresizer.fullname" . }}
-            {{- with .Values.extraEnvFrom }}
             {{- toYaml . | nindent 12 }}
-            {{- end }}
+          {{- end }}
           env:
-            - name: HEALTH_PORT
-              value: {{ .Values.ports.health | quote }}
-            - name: METRICS_PORT
-              value: {{ .Values.ports.metrics | quote }}
+            - name: CONFIG_FILE
+              value: /etc/external-ebs-autoresizer/config.yaml
             - name: POD_NAME
               valueFrom:
                 fieldRef:
@@ -96,6 +92,14 @@ spec:
           {{- end }}
           securityContext:
             {{- toYaml .Values.securityContext | nindent 12 }}
+          volumeMounts:
+            - name: config
+              mountPath: /etc/external-ebs-autoresizer
+              readOnly: true
+      volumes:
+        - name: config
+          configMap:
+            name: {{ include "external-ebs-autoresizer.fullname" . }}
       {{- with .Values.nodeSelector }}
       nodeSelector:
         {{- toYaml . | nindent 8 }}
