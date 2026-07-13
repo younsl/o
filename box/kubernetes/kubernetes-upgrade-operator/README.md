@@ -10,6 +10,7 @@ Kubernetes Upgrade Operator for EKS clusters. Watches `EKSUpgrade` custom resour
 ## Features
 
 - **Sequential control plane upgrades** — Automatically steps through 1 minor version at a time (e.g., 1.30 → 1.31 → 1.32)
+- **Version rollback** — `upgradeMode: Rollback` reverts a cluster to the previous minor version (N-1) in reverse order (node groups → add-ons → control plane), matching AWS EKS rollback semantics
 - **Add-on version management** — Resolves and applies compatible add-on versions per upgrade step
 - **Managed node group rolling updates** — Triggers rolling updates after control plane and add-on upgrades
 - **Preflight validation** — EKS Cluster Insights, Deletion Protection, PDB drain deadlock checks before upgrade
@@ -23,9 +24,11 @@ Kubernetes Upgrade Operator for EKS clusters. Watches `EKSUpgrade` custom resour
 
 kubernetes-upgrade-operator is a Kubernetes operator that runs in a central (hub) EKS cluster and upgrades EKS clusters declaratively. It watches `EKSUpgrade` custom resources, assumes IAM roles to reach spoke-account clusters via STS AssumeRole, and executes sequential control plane, add-on, and managed node group upgrades. The same hub role can also upgrade the cluster it runs in directly.
 
-![kubernetes-upgrade-operator Architecture](architecture.png)
+![kubernetes-upgrade-operator Architecture](docs/assets/architecture.png)
 
 ## Upgrade Phase Flow
+
+![Forward and Rollback phase flow](docs/assets/upgrade-phase-flow.svg)
 
 1. **Pending** — CR created, waiting for reconciliation
 2. **Planning** — Resolve upgrade path, addon targets, nodegroup targets
@@ -56,6 +59,40 @@ When `dryRun: true` is set, the operator executes planning and preflight validat
 | [EKS Deletion Protection](https://docs.aws.amazon.com/eks/latest/userguide/delete-cluster.html) | Mandatory | Fails if deletion protection is disabled |
 | PDB Drain Deadlock | Mandatory | Fails if any PDB has `disruptionsAllowed == 0` (skippable via `skipPdbCheck`) |
 
+### Rollback Mode
+
+Setting `upgradeMode: Rollback` reverts a cluster to the previous minor version, mirroring [AWS EKS version rollback](https://docs.aws.amazon.com/eks/latest/userguide/rollback-cluster.html). The phases run in the reverse order of a forward upgrade so worker nodes never run a version newer than the control plane:
+
+1. **Pending** → **Planning** → **PreflightChecking** (insights queried under the `ROLLBACK_READINESS` category instead of `UPGRADE_READINESS`; Deletion Protection and PDB drain deadlock checks still apply)
+2. **RollingBackNodeGroups** — Roll managed node groups back to N-1 first
+3. **RollingBackAddons** — Downgrade add-ons: a version pinned in `addonVersions` wins; any unpinned add-on is auto-rolled-back to the default version compatible with the target minor, but only when that is a downgrade (raw EKS does not roll add-ons back automatically, so kuo fills this gap)
+4. **RollingBackControlPlane** — Roll the control plane back to N-1 last (`UpdateClusterVersion`, reported by AWS as a `VersionRollback` update)
+5. **Completed**
+
+Constraints (enforced to match the EKS API):
+
+- Single minor only: `targetVersion` must be exactly one minor below the current version (N to N-1). Multi-minor rollback requests are rejected in planning; roll back one minor at a time.
+- AWS only permits rollback within 7 days of the upgrade, to a version the cluster was previously in-place upgraded from. kuo attempts the `UpdateClusterVersion` call and surfaces any AWS rejection as a `Failed` phase.
+- Add-ons: pinned versions in `addonVersions` are applied as-is; unpinned add-ons auto-roll-back to the target minor's default compatible version when that is a downgrade, otherwise left untouched.
+- Consecutive rollback rejected: once a rollback has completed, another rollback is blocked in planning (`Failed`) until a forward upgrade runs, matching EKS (which only permits rolling back a version the cluster was recently upgraded from).
+
+A rollback can be triggered on the same `EKSUpgrade` resource that performed the upgrade: edit `upgradeMode` to `Rollback` and set `targetVersion` to N-1. The operator resets the status and re-runs from `Pending`.
+
+```yaml
+apiVersion: kuo.io/v1alpha1
+kind: EKSUpgrade
+metadata:
+  name: staging-upgrade
+spec:
+  clusterName: staging-cluster
+  upgradeMode: Rollback
+  targetVersion: "1.33"   # current cluster is 1.34
+  region: ap-northeast-2
+  # Optionally downgrade specific add-ons alongside the control plane:
+  # addonVersions:
+  #   vpc-cni: v1.18.1-eksbuild.3
+```
+
 ## Installation
 
 Helm is the recommended installation method. See [charts/kuo](charts/kuo) for detailed configuration and values reference.
@@ -73,6 +110,7 @@ spec:
   clusterName: staging-cluster
   targetVersion: "1.34"
   region: ap-northeast-2
+  upgradeMode: Forward
 ```
 
 Cross-account upgrade with Slack notification:
@@ -86,6 +124,7 @@ spec:
   clusterName: production-cluster
   targetVersion: "1.34"
   region: ap-northeast-2
+  upgradeMode: Forward
   assumeRoleArn: arn:aws:iam::123456789012:role/kuo-spoke-role
   notification:
     onUpgrade: true
@@ -99,8 +138,9 @@ spec:
 | `clusterName` | Yes | — | EKS cluster name |
 | `targetVersion` | Yes | — | Target Kubernetes version (e.g., `"1.34"`) |
 | `region` | Yes | — | AWS region |
+| `upgradeMode` | Yes | — | `Forward` to upgrade, `Rollback` to revert one minor version (N-1). Must be set explicitly |
 | `assumeRoleArn` | No | — | IAM Role ARN for cross-account access |
-| `addonVersions` | No | auto-resolve | Add-on version overrides (`addon-name: version`) |
+| `addonVersions` | No | auto-resolve | Add-on version overrides (`addon-name: version`). On rollback, unpinned add-ons auto-roll-back to the target minor's default compatible version when that is a downgrade |
 | `skipPdbCheck` | No | `false` | Skip PDB drain deadlock check |
 | `dryRun` | No | `false` | Plan only, do not execute |
 | `timeouts.controlPlaneMinutes` | No | `30` | Control plane upgrade timeout |
@@ -394,6 +434,7 @@ make install        # Install to ~/.cargo/bin/
 ## Constraints
 
 - Control plane upgrades limited to 1 minor version at a time (EKS limitation)
+- Rollback limited to a single minor version (N to N-1) within the AWS 7-day window
 - Managed Node Groups only (self-managed and Karpenter nodes are not supported)
 - Cluster-scoped CRD (one EKSUpgrade per cluster, not namespaced)
 

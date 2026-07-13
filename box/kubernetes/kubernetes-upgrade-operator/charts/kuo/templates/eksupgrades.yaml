@@ -10,6 +10,7 @@ spec:
   clusterName: {{ .spec.clusterName }}
   targetVersion: {{ .spec.targetVersion | quote }}
   region: {{ .spec.region }}
+  upgradeMode: {{ .spec.upgradeMode | default "Forward" }}
   {{- with .spec.assumeRoleArn }}
   assumeRoleArn: {{ . }}
   {{- end }}

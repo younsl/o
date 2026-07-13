@@ -7,7 +7,8 @@ use tracing::info;
 use super::addon::{self, AddonUpgrade};
 use super::client::EksClient;
 use super::nodegroup::{self, NodeGroupInfo};
-use super::version::calculate_upgrade_path;
+use super::version::{calculate_rollback_path, calculate_upgrade_path};
+use crate::crd::UpgradeMode;
 
 /// Upgrade plan for a cluster.
 #[derive(Debug, Clone)]
@@ -27,16 +28,27 @@ impl UpgradePlan {
     }
 }
 
-/// Create an upgrade plan for a cluster.
+/// Create an upgrade or rollback plan for a cluster.
+///
+/// For `UpgradeMode::Forward`, the control plane path steps up one minor at a
+/// time and add-ons are planned toward the target version's latest compatible
+/// version. For `UpgradeMode::Rollback`, the control plane path is a single
+/// N-1 step. Add-ons are rolled back too: an explicitly declared version wins,
+/// and any add-on left undeclared is auto-rolled-back to the default version
+/// compatible with the rollback target Kubernetes minor, but only when that is
+/// strictly lower than the currently installed version (a rollback never
+/// upgrades an add-on). Node group planning is identical in both modes: any
+/// node group whose version differs from the target is scheduled.
 pub async fn create_upgrade_plan(
     client: &EksClient,
     cluster_name: &str,
     target_version: &str,
     addon_versions: &HashMap<String, String>,
+    mode: UpgradeMode,
 ) -> Result<UpgradePlan> {
     info!(
-        "Creating upgrade plan for {} to version {}",
-        cluster_name, target_version
+        "Creating {} plan for {} to version {}",
+        mode, cluster_name, target_version
     );
 
     // Get current cluster info
@@ -45,15 +57,30 @@ pub async fn create_upgrade_plan(
         .await?
         .ok_or_else(|| crate::error::KuoError::ClusterNotFound(cluster_name.to_string()))?;
 
-    // Calculate upgrade path
-    let upgrade_path = calculate_upgrade_path(&cluster.version, target_version)?;
+    // Calculate control plane version path
+    let upgrade_path = match mode {
+        UpgradeMode::Forward => calculate_upgrade_path(&cluster.version, target_version)?,
+        UpgradeMode::Rollback => calculate_rollback_path(&cluster.version, target_version)?,
+    };
 
-    // Plan addon upgrades (for target version)
-    let addon_result =
-        addon::plan_addon_upgrades(client.inner(), cluster_name, target_version, addon_versions)
-            .await?;
+    // Plan addon changes
+    let addon_result = match mode {
+        UpgradeMode::Forward => {
+            addon::plan_addon_upgrades(client.inner(), cluster_name, target_version, addon_versions)
+                .await?
+        }
+        UpgradeMode::Rollback => {
+            addon::plan_addon_rollbacks(
+                client.inner(),
+                cluster_name,
+                target_version,
+                addon_versions,
+            )
+            .await?
+        }
+    };
 
-    // Plan nodegroup upgrades
+    // Plan nodegroup changes (identical for both modes: diff current vs target)
     let nodegroup_result =
         nodegroup::plan_nodegroup_upgrades(client.inner(), cluster_name, target_version).await?;
 

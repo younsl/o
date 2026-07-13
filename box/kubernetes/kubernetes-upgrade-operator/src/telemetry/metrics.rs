@@ -427,8 +427,9 @@ mod tests {
     }
 
     /// Simulate a full upgrade lifecycle and verify all 7 metrics appear in
-    /// the encoded OpenMetrics output with correct label values.
+    /// the encoded `OpenMetrics` output with correct label values.
     #[test]
+    #[allow(clippy::too_many_lines)]
     fn test_full_lifecycle_encoding() {
         let mut registry = Registry::default();
         let metrics = Metrics::new(&mut registry);

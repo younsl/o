@@ -5,11 +5,12 @@ use std::time::{Duration, Instant};
 
 use anyhow::Result;
 use kube::Api;
+use kube::api::{Patch, PatchParams};
 use kube::runtime::controller::Action;
 use tracing::{error, info, warn};
 
 use crate::aws::AwsClients;
-use crate::crd::{EKSUpgrade, UpgradePhase};
+use crate::crd::{EKSUpgrade, EKSUpgradeStatus, UpgradePhase};
 use crate::notify::{self, SlackNotifier};
 use crate::phases;
 use crate::status;
@@ -42,13 +43,29 @@ pub async fn reconcile(obj: Arc<EKSUpgrade>, ctx: Arc<Context>) -> Result<Action
     // Check generation for spec change detection
     let generation = obj.metadata.generation.unwrap_or(0);
 
-    // Skip terminal phases (log guidance if spec was changed)
+    // Terminal phases are normally idle. If the spec changed (generation
+    // bumped), restart the reconcile from Pending. This is how a rollback is
+    // triggered on an already-completed resource: edit the same EKSUpgrade
+    // (e.g. set `upgradeMode: Rollback` and `targetVersion` to N-1) and the
+    // operator re-plans and executes against the new spec.
     if phase == UpgradePhase::Completed || phase == UpgradePhase::Failed {
         if current_status.observed_generation < generation {
-            warn!(
-                "Spec changed for {} but phase is {}. Delete and recreate the EKSUpgrade resource to re-run.",
+            info!(
+                "Spec changed for {} (phase {}); restarting reconcile from Pending",
                 name, phase
             );
+            // Explicit null-emitting merge patch: fields with
+            // `skip_serializing_if` (message, completedAt, empty vecs, etc.)
+            // would otherwise survive a merge patch and leave stale run state.
+            let patch = reset_status_patch(&current_status, generation);
+            if let Err(e) = api
+                .patch_status(name, &PatchParams::apply("kuo"), &Patch::Merge(&patch))
+                .await
+            {
+                warn!("Failed to reset status for {}: {}", name, e);
+                return Ok(Action::requeue(Duration::from_secs(5)));
+            }
+            return Ok(Action::requeue(Duration::from_millis(100)));
         }
         return Ok(Action::await_change());
     }
@@ -75,6 +92,9 @@ pub async fn reconcile(obj: Arc<EKSUpgrade>, ctx: Arc<Context>) -> Result<Action
                 | UpgradePhase::UpgradingControlPlane
                 | UpgradePhase::UpgradingAddons
                 | UpgradePhase::UpgradingNodeGroups
+                | UpgradePhase::RollingBackNodeGroups
+                | UpgradePhase::RollingBackAddons
+                | UpgradePhase::RollingBackControlPlane
         ) {
             return Ok(Action::await_change());
         }
@@ -186,11 +206,17 @@ pub async fn reconcile(obj: Arc<EKSUpgrade>, ctx: Arc<Context>) -> Result<Action
                 Err(e) => Err(e),
             }
         }
-        UpgradePhase::UpgradingControlPlane => {
+        // Rollback phases reuse the same handlers; the AWS operations
+        // (UpdateClusterVersion / UpdateNodegroupVersion / UpdateAddon to a
+        // lower version) are identical. Only the phase ordering differs, which
+        // is decided by `phases::transition` based on `spec.upgradeMode`.
+        UpgradePhase::UpgradingControlPlane | UpgradePhase::RollingBackControlPlane => {
             phases::control_plane::execute(spec, &current_status, &aws).await
         }
-        UpgradePhase::UpgradingAddons => phases::addons::execute(spec, &current_status, &aws).await,
-        UpgradePhase::UpgradingNodeGroups => {
+        UpgradePhase::UpgradingAddons | UpgradePhase::RollingBackAddons => {
+            phases::addons::execute(spec, &current_status, &aws).await
+        }
+        UpgradePhase::UpgradingNodeGroups | UpgradePhase::RollingBackNodeGroups => {
             phases::nodegroups::execute(spec, &current_status, &aws).await
         }
         UpgradePhase::Completed | UpgradePhase::Failed => {
@@ -201,6 +227,18 @@ pub async fn reconcile(obj: Arc<EKSUpgrade>, ctx: Arc<Context>) -> Result<Action
     match result {
         Ok((mut new_status, requeue)) => {
             new_status.observed_generation = generation;
+
+            // On reaching Completed, record the transition so a subsequent
+            // rollback can be checked against it. This survives the spec-change
+            // reset (see `reset_status_patch`) and is the only signal for
+            // rejecting a consecutive rollback.
+            if new_status.phase == Some(UpgradePhase::Completed) {
+                new_status.last_transition = Some(crate::crd::TransitionRecord {
+                    mode: spec.upgrade_mode.clone(),
+                    to_version: spec.target_version.clone(),
+                    completed_at: chrono::Utc::now(),
+                });
+            }
 
             if let Err(e) = status::patch_status(&api, name, &new_status).await {
                 warn!("Failed to patch status for {}: {}", name, e);
@@ -393,10 +431,112 @@ pub async fn reconcile(obj: Arc<EKSUpgrade>, ctx: Arc<Context>) -> Result<Action
     }
 }
 
+/// Build a JSON Merge Patch that restarts a terminal `EKSUpgrade` after a spec
+/// change. Resets the phase to `Pending` and explicitly nulls prior run state
+/// so the planning phase re-reads the live cluster version. Fields declared
+/// with `skip_serializing_if` (message, completedAt, empty collections) must be
+/// set to `null`/`[]` here; a struct-based merge patch would omit them and let
+/// stale values survive. The verified AWS identity is left untouched (absent
+/// from the patch) to avoid a redundant STS call, and only its condition is
+/// retained. `lastTransition` is likewise deliberately absent so it survives
+/// the reset: the consecutive-rollback guardrail depends on it persisting
+/// across spec changes. Do NOT add it to this patch.
+fn reset_status_patch(current: &EKSUpgradeStatus, generation: i64) -> serde_json::Value {
+    let conditions: Vec<_> = current
+        .conditions
+        .iter()
+        .filter(|c| c.r#type == "AWSAuthenticated")
+        .cloned()
+        .collect();
+
+    serde_json::json!({
+        "status": {
+            "phase": UpgradePhase::Pending,
+            "currentVersion": null,
+            "message": null,
+            "startedAt": null,
+            "completedAt": null,
+            "lifecycle": null,
+            "observedGeneration": generation,
+            "conditions": conditions,
+            "phases": {
+                "planning": null,
+                "preflight": null,
+                "controlPlane": null,
+                "addons": [],
+                "nodegroups": [],
+            },
+        }
+    })
+}
+
 /// Error policy for the controller.
 #[allow(clippy::needless_pass_by_value)]
 pub fn error_policy(obj: Arc<EKSUpgrade>, err: &kube::Error, _ctx: Arc<Context>) -> Action {
     let name = obj.metadata.name.as_deref().unwrap_or("unknown");
     error!("Controller error for {}: {}", name, err);
     Action::requeue(Duration::from_secs(30))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::crd::{ControlPlaneStatus, UpgradeCondition};
+
+    #[test]
+    fn test_reset_status_patch() {
+        let mut current = EKSUpgradeStatus {
+            phase: Some(UpgradePhase::Completed),
+            current_version: Some("1.34".to_string()),
+            observed_generation: 3,
+            message: Some("done".to_string()),
+            completed_at: Some(chrono::Utc::now()),
+            ..Default::default()
+        };
+        current.phases.control_plane = Some(ControlPlaneStatus {
+            current_step: 1,
+            total_steps: 1,
+            ..Default::default()
+        });
+        current.conditions = vec![
+            UpgradeCondition {
+                r#type: "Ready".to_string(),
+                status: "True".to_string(),
+                reason: "UpgradeCompleted".to_string(),
+                message: None,
+                last_transition_time: chrono::Utc::now(),
+            },
+            UpgradeCondition {
+                r#type: "AWSAuthenticated".to_string(),
+                status: "True".to_string(),
+                reason: "IdentityVerified".to_string(),
+                message: None,
+                last_transition_time: chrono::Utc::now(),
+            },
+        ];
+
+        let patch = reset_status_patch(&current, 4);
+        let status = &patch["status"];
+
+        // Restarts from Pending with the new generation stamped.
+        assert_eq!(status["phase"], "Pending");
+        assert_eq!(status["observedGeneration"], 4);
+
+        // Stale run state is explicitly nulled so a merge patch clears it.
+        assert!(status["currentVersion"].is_null());
+        assert!(status["message"].is_null());
+        assert!(status["completedAt"].is_null());
+        assert!(status["phases"]["controlPlane"].is_null());
+        assert!(status["phases"]["planning"].is_null());
+        assert_eq!(status["phases"]["addons"], serde_json::json!([]));
+        assert_eq!(status["phases"]["nodegroups"], serde_json::json!([]));
+
+        // Only the AWS auth condition is retained.
+        assert_eq!(status["conditions"].as_array().unwrap().len(), 1);
+        assert_eq!(status["conditions"][0]["type"], "AWSAuthenticated");
+
+        // lastTransition must be absent from the patch so it survives the
+        // merge: the consecutive-rollback guardrail depends on it persisting.
+        assert!(status.get("lastTransition").is_none());
+    }
 }

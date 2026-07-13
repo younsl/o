@@ -8,11 +8,11 @@ pub mod types;
 // Some types are only consumed by test modules, but re-exporting keeps
 // the public API consistent across `crate::crd::*`.
 #[allow(unused_imports)]
-pub use spec::{EKSUpgrade, EKSUpgradeSpec, NotificationConfig, TimeoutConfig};
+pub use spec::{EKSUpgrade, EKSUpgradeSpec, NotificationConfig, TimeoutConfig, UpgradeMode};
 #[allow(unused_imports)]
 pub use status::{
     AddonStatus, AwsIdentity, ControlPlaneStatus, EKSUpgradeStatus, LifecycleStatus,
     NodegroupStatus, PhaseStatuses, PlanningStatus, PreflightCheckStatus, PreflightStatus,
-    UpgradeCondition, VersionLifecycleInfo,
+    TransitionRecord, UpgradeCondition, VersionLifecycleInfo,
 };
 pub use types::{ComponentStatus, UpgradePhase};

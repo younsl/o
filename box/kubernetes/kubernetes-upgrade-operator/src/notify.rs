@@ -293,8 +293,10 @@ mod tests {
     #[test]
     fn test_build_failed_message() {
         let spec = make_spec(None, false);
-        let mut status = EKSUpgradeStatus::default();
-        status.phase = Some(UpgradePhase::UpgradingControlPlane);
+        let status = EKSUpgradeStatus {
+            phase: Some(UpgradePhase::UpgradingControlPlane),
+            ..Default::default()
+        };
         let msg = build_failed_message(
             "staging-upgrade",
             &spec,
@@ -323,8 +325,10 @@ mod tests {
     #[test]
     fn test_build_failed_message_dry_run() {
         let spec = make_spec(None, true);
-        let mut status = EKSUpgradeStatus::default();
-        status.phase = Some(UpgradePhase::PreflightChecking);
+        let status = EKSUpgradeStatus {
+            phase: Some(UpgradePhase::PreflightChecking),
+            ..Default::default()
+        };
         let msg = build_failed_message("test", &spec, &status, "preflight check failed");
         assert!(
             msg.fields
@@ -338,6 +342,7 @@ mod tests {
             cluster_name: "my-cluster".to_string(),
             target_version: "1.33".to_string(),
             region: "ap-northeast-2".to_string(),
+            upgrade_mode: crate::crd::UpgradeMode::Forward,
             assume_role_arn: None,
             addon_versions: None,
             skip_pdb_check: false,

@@ -8,8 +8,9 @@ use std::time::Duration;
 use tracing::{info, warn};
 
 use crate::aws::AwsClients;
-use crate::crd::{ComponentStatus, EKSUpgradeSpec, EKSUpgradeStatus, UpgradePhase};
+use crate::crd::{ComponentStatus, EKSUpgradeSpec, EKSUpgradeStatus, UpgradeMode};
 use crate::eks::addon;
+use crate::phases::transition;
 use crate::status;
 
 /// Requeue interval for polling in-progress addon upgrades.
@@ -61,7 +62,7 @@ pub async fn execute(
     let Some(idx) = active_idx else {
         // All addons done → advance to next phase
         info!("All addon upgrades completed for {}", spec.cluster_name);
-        advance_to_next_phase(&mut new_status);
+        advance_to_next_phase(&mut new_status, &spec.upgrade_mode);
         return Ok((new_status, None));
     };
 
@@ -114,19 +115,15 @@ pub async fn execute(
 }
 
 /// Advance from addons phase to the next applicable phase.
-fn advance_to_next_phase(new_status: &mut EKSUpgradeStatus) {
-    if new_status.phases.nodegroups.is_empty() {
-        status::set_phase(new_status, UpgradePhase::Completed);
-        status::set_condition(new_status, "Ready", "True", "UpgradeCompleted", None);
-    } else {
-        status::set_phase(new_status, UpgradePhase::UpgradingNodeGroups);
-    }
+fn advance_to_next_phase(new_status: &mut EKSUpgradeStatus, mode: &UpgradeMode) {
+    let next = transition::after_addons(new_status, mode);
+    transition::transition_to(new_status, next);
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::crd::{EKSUpgradeStatus, NodegroupStatus};
+    use crate::crd::{EKSUpgradeStatus, NodegroupStatus, UpgradePhase};
 
     #[test]
     fn test_advance_with_nodegroups() {
@@ -140,14 +137,14 @@ mod tests {
             started_at: None,
             completed_at: None,
         });
-        advance_to_next_phase(&mut s);
+        advance_to_next_phase(&mut s, &UpgradeMode::Forward);
         assert_eq!(s.phase, Some(UpgradePhase::UpgradingNodeGroups));
     }
 
     #[test]
     fn test_advance_no_nodegroups() {
         let mut s = EKSUpgradeStatus::default();
-        advance_to_next_phase(&mut s);
+        advance_to_next_phase(&mut s, &UpgradeMode::Forward);
         assert_eq!(s.phase, Some(UpgradePhase::Completed));
         let ready = s.conditions.iter().find(|c| c.r#type == "Ready").unwrap();
         assert_eq!(ready.status, "True");
@@ -166,6 +163,7 @@ mod tests {
             cluster_name: "test-cluster".to_string(),
             target_version: "1.33".to_string(),
             region: "us-east-1".to_string(),
+            upgrade_mode: crate::crd::UpgradeMode::Forward,
             assume_role_arn: None,
             addon_versions: None,
             skip_pdb_check: false,

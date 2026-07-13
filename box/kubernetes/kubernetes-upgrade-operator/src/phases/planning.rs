@@ -10,6 +10,7 @@ use crate::crd::{
 };
 use crate::eks::client::EksClient;
 use crate::eks::upgrade;
+use crate::phases::transition;
 use crate::status;
 
 /// Execute the planning phase.
@@ -26,6 +27,12 @@ pub async fn execute(
         spec.cluster_name, spec.target_version
     );
 
+    // Guardrail: reject a rollback that immediately follows a completed
+    // rollback. Fail fast before any AWS calls.
+    if let Some(rejected) = reject_consecutive_rollback(spec, current_status) {
+        return Ok(rejected);
+    }
+
     let eks_client = EksClient::new(aws.eks.clone(), aws.region.clone());
 
     let addon_versions = spec.addon_versions.clone().unwrap_or_default();
@@ -35,6 +42,7 @@ pub async fn execute(
         &spec.cluster_name,
         &spec.target_version,
         &addon_versions,
+        spec.upgrade_mode.clone(),
     )
     .await?;
 
@@ -122,6 +130,48 @@ pub async fn execute(
     Ok(new_status)
 }
 
+/// If starting this upgrade would be a rollback immediately following a
+/// completed rollback, return a `Failed` status explaining why; otherwise
+/// `None`.
+///
+/// The live cluster version cannot reveal how the cluster reached its current
+/// minor, so a second rollback in a row (e.g. 1.36 -> 1.35 then 1.35 -> 1.34)
+/// would pass the single-minor path check yet has no version EKS considers a
+/// valid rollback target.
+fn reject_consecutive_rollback(
+    spec: &EKSUpgradeSpec,
+    current_status: &EKSUpgradeStatus,
+) -> Option<EKSUpgradeStatus> {
+    if !transition::is_consecutive_rollback(
+        &spec.upgrade_mode,
+        current_status.last_transition.as_ref(),
+    ) {
+        return None;
+    }
+
+    let mut new_status = current_status.clone();
+    let last_to = current_status
+        .last_transition
+        .as_ref()
+        .map_or("unknown", |t| t.to_version.as_str());
+    let msg = format!(
+        "Consecutive rollback rejected: the previous transition already rolled back to {last_to}. \
+         EKS only permits rolling back to a version the cluster was recently upgraded from, so \
+         rolling back further to {} is not possible. Roll forward before rolling back again.",
+        spec.target_version
+    );
+    warn!("{msg}");
+    status::set_failed(&mut new_status, msg.clone());
+    status::set_condition(
+        &mut new_status,
+        "Ready",
+        "False",
+        "ConsecutiveRollbackRejected",
+        Some(msg),
+    );
+    Some(new_status)
+}
+
 /// Fetch EKS version lifecycle information for current and target versions.
 ///
 /// Non-blocking: if the API call fails, returns a `LifecycleStatus` with an
@@ -169,5 +219,81 @@ async fn fetch_version_lifecycle(
         current_version: to_info(current_version),
         target_version: to_info(target_version),
         error: None,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::crd::{TransitionRecord, UpgradeMode, UpgradePhase};
+
+    fn spec(mode: UpgradeMode, target: &str) -> EKSUpgradeSpec {
+        EKSUpgradeSpec {
+            cluster_name: "c".to_string(),
+            target_version: target.to_string(),
+            region: "ap-northeast-2".to_string(),
+            upgrade_mode: mode,
+            assume_role_arn: None,
+            addon_versions: None,
+            skip_pdb_check: false,
+            dry_run: false,
+            timeouts: None,
+            notification: None,
+        }
+    }
+
+    fn status_after(mode: UpgradeMode, to: &str) -> EKSUpgradeStatus {
+        EKSUpgradeStatus {
+            last_transition: Some(TransitionRecord {
+                mode,
+                to_version: to.to_string(),
+                completed_at: chrono::DateTime::from_timestamp(0, 0).unwrap(),
+            }),
+            ..Default::default()
+        }
+    }
+
+    #[test]
+    fn test_reject_second_rollback_in_a_row() {
+        let s = reject_consecutive_rollback(
+            &spec(UpgradeMode::Rollback, "1.34"),
+            &status_after(UpgradeMode::Rollback, "1.35"),
+        )
+        .expect("should reject");
+        assert_eq!(s.phase, Some(UpgradePhase::Failed));
+        assert!(s.message.unwrap().contains("1.35"));
+    }
+
+    #[test]
+    fn test_allow_rollback_after_forward() {
+        assert!(
+            reject_consecutive_rollback(
+                &spec(UpgradeMode::Rollback, "1.35"),
+                &status_after(UpgradeMode::Forward, "1.36"),
+            )
+            .is_none()
+        );
+    }
+
+    #[test]
+    fn test_allow_first_rollback_no_history() {
+        assert!(
+            reject_consecutive_rollback(
+                &spec(UpgradeMode::Rollback, "1.35"),
+                &EKSUpgradeStatus::default(),
+            )
+            .is_none()
+        );
+    }
+
+    #[test]
+    fn test_allow_forward_after_rollback() {
+        assert!(
+            reject_consecutive_rollback(
+                &spec(UpgradeMode::Forward, "1.36"),
+                &status_after(UpgradeMode::Rollback, "1.35"),
+            )
+            .is_none()
+        );
     }
 }

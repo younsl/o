@@ -12,9 +12,11 @@ use tracing::{info, warn};
 
 use crate::aws::AwsClients;
 use crate::crd::{
-    EKSUpgradeSpec, EKSUpgradeStatus, PreflightCheckStatus, PreflightStatus, UpgradePhase,
+    EKSUpgradeSpec, EKSUpgradeStatus, PreflightCheckStatus, PreflightStatus, UpgradeMode,
+    UpgradePhase,
 };
 use crate::eks::client::EksClient;
+use crate::phases::transition;
 use crate::status;
 
 use self::checks::{CheckStatus, PreflightCheckResult, PreflightResults, SkippedCheck};
@@ -36,8 +38,18 @@ pub async fn execute(
     let mut preflight = PreflightResults::default();
 
     // ---- EKS Cluster Insights check ----
-    match crate::eks::insights::check_upgrade_readiness(eks_client.inner(), &spec.cluster_name)
-        .await
+    // Forward upgrades and rollbacks surface findings under different insight
+    // categories, matching the AWS EKS console (Upgrade insights tab).
+    let insights_category = match spec.upgrade_mode {
+        UpgradeMode::Forward => "UPGRADE_READINESS",
+        UpgradeMode::Rollback => "ROLLBACK_READINESS",
+    };
+    match crate::eks::insights::check_insights_readiness(
+        eks_client.inner(),
+        &spec.cluster_name,
+        insights_category,
+    )
+    .await
     {
         Ok((_is_ready, summary)) => {
             preflight
@@ -174,8 +186,9 @@ pub async fn execute(
         return Ok(new_status);
     }
 
-    // Transition to next phase
-    determine_next_phase(&mut new_status);
+    // Transition to next phase (mode-aware routing)
+    let next = transition::after_preflight(&new_status, &spec.upgrade_mode);
+    transition::transition_to(&mut new_status, next);
 
     Ok(new_status)
 }
@@ -204,28 +217,9 @@ fn build_check_statuses(preflight: &PreflightResults) -> Vec<PreflightCheckStatu
         .collect()
 }
 
-/// Determine the next phase after preflight passes.
-fn determine_next_phase(new_status: &mut EKSUpgradeStatus) {
-    let planning = new_status.phases.planning.as_ref();
-    let has_cp_steps = planning.is_some_and(|p| !p.upgrade_path.is_empty());
-
-    if has_cp_steps {
-        status::set_phase(new_status, UpgradePhase::UpgradingControlPlane);
-    } else if !new_status.phases.addons.is_empty() {
-        status::set_phase(new_status, UpgradePhase::UpgradingAddons);
-    } else if !new_status.phases.nodegroups.is_empty() {
-        status::set_phase(new_status, UpgradePhase::UpgradingNodeGroups);
-    } else {
-        status::set_phase(new_status, UpgradePhase::Completed);
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::crd::{
-        AddonStatus, ComponentStatus, EKSUpgradeStatus, NodegroupStatus, PlanningStatus,
-    };
 
     // --- build_check_statuses tests ---
 
@@ -286,98 +280,6 @@ mod tests {
         assert_eq!(checks[2].status, "Skip");
     }
 
-    // --- determine_next_phase tests ---
-
-    #[test]
-    fn test_determine_next_phase_with_cp_steps() {
-        let mut s = EKSUpgradeStatus::default();
-        s.phases.planning = Some(PlanningStatus {
-            upgrade_path: vec!["1.32".to_string(), "1.33".to_string()],
-        });
-        determine_next_phase(&mut s);
-        assert_eq!(s.phase, Some(UpgradePhase::UpgradingControlPlane));
-    }
-
-    #[test]
-    fn test_determine_next_phase_addons_only() {
-        let mut s = EKSUpgradeStatus::default();
-        s.phases.planning = Some(PlanningStatus {
-            upgrade_path: vec![],
-        });
-        s.phases.addons.push(AddonStatus {
-            name: "coredns".to_string(),
-            current_version: "v1.11.1".to_string(),
-            target_version: "v1.11.3".to_string(),
-            status: ComponentStatus::Pending,
-            started_at: None,
-            completed_at: None,
-        });
-        determine_next_phase(&mut s);
-        assert_eq!(s.phase, Some(UpgradePhase::UpgradingAddons));
-    }
-
-    #[test]
-    fn test_determine_next_phase_nodegroups_only() {
-        let mut s = EKSUpgradeStatus::default();
-        s.phases.planning = Some(PlanningStatus {
-            upgrade_path: vec![],
-        });
-        s.phases.nodegroups.push(NodegroupStatus {
-            name: "ng-system".to_string(),
-            current_version: "1.32".to_string(),
-            target_version: "1.33".to_string(),
-            status: ComponentStatus::Pending,
-            update_id: None,
-            started_at: None,
-            completed_at: None,
-        });
-        determine_next_phase(&mut s);
-        assert_eq!(s.phase, Some(UpgradePhase::UpgradingNodeGroups));
-    }
-
-    #[test]
-    fn test_determine_next_phase_nothing_to_do() {
-        let mut s = EKSUpgradeStatus::default();
-        s.phases.planning = Some(PlanningStatus {
-            upgrade_path: vec![],
-        });
-        determine_next_phase(&mut s);
-        assert_eq!(s.phase, Some(UpgradePhase::Completed));
-    }
-
-    #[test]
-    fn test_determine_next_phase_no_planning() {
-        let mut s = EKSUpgradeStatus::default();
-        // No planning status at all
-        determine_next_phase(&mut s);
-        assert_eq!(s.phase, Some(UpgradePhase::Completed));
-    }
-
-    #[test]
-    fn test_determine_next_phase_cp_takes_priority() {
-        let mut s = EKSUpgradeStatus::default();
-        s.phases.planning = Some(PlanningStatus {
-            upgrade_path: vec!["1.33".to_string()],
-        });
-        s.phases.addons.push(AddonStatus {
-            name: "coredns".to_string(),
-            current_version: "v1.11.1".to_string(),
-            target_version: "v1.11.3".to_string(),
-            status: ComponentStatus::Pending,
-            started_at: None,
-            completed_at: None,
-        });
-        s.phases.nodegroups.push(NodegroupStatus {
-            name: "ng-system".to_string(),
-            current_version: "1.32".to_string(),
-            target_version: "1.33".to_string(),
-            status: ComponentStatus::Pending,
-            update_id: None,
-            started_at: None,
-            completed_at: None,
-        });
-        determine_next_phase(&mut s);
-        // CP takes priority over addons and nodegroups
-        assert_eq!(s.phase, Some(UpgradePhase::UpgradingControlPlane));
-    }
+    // Next-phase routing after preflight is covered by
+    // `crate::phases::transition` tests.
 }

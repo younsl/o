@@ -99,6 +99,8 @@ The following table lists the configurable parameters and their default values.
 | prometheusRule.additionalLabels | object | `{}` | Additional labels to add to the PrometheusRule resource. |
 | prometheusRule.annotations | object | `{}` | Annotations to add to the PrometheusRule resource. |
 | prometheusRule.groups | list | `[]` | Prometheus rule groups. Each group contains a list of alerting/recording rules. |
+| dnsPolicy | string | `""` | Pod DNS policy. One of `ClusterFirst`, `ClusterFirstWithHostNet`, `Default`, or `None`. Empty uses the Kubernetes default. |
+| dnsConfig | object | `{}` | Pod DNS config. Required when dnsPolicy is `None`. See PodDNSConfig spec (nameservers, searches, options). |
 | nodeSelector | object | `{}` | Node selector for pod scheduling. |
 | tolerations | list | `[]` | Tolerations for pod scheduling. |
 | affinity | object | `{}` | Affinity rules for pod scheduling. |

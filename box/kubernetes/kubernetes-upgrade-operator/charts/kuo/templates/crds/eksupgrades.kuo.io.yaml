@@ -35,6 +35,7 @@ spec:
                 - clusterName
                 - targetVersion
                 - region
+                - upgradeMode
               properties:
                 clusterName:
                   type: string
@@ -45,6 +46,12 @@ spec:
                 region:
                   type: string
                   description: AWS region where the EKS cluster resides (e.g., "ap-northeast-2").
+                upgradeMode:
+                  type: string
+                  enum:
+                    - Forward
+                    - Rollback
+                  description: 'Direction of the version change (required; must be set explicitly). Forward upgrades toward targetVersion. Rollback reverts a previously upgraded cluster to the previous minor version (N-1), mirroring AWS EKS rollback semantics (node groups first, then add-ons, then the control plane). On rollback, add-ons not pinned in addonVersions are auto-rolled-back to the default version compatible with the target minor, but only when that is a downgrade. Only a single minor rollback (N to N-1) is allowed; targetVersion must be exactly one minor below the current version and within the AWS 7-day rollback window.'
                 assumeRoleArn:
                   type: string
                   description: IAM Role ARN to assume for cross-account access. Works with both IRSA and EKS Pod Identity as the base credential source.
@@ -91,7 +98,7 @@ spec:
               properties:
                 phase:
                   type: string
-                  description: "Current phase of the upgrade process. Progresses through: Pending → Planning → PreflightChecking → UpgradingControlPlane → UpgradingAddons → UpgradingNodeGroups → Completed or Failed."
+                  description: "Current phase. Forward: Pending → Planning → PreflightChecking → UpgradingControlPlane → UpgradingAddons → UpgradingNodeGroups → Completed. Rollback: Pending → Planning → PreflightChecking → RollingBackNodeGroups → RollingBackAddons → RollingBackControlPlane → Completed. Any phase may transition to Failed."
                   enum:
                     - Pending
                     - Planning
@@ -99,6 +106,9 @@ spec:
                     - UpgradingControlPlane
                     - UpgradingAddons
                     - UpgradingNodeGroups
+                    - RollingBackNodeGroups
+                    - RollingBackAddons
+                    - RollingBackControlPlane
                     - Completed
                     - Failed
                 currentVersion:
@@ -312,6 +322,23 @@ spec:
                     error:
                       type: string
                       description: Error message if lifecycle information could not be fetched from the DescribeClusterVersions API.
+                lastTransition:
+                  type: object
+                  description: The last upgrade or rollback that reached Completed. Preserved across spec-change resets and used to reject a rollback that immediately follows another completed rollback (EKS only permits rolling back to a version the cluster was recently upgraded from).
+                  properties:
+                    mode:
+                      type: string
+                      description: Direction of the completed transition (Forward or Rollback).
+                      enum:
+                        - Forward
+                        - Rollback
+                    toVersion:
+                      type: string
+                      description: Cluster version the transition settled on.
+                    completedAt:
+                      type: string
+                      format: date-time
+                      description: Timestamp when the transition completed.
       subresources:
         status: {}
       additionalPrinterColumns:

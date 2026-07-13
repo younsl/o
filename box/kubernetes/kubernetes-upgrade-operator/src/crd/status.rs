@@ -4,6 +4,7 @@ use chrono::{DateTime, Utc};
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
+use super::spec::UpgradeMode;
 use super::types::{ComponentStatus, UpgradePhase};
 
 // ============================================================================
@@ -243,6 +244,32 @@ pub struct EKSUpgradeStatus {
     /// EKS version lifecycle information (support end dates).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub lifecycle: Option<LifecycleStatus>,
+
+    /// The last transition (upgrade or rollback) that reached `Completed`.
+    ///
+    /// Recorded when the flow completes and deliberately preserved across
+    /// spec-change resets (see `reset_status_patch`), because the live
+    /// `current_version` alone cannot tell whether the cluster arrived at its
+    /// current minor via a forward upgrade or a rollback. It is the only signal
+    /// available to reject a consecutive rollback: EKS permits rolling back only
+    /// to a version the cluster was recently upgraded from, so a second rollback
+    /// in a row (e.g. 1.36 -> 1.35 then 1.35 -> 1.34) has no eligible target.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub last_transition: Option<TransitionRecord>,
+}
+
+/// A record of the most recent completed upgrade or rollback.
+#[derive(Deserialize, Serialize, Clone, Debug, JsonSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct TransitionRecord {
+    /// Direction of the completed transition.
+    pub mode: UpgradeMode,
+
+    /// Cluster version the transition settled on.
+    pub to_version: String,
+
+    /// Timestamp when the transition completed.
+    pub completed_at: DateTime<Utc>,
 }
 
 #[cfg(test)]
@@ -410,7 +437,7 @@ mod tests {
         assert!(json["lifecycle"]["lastCheckedTime"].is_string());
     }
 
-    /// Regression test: ControlPlaneStatus fields that are cleared to None during
+    /// Regression test: `ControlPlaneStatus` fields that are cleared to `None` during
     /// step transitions MUST serialize as JSON `null` (not be omitted) so that
     /// JSON Merge Patch (RFC 7396) removes them from the CRD status.
     /// Without this, a stale `update_id` persists and causes the operator to
@@ -439,7 +466,7 @@ mod tests {
         assert!(obj["startedAt"].is_null(), "startedAt must be null");
     }
 
-    /// Regression test: NodegroupStatus fields cleared on completion must
+    /// Regression test: `NodegroupStatus` fields cleared on completion must
     /// serialize as null for the same Merge Patch reason.
     #[test]
     fn test_nodegroup_none_fields_serialize_as_null() {
@@ -483,12 +510,12 @@ mod tests {
     /// Regression test for the two-step control plane upgrade bug.
     ///
     /// Simulates the exact scenario: upgrading from 1.32 → 1.34 (two steps).
-    /// After step 1/2 (1.32→1.33) completes, the operator sets update_id = None
-    /// and current_step = 2. When this is applied as a JSON Merge Patch, the
-    /// stale update_id MUST be removed. Otherwise, step 2/2 polls the old
-    /// update_id (which returns "Successful" for the already-completed step 1),
+    /// After step 1/2 (1.32→1.33) completes, the operator sets `update_id` = `None`
+    /// and `current_step` = 2. When this is applied as a JSON Merge Patch, the
+    /// stale `update_id` MUST be removed. Otherwise, step 2/2 polls the old
+    /// `update_id` (which returns "Successful" for the already-completed step 1),
     /// causing the operator to skip the actual 1.33→1.34 upgrade and jump
-    /// directly to UpgradingAddons.
+    /// directly to `UpgradingAddons`.
     #[test]
     fn test_two_step_cp_upgrade_merge_patch_clears_stale_update_id() {
         // === State BEFORE step 1/2 completes ===

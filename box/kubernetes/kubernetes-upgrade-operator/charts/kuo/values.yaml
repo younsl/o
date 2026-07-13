@@ -113,6 +113,12 @@ prometheusRule:
     #         summary: "EKS upgrade stuck for {{ $labels.cluster_name }}"
     #         description: "Cluster {{ $labels.cluster_name }} has been in {{ $labels.phase }} phase for over 60 minutes."
 
+# -- (string) Pod DNS policy. One of `ClusterFirst`, `ClusterFirstWithHostNet`, `Default`, or `None`. Empty uses the Kubernetes default.
+dnsPolicy: ""
+
+# -- (object) Pod DNS config. Required when dnsPolicy is `None`. See PodDNSConfig spec (nameservers, searches, options).
+dnsConfig: {}
+
 # -- (object) Node selector for pod scheduling.
 nodeSelector: {}
 # -- (list) Tolerations for pod scheduling.

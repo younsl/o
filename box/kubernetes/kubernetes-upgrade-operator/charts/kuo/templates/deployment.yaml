@@ -16,6 +16,13 @@ spec:
         {{- include "kuo.selectorLabels" . | nindent 8 }}
     spec:
       serviceAccountName: {{ include "kuo.serviceAccountName" . }}
+      {{- with .Values.dnsPolicy }}
+      dnsPolicy: {{ . }}
+      {{- end }}
+      {{- with .Values.dnsConfig }}
+      dnsConfig:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
       {{- with .Values.imagePullSecrets }}
       imagePullSecrets:
         {{- toYaml . | nindent 8 }}

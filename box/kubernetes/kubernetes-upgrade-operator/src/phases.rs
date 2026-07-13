@@ -7,3 +7,4 @@ pub mod control_plane;
 pub mod nodegroups;
 pub mod planning;
 pub mod preflight;
+pub mod transition;

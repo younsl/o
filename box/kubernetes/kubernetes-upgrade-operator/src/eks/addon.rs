@@ -162,6 +162,17 @@ pub async fn get_compatible_versions(
     Ok(versions)
 }
 
+/// Pick the preferred version from a compatibility-sorted list.
+///
+/// Prefers the version flagged `default_version`; otherwise falls back to the
+/// first (latest) entry. Returns `None` for an empty list.
+fn pick_latest_compatible(versions: &[AddonVersionInfo]) -> Option<String> {
+    if let Some(default) = versions.iter().find(|v| v.default_version) {
+        return Some(default.version.clone());
+    }
+    versions.first().map(|v| v.version.clone())
+}
+
 /// Get the latest compatible version for an add-on.
 pub async fn get_latest_compatible_version(
     client: &Client,
@@ -169,13 +180,7 @@ pub async fn get_latest_compatible_version(
     k8s_version: &str,
 ) -> Result<Option<String>> {
     let versions = get_compatible_versions(client, addon_name, k8s_version).await?;
-
-    // Prefer default version, otherwise take the first (latest)
-    if let Some(default) = versions.iter().find(|v| v.default_version) {
-        return Ok(Some(default.version.clone()));
-    }
-
-    Ok(versions.first().map(|v| v.version.clone()))
+    Ok(pick_latest_compatible(&versions))
 }
 
 /// Update an add-on to a specific version.
@@ -257,9 +262,192 @@ pub async fn plan_addon_upgrades(
     Ok(result)
 }
 
+/// Decide the rollback target version for a single add-on.
+///
+/// - An explicitly specified version always wins: it is returned unless it
+///   already matches the current version (in which case there is nothing to
+///   do). This mirrors the forward path and lets an operator pin any version.
+/// - When the add-on is not pinned, the auto-resolved default-compatible
+///   version for the rollback target Kubernetes minor is used, but only if it
+///   is strictly lower than the currently installed version. A rollback must
+///   never upgrade an add-on, so an auto-resolved version equal to or higher
+///   than the current one is left untouched.
+///
+/// Returns `Some(target)` to plan a change, or `None` to skip.
+fn resolve_rollback_target(
+    current_version: &str,
+    specified: Option<&String>,
+    auto_resolved: Option<&str>,
+) -> Option<String> {
+    if let Some(pinned) = specified {
+        return (pinned != current_version).then(|| pinned.clone());
+    }
+
+    let resolved = auto_resolved?;
+    (compare_addon_versions(resolved, current_version) == Ordering::Less)
+        .then(|| resolved.to_string())
+}
+
+/// Plan add-on rollbacks (downgrades) for a cluster version rollback.
+///
+/// For each installed add-on, an explicitly declared version in
+/// `specified_versions` wins; otherwise the add-on is auto-rolled-back to the
+/// default version compatible with `target_k8s_version`, but only when that is
+/// strictly lower than the installed version (see `resolve_rollback_target`).
+/// Add-ons already at their resolved target, or whose only compatible version
+/// is not a downgrade, are left untouched.
+pub async fn plan_addon_rollbacks(
+    client: &Client,
+    cluster_name: &str,
+    target_k8s_version: &str,
+    specified_versions: &HashMap<String, String>,
+) -> Result<AddonPlanResult> {
+    let current_addons = list_addons(client, cluster_name).await?;
+    let addon_count = current_addons.len();
+    let mut result = AddonPlanResult::new();
+
+    for addon in current_addons {
+        let specified = specified_versions.get(&addon.name);
+
+        // Only resolve the compatible default when the add-on is not pinned,
+        // avoiding an unnecessary DescribeAddonVersions call.
+        let auto_resolved = if specified.is_some() {
+            None
+        } else {
+            get_latest_compatible_version(client, &addon.name, target_k8s_version).await?
+        };
+
+        match resolve_rollback_target(&addon.current_version, specified, auto_resolved.as_deref()) {
+            Some(target_version) => result.add_upgrade((addon, target_version)),
+            None => result.add_skipped(),
+        }
+    }
+
+    info!(
+        "Found {} add-ons ({} to roll back, {} unchanged)",
+        addon_count,
+        result.upgrade_count(),
+        result.skipped_count()
+    );
+    Ok(result)
+}
+
+/// Poll addon status (non-blocking). Returns the current status string.
+pub async fn poll_addon_status(
+    client: &Client,
+    cluster_name: &str,
+    addon_name: &str,
+) -> Result<String> {
+    let response = client
+        .describe_addon()
+        .cluster_name(cluster_name)
+        .addon_name(addon_name)
+        .send()
+        .await
+        .map_err(|e| KuoError::aws(module_path!(), e))?;
+
+    let status = response
+        .addon()
+        .and_then(|a| a.status())
+        .map_or_else(|| "Unknown".to_string(), |s| s.as_str().to_string());
+
+    Ok(status)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn test_pick_latest_compatible_prefers_default() {
+        let versions = vec![
+            AddonVersionInfo {
+                version: "v1.18.1-eksbuild.3".to_string(),
+                default_version: false,
+            },
+            AddonVersionInfo {
+                version: "v1.16.0-eksbuild.1".to_string(),
+                default_version: true,
+            },
+        ];
+        assert_eq!(
+            pick_latest_compatible(&versions),
+            Some("v1.16.0-eksbuild.1".to_string())
+        );
+    }
+
+    #[test]
+    fn test_pick_latest_compatible_falls_back_to_first() {
+        let versions = vec![
+            AddonVersionInfo {
+                version: "v1.18.1-eksbuild.3".to_string(),
+                default_version: false,
+            },
+            AddonVersionInfo {
+                version: "v1.16.0-eksbuild.1".to_string(),
+                default_version: false,
+            },
+        ];
+        assert_eq!(
+            pick_latest_compatible(&versions),
+            Some("v1.18.1-eksbuild.3".to_string())
+        );
+    }
+
+    #[test]
+    fn test_pick_latest_compatible_empty() {
+        assert_eq!(pick_latest_compatible(&[]), None);
+    }
+
+    #[test]
+    fn test_rollback_target_pinned_wins_even_if_upgrade() {
+        // Explicit pin is honored as-is, even when higher than current.
+        let pinned = "v1.18.1-eksbuild.3".to_string();
+        assert_eq!(
+            resolve_rollback_target("v1.16.0-eksbuild.1", Some(&pinned), None),
+            Some("v1.18.1-eksbuild.3".to_string())
+        );
+    }
+
+    #[test]
+    fn test_rollback_target_pinned_equal_current_skips() {
+        let pinned = "v1.16.0-eksbuild.1".to_string();
+        assert_eq!(
+            resolve_rollback_target("v1.16.0-eksbuild.1", Some(&pinned), None),
+            None
+        );
+    }
+
+    #[test]
+    fn test_rollback_target_auto_downgrade_applied() {
+        // Undeclared add-on: resolved default is lower than current -> downgrade.
+        assert_eq!(
+            resolve_rollback_target("v1.18.1-eksbuild.3", None, Some("v1.16.0-eksbuild.1")),
+            Some("v1.16.0-eksbuild.1".to_string())
+        );
+    }
+
+    #[test]
+    fn test_rollback_target_auto_not_downgrade_skipped() {
+        // Resolved default is equal or higher -> never upgrade during rollback.
+        assert_eq!(
+            resolve_rollback_target("v1.16.0-eksbuild.1", None, Some("v1.16.0-eksbuild.1")),
+            None
+        );
+        assert_eq!(
+            resolve_rollback_target("v1.16.0-eksbuild.1", None, Some("v1.18.1-eksbuild.3")),
+            None
+        );
+    }
+
+    #[test]
+    fn test_rollback_target_auto_none_skipped() {
+        // No compatible version resolved -> leave untouched.
+        assert_eq!(
+            resolve_rollback_target("v1.16.0-eksbuild.1", None, None),
+            None
+        );
+    }
 
     #[test]
     fn test_addon_version_info_non_default() {
@@ -313,7 +501,7 @@ mod tests {
 
     #[test]
     fn test_addon_version_info_sorting() {
-        let mut versions = vec![
+        let mut versions = [
             AddonVersionInfo {
                 version: "v1.16.0-eksbuild.1".to_string(),
                 default_version: false,
@@ -429,26 +617,4 @@ mod tests {
             Ordering::Less
         );
     }
-}
-
-/// Poll addon status (non-blocking). Returns the current status string.
-pub async fn poll_addon_status(
-    client: &Client,
-    cluster_name: &str,
-    addon_name: &str,
-) -> Result<String> {
-    let response = client
-        .describe_addon()
-        .cluster_name(cluster_name)
-        .addon_name(addon_name)
-        .send()
-        .await
-        .map_err(|e| KuoError::aws(module_path!(), e))?;
-
-    let status = response
-        .addon()
-        .and_then(|a| a.status())
-        .map_or_else(|| "Unknown".to_string(), |s| s.as_str().to_string());
-
-    Ok(status)
 }

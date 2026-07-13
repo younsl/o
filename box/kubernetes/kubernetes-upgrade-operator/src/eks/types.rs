@@ -75,7 +75,7 @@ mod tests {
         let mut result: PlanResult<String> = PlanResult::new();
 
         for i in 0..5 {
-            result.add_upgrade(format!("r{}", i));
+            result.add_upgrade(format!("r{i}"));
         }
 
         assert_eq!(result.upgrade_count(), 5);

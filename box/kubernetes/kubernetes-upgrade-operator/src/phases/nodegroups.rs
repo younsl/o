@@ -8,8 +8,9 @@ use std::time::Duration;
 use tracing::{info, warn};
 
 use crate::aws::AwsClients;
-use crate::crd::{ComponentStatus, EKSUpgradeSpec, EKSUpgradeStatus, UpgradePhase};
+use crate::crd::{ComponentStatus, EKSUpgradeSpec, EKSUpgradeStatus};
 use crate::eks::nodegroup;
+use crate::phases::transition;
 use crate::status;
 
 /// Requeue interval for polling in-progress nodegroup upgrades.
@@ -86,10 +87,11 @@ pub async fn execute(
     let mut new_status = current_status.clone();
 
     let Some(idx) = find_active_nodegroup(&new_status) else {
-        // All nodegroups done → complete
-        info!("All nodegroup upgrades completed for {}", spec.cluster_name);
-        status::set_phase(&mut new_status, UpgradePhase::Completed);
-        status::set_condition(&mut new_status, "Ready", "True", "UpgradeCompleted", None);
+        // All nodegroups done → advance (mode-aware: completes forward,
+        // continues to addons/control plane in rollback)
+        info!("All nodegroup updates completed for {}", spec.cluster_name);
+        let next = transition::after_nodegroups(&new_status, &spec.upgrade_mode);
+        transition::transition_to(&mut new_status, next);
         return Ok((new_status, None));
     };
 
@@ -171,7 +173,7 @@ pub async fn execute(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::crd::NodegroupStatus;
+    use crate::crd::{NodegroupStatus, UpgradePhase};
 
     fn make_ng(name: &str, status: ComponentStatus) -> NodegroupStatus {
         NodegroupStatus {
@@ -287,6 +289,7 @@ mod tests {
             cluster_name: "test-cluster".to_string(),
             target_version: "1.33".to_string(),
             region: "us-east-1".to_string(),
+            upgrade_mode: crate::crd::UpgradeMode::Forward,
             assume_role_arn: None,
             addon_versions: None,
             skip_pdb_check: false,

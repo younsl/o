@@ -43,13 +43,31 @@ impl InsightsSummary {
     }
 }
 
-/// List insights for a cluster.
-pub async fn list_insights(client: &Client, cluster_name: &str) -> Result<InsightsSummary> {
-    info!("Fetching cluster insights for: {}", cluster_name);
+/// List insights for a cluster filtered by category.
+///
+/// `category` is the EKS insight category string, e.g. `UPGRADE_READINESS`
+/// (forward upgrades) or `ROLLBACK_READINESS` (version rollbacks). Passing it
+/// as a string keeps forward compatibility: the aws-sdk-eks `Category` enum may
+/// not yet name `ROLLBACK_READINESS`, but `Category::from` preserves the exact
+/// value on the wire.
+pub async fn list_insights(
+    client: &Client,
+    cluster_name: &str,
+    category: &str,
+) -> Result<InsightsSummary> {
+    info!(
+        "Fetching {} cluster insights for: {}",
+        category, cluster_name
+    );
+
+    let filter = aws_sdk_eks::types::InsightsFilter::builder()
+        .categories(aws_sdk_eks::types::Category::from(category))
+        .build();
 
     let response = client
         .list_insights()
         .cluster_name(cluster_name)
+        .filter(filter)
         .send()
         .await
         .map_err(|e| KuoError::aws(module_path!(), e))?;
@@ -98,6 +116,52 @@ pub async fn list_insights(client: &Client, cluster_name: &str) -> Result<Insigh
     Ok(summary)
 }
 
+/// Resolve an insight resource identifier from its ARN or Kubernetes URI.
+///
+/// Prefers the ARN (AWS resources such as add-ons); ARNs of the form
+/// `arn:aws:eks:region:account:addon/cluster/addon-name/id` yield the add-on
+/// name. Falls back to the Kubernetes resource URI for cluster-internal
+/// resources. Returns `None` when neither yields an identifier.
+fn parse_insight_resource(arn: Option<&str>, uri: Option<&str>) -> Option<InsightResource> {
+    // 1. Check ARN first (for AWS resources like add-ons)
+    if let Some(arn) = arn {
+        // ARN format: arn:aws:eks:region:account:addon/cluster-name/addon-name/id
+        // Split by '/' gives: [arn:aws:eks:...:addon, cluster-name, addon-name, id]
+        let parts: Vec<&str> = arn.split('/').collect();
+        if parts.len() >= 3 {
+            // parts[2] is the addon name (e.g., "vpc-cni", "coredns", "kube-proxy")
+            return Some(InsightResource {
+                resource_type: "addon".to_string(),
+                resource_id: parts[2].to_string(),
+            });
+        }
+        return Some(InsightResource {
+            resource_type: "resource".to_string(),
+            resource_id: arn.to_string(),
+        });
+    }
+
+    // 2. Check kubernetes_resource_uri (for K8s resources)
+    if let Some(uri) = uri
+        && !uri.is_empty()
+    {
+        let parts: Vec<&str> = uri.split('/').collect();
+        let (resource_type, resource_id) = if parts.len() >= 4 {
+            (parts[2].to_string(), format!("{}/{}", parts[1], parts[3]))
+        } else if parts.len() >= 2 {
+            (parts[0].to_string(), parts[1].to_string())
+        } else {
+            ("resource".to_string(), uri.to_string())
+        };
+        return Some(InsightResource {
+            resource_type,
+            resource_id,
+        });
+    }
+
+    None
+}
+
 /// Describe a specific insight.
 pub async fn describe_insight(
     client: &Client,
@@ -118,46 +182,7 @@ pub async fn describe_insight(
         let resources: Vec<InsightResource> = insight
             .resources()
             .iter()
-            .filter_map(|r| {
-                // Try to get resource identifier from various fields
-                // 1. Check ARN first (for AWS resources like add-ons)
-                if let Some(arn) = r.arn() {
-                    // ARN format: arn:aws:eks:region:account:addon/cluster-name/addon-name/id
-                    // Split by '/' gives: [arn:aws:eks:...:addon, cluster-name, addon-name, id]
-                    let parts: Vec<&str> = arn.split('/').collect();
-                    if parts.len() >= 3 {
-                        // parts[2] is the addon name (e.g., "vpc-cni", "coredns", "kube-proxy")
-                        return Some(InsightResource {
-                            resource_type: "addon".to_string(),
-                            resource_id: parts[2].to_string(),
-                        });
-                    }
-                    return Some(InsightResource {
-                        resource_type: "resource".to_string(),
-                        resource_id: arn.to_string(),
-                    });
-                }
-
-                // 2. Check kubernetes_resource_uri (for K8s resources)
-                if let Some(uri) = r.kubernetes_resource_uri()
-                    && !uri.is_empty()
-                {
-                    let parts: Vec<&str> = uri.split('/').collect();
-                    let (resource_type, resource_id) = if parts.len() >= 4 {
-                        (parts[2].to_string(), format!("{}/{}", parts[1], parts[3]))
-                    } else if parts.len() >= 2 {
-                        (parts[0].to_string(), parts[1].to_string())
-                    } else {
-                        ("resource".to_string(), uri.to_string())
-                    };
-                    return Some(InsightResource {
-                        resource_type,
-                        resource_id,
-                    });
-                }
-
-                None
-            })
+            .filter_map(|r| parse_insight_resource(r.arn(), r.kubernetes_resource_uri()))
             .collect();
 
         let finding = InsightFinding {
@@ -183,21 +208,26 @@ pub async fn describe_insight(
     Ok(None)
 }
 
-/// Check upgrade readiness based on insights.
-pub async fn check_upgrade_readiness(
+/// Check readiness based on insights for the given category.
+///
+/// Use `UPGRADE_READINESS` for forward upgrades and `ROLLBACK_READINESS` for
+/// version rollbacks. Returns `(is_ready, summary)` where `is_ready` is false
+/// when any critical (ERROR) insight exists.
+pub async fn check_insights_readiness(
     client: &Client,
     cluster_name: &str,
+    category: &str,
 ) -> Result<(bool, InsightsSummary)> {
-    let summary = list_insights(client, cluster_name).await?;
+    let summary = list_insights(client, cluster_name, category).await?;
 
     let is_ready = !summary.has_critical_blockers();
 
     if is_ready {
-        info!("Cluster {} is ready for upgrade", cluster_name);
+        info!("Cluster {} passed {} insights", cluster_name, category);
     } else {
         info!(
-            "Cluster {} has {} critical issues that may block upgrade",
-            cluster_name, summary.critical_count
+            "Cluster {} has {} critical {} issues",
+            cluster_name, summary.critical_count, category
         );
     }
 
@@ -207,6 +237,62 @@ pub async fn check_upgrade_readiness(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn test_parse_insight_resource_addon_arn() {
+        let r = parse_insight_resource(
+            Some("arn:aws:eks:ap-northeast-2:123456789012:addon/my-cluster/vpc-cni/abc"),
+            None,
+        )
+        .unwrap();
+        assert_eq!(r.resource_type, "addon");
+        assert_eq!(r.resource_id, "vpc-cni");
+    }
+
+    #[test]
+    fn test_parse_insight_resource_short_arn() {
+        // Fewer than 3 '/'-parts -> generic resource, full ARN as id.
+        let r = parse_insight_resource(Some("arn:aws:eks:region:acct:cluster"), None).unwrap();
+        assert_eq!(r.resource_type, "resource");
+        assert_eq!(r.resource_id, "arn:aws:eks:region:acct:cluster");
+    }
+
+    #[test]
+    fn test_parse_insight_resource_arn_wins_over_uri() {
+        let r = parse_insight_resource(
+            Some("arn:aws:eks:r:a:addon/c/coredns/id"),
+            Some("apps/v1/deployments/x"),
+        )
+        .unwrap();
+        assert_eq!(r.resource_id, "coredns");
+    }
+
+    #[test]
+    fn test_parse_insight_resource_uri_four_parts() {
+        let r = parse_insight_resource(None, Some("apps/namespace/Deployment/name")).unwrap();
+        assert_eq!(r.resource_type, "Deployment");
+        assert_eq!(r.resource_id, "namespace/name");
+    }
+
+    #[test]
+    fn test_parse_insight_resource_uri_two_parts() {
+        let r = parse_insight_resource(None, Some("Pod/my-pod")).unwrap();
+        assert_eq!(r.resource_type, "Pod");
+        assert_eq!(r.resource_id, "my-pod");
+    }
+
+    #[test]
+    fn test_parse_insight_resource_uri_one_part() {
+        let r = parse_insight_resource(None, Some("singletoken")).unwrap();
+        assert_eq!(r.resource_type, "resource");
+        assert_eq!(r.resource_id, "singletoken");
+    }
+
+    #[test]
+    fn test_parse_insight_resource_empty_uri_and_none() {
+        assert!(parse_insight_resource(None, Some("")).is_none());
+        assert!(parse_insight_resource(None, None).is_none());
+    }
 
     fn create_test_summary(critical: usize, warning: usize, info: usize) -> InsightsSummary {
         InsightsSummary {

@@ -56,6 +56,50 @@ pub fn calculate_upgrade_path(current: &str, target: &str) -> Result<Vec<String>
     Ok(path)
 }
 
+/// Calculate the rollback path from current to target version.
+///
+/// AWS EKS only permits rolling back a single minor version (N to N-1), and
+/// only to a version the cluster was previously in-place upgraded from within a
+/// 7-day window. Multi-minor rollbacks are therefore rejected here (matching
+/// the EKS API), so the target must be exactly one minor below the current
+/// version.
+///
+/// Returns empty Vec if target equals current (nothing to roll back).
+/// Returns error for cross-major changes, upgrades, or multi-minor rollbacks.
+pub fn calculate_rollback_path(current: &str, target: &str) -> Result<Vec<String>> {
+    let (curr_major, curr_minor) = parse_k8s_version(current)?;
+    let (target_major, target_minor) = parse_k8s_version(target)?;
+
+    if curr_major != target_major {
+        return Err(KuoError::UpgradeNotPossible(
+            "Cross-major version rollbacks are not supported".to_string(),
+        )
+        .into());
+    }
+
+    // Same version: nothing to roll back
+    if target_minor == curr_minor {
+        return Ok(Vec::new());
+    }
+
+    if target_minor > curr_minor {
+        return Err(KuoError::UpgradeNotPossible(format!(
+            "Target version {target} is higher than current version {current} (use Forward mode to upgrade)"
+        ))
+        .into());
+    }
+
+    // EKS supports rolling back a single minor version only (N to N-1).
+    if target_minor + 1 != curr_minor {
+        return Err(KuoError::UpgradeNotPossible(format!(
+            "Rollback supports only a single minor version (N-1): cannot roll back from {current} to {target}. Roll back one minor at a time."
+        ))
+        .into());
+    }
+
+    Ok(vec![target.to_string()])
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -122,5 +166,34 @@ mod tests {
     fn test_calculate_upgrade_path_many_steps() {
         let path = calculate_upgrade_path("1.28", "1.34").unwrap();
         assert_eq!(path, vec!["1.29", "1.30", "1.31", "1.32", "1.33", "1.34"]);
+    }
+
+    #[test]
+    fn test_calculate_rollback_path_single_minor() {
+        let path = calculate_rollback_path("1.33", "1.32").unwrap();
+        assert_eq!(path, vec!["1.32"]);
+    }
+
+    #[test]
+    fn test_calculate_rollback_path_multi_minor_rejected() {
+        // EKS forbids multi-minor rollback; must go one minor at a time.
+        assert!(calculate_rollback_path("1.36", "1.34").is_err());
+        assert!(calculate_rollback_path("1.34", "1.30").is_err());
+    }
+
+    #[test]
+    fn test_calculate_rollback_path_same_version() {
+        let path = calculate_rollback_path("1.32", "1.32").unwrap();
+        assert!(path.is_empty());
+    }
+
+    #[test]
+    fn test_calculate_rollback_path_upgrade_rejected() {
+        assert!(calculate_rollback_path("1.32", "1.33").is_err());
+    }
+
+    #[test]
+    fn test_calculate_rollback_path_cross_major_rejected() {
+        assert!(calculate_rollback_path("2.0", "1.33").is_err());
     }
 }

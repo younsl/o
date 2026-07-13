@@ -139,6 +139,31 @@ pub async fn plan_nodegroup_upgrades(
     Ok(result)
 }
 
+/// Poll nodegroup update status (non-blocking).
+/// Returns the update status string (e.g., "`InProgress`", "Successful", "Failed").
+pub async fn poll_nodegroup_update(
+    client: &Client,
+    cluster_name: &str,
+    nodegroup_name: &str,
+    update_id: &str,
+) -> Result<String> {
+    let response = client
+        .describe_update()
+        .name(cluster_name)
+        .nodegroup_name(nodegroup_name)
+        .update_id(update_id)
+        .send()
+        .await
+        .map_err(|e| KuoError::aws(module_path!(), e))?;
+
+    let status = response
+        .update()
+        .and_then(|u| u.status())
+        .map_or_else(|| "Unknown".to_string(), |s| s.as_str().to_string());
+
+    Ok(status)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -194,32 +219,7 @@ mod tests {
             version: Some("1.32".to_string()),
         };
         let cloned = ng.clone();
-        assert_eq!(cloned.name, "ng-app");
-        assert_eq!(cloned.version.as_deref(), Some("1.32"));
+        assert_eq!(cloned.name, ng.name);
+        assert_eq!(cloned.version, ng.version);
     }
-}
-
-/// Poll nodegroup update status (non-blocking).
-/// Returns the update status string (e.g., "`InProgress`", "Successful", "Failed").
-pub async fn poll_nodegroup_update(
-    client: &Client,
-    cluster_name: &str,
-    nodegroup_name: &str,
-    update_id: &str,
-) -> Result<String> {
-    let response = client
-        .describe_update()
-        .name(cluster_name)
-        .nodegroup_name(nodegroup_name)
-        .update_id(update_id)
-        .send()
-        .await
-        .map_err(|e| KuoError::aws(module_path!(), e))?;
-
-    let status = response
-        .update()
-        .and_then(|u| u.status())
-        .map_or_else(|| "Unknown".to_string(), |s| s.as_str().to_string());
-
-    Ok(status)
 }

@@ -9,8 +9,9 @@ use std::time::Duration;
 use tracing::{info, warn};
 
 use crate::aws::AwsClients;
-use crate::crd::{EKSUpgradeSpec, EKSUpgradeStatus, UpgradePhase};
+use crate::crd::{EKSUpgradeSpec, EKSUpgradeStatus, UpgradeMode};
 use crate::eks::client::EksClient;
+use crate::phases::transition;
 use crate::status;
 
 /// Requeue interval for polling in-progress control plane upgrades.
@@ -25,6 +26,7 @@ fn process_update_result(
     step: u32,
     total: u32,
     target_version: &str,
+    mode: &UpgradeMode,
 ) -> Result<Option<Duration>> {
     match status_str {
         "Successful" => {
@@ -41,7 +43,7 @@ fn process_update_result(
             new_status.current_version = Some(target_version.to_string());
 
             if next_step > total {
-                advance_to_next_phase(new_status);
+                advance_to_next_phase(new_status, mode);
                 Ok(None)
             } else {
                 Ok(Some(Duration::from_secs(0)))
@@ -116,7 +118,7 @@ pub async fn execute(
     // All steps done → advance to next phase
     if step > total {
         info!("Control plane upgrade completed for {}", spec.cluster_name);
-        advance_to_next_phase(&mut new_status);
+        advance_to_next_phase(&mut new_status, &spec.upgrade_mode);
         return Ok((new_status, None));
     }
 
@@ -166,8 +168,14 @@ pub async fn execute(
             .check_update_status(&spec.cluster_name, update_id)
             .await?;
 
-        let requeue =
-            process_update_result(&mut new_status, &status_str, step, total, target_version)?;
+        let requeue = process_update_result(
+            &mut new_status,
+            &status_str,
+            step,
+            total,
+            target_version,
+            &spec.upgrade_mode,
+        )?;
         return Ok((new_status, requeue));
     }
 
@@ -195,21 +203,15 @@ pub async fn execute(
 }
 
 /// Advance from control plane phase to the next applicable phase.
-fn advance_to_next_phase(new_status: &mut EKSUpgradeStatus) {
+fn advance_to_next_phase(new_status: &mut EKSUpgradeStatus, mode: &UpgradeMode) {
     if let Some(cp) = new_status.phases.control_plane.as_mut() {
         cp.update_id = None;
         cp.target = None;
         cp.started_at = None;
         cp.completed_at = Some(Utc::now());
     }
-    if !new_status.phases.addons.is_empty() {
-        status::set_phase(new_status, UpgradePhase::UpgradingAddons);
-    } else if !new_status.phases.nodegroups.is_empty() {
-        status::set_phase(new_status, UpgradePhase::UpgradingNodeGroups);
-    } else {
-        status::set_phase(new_status, UpgradePhase::Completed);
-        status::set_condition(new_status, "Ready", "True", "UpgradeCompleted", None);
-    }
+    let next = transition::after_control_plane(new_status, mode);
+    transition::transition_to(new_status, next);
 }
 
 #[cfg(test)]
@@ -217,6 +219,7 @@ mod tests {
     use super::*;
     use crate::crd::{
         AddonStatus, ComponentStatus, ControlPlaneStatus, EKSUpgradeStatus, NodegroupStatus,
+        UpgradePhase,
     };
 
     fn status_with_cp() -> EKSUpgradeStatus {
@@ -241,7 +244,7 @@ mod tests {
             started_at: None,
             completed_at: None,
         });
-        advance_to_next_phase(&mut s);
+        advance_to_next_phase(&mut s, &UpgradeMode::Forward);
         assert_eq!(s.phase, Some(UpgradePhase::UpgradingAddons));
         assert!(
             s.phases
@@ -265,14 +268,14 @@ mod tests {
             started_at: None,
             completed_at: None,
         });
-        advance_to_next_phase(&mut s);
+        advance_to_next_phase(&mut s, &UpgradeMode::Forward);
         assert_eq!(s.phase, Some(UpgradePhase::UpgradingNodeGroups));
     }
 
     #[test]
     fn test_advance_no_remaining() {
         let mut s = status_with_cp();
-        advance_to_next_phase(&mut s);
+        advance_to_next_phase(&mut s, &UpgradeMode::Forward);
         assert_eq!(s.phase, Some(UpgradePhase::Completed));
         let ready = s.conditions.iter().find(|c| c.r#type == "Ready").unwrap();
         assert_eq!(ready.status, "True");
@@ -283,7 +286,7 @@ mod tests {
     fn test_advance_clears_cp_fields() {
         let mut s = status_with_cp();
         assert!(s.phases.control_plane.as_ref().unwrap().update_id.is_some());
-        advance_to_next_phase(&mut s);
+        advance_to_next_phase(&mut s, &UpgradeMode::Forward);
         let cp = s.phases.control_plane.as_ref().unwrap();
         assert!(cp.update_id.is_none());
         assert!(cp.target.is_none());
@@ -314,7 +317,9 @@ mod tests {
     #[test]
     fn test_process_update_result_successful_more_steps() {
         let mut s = status_with_cp_step(1, 3);
-        let requeue = process_update_result(&mut s, "Successful", 1, 3, "1.32").unwrap();
+        let requeue =
+            process_update_result(&mut s, "Successful", 1, 3, "1.32", &UpgradeMode::Forward)
+                .unwrap();
         assert_eq!(requeue, Some(Duration::from_secs(0)));
         let cp = s.phases.control_plane.as_ref().unwrap();
         assert_eq!(cp.current_step, 2);
@@ -327,7 +332,9 @@ mod tests {
     #[test]
     fn test_process_update_result_successful_last_step() {
         let mut s = status_with_cp_step(2, 2);
-        let requeue = process_update_result(&mut s, "Successful", 2, 2, "1.33").unwrap();
+        let requeue =
+            process_update_result(&mut s, "Successful", 2, 2, "1.33", &UpgradeMode::Forward)
+                .unwrap();
         assert!(requeue.is_none());
         assert_eq!(s.current_version.as_deref(), Some("1.33"));
         // advance_to_next_phase was called (Completed since no addons/nodegroups)
@@ -337,7 +344,8 @@ mod tests {
     #[test]
     fn test_process_update_result_failed() {
         let mut s = status_with_cp_step(1, 2);
-        let requeue = process_update_result(&mut s, "Failed", 1, 2, "1.33").unwrap();
+        let requeue =
+            process_update_result(&mut s, "Failed", 1, 2, "1.33", &UpgradeMode::Forward).unwrap();
         assert!(requeue.is_none());
         assert_eq!(s.phase, Some(UpgradePhase::Failed));
         assert!(s.message.as_ref().unwrap().contains("1.33"));
@@ -346,7 +354,9 @@ mod tests {
     #[test]
     fn test_process_update_result_cancelled() {
         let mut s = status_with_cp_step(1, 2);
-        let requeue = process_update_result(&mut s, "Cancelled", 1, 2, "1.33").unwrap();
+        let requeue =
+            process_update_result(&mut s, "Cancelled", 1, 2, "1.33", &UpgradeMode::Forward)
+                .unwrap();
         assert!(requeue.is_none());
         assert_eq!(s.phase, Some(UpgradePhase::Failed));
         let cp = s.phases.control_plane.as_ref().unwrap();
@@ -356,7 +366,9 @@ mod tests {
     #[test]
     fn test_process_update_result_in_progress() {
         let mut s = status_with_cp_step(1, 2);
-        let requeue = process_update_result(&mut s, "InProgress", 1, 2, "1.33").unwrap();
+        let requeue =
+            process_update_result(&mut s, "InProgress", 1, 2, "1.33", &UpgradeMode::Forward)
+                .unwrap();
         assert_eq!(requeue, Some(POLL_INTERVAL));
         // Status unchanged
         assert!(s.phase.is_none());
@@ -371,6 +383,7 @@ mod tests {
             cluster_name: "test-cluster".to_string(),
             target_version: "1.33".to_string(),
             region: "us-east-1".to_string(),
+            upgrade_mode: crate::crd::UpgradeMode::Forward,
             assume_role_arn: None,
             addon_versions: None,
             skip_pdb_check: false,
@@ -441,8 +454,10 @@ mod tests {
         let aws = crate::aws::AwsClients::test_instance("us-east-1").await;
         let spec = make_spec();
         let two_hours_ago = Utc::now() - chrono::Duration::hours(2);
-        let mut status = EKSUpgradeStatus::default();
-        status.current_version = Some("1.31".to_string());
+        let mut status = EKSUpgradeStatus {
+            current_version: Some("1.31".to_string()),
+            ..Default::default()
+        };
         status.phases.planning = Some(crate::crd::PlanningStatus {
             upgrade_path: vec!["1.32".to_string(), "1.33".to_string()],
         });

@@ -251,7 +251,7 @@ mod tests {
         assert_eq!(cond.reason, "Complete");
         assert_eq!(cond.message.as_deref(), Some("done"));
         // last_transition_time should be recent (within last second)
-        let elapsed = Utc::now().signed_duration_since(&cond.last_transition_time);
+        let elapsed = Utc::now().signed_duration_since(cond.last_transition_time);
         assert!(elapsed.num_seconds() < 2);
     }
 }
