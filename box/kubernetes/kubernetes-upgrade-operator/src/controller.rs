@@ -228,6 +228,9 @@ pub async fn reconcile(obj: Arc<EKSUpgrade>, ctx: Arc<Context>) -> Result<Action
         Ok((mut new_status, requeue)) => {
             new_status.observed_generation = generation;
 
+            // Refresh the completed/total progress shown in the PROGRESS column.
+            new_status.progress = status::compute_progress(&new_status);
+
             // On reaching Completed, record the transition so a subsequent
             // rollback can be checked against it. This survives the spec-change
             // reset (see `reset_status_patch`) and is the only signal for

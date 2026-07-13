@@ -213,6 +213,12 @@ pub struct EKSUpgradeStatus {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub current_version: Option<String>,
 
+    /// Overall progress as `completed/total` component units (control plane
+    /// minor steps + add-ons + node groups), analogous to a Pod's Ready column.
+    /// `None` until a plan exists.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub progress: Option<String>,
+
     /// Per-phase status details.
     #[serde(default)]
     pub phases: PhaseStatuses,

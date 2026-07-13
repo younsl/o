@@ -9,7 +9,7 @@ use kube::api::{Patch, PatchParams};
 use kube::runtime::events::{Event, EventType, Recorder, Reporter};
 use tracing::debug;
 
-use crate::crd::{EKSUpgrade, EKSUpgradeStatus, UpgradeCondition, UpgradePhase};
+use crate::crd::{ComponentStatus, EKSUpgrade, EKSUpgradeStatus, UpgradeCondition, UpgradePhase};
 
 /// Patch the status subresource of an `EKSUpgrade`.
 pub async fn patch_status(
@@ -32,6 +32,46 @@ pub fn set_phase(status: &mut EKSUpgradeStatus, phase: UpgradePhase) {
         status.completed_at = Some(Utc::now());
     }
     status.phase = Some(phase);
+}
+
+/// Compute overall upgrade progress as `completed/total` component units.
+///
+/// Units = control plane minor steps + planned add-ons + planned node groups,
+/// mirroring a Pod's `Ready` column. Add-ons and node groups count as done once
+/// `Completed` or `Skipped`; control plane counts completed minor steps
+/// (`current_step - 1` while running, all steps once `completedAt` is set).
+/// Returns `None` when no plan exists yet, and forces `total/total` once the
+/// upgrade has reached `Completed`.
+pub fn compute_progress(status: &EKSUpgradeStatus) -> Option<String> {
+    let cp = status.phases.control_plane.as_ref();
+    let cp_total = cp.map_or(0, |c| c.total_steps);
+    let addons = &status.phases.addons;
+    let nodegroups = &status.phases.nodegroups;
+
+    let total = cp_total as usize + addons.len() + nodegroups.len();
+    if total == 0 {
+        return None;
+    }
+
+    if status.phase == Some(UpgradePhase::Completed) {
+        return Some(format!("{total}/{total}"));
+    }
+
+    let cp_done = cp.map_or(0, |c| {
+        if c.completed_at.is_some() {
+            c.total_steps
+        } else {
+            c.current_step.saturating_sub(1)
+        }
+    }) as usize;
+
+    let is_done =
+        |s: &ComponentStatus| matches!(s, ComponentStatus::Completed | ComponentStatus::Skipped);
+    let addons_done = addons.iter().filter(|a| is_done(&a.status)).count();
+    let ng_done = nodegroups.iter().filter(|n| is_done(&n.status)).count();
+
+    let done = cp_done + addons_done + ng_done;
+    Some(format!("{done}/{total}"))
 }
 
 /// Set the phase to Failed with a message.
@@ -128,6 +168,84 @@ impl EventRecorder {
 mod tests {
     use super::*;
     use crate::crd::EKSUpgradeStatus;
+
+    use crate::crd::{AddonStatus, ControlPlaneStatus, NodegroupStatus};
+
+    fn addon(status: ComponentStatus) -> AddonStatus {
+        AddonStatus {
+            name: "coredns".to_string(),
+            current_version: "v1.11.3".to_string(),
+            target_version: "v1.11.1".to_string(),
+            status,
+            started_at: None,
+            completed_at: None,
+        }
+    }
+
+    fn nodegroup(status: ComponentStatus) -> NodegroupStatus {
+        NodegroupStatus {
+            name: "ng-1".to_string(),
+            current_version: "1.33".to_string(),
+            target_version: "1.32".to_string(),
+            status,
+            update_id: None,
+            started_at: None,
+            completed_at: None,
+        }
+    }
+
+    #[test]
+    fn test_compute_progress_none_without_plan() {
+        assert_eq!(compute_progress(&EKSUpgradeStatus::default()), None);
+    }
+
+    #[test]
+    fn test_compute_progress_mixed() {
+        // 2 CP steps + 2 addons + 1 nodegroup = 5 units.
+        let mut s = EKSUpgradeStatus::default();
+        s.phases.control_plane = Some(ControlPlaneStatus {
+            current_step: 2, // step 1 done, step 2 in progress -> 1 done
+            total_steps: 2,
+            ..Default::default()
+        });
+        s.phases.addons = vec![
+            addon(ComponentStatus::Completed),
+            addon(ComponentStatus::Pending),
+        ];
+        s.phases.nodegroups = vec![nodegroup(ComponentStatus::Skipped)];
+        // cp_done 1 + addon 1 + ng 1 = 3 of 5
+        assert_eq!(compute_progress(&s), Some("3/5".to_string()));
+    }
+
+    #[test]
+    fn test_compute_progress_control_plane_completed() {
+        let mut s = EKSUpgradeStatus::default();
+        s.phases.control_plane = Some(ControlPlaneStatus {
+            current_step: 2,
+            total_steps: 2,
+            completed_at: Some(Utc::now()),
+            ..Default::default()
+        });
+        // completedAt set -> all 2 CP steps done, no other units
+        assert_eq!(compute_progress(&s), Some("2/2".to_string()));
+    }
+
+    #[test]
+    fn test_compute_progress_forces_full_on_completed() {
+        let s = EKSUpgradeStatus {
+            phase: Some(UpgradePhase::Completed),
+            ..Default::default()
+        };
+        let mut s = s;
+        s.phases.control_plane = Some(ControlPlaneStatus {
+            current_step: 1,
+            total_steps: 3,
+            ..Default::default()
+        });
+        s.phases.addons = vec![addon(ComponentStatus::Pending)];
+        // total = 3 + 1 = 4, forced to 4/4 at Completed
+        assert_eq!(compute_progress(&s), Some("4/4".to_string()));
+    }
 
     #[test]
     fn test_set_phase_completed() {

@@ -114,6 +114,9 @@ spec:
                 currentVersion:
                   type: string
                   description: Current Kubernetes version of the EKS cluster control plane as observed by the operator.
+                progress:
+                  type: string
+                  description: 'Overall progress as completed/total component units (control plane minor steps + add-ons + node groups), analogous to a Pod Ready column (e.g., "3/6").'
                 phases:
                   type: object
                   description: Per-phase status details grouped by upgrade phase.
@@ -351,6 +354,9 @@ spec:
         - name: PHASE
           type: string
           jsonPath: .status.phase
+        - name: PROGRESS
+          type: string
+          jsonPath: .status.progress
         - name: AUTH
           type: string
           jsonPath: .status.conditions[?(@.type=="AWSAuthenticated")].reason
