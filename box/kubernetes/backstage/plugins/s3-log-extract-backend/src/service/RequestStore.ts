@@ -184,6 +184,19 @@ export class RequestStore {
     return rows.map(row => this.rowToRequest(row));
   }
 
+  /**
+   * Oldest approved request, i.e. the head of the extraction queue.
+   * 'approved' means approved but not yet extracting; FIFO by approval time
+   * (updated_at is stamped when the status changes to 'approved').
+   */
+  async getOldestApproved(): Promise<LogExtractRequest | undefined> {
+    const row = await this.db(TABLE_NAME)
+      .where({ status: 'approved' })
+      .orderBy('updated_at', 'asc')
+      .first();
+    return row ? this.rowToRequest(row) : undefined;
+  }
+
   async listPendingExpired(now: Date = new Date()): Promise<LogExtractRequest[]> {
     const cutoff = new Date(now.getTime() - APPROVAL_TIMEOUT_MS).toISOString();
     const rows = await this.db(TABLE_NAME)
@@ -239,6 +252,22 @@ export class RequestStore {
     await this.db(TABLE_NAME).where({ id }).update(updateData);
 
     return this.getRequest(id);
+  }
+
+  /**
+   * Mark requests stuck in 'extracting' as failed. Extractions run in-memory
+   * (fire-and-forget), so they cannot survive a process restart: any row still
+   * 'extracting' at startup is an orphan from a crash (e.g. an OOM kill) and
+   * would otherwise show as running forever. Returns the number of rows fixed.
+   */
+  async failInterruptedExtractions(): Promise<number> {
+    const now = new Date().toISOString();
+    return this.db(TABLE_NAME).where({ status: 'extracting' }).update({
+      status: 'failed',
+      error_message: 'Extraction interrupted by service restart',
+      extraction_finished_at: now,
+      updated_at: now,
+    });
   }
 
   /** Update extraction progress counters without touching status/updated_at. */

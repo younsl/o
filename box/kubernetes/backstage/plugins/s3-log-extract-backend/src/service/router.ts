@@ -10,10 +10,7 @@ import { parseEntityRef } from '@backstage/catalog-model';
 import { Config } from '@backstage/config';
 import { RequestStore } from './RequestStore';
 import { S3LogService } from './S3LogService';
-import {
-  encryptArchive,
-  generateArchivePassword,
-} from './ArchiveEncryptor';
+import { ExtractionQueue } from './ExtractionQueue';
 import { CreateLogExtractInput, ReviewLogExtractInput } from './types';
 
 export interface RouterOptions {
@@ -21,11 +18,13 @@ export interface RouterOptions {
   config: Config;
   store: RequestStore;
   s3LogService: S3LogService;
+  extractionQueue: ExtractionQueue;
   httpAuth: HttpAuthService;
 }
 
 export async function createRouter(options: RouterOptions): Promise<Router> {
-  const { config, logger, store, s3LogService, httpAuth } = options;
+  const { config, logger, store, s3LogService, extractionQueue, httpAuth } =
+    options;
 
   const admins = config.getOptionalStringArray('permission.admins') ?? [];
   const isDevMode =
@@ -349,62 +348,13 @@ export async function createRouter(options: RouterOptions): Promise<Router> {
           reviewComment: input.comment,
         });
 
-        await store.updateStatus(id, 'extracting', {
-          progressCurrent: 0,
-          progressTotal: existing.apps.length,
-        });
-
         logger.info(
-          `Request approved [${id}] by ${reviewerRef}, starting extraction`,
+          `Request approved [${id}] by ${reviewerRef}, queued for extraction`,
         );
 
-        s3LogService
-          .extractLogs(
-            existing.source,
-            existing.env,
-            existing.date,
-            existing.apps,
-            existing.startTime,
-            existing.endTime,
-            {
-              onProgress: (current, total) => {
-                store.updateProgress(id, current, total).catch(err => {
-                  logger.warn(
-                    `Failed to update progress [${id}]: ${err}`,
-                  );
-                });
-              },
-            },
-          )
-          .then(async result => {
-            // Leak protection: re-wrap the tar.gz into an AES-256 encrypted
-            // zip and delete the plaintext archive, so from completion on
-            // Backstage only holds the password-protected file.
-            const password = generateArchivePassword();
-            const { zipPath, zipSize } = await encryptArchive(
-              result.archivePath,
-              password,
-            );
-            await store.updateStatus(id, 'completed', {
-              fileCount: result.fileCount,
-              archiveSize: zipSize,
-              archivePath: zipPath,
-              archivePassword: password,
-              firstTimestamp: result.firstTimestamp ?? undefined,
-              lastTimestamp: result.lastTimestamp ?? undefined,
-            });
-            logger.info(
-              `Extraction completed [${id}]: ${result.fileCount} files, ${zipSize} bytes (AES-256 encrypted zip)`,
-            );
-          })
-          .catch(async err => {
-            const errMsg =
-              err instanceof Error ? err.message : String(err);
-            await store.updateStatus(id, 'failed', {
-              errorMessage: errMsg,
-            });
-            logger.error(`Extraction failed [${id}]: ${errMsg}`);
-          });
+        // Approved requests run one at a time in approval order; this one
+        // starts immediately when nothing else is extracting.
+        extractionQueue.pump();
 
         const updated = await store.getRequest(id);
         res.json(updated);

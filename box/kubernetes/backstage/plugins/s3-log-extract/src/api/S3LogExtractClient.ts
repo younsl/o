@@ -145,7 +145,13 @@ export class S3LogExtractClient implements S3LogExtractApi {
     );
 
     if (!response.ok) {
-      throw await ResponseError.fromResponse(response as any);
+      // Surface the backend's error text (e.g. "Another extraction is already
+      // in progress") — ResponseError.message would only say "Request failed
+      // with 409 Conflict".
+      const body = await response.json().catch(() => ({}));
+      throw new Error(
+        (body as any).error ?? `Review failed: ${response.statusText}`,
+      );
     }
 
     return response.json();

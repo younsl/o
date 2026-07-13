@@ -383,6 +383,18 @@
   color: var(--bui-color-warning);
 }
 
+/* Review-dialog notice shown while another extraction is running */
+.sle-busy-banner {
+  display: flex;
+  align-items: center;
+  gap: var(--bui-space-2);
+  padding: var(--bui-space-2) var(--bui-space-3);
+  border-radius: var(--bui-radius-2);
+  background-color: var(--bui-bg-warning-2);
+  color: var(--bui-color-warning);
+  font-size: var(--bui-font-size-2);
+}
+
 .sle-status-success {
   background-color: var(--bui-bg-success-2);
   color: var(--bui-color-success);

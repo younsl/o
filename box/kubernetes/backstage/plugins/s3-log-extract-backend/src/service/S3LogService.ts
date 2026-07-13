@@ -203,6 +203,10 @@ export class S3LogService {
 
   /**
    * Extract logs from S3, filter by time range, and create a tar.gz archive.
+   *
+   * Callers must not run two extractions concurrently (each one downloads
+   * DOWNLOAD_CONCURRENCY objects in parallel; two runs can OOM the pod) —
+   * ExtractionQueue is the single entry point and serializes runs.
    */
   async extractLogs(
     source: LogSource,

@@ -19,6 +19,10 @@ const mockS3LogService = {
   countCandidateObjects: jest.fn(),
 };
 
+const mockExtractionQueue = {
+  pump: jest.fn(),
+};
+
 const mockHttpAuth = {
   credentials: jest.fn(),
   issueUserCookie: jest.fn(),
@@ -93,6 +97,7 @@ async function createTestApp(configOverrides: Record<string, unknown> = {}) {
     logger: mockLogger as any,
     store: mockStore as any,
     s3LogService: mockS3LogService as any,
+    extractionQueue: mockExtractionQueue as any,
     httpAuth: mockHttpAuth as any,
   });
 
@@ -479,17 +484,15 @@ describe('router', () => {
         reviewerRef: 'user:default/admin',
         reviewComment: 'Insufficient detail',
       });
+      expect(mockExtractionQueue.pump).not.toHaveBeenCalled();
     });
 
-    it('approves and triggers extraction', async () => {
+    it('approves and queues the request for extraction', async () => {
       setAuth('user:default/admin');
-      const pending = makeRequest();
-      mockStore.getRequest.mockResolvedValue(pending);
+      mockStore.getRequest.mockResolvedValue(makeRequest());
       mockStore.updateStatus.mockResolvedValue(
-        makeRequest({ status: 'extracting' }),
+        makeRequest({ status: 'approved' }),
       );
-      // extractLogs returns a never-resolving promise to avoid race conditions in test
-      mockS3LogService.extractLogs.mockReturnValue(new Promise(() => {}));
 
       const res = await request(app)
         .post('/requests/req-001/review')
@@ -500,19 +503,26 @@ describe('router', () => {
         reviewerRef: 'user:default/admin',
         reviewComment: 'Approved',
       });
-      expect(mockStore.updateStatus).toHaveBeenCalledWith('req-001', 'extracting', {
-        progressCurrent: 0,
-        progressTotal: 1,
-      });
-      expect(mockS3LogService.extractLogs).toHaveBeenCalledWith(
-        'k8s',
-        'prd',
-        '2026-03-05',
-        ['order-api'],
-        '09:00',
-        '10:00',
-        expect.objectContaining({ onProgress: expect.any(Function) }),
+      // The queue owns the 'extracting' transition and the extraction itself.
+      expect(mockStore.updateStatus).not.toHaveBeenCalledWith(
+        'req-001',
+        'extracting',
+        expect.anything(),
       );
+      expect(mockExtractionQueue.pump).toHaveBeenCalledTimes(1);
+    });
+
+    it('returns 500 and does not pump when recording the approval fails', async () => {
+      setAuth('user:default/admin');
+      mockStore.getRequest.mockResolvedValue(makeRequest());
+      mockStore.updateStatus.mockRejectedValue(new Error('db down'));
+
+      const res = await request(app)
+        .post('/requests/req-001/review')
+        .send({ action: 'approve', comment: 'ok' });
+
+      expect(res.status).toBe(500);
+      expect(mockExtractionQueue.pump).not.toHaveBeenCalled();
     });
   });
 

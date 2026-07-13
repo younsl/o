@@ -248,6 +248,64 @@ describe('RequestStore', () => {
     });
   });
 
+  describe('getOldestApproved', () => {
+    it('returns the earliest-approved request (FIFO by approval time)', async () => {
+      const first = await store.createRequest(baseInput, 'user:default/alice');
+      const second = await store.createRequest(baseInput, 'user:default/bob');
+
+      // Approve in reverse creation order to prove ordering is by approval time.
+      await store.updateStatus(second.id, 'approved');
+      await new Promise(r => setTimeout(r, 10));
+      await store.updateStatus(first.id, 'approved');
+
+      const next = await store.getOldestApproved();
+      expect(next!.id).toBe(second.id);
+    });
+
+    it('ignores requests in other statuses', async () => {
+      const pending = await store.createRequest(baseInput, 'user:default/alice');
+      const extracting = await store.createRequest(baseInput, 'user:default/bob');
+      await store.updateStatus(extracting.id, 'extracting');
+
+      expect(await store.getOldestApproved()).toBeUndefined();
+      expect((await store.getRequest(pending.id))!.status).toBe('pending');
+    });
+
+    it('returns undefined when the queue is empty', async () => {
+      expect(await store.getOldestApproved()).toBeUndefined();
+    });
+  });
+
+  describe('failInterruptedExtractions', () => {
+    it('marks extracting requests as failed', async () => {
+      const created = await store.createRequest(baseInput, 'user:default/alice');
+      await store.updateStatus(created.id, 'extracting');
+
+      const count = await store.failInterruptedExtractions();
+
+      expect(count).toBe(1);
+      const fetched = await store.getRequest(created.id);
+      expect(fetched!.status).toBe('failed');
+      expect(fetched!.errorMessage).toContain('interrupted by service restart');
+    });
+
+    it('leaves requests in other statuses untouched', async () => {
+      const pending = await store.createRequest(baseInput, 'user:default/alice');
+      const completed = await store.createRequest(baseInput, 'user:default/bob');
+      await store.updateStatus(completed.id, 'completed', {
+        fileCount: 1,
+        archiveSize: 100,
+        archivePath: '/tmp/logs.tar.gz',
+      });
+
+      const count = await store.failInterruptedExtractions();
+
+      expect(count).toBe(0);
+      expect((await store.getRequest(pending.id))!.status).toBe('pending');
+      expect((await store.getRequest(completed.id))!.status).toBe('completed');
+    });
+  });
+
   describe('rowToRequest edge cases', () => {
     it('handles corrupted apps JSON gracefully', async () => {
       const created = await store.createRequest(baseInput, 'user:default/alice');

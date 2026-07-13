@@ -4,6 +4,7 @@ import {
 } from '@backstage/backend-plugin-api';
 import { createRouter } from './service/router';
 import { S3LogService } from './service/S3LogService';
+import { ExtractionQueue } from './service/ExtractionQueue';
 import { RequestStore, APPROVAL_TIMEOUT_HOURS } from './service/RequestStore';
 
 export const s3LogExtractPlugin = createBackendPlugin({
@@ -49,11 +50,30 @@ export const s3LogExtractPlugin = createBackendPlugin({
         const knex = await database.getClient();
         const store = await RequestStore.create({ database: knex });
 
+        // Extractions do not survive restarts; without this, rows from a
+        // crashed run (e.g. OOM kill) would show as 'extracting' forever.
+        const interrupted = await store.failInterruptedExtractions();
+        if (interrupted > 0) {
+          logger.warn(
+            `Marked ${interrupted} extraction(s) as failed (interrupted by restart)`,
+          );
+        }
+
+        const extractionQueue = new ExtractionQueue({
+          store,
+          s3LogService,
+          logger,
+        });
+
+        // Resume requests that were approved (queued) before the restart.
+        extractionQueue.pump();
+
         const router = await createRouter({
           logger,
           config,
           store,
           s3LogService,
+          extractionQueue,
           httpAuth,
         });
 
@@ -89,6 +109,19 @@ export const s3LogExtractPlugin = createBackendPlugin({
         httpRouter.addAuthPolicy({
           path: '/admin-status',
           allow: 'unauthenticated',
+        });
+
+        // Safety net: pump() is triggered on every approval and at startup,
+        // but a drain aborted by a transient DB error would otherwise leave
+        // approved requests waiting until the next approval.
+        await scheduler.scheduleTask({
+          id: 's3-log-extract-queue-pump',
+          frequency: { minutes: 1 },
+          timeout: { seconds: 30 },
+          initialDelay: { seconds: 30 },
+          fn: async () => {
+            extractionQueue.pump();
+          },
         });
 
         await scheduler.scheduleTask({

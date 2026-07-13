@@ -157,6 +157,8 @@ const encryptionOptions = [{ value: 'aes256', label: encryptionLabel('aes256') }
 interface ReviewDialogProps {
   request: LogExtractRequest;
   s3Config: S3Config | undefined;
+  /** True while any request is extracting — new approvals queue behind it. */
+  extractionBusy: boolean;
   open: boolean;
   onClose: () => void;
   onReviewed: () => void;
@@ -165,6 +167,7 @@ interface ReviewDialogProps {
 const ReviewDialog = ({
   request,
   s3Config,
+  extractionBusy,
   open,
   onClose,
   onReviewed,
@@ -305,6 +308,17 @@ const ReviewDialog = ({
             )}
           </Text>
         </Box>
+
+        {extractionBusy && (
+          <Box mt="3">
+            <div className="sle-busy-banner">
+              <RiLoader4Line size={14} className="sle-spin" />
+              Another extraction is currently running. If approved, this
+              request is queued and starts automatically when the current one
+              finishes.
+            </div>
+          </Box>
+        )}
 
         <Box mt="3">
           <Text variant="body-small" weight="bold" style={{ display: 'block', marginBottom: 6 }}>
@@ -1219,13 +1233,18 @@ const RequestList = ({
   }, [refreshKey]);
 
   const hasExtracting = (requests ?? []).some(r => r.status === 'extracting');
+  // 'approved' means queued: waiting for the extraction worker to pick it up.
+  const hasQueued = (requests ?? []).some(r => r.status === 'approved');
 
   useEffect(() => {
-    // Poll faster while an extraction is in progress so the progress
-    // counter and elapsed time stay current.
-    const id = setInterval(() => retry(), hasExtracting ? 3_000 : 30_000);
+    // Poll faster while an extraction is running or queued so the progress
+    // counter, elapsed time, and queue transitions stay current.
+    const id = setInterval(
+      () => retry(),
+      hasExtracting || hasQueued ? 3_000 : 30_000,
+    );
     return () => clearInterval(id);
-  }, [retry, hasExtracting]);
+  }, [retry, hasExtracting, hasQueued]);
 
   const { value: adminStatus } = useAsyncRetry(async () => {
     return api.getAdminStatus();
@@ -1304,7 +1323,6 @@ const RequestList = ({
 
   const getStatusIcon = (status: string) => {
     switch (status) {
-      case 'approved':
       case 'completed':
         return <RiCheckLine size={14} />;
       case 'rejected':
@@ -1670,6 +1688,7 @@ const RequestList = ({
                     </div>
                     <span className={getStatusClassName(request.status)}>
                       {request.status}
+                      {request.status === 'approved' && ' (queued)'}
                       {request.status === 'extracting' &&
                         request.progressTotal != null &&
                         request.progressTotal > 0 &&
@@ -1725,6 +1744,7 @@ const RequestList = ({
         <ReviewDialog
           request={reviewTarget}
           s3Config={s3Config}
+          extractionBusy={hasExtracting}
           open
           onClose={() => setReviewTarget(null)}
           onReviewed={retry}
