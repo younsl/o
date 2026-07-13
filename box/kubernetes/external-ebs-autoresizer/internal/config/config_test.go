@@ -430,10 +430,11 @@ func TestLoadInvalidGrowModeFails(t *testing.T) {
 
 func TestParseGrowAmount(t *testing.T) {
 	valid := map[string]int32{
-		"1GiB":    1,
-		"1024MiB": 1,
-		"1025MiB": 2,
-		"100Gi":   100,
+		"1GiB":     1,
+		"1024MiB":  1,
+		"1025MiB":  2,
+		"100Gi":    100,
+		"65536GiB": 65536,
 	}
 	for in, want := range valid {
 		got, err := ParseGrowAmount(in)
@@ -441,7 +442,7 @@ func TestParseGrowAmount(t *testing.T) {
 			t.Errorf("ParseGrowAmount(%q) = (%d, %v), want (%d, nil)", in, got, err, want)
 		}
 	}
-	for _, in := range []string{"", "abc", "10", "10KiB", "GiB", "0MiB"} {
+	for _, in := range []string{"", "abc", "10", "10KiB", "GiB", "0MiB", "65537GiB", "9223372036854775807MiB"} {
 		if _, err := ParseGrowAmount(in); err == nil {
 			t.Errorf("ParseGrowAmount(%q) = nil error, want error", in)
 		}

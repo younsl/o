@@ -438,6 +438,10 @@ func (c *Config) validate() error {
 	return nil
 }
 
+// maxEBSVolumeGiB is the largest EBS volume size AWS supports (64 TiB, io2
+// Block Express). No grow amount can meaningfully exceed it.
+const maxEBSVolumeGiB = 64 * 1024
+
 // ParseGrowAmount parses an absolute growth value with a MiB or GiB unit (e.g.
 // "10GiB", "5120MiB") into whole GiB. EBS volumes are sized in GiB, so a MiB
 // value is rounded up to the next whole GiB to guarantee at least the requested
@@ -474,13 +478,18 @@ func ParseGrowAmount(raw string) (int32, error) {
 	if n <= 0 {
 		return 0, fmt.Errorf("value %q must be greater than 0", raw)
 	}
-	return int32(toGiB(n)), nil
+	gib := toGiB(n)
+	if gib > maxEBSVolumeGiB {
+		return 0, fmt.Errorf("value %q exceeds the EBS maximum volume size of 64TiB", raw)
+	}
+	return int32(gib), nil
 }
 
 // mibToGiB converts MiB to GiB, rounding up so the resulting whole GiB is never
-// less than the requested MiB.
+// less than the requested MiB. The caller guarantees mib > 0; rounding via
+// (mib-1)/1024+1 cannot overflow, unlike adding 1023 before dividing.
 func mibToGiB(mib int64) int64 {
-	return (mib + 1023) / 1024
+	return (mib-1)/1024 + 1
 }
 
 // parseTagFilters parses "Key=Value,Key2=Value2" into TagFilter slices.
