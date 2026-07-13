@@ -30,6 +30,13 @@ kubernetes-upgrade-operator is a Kubernetes operator that runs in a central (hub
 
 ![Forward and Rollback phase flow](docs/assets/upgrade-phase-flow.svg)
 
+kuo operates in one of two upgrade modes, selected by the required `spec.upgradeMode` field:
+
+- **Forward** — Upgrades a cluster to a higher minor version. Runs control plane → add-ons → node groups, so worker nodes never run a version newer than the control plane.
+- **Rollback** — Reverts a cluster to the previous minor version (N-1) within the [AWS 7-day rollback window](https://docs.aws.amazon.com/eks/latest/userguide/rollback-cluster.html). Runs the same phases in reverse order (node groups → add-ons → control plane). See [Rollback Mode](#rollback-mode).
+
+The Forward flow proceeds through the following phases:
+
 1. **Pending** — CR created, waiting for reconciliation
 2. **Planning** — Resolve upgrade path, addon targets, nodegroup targets
 3. **PreflightChecking** — EKS Insights, Deletion Protection, PDB drain deadlock checks
