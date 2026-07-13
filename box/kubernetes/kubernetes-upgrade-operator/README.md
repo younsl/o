@@ -416,9 +416,9 @@ For PromQL examples, alerting rules, and detailed label descriptions, see [docs/
 
 ```bash
 kubectl get eksupgrades
-NAME                 CLUSTER              TARGET   PHASE             AUTH                AGE
-staging-upgrade      staging-cluster      1.34     Completed         IdentityVerified    5m
-production-upgrade   production-cluster   1.34     UpgradingAddons   AssumeRoleSuccess   2m
+NAME                 CLUSTER              TARGET   PHASE             PROGRESS   AUTH                AGE
+staging-upgrade      staging-cluster      1.34     Completed         4/4        IdentityVerified    5m
+production-upgrade   production-cluster   1.34     UpgradingAddons   2/5        AssumeRoleSuccess   2m
 ```
 
 ## Development
@@ -434,9 +434,9 @@ make install        # Install to ~/.cargo/bin/
 
 ## Constraints
 
-- Control plane upgrades limited to 1 minor version at a time (EKS limitation)
-- Rollback limited to a single minor version (N to N-1) within the AWS 7-day window
-- Managed Node Groups only (self-managed and Karpenter nodes are not supported)
+- Control plane upgrades limited to [1 minor version at a time](https://docs.aws.amazon.com/eks/latest/userguide/update-cluster.html) (EKS limitation)
+- [Rollback](https://docs.aws.amazon.com/eks/latest/userguide/rollback-cluster.html) limited to a single minor version (N to N-1) within the AWS 7-day window
+- [Managed Node Groups](https://docs.aws.amazon.com/eks/latest/userguide/managed-node-groups.html) only ([self-managed](https://docs.aws.amazon.com/eks/latest/userguide/worker.html) and [Karpenter](https://karpenter.sh/) nodes are not supported)
 - Cluster-scoped CRD (one EKSUpgrade per cluster, not namespaced)
 
 ## License
