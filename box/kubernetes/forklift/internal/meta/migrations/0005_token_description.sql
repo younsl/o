@@ -1,1 +1,0 @@
-ALTER TABLE tokens ADD COLUMN description TEXT NOT NULL DEFAULT '';
