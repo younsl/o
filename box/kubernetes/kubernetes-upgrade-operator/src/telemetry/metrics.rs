@@ -239,16 +239,28 @@ impl Metrics {
     }
 }
 
+/// `OpenMetrics` content type. Without this header Prometheus falls back to
+/// the legacy text-format parser, which rejects the `info` metric type and
+/// fails the entire scrape.
+const OPENMETRICS_CONTENT_TYPE: &str = "application/openmetrics-text; version=1.0.0; charset=utf-8";
+
 /// Axum handler that encodes the registry as `OpenMetrics` text.
 async fn metrics_handler(State(registry): State<Arc<Registry>>) -> impl IntoResponse {
+    use axum::http::header;
+
     let mut buf = String::new();
     if encode(&mut buf, &registry).is_err() {
         return (
             StatusCode::INTERNAL_SERVER_ERROR,
+            [(header::CONTENT_TYPE, "text/plain; charset=utf-8")],
             "Failed to encode metrics".to_string(),
         );
     }
-    (StatusCode::OK, buf)
+    (
+        StatusCode::OK,
+        [(header::CONTENT_TYPE, OPENMETRICS_CONTENT_TYPE)],
+        buf,
+    )
 }
 
 /// Start the metrics server on the given port.
@@ -294,6 +306,24 @@ mod tests {
                 region: "us-east-1".to_string(),
             })
             .inc();
+    }
+
+    #[tokio::test]
+    async fn test_metrics_handler_openmetrics_content_type() {
+        let mut registry = Registry::default();
+        register_build_info(&mut registry, "0.3.0", "0a80f15", "1.96.0", "aarch64");
+        let response = metrics_handler(State(Arc::new(registry)))
+            .await
+            .into_response();
+
+        assert_eq!(response.status(), StatusCode::OK);
+        assert_eq!(
+            response
+                .headers()
+                .get(axum::http::header::CONTENT_TYPE)
+                .unwrap(),
+            OPENMETRICS_CONTENT_TYPE
+        );
     }
 
     #[test]
