@@ -31,6 +31,8 @@ export interface S3LogExtractApi {
    */
   precheck(input: {
     source: string;
+    /** ec2 log stream (java/json/nginx/system); omit for k8s. */
+    logType?: string;
     env: string;
     date: string;
     apps: string[];
@@ -39,6 +41,8 @@ export interface S3LogExtractApi {
   }): Promise<PrecheckResult>;
   createRequest(input: {
     source: string;
+    /** ec2 log stream (java/json/nginx/system); omit for k8s. */
+    logType?: string;
     env: string;
     date: string;
     apps: string[];

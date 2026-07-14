@@ -69,6 +69,41 @@ describe('RequestStore', () => {
 
       expect(req.source).toBe('ec2');
     });
+
+    it('stores null logType for k8s and for ec2 combo requests', async () => {
+      const k8sReq = await store.createRequest(baseInput, 'user:default/alice');
+      expect(k8sReq.logType).toBeNull();
+
+      const ec2Req = await store.createRequest(
+        { ...baseInput, source: 'ec2', apps: ['order-api/nginx'] },
+        'user:default/bob',
+      );
+      expect(ec2Req.logType).toBeNull();
+
+      const fetched = await store.getRequest(ec2Req.id);
+      expect(fetched!.logType).toBeNull();
+      expect(fetched!.apps).toEqual(['order-api/nginx']);
+    });
+
+    it('reads legacy ec2 rows (bare apps, no log_type) as java', async () => {
+      const req = await store.createRequest(
+        { ...baseInput, source: 'ec2' },
+        'user:default/bob',
+      );
+
+      const fetched = await store.getRequest(req.id);
+      expect(fetched!.logType).toBe('java');
+    });
+
+    it('persists a selected ec2 logType', async () => {
+      const req = await store.createRequest(
+        { ...baseInput, source: 'ec2', logType: 'nginx' },
+        'user:default/bob',
+      );
+      const fetched = await store.getRequest(req.id);
+
+      expect(fetched!.logType).toBe('nginx');
+    });
   });
 
   describe('getRequest', () => {
@@ -328,6 +363,21 @@ describe('RequestStore', () => {
 
       const fetched = await store.getRequest(created.id);
       expect(fetched!.source).toBe('k8s');
+    });
+
+    it('defaults logType to java for pre-migration ec2 rows', async () => {
+      const created = await store.createRequest(
+        { ...baseInput, source: 'ec2', logType: 'nginx' },
+        'user:default/alice',
+      );
+
+      // Simulate a row written before the log_type column existed
+      await db('log_extract_requests')
+        .where({ id: created.id })
+        .update({ log_type: null });
+
+      const fetched = await store.getRequest(created.id);
+      expect(fetched!.logType).toBe('java');
     });
   });
 

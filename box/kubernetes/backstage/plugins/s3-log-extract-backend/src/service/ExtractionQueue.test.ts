@@ -33,6 +33,7 @@ function makeRequest(overrides: Partial<LogExtractRequest> = {}): LogExtractRequ
   return {
     id: 'req-001',
     source: 'k8s',
+    logType: null,
     env: 'prd',
     date: '2026-03-05',
     apps: ['order-api'],
@@ -125,6 +126,41 @@ describe('ExtractionQueue', () => {
     ]);
   });
 
+  it('passes the request logType to extractLogs, defaulting to java', async () => {
+    const ec2Req = makeRequest({ id: 'req-ec2', source: 'ec2', logType: 'nginx' });
+    const legacyReq = makeRequest({ id: 'req-legacy', source: 'ec2', logType: null });
+    mockStore.getOldestApproved
+      .mockResolvedValueOnce(ec2Req)
+      .mockResolvedValueOnce(legacyReq)
+      .mockResolvedValue(undefined);
+
+    makeQueue().pump();
+    await settle();
+
+    expect(mockS3LogService.extractLogs).toHaveBeenNthCalledWith(
+      1,
+      'ec2',
+      'nginx',
+      'prd',
+      '2026-03-05',
+      ['order-api'],
+      '09:00',
+      '10:00',
+      expect.anything(),
+    );
+    expect(mockS3LogService.extractLogs).toHaveBeenNthCalledWith(
+      2,
+      'ec2',
+      'java',
+      'prd',
+      '2026-03-05',
+      ['order-api'],
+      '09:00',
+      '10:00',
+      expect.anything(),
+    );
+  });
+
   it('marks a failed extraction and continues with the next request', async () => {
     const reqA = makeRequest({ id: 'req-a' });
     const reqB = makeRequest({ id: 'req-b' });
@@ -182,7 +218,7 @@ describe('ExtractionQueue', () => {
       .mockResolvedValue(undefined);
     mockS3LogService.extractLogs.mockImplementation(
       async (...args: unknown[]) => {
-        const options = args[6] as {
+        const options = args[7] as {
           onProgress?: (current: number, total: number) => void;
         };
         options.onProgress?.(1, 2);

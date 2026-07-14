@@ -34,6 +34,7 @@ export class RequestStore {
       await this.db.schema.createTable(TABLE_NAME, table => {
         table.string('id').primary();
         table.string('source').notNullable().defaultTo('k8s');
+        table.string('log_type');
         table.string('env').notNullable();
         table.string('date').notNullable();
         table.text('apps').notNullable();
@@ -105,6 +106,16 @@ export class RequestStore {
           table.string('encryption').notNullable().defaultTo('aes256');
         });
       }
+
+      const hasLogType = await this.db.schema.hasColumn(
+        TABLE_NAME,
+        'log_type',
+      );
+      if (!hasLogType) {
+        await this.db.schema.alterTable(TABLE_NAME, table => {
+          table.string('log_type');
+        });
+      }
     }
   }
 
@@ -116,6 +127,9 @@ export class RequestStore {
     const request: LogExtractRequest = {
       id: uuid(),
       source: input.source,
+      // ec2 app entries normally carry their category (`app/nginx`); an
+      // explicit logType is only set by legacy callers using bare app names.
+      logType: input.source === 'ec2' ? (input.logType ?? null) : null,
       env: input.env,
       date: input.date,
       apps: input.apps,
@@ -150,6 +164,7 @@ export class RequestStore {
     await this.db(TABLE_NAME).insert({
       id: request.id,
       source: request.source,
+      log_type: request.logType,
       env: request.env,
       date: request.date,
       apps: JSON.stringify(request.apps),
@@ -345,6 +360,13 @@ export class RequestStore {
     return {
       id: row.id as string,
       source: (row.source as LogExtractRequest['source']) ?? 'k8s',
+      // Legacy ec2 rows (bare app names, no stored log_type) always
+      // extracted the java stream; combo rows carry the category in apps.
+      logType:
+        (row.log_type as LogExtractRequest['logType']) ??
+        (row.source === 'ec2' && apps.every(a => !a.includes('/'))
+          ? 'java'
+          : null),
       env: row.env as LogExtractRequest['env'],
       date: row.date as string,
       apps,

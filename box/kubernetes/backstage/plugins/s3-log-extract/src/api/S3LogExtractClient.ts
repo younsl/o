@@ -58,6 +58,7 @@ export class S3LogExtractClient implements S3LogExtractApi {
 
   async precheck(input: {
     source: string;
+    logType?: string;
     env: string;
     date: string;
     apps: string[];
@@ -73,6 +74,7 @@ export class S3LogExtractClient implements S3LogExtractApi {
       startTime: input.startTime,
       endTime: input.endTime,
     });
+    if (input.logType) params.set('logType', input.logType);
     const response = await this.fetchApi.fetch(
       `${baseUrl}/precheck?${params.toString()}`,
     );
@@ -86,6 +88,7 @@ export class S3LogExtractClient implements S3LogExtractApi {
 
   async createRequest(input: {
     source: string;
+    logType?: string;
     env: string;
     date: string;
     apps: string[];

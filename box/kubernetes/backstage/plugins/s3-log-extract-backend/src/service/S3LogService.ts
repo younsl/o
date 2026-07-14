@@ -15,7 +15,7 @@ import { Readable } from 'stream';
 import { pipeline } from 'stream/promises';
 import { promisify } from 'util';
 import * as tar from 'tar-stream';
-import { LogSource } from './types';
+import { EC2_LOG_TYPES, Ec2LogType, LogSource } from './types';
 
 // Async gzip decompression so the event loop is not blocked (vs zlib.gunzipSync).
 // Runs on the libuv threadpool; bump UV_THREADPOOL_SIZE (deployment env) to
@@ -29,6 +29,13 @@ export class S3LogService {
   private readonly bucket: string;
   private readonly prefix: string;
   private credentialExpiry: Date | null = null;
+
+  // Per-source root directory under the prefix, fixed by the log shipper's
+  // bucket layout.
+  private static readonly SOURCE_ROOTS: Record<LogSource, string> = {
+    k8s: 'k8s',
+    ec2: 'ec2-shortterm',
+  };
 
   // Number of S3 objects downloaded/decompressed concurrently.
   private static readonly DOWNLOAD_CONCURRENCY = 16;
@@ -122,8 +129,9 @@ export class S3LogService {
   /**
    * List available apps for a given environment and date.
    *
-   * k8s: app-logs/k8s/{env}.{app}/YYYY/MM/DD/ — apps listed at top level
-   * ec2: app-logs/ec2/YYYY/MM/DD/{env}.{app}/ — apps listed under date
+   * k8s: single log stream per app — returns plain app names.
+   * ec2: each app has per-category log streams (java/json/nginx/system) —
+   *      returns `{app}/{category}` entries so the picker selects both.
    */
   async listApps(
     env: string,
@@ -139,17 +147,16 @@ export class S3LogService {
     return this.listEc2Apps(env, date);
   }
 
-  private async listK8sApps(env: string): Promise<string[]> {
-    const prefixPath = `${this.prefix}/k8s/`;
-    const envPrefix = `${env}.`;
-    const apps = new Set<string>();
+  /** Immediate subdirectory names under an S3 prefix (Delimiter listing). */
+  private async listCommonPrefixes(prefixPath: string): Promise<string[]> {
+    const names = new Set<string>();
     let continuationToken: string | undefined;
 
     do {
       const response = await this.client.send(
         new ListObjectsV2Command({
           Bucket: this.bucket,
-          Prefix: `${prefixPath}${envPrefix}`,
+          Prefix: prefixPath,
           Delimiter: '/',
           ContinuationToken: continuationToken,
         }),
@@ -157,48 +164,51 @@ export class S3LogService {
 
       for (const cp of response.CommonPrefixes ?? []) {
         const dirName = cp.Prefix?.replace(prefixPath, '').replace(/\/$/, '');
-        if (dirName?.startsWith(envPrefix)) {
-          const appName = dirName.substring(envPrefix.length);
-          apps.add(appName);
-        }
+        if (dirName) names.add(dirName);
       }
 
       continuationToken = response.NextContinuationToken;
     } while (continuationToken);
 
-    return Array.from(apps).sort();
+    return Array.from(names);
   }
 
-  // ec2 logs now live under ec2-shortterm/{env}.{app}/java/... with apps listed
-  // at the top level (like k8s), so the date argument is unused here.
+  /** Root prefix for a source, e.g. `app-logs/k8s/`. */
+  private sourceRootPath(source: LogSource): string {
+    return `${this.prefix}/${S3LogService.SOURCE_ROOTS[source]}/`;
+  }
+
+  private async listK8sApps(env: string): Promise<string[]> {
+    // Listing under `{root}/{env}.` strips the env prefix from the returned
+    // directory names, so they are already bare app names.
+    const apps = await this.listCommonPrefixes(
+      `${this.sourceRootPath('k8s')}${env}.`,
+    );
+    return apps.sort();
+  }
+
+  /**
+   * ec2 layout: ec2-shortterm/{env}.{app}/{category}/... — the category set
+   * differs per app (e.g. a pure proxy host has only nginx/system), so each
+   * app is expanded into its available `{app}/{category}` entries. The date
+   * argument is unused (apps live at the top level).
+   */
   private async listEc2Apps(env: string, _date: string): Promise<string[]> {
-    const prefixPath = `${this.prefix}/ec2-shortterm/`;
-    const envPrefix = `${env}.`;
-    const apps = new Set<string>();
-    let continuationToken: string | undefined;
+    const envRoot = `${this.sourceRootPath('ec2')}${env}.`;
+    // Listing under `{root}/{env}.` strips the env prefix from the returned
+    // directory names, so they are already bare app names.
+    const apps = await this.listCommonPrefixes(envRoot);
 
-    do {
-      const response = await this.client.send(
-        new ListObjectsV2Command({
-          Bucket: this.bucket,
-          Prefix: `${prefixPath}${envPrefix}`,
-          Delimiter: '/',
-          ContinuationToken: continuationToken,
-        }),
-      );
+    const entries = await Promise.all(
+      apps.map(async app => {
+        const categories = await this.listCommonPrefixes(`${envRoot}${app}/`);
+        return categories
+          .filter(c => EC2_LOG_TYPES.includes(c as Ec2LogType))
+          .map(c => `${app}/${c}`);
+      }),
+    );
 
-      for (const cp of response.CommonPrefixes ?? []) {
-        const dirName = cp.Prefix?.replace(prefixPath, '').replace(/\/$/, '');
-        if (dirName?.startsWith(envPrefix)) {
-          const appName = dirName.substring(envPrefix.length);
-          apps.add(appName);
-        }
-      }
-
-      continuationToken = response.NextContinuationToken;
-    } while (continuationToken);
-
-    return Array.from(apps).sort();
+    return entries.flat().sort();
   }
 
   /**
@@ -210,6 +220,7 @@ export class S3LogService {
    */
   async extractLogs(
     source: LogSource,
+    logType: Ec2LogType,
     env: string,
     date: string,
     apps: string[],
@@ -246,6 +257,7 @@ export class S3LogService {
 
     const fileCount = await this.extractFilteredLogs(
       source,
+      logType,
       env,
       apps,
       startMs,
@@ -278,6 +290,7 @@ export class S3LogService {
    */
   async countCandidateObjects(
     source: LogSource,
+    logType: Ec2LogType,
     env: string,
     date: string,
     apps: string[],
@@ -294,6 +307,7 @@ export class S3LogService {
     const { startMs, endMs } = this.timeRangeToMs(date, startTime, endTime);
     const { work, scanned } = await this.collectCandidateKeys(
       source,
+      logType,
       env,
       apps,
       startMs,
@@ -328,21 +342,24 @@ export class S3LogService {
 
   /**
    * Object layouts (same `{epoch}-{uuid}.log.gz` naming, epoch = batch end UTC):
-   *   k8s : app-logs/k8s/{env}.{app}/{YYYY}/{MM}/{DD}/
-   *   ec2 : app-logs/ec2-shortterm/{env}.{app}/java/{YYYY}/{MM}/{DD}/
-   * ec2 scans only the java/ log stream (excludes json/, nginx/, system/).
+   *   k8s : {prefix}/{k8sRoot}/{env}.{app}/{YYYY}/{MM}/{DD}/
+   *   ec2 : {prefix}/{ec2Root}/{env}.{app}/{category}/{YYYY}/{MM}/{DD}/
+   * ec2 app entries carry their category as `{app}/{category}`; entries
+   * without one (legacy requests) fall back to defaultLogType.
    */
   private buildScanPrefix(
     source: LogSource,
+    defaultLogType: Ec2LogType,
     env: string,
     app: string,
     scanDate: string,
   ): string {
     const [sy, sm, sd] = scanDate.split('-');
     if (source === 'k8s') {
-      return `${this.prefix}/k8s/${env}.${app}/${sy}/${sm}/${sd}/`;
+      return `${this.sourceRootPath('k8s')}${env}.${app}/${sy}/${sm}/${sd}/`;
     }
-    return `${this.prefix}/ec2-shortterm/${env}.${app}/java/${sy}/${sm}/${sd}/`;
+    const [appName, category = defaultLogType] = app.split('/');
+    return `${this.sourceRootPath('ec2')}${env}.${appName}/${category}/${sy}/${sm}/${sd}/`;
   }
 
   /**
@@ -353,6 +370,7 @@ export class S3LogService {
    */
   private async collectCandidateKeys(
     source: LogSource,
+    logType: Ec2LogType,
     env: string,
     apps: string[],
     startMs: number,
@@ -368,7 +386,13 @@ export class S3LogService {
     let appsProcessed = 0;
     for (const app of apps) {
       for (const scanDate of datesToScan) {
-        const prefixPath = this.buildScanPrefix(source, env, app, scanDate);
+        const prefixPath = this.buildScanPrefix(
+          source,
+          logType,
+          env,
+          app,
+          scanDate,
+        );
         const keys = await this.listAllKeys(prefixPath);
         scanned += keys.length;
         for (const key of keys) {
@@ -388,6 +412,7 @@ export class S3LogService {
    */
   private async extractFilteredLogs(
     source: LogSource,
+    logType: Ec2LogType,
     env: string,
     apps: string[],
     startMs: number,
@@ -398,6 +423,7 @@ export class S3LogService {
   ): Promise<number> {
     const { work, scanned } = await this.collectCandidateKeys(
       source,
+      logType,
       env,
       apps,
       startMs,

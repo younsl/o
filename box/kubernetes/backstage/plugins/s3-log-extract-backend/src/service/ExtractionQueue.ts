@@ -75,6 +75,7 @@ export class ExtractionQueue {
     try {
       const result = await s3LogService.extractLogs(
         request.source,
+        request.logType ?? 'java',
         request.env,
         request.date,
         request.apps,

@@ -50,6 +50,7 @@ function makeRequest(overrides: Partial<LogExtractRequest> = {}): LogExtractRequ
   return {
     id: 'req-001',
     source: 'k8s',
+    logType: null,
     env: 'prd',
     date: '2026-03-05',
     apps: ['order-api'],
@@ -218,6 +219,38 @@ describe('router', () => {
       });
       expect(mockS3LogService.countCandidateObjects).toHaveBeenCalledWith(
         'k8s',
+        'java',
+        'prd',
+        '2026-03-05',
+        ['order-api', 'payment-api'],
+        '09:00',
+        '10:00',
+      );
+    });
+
+    it('returns 400 for invalid ec2 logType', async () => {
+      const res = await request(app).get(
+        `/precheck?${validQuery}&source=ec2&logType=apache`,
+      );
+      expect(res.status).toBe(400);
+      expect(res.body.error).toContain('logType must be one of');
+    });
+
+    it('passes the selected ec2 logType through', async () => {
+      mockS3LogService.countCandidateObjects.mockResolvedValue({
+        candidateCount: 3,
+        scannedCount: 30,
+        appCounts: { 'order-api': 3, 'payment-api': 0 },
+      });
+
+      const res = await request(app).get(
+        `/precheck?${validQuery}&source=ec2&logType=nginx`,
+      );
+
+      expect(res.status).toBe(200);
+      expect(mockS3LogService.countCandidateObjects).toHaveBeenCalledWith(
+        'ec2',
+        'nginx',
         'prd',
         '2026-03-05',
         ['order-api', 'payment-api'],
@@ -287,6 +320,81 @@ describe('router', () => {
 
       expect(res.status).toBe(400);
       expect(res.body.error).toContain('source must be');
+    });
+
+    it('returns 400 for invalid ec2 logType', async () => {
+      setAuth('user:default/alice');
+      const freshApp = await createTestApp();
+
+      const res = await request(freshApp)
+        .post('/requests')
+        .send({ ...validBody, source: 'ec2', logType: 'apache' });
+
+      expect(res.status).toBe(400);
+      expect(res.body.error).toContain('logType must be one of');
+    });
+
+    it('accepts ec2 app/category combo entries', async () => {
+      setAuth('user:default/alice');
+      mockStore.createRequest.mockResolvedValue(makeRequest());
+      const freshApp = await createTestApp();
+
+      const res = await request(freshApp)
+        .post('/requests')
+        .send({
+          ...validBody,
+          source: 'ec2',
+          apps: ['order-api/nginx', 'proxy/system'],
+        });
+
+      expect(res.status).toBe(201);
+      expect(mockStore.createRequest).toHaveBeenCalledWith(
+        expect.objectContaining({
+          source: 'ec2',
+          apps: ['order-api/nginx', 'proxy/system'],
+        }),
+        'user:default/alice',
+      );
+    });
+
+    it('rejects ec2 app entries with an unknown category', async () => {
+      setAuth('user:default/alice');
+      const freshApp = await createTestApp();
+
+      const res = await request(freshApp)
+        .post('/requests')
+        .send({ ...validBody, source: 'ec2', apps: ['order-api/apache'] });
+
+      expect(res.status).toBe(400);
+      expect(res.body.error).toContain('ec2 apps must be');
+    });
+
+    it('rejects k8s app entries containing a slash', async () => {
+      setAuth('user:default/alice');
+      const freshApp = await createTestApp();
+
+      const res = await request(freshApp)
+        .post('/requests')
+        .send({ ...validBody, apps: ['order-api/java'] });
+
+      expect(res.status).toBe(400);
+      expect(res.body.error).toContain('k8s apps must not contain');
+    });
+
+    it('accepts a selected ec2 logType', async () => {
+      setAuth('user:default/alice');
+      mockStore.createRequest.mockResolvedValue(makeRequest());
+      const freshApp = await createTestApp();
+
+      const res = await request(freshApp)
+        .post('/requests')
+        .send({ ...validBody, source: 'ec2', logType: 'system' });
+
+      expect(res.status).toBe(201);
+      expect(mockStore.createRequest).toHaveBeenCalledWith(
+        expect.objectContaining({ source: 'ec2', logType: 'system' }),
+        'user:default/alice',
+      );
     });
 
     // Use a dedicated app instance: the shared one's submit rate limiter

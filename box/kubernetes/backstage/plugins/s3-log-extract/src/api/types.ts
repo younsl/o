@@ -10,12 +10,23 @@ export type Environment = 'dev' | 'stg' | 'sb' | 'prd';
 
 export type LogSource = 'k8s' | 'ec2';
 
+/** ec2 log stream under the app prefix; null for k8s (single stream). */
+export type Ec2LogType = 'java' | 'json' | 'nginx' | 'system';
+
+export const EC2_LOG_TYPES: readonly Ec2LogType[] = [
+  'java',
+  'json',
+  'nginx',
+  'system',
+];
+
 /** Archive encryption method. Only AES-256 is offered. */
 export type EncryptionMethod = 'aes256';
 
 export interface LogExtractRequest {
   id: string;
   source: LogSource;
+  logType: Ec2LogType | null;
   env: Environment;
   date: string;
   apps: string[];

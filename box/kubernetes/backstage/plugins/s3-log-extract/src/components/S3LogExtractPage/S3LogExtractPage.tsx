@@ -39,7 +39,11 @@ import { s3LogExtractPlugin } from '../../plugin';
 import { useApi, identityApiRef } from '@backstage/core-plugin-api';
 import { useAsyncRetry } from 'react-use';
 import { s3LogExtractApiRef } from '../../api';
-import { Environment, LogExtractRequest, RequestStatus } from '../../api/types';
+import {
+  Environment,
+  LogExtractRequest,
+  RequestStatus,
+} from '../../api/types';
 import { PrecheckResult, S3Config } from '../../api/S3LogExtractApi';
 import {
   RiAddLine,
@@ -96,17 +100,24 @@ const CopyButton = ({ value }: { value: string }) => {
 };
 
 const buildS3Uris = (
-  request: LogExtractRequest,
+  request: Pick<
+    LogExtractRequest,
+    'source' | 'env' | 'date' | 'apps' | 'logType'
+  >,
   s3Config: S3Config | undefined,
 ): string[] => {
   if (!s3Config?.bucket || !/^\d{4}-\d{2}-\d{2}$/.test(request.date)) return [];
   const [yyyy, mm, dd] = request.date.split('-');
   const prefix = s3Config.prefix ? `${s3Config.prefix.replace(/\/+$/, '')}/` : '';
+  const root = request.source === 'k8s' ? 'k8s' : 'ec2-shortterm';
   return request.apps.map(app => {
     if (request.source === 'k8s') {
-      return `s3://${s3Config.bucket}/${prefix}k8s/${request.env}.${app}/${yyyy}/${mm}/${dd}/`;
+      return `s3://${s3Config.bucket}/${prefix}${root}/${request.env}.${app}/${yyyy}/${mm}/${dd}/`;
     }
-    return `s3://${s3Config.bucket}/${prefix}ec2/${yyyy}/${mm}/${dd}/${request.env}.${app}/logs/java/`;
+    // ec2 app entries carry their category (`app/nginx`); legacy bare
+    // entries fall back to the request-level logType (java stream).
+    const [appName, category = request.logType ?? 'java'] = app.split('/');
+    return `s3://${s3Config.bucket}/${prefix}${root}/${request.env}.${appName}/${category}/${yyyy}/${mm}/${dd}/`;
   });
 };
 
@@ -190,6 +201,7 @@ const ReviewDialog = ({
     api
       .precheck({
         source: request.source,
+        logType: request.logType ?? undefined,
         env: request.env,
         date: request.date,
         apps: request.apps,
@@ -265,6 +277,11 @@ const ReviewDialog = ({
             <strong>Environment:</strong> {request.env} |{' '}
             <strong>Date:</strong> {request.date}
           </Text>
+          {request.logType && (
+            <Text as="p" variant="body-small" color="secondary">
+              <strong>Log type:</strong> {request.logType}
+            </Text>
+          )}
           <Text as="p" variant="body-small" color="secondary">
             <strong>Time:</strong> {request.startTime} - {request.endTime} (KST)
           </Text>
@@ -678,9 +695,11 @@ const DownloadModal = ({
 const RequestForm = ({
   onSubmitted,
   maxTimeRangeMinutes,
+  s3Config,
 }: {
   onSubmitted: () => void;
   maxTimeRangeMinutes: number;
+  s3Config: S3Config | undefined;
 }) => {
   const api = useApi(s3LogExtractApiRef);
   const [source, setSource] = useState('k8s');
@@ -763,18 +782,17 @@ const RequestForm = ({
     }
   };
 
-  // Syntax-highlight the dots in app names (e.g. env.app separators) so the
-  // segments read like tokens.
+  // Syntax-highlight separators in app entries (dots in app names, the slash
+  // in ec2 `app/category` combos) so the segments read like tokens.
   const styleDots = (text: string) =>
-    text.split('.').flatMap((part, i) =>
-      i === 0
-        ? [part]
-        : [
-            <span key={`dot-${i}`} className="sle-app-dot">
-              .
-            </span>,
-            part,
-          ],
+    text.split(/([./])/).map((part, i) =>
+      part === '.' || part === '/' ? (
+        <span key={`sep-${i}`} className="sle-app-dot">
+          {part}
+        </span>
+      ) : (
+        part
+      ),
     );
 
   const highlightMatch = (text: string, query: string) => {
@@ -897,6 +915,24 @@ const RequestForm = ({
       }
     };
   }, [api, source, env, date, selectedApps, startTime, endTime, timeRangeError]);
+
+  // S3 prefixes the extraction would scan for the current selection, so the
+  // requester can see (and copy) the exact bucket paths before submitting.
+  const selectedS3Uris = useMemo(() => {
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(date) || selectedApps.length === 0) {
+      return [];
+    }
+    return buildS3Uris(
+      {
+        source: source as LogExtractRequest['source'],
+        env: env as Environment,
+        date,
+        apps: selectedApps,
+        logType: null,
+      },
+      s3Config,
+    );
+  }, [source, env, date, selectedApps, s3Config]);
 
   // Apps with zero candidate objects in the window (per-app breakdown).
   const emptyApps = useMemo(() => {
@@ -1137,6 +1173,38 @@ const RequestForm = ({
             </>
           )}
         </Box>
+
+        {selectedS3Uris.length > 0 && (
+          <Box>
+            <Text
+              variant="body-small"
+              weight="bold"
+              style={{ display: 'block', marginBottom: 6 }}
+            >
+              S3 Paths{' '}
+              <Text
+                as="span"
+                variant="body-small"
+                color="secondary"
+                weight="regular"
+              >
+                ({selectedS3Uris.length} prefix{selectedS3Uris.length > 1 ? 'es' : ''} to scan)
+              </Text>
+            </Text>
+            {selectedS3Uris.map(uri => (
+              <Text
+                key={uri}
+                as="p"
+                variant="body-x-small"
+                color="secondary"
+                className="sle-request-id"
+                style={{ marginBottom: 2 }}
+              >
+                {uri} <CopyButton value={uri} />
+              </Text>
+            ))}
+          </Box>
+        )}
 
         <Box>
           <div className="sle-required-field" style={{ maxWidth: 240 }}>
@@ -1449,7 +1517,8 @@ const RequestList = ({
                   <Flex justify="between" align="start">
                     <div>
                       <Text variant="body-medium" weight="bold">
-                        {request.source} &middot;{' '}
+                        {request.source}
+                        {request.logType ? `/${request.logType}` : ''} &middot;{' '}
                         {request.env.toUpperCase()} &middot; {request.date}
                       </Text>
                       <Text
@@ -1881,6 +1950,7 @@ export const S3LogExtractPage = () => {
               <RequestForm
                 onSubmitted={handleSubmitted}
                 maxTimeRangeMinutes={s3Config?.maxTimeRangeMinutes ?? 60}
+                s3Config={s3Config}
               />
             </CardBody>
           </Card>

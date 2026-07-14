@@ -11,7 +11,12 @@ import { Config } from '@backstage/config';
 import { RequestStore } from './RequestStore';
 import { S3LogService } from './S3LogService';
 import { ExtractionQueue } from './ExtractionQueue';
-import { CreateLogExtractInput, ReviewLogExtractInput } from './types';
+import {
+  CreateLogExtractInput,
+  EC2_LOG_TYPES,
+  Ec2LogType,
+  ReviewLogExtractInput,
+} from './types';
 
 export interface RouterOptions {
   logger: LoggerService;
@@ -48,6 +53,34 @@ export async function createRouter(options: RouterOptions): Promise<Router> {
 
   const router = Router();
   router.use(express.json());
+
+  // Resolve an explicit ec2 log stream value: null when absent (ec2 app
+  // entries carry their own `{app}/{category}`), undefined when invalid.
+  const resolveLogType = (
+    source: string,
+    raw: unknown,
+  ): Ec2LogType | null | undefined => {
+    if (source !== 'ec2') return null;
+    if (raw === undefined || raw === null || raw === '') return null;
+    return EC2_LOG_TYPES.includes(raw as Ec2LogType)
+      ? (raw as Ec2LogType)
+      : undefined;
+  };
+  const logTypeError = `logType must be one of: ${EC2_LOG_TYPES.join(', ')}`;
+
+  // ec2 app entries are `{app}` (legacy, java stream) or `{app}/{category}`;
+  // k8s app entries never contain a slash.
+  const invalidAppEntry = (source: string, app: string): boolean => {
+    const parts = app.split('/');
+    if (source !== 'ec2') return parts.length !== 1;
+    if (parts.length === 1) return false;
+    return (
+      parts.length !== 2 ||
+      !parts[0] ||
+      !EC2_LOG_TYPES.includes(parts[1] as Ec2LogType)
+    );
+  };
+  const appsError = `ec2 apps must be "app" or "app/{${EC2_LOG_TYPES.join('|')}}"; k8s apps must not contain "/"`;
 
   router.get('/health', (_, res) => {
     res.json({ status: 'ok' });
@@ -156,8 +189,20 @@ export async function createRouter(options: RouterOptions): Promise<Router> {
         return;
       }
 
+      const logType = resolveLogType(source, req.query.logType);
+      if (logType === undefined) {
+        res.status(400).json({ error: logTypeError });
+        return;
+      }
+
+      if (apps.some(app => invalidAppEntry(source, app))) {
+        res.status(400).json({ error: appsError });
+        return;
+      }
+
       const result = await s3LogService.countCandidateObjects(
         source,
+        logType ?? 'java',
         env,
         date,
         apps,
@@ -205,6 +250,18 @@ export async function createRouter(options: RouterOptions): Promise<Router> {
 
       if (input.source !== 'k8s' && input.source !== 'ec2') {
         res.status(400).json({ error: 'source must be "k8s" or "ec2"' });
+        return;
+      }
+
+      const logType = resolveLogType(input.source, input.logType);
+      if (logType === undefined) {
+        res.status(400).json({ error: logTypeError });
+        return;
+      }
+      input.logType = logType ?? undefined;
+
+      if (input.apps.some(app => invalidAppEntry(input.source, app))) {
+        res.status(400).json({ error: appsError });
         return;
       }
 
