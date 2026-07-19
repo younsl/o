@@ -45,6 +45,27 @@ A short reminder on metric types:
 
 ## Metrics
 
+Every metric name follows the [Prometheus naming
+conventions](https://prometheus.io/docs/practices/naming/) and is built from
+three parts:
+
+```
+external_ebs_autoresizer_<subject>_<unit or suffix>
+```
+
+- `external_ebs_autoresizer_` is the application prefix (the Prometheus
+  "namespace"). It scopes every metric to this addon, so names never collide
+  with other exporters and `{__name__=~"external_ebs_autoresizer_.*"}` finds
+  everything the addon exposes.
+- `<subject>` says what is measured, for example `root_usage`, `root_volume_size`,
+  or `resize`.
+- The last part encodes the unit or the type convention: gauges end with their
+  unit (`_percent`, `_gib`) or a plain noun (`_instances`), and counters always
+  end with `_total`.
+
+So `external_ebs_autoresizer_root_volume_size_gib` reads as: this addon's root
+volume size, in GiB.
+
 ### external_ebs_autoresizer_root_usage_percent
 
 - Type: Gauge
@@ -65,6 +86,32 @@ The labels tell you exactly which disk the reading belongs to:
 
 Use it to see which instances are close to filling up, and to confirm that usage
 drops after a resize.
+
+### external_ebs_autoresizer_root_volume_size_gib
+
+- Type: Gauge
+- Labels: `instance_id`, `device`, `volume_id`, `name`
+
+The most recent root EBS volume size in GiB for one instance. The addon records
+it for every discovered instance on each pass (including paused ones, which are
+never measured) and updates it immediately after a successful resize.
+
+The size is deliberately a gauge value rather than a label: a label value change
+would start a new time series on every resize and break usage history, while a
+gauge keeps the series identity stable and shows each resize as a step in the
+graph.
+
+The labels are identical to `root_usage_percent`, so the two gauges join
+cleanly. In a Grafana table, query both with instant table-format queries and
+combine them with a Merge (or Join by field on `instance_id`) transformation to
+show usage percent and volume size side by side. In PromQL you can also compute
+absolute usage:
+
+```promql
+external_ebs_autoresizer_root_volume_size_gib
+  * on (instance_id, device, volume_id, name)
+external_ebs_autoresizer_root_usage_percent / 100
+```
 
 ### external_ebs_autoresizer_resize_total
 
@@ -178,14 +225,18 @@ increase(external_ebs_autoresizer_reconcile_total[15m]) == 0
 
 ## Conclusion
 
-The addon exposes six metrics, and together they answer six simple questions:
+The addon exposes seven metrics, and together they answer seven simple
+questions:
 
-- How full are the disks? `root_usage_percent`
-- Are resizes succeeding? `resize_total`
-- When the addon holds back, why? `skip_total`
-- If something fails, where? `error_total`
-- Is the loop still running? `reconcile_total`
-- Which policy covers which instances? `policy_instances`
+| Question | Metric | Type |
+|----------|--------|------|
+| How full are the disks? | `root_usage_percent` | Gauge |
+| How big are the volumes? | `root_volume_size_gib` | Gauge |
+| Are resizes succeeding? | `resize_total` | Counter |
+| When the addon holds back, why? | `skip_total` | Counter |
+| If something fails, where? | `error_total` | Counter |
+| Is the loop still running? | `reconcile_total` | Counter |
+| Which policy covers which instances? | `policy_instances` | Gauge |
 
 A good starting point is one dashboard panel per metric, plus three alerts: one
 on a rising `resize_total{result="failure"}` rate, one on a stalled

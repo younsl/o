@@ -13,11 +13,17 @@ import (
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 )
 
+// instanceLabels is the shared identity label set of the per-instance gauges
+// (root_usage_percent, root_volume_size_gib). Keeping it identical across both
+// gauges lets dashboards join them without relabeling.
+var instanceLabels = []string{"instance_id", "device", "volume_id", "name"}
+
 // Metrics holds the application's Prometheus collectors and implements
 // resizer.Recorder.
 type Metrics struct {
 	registry        *prometheus.Registry
 	usage           *prometheus.GaugeVec
+	volumeSize      *prometheus.GaugeVec
 	resizeTotal     *prometheus.CounterVec
 	skipTotal       *prometheus.CounterVec
 	errorTotal      *prometheus.CounterVec
@@ -32,7 +38,11 @@ func NewMetrics() *Metrics {
 		usage: prometheus.NewGaugeVec(prometheus.GaugeOpts{
 			Name: "external_ebs_autoresizer_root_usage_percent",
 			Help: "Most recently measured root filesystem usage percent per instance.",
-		}, []string{"instance_id", "device", "volume_id", "name"}),
+		}, instanceLabels),
+		volumeSize: prometheus.NewGaugeVec(prometheus.GaugeOpts{
+			Name: "external_ebs_autoresizer_root_volume_size_gib",
+			Help: "Most recently observed root EBS volume size in GiB per instance. Size is a gauge value, not a label, so the series identity survives resizes.",
+		}, instanceLabels),
 		resizeTotal: prometheus.NewCounterVec(prometheus.CounterOpts{
 			Name: "external_ebs_autoresizer_resize_total",
 			Help: "Total resize attempts by result and matched resize policy.",
@@ -54,13 +64,19 @@ func NewMetrics() *Metrics {
 			Help: "Number of discovered instances matched by each resize policy in the latest pass (policy=default for instances matching no named policy).",
 		}, []string{"policy"}),
 	}
-	m.registry.MustRegister(m.usage, m.resizeTotal, m.skipTotal, m.errorTotal, m.reconcileTotal, m.policyInstances)
+	m.registry.MustRegister(m.usage, m.volumeSize, m.resizeTotal, m.skipTotal, m.errorTotal, m.reconcileTotal, m.policyInstances)
 	return m
 }
 
 // ObserveUsage records the latest measured usage for an instance.
 func (m *Metrics) ObserveUsage(instanceID, device, volumeID, name string, percent float64) {
 	m.usage.WithLabelValues(instanceID, device, volumeID, name).Set(percent)
+}
+
+// ObserveVolumeSize records the latest known root volume size for an instance.
+// The identity labels match ObserveUsage so the two gauges join cleanly.
+func (m *Metrics) ObserveVolumeSize(instanceID, device, volumeID, name string, sizeGiB int32) {
+	m.volumeSize.WithLabelValues(instanceID, device, volumeID, name).Set(float64(sizeGiB))
 }
 
 // ObserveResize counts a resize attempt by outcome and matched policy.

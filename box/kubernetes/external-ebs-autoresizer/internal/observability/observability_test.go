@@ -21,6 +21,8 @@ func TestMetricsObservations(t *testing.T) {
 	m.ObserveSkip("max_size", "db")
 	m.ObserveSkip("max_size", "db")
 	m.ObserveUsage("i-1", "/dev/xvda", "vol-1", "web-1", 73)
+	m.ObserveVolumeSize("i-1", "/dev/xvda", "vol-1", "web-1", 100)
+	m.ObserveVolumeSize("i-1", "/dev/xvda", "vol-1", "web-1", 110)
 	m.ObservePolicyInstances(map[string]int{"default": 3, "db": 2})
 
 	if got := testutil.ToFloat64(m.resizeTotal.WithLabelValues("success", "default")); got != 2 {
@@ -43,6 +45,9 @@ func TestMetricsObservations(t *testing.T) {
 	}
 	if got := testutil.ToFloat64(m.usage.WithLabelValues("i-1", "/dev/xvda", "vol-1", "web-1")); got != 73 {
 		t.Errorf("usage = %v, want 73", got)
+	}
+	if got := testutil.ToFloat64(m.volumeSize.WithLabelValues("i-1", "/dev/xvda", "vol-1", "web-1")); got != 110 {
+		t.Errorf("volume size = %v, want 110 (latest observation wins)", got)
 	}
 	if got := testutil.ToFloat64(m.policyInstances.WithLabelValues("db")); got != 2 {
 		t.Errorf("policy_instances{db} = %v, want 2", got)
