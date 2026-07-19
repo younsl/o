@@ -103,13 +103,13 @@ Requires AWS credentials with `ec2:DescribeInstances` and
 
 ```console
 $ external-ebs-autoresizer instances --config config.example.yaml
-POLICY   INSTANCE_ID          NAME                                  ROOT_VOLUME            SIZE_GIB
-bastion  i-04d6e43bb3a79a490  shared-mpay-bastion-ec2               vol-07f532e1a4d0992c9  30
-shared   i-00ed9f64b92d32d82  shared-mpay-gitlab-master-ec2         vol-0db7ffec1d0260f20  120
-shared   i-0ec58d48dced9eb7e  shared-mpay-whatap-master-ec2         vol-0bdfd0996bdbb8b4e  500
+POLICY   INSTANCE_ID          NAME           ROOT_VOLUME            SIZE_GIB
+bastion  i-0a1b2c3d4e5f67890  bastion-01     vol-0a1b2c3d4e5f67890  30
+shared   i-0123456789abcdef0  shared-web-01  vol-0123456789abcdef0  120
+shared   i-0fedcba9876543210  shared-db-01   vol-0fedcba9876543210  500
 default  (none)
 
-6 instances discovered in ap-northeast-2
+3 instances discovered in ap-northeast-2
 ```
 
 Use it to answer "which policy will govern this instance?" and to confirm a
