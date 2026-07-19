@@ -22,7 +22,7 @@ on:
           - opensearch-conflict-viewer
 
 env:
-  GO_VERSION: "1.26.4"
+  GO_VERSION: "1.26.5"
   COVERAGE_MIN: "70"
 
 jobs:
