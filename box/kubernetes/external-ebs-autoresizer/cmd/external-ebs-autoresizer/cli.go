@@ -92,9 +92,10 @@ func runPolicies(ctx context.Context, path string, withCount bool) error {
 	return tw.Flush()
 }
 
-// discoverPolicyCounts discovers target instances and tallies how many each
-// policy matches, seeding every policy (and default) to 0.
-func discoverPolicyCounts(ctx context.Context, cfg *config.Config, resolver *policy.Resolver) (map[string]int, error) {
+// discoverInstances initializes AWS clients and discovers the target instances
+// for cfg, bounded by a 60s timeout. It is the shared discovery step behind
+// every CLI subcommand that contacts AWS.
+func discoverInstances(ctx context.Context, cfg *config.Config) ([]awsx.Instance, error) {
 	ctx, cancel := context.WithTimeout(ctx, 60*time.Second)
 	defer cancel()
 	clients, err := awsx.New(ctx, cfg.Region)
@@ -108,6 +109,16 @@ func discoverPolicyCounts(ctx context.Context, cfg *config.Config, resolver *pol
 	instances, err := clients.DescribeTargetInstances(ctx, filters, cfg.ExcludeEKSNodes)
 	if err != nil {
 		return nil, fmt.Errorf("discover instances: %w", err)
+	}
+	return instances, nil
+}
+
+// discoverPolicyCounts discovers target instances and tallies how many each
+// policy matches, seeding every policy (and default) to 0.
+func discoverPolicyCounts(ctx context.Context, cfg *config.Config, resolver *policy.Resolver) (map[string]int, error) {
+	instances, err := discoverInstances(ctx, cfg)
+	if err != nil {
+		return nil, err
 	}
 	counts := map[string]int{policy.DefaultPolicyName: 0}
 	for _, name := range resolver.Names() {
@@ -128,19 +139,9 @@ func runInstances(ctx context.Context, path string) error {
 		return err
 	}
 
-	ctx, cancel := context.WithTimeout(ctx, 60*time.Second)
-	defer cancel()
-	clients, err := awsx.New(ctx, cfg.Region)
+	instances, err := discoverInstances(ctx, cfg)
 	if err != nil {
-		return fmt.Errorf("initialize AWS clients: %w", err)
-	}
-	filters := make([]awsx.TagFilter, len(cfg.TagFilters))
-	for i, f := range cfg.TagFilters {
-		filters[i] = awsx.TagFilter{Key: f.Key, Value: f.Value}
-	}
-	instances, err := clients.DescribeTargetInstances(ctx, filters, cfg.ExcludeEKSNodes)
-	if err != nil {
-		return fmt.Errorf("discover instances: %w", err)
+		return err
 	}
 
 	byPolicy := map[string][]awsx.Instance{}

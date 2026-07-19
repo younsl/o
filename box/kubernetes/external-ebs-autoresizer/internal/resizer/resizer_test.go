@@ -147,7 +147,8 @@ type fakeRecorder struct {
 	policyCounts   map[string]int
 }
 
-func (r *fakeRecorder) ObserveUsage(string, string, string, string, float64) {}
+func (r *fakeRecorder) ObserveUsage(string, string, string, string, float64)    {}
+func (r *fakeRecorder) ObserveVolumeSize(string, string, string, string, int32) {}
 func (r *fakeRecorder) ObserveResize(success bool, policy string) {
 	if success {
 		r.resizeSuccess++

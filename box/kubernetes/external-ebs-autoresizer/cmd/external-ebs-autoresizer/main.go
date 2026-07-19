@@ -10,14 +10,12 @@ import (
 	"os/signal"
 	"strings"
 	"syscall"
-	"time"
 
-	"github.com/younsl/o/box/kubernetes/external-ebs-autoresizer/internal/alertmanager"
+	"k8s.io/klog/v2"
+
 	"github.com/younsl/o/box/kubernetes/external-ebs-autoresizer/internal/awsx"
 	"github.com/younsl/o/box/kubernetes/external-ebs-autoresizer/internal/config"
 	"github.com/younsl/o/box/kubernetes/external-ebs-autoresizer/internal/controller"
-	"github.com/younsl/o/box/kubernetes/external-ebs-autoresizer/internal/events"
-	"github.com/younsl/o/box/kubernetes/external-ebs-autoresizer/internal/grafana"
 	"github.com/younsl/o/box/kubernetes/external-ebs-autoresizer/internal/leader"
 	"github.com/younsl/o/box/kubernetes/external-ebs-autoresizer/internal/observability"
 	"github.com/younsl/o/box/kubernetes/external-ebs-autoresizer/internal/policy"
@@ -40,6 +38,14 @@ func runDaemon(configFile string) error {
 	}
 
 	logger := newLogger(cfg.LogLevel, cfg.LogFormat)
+	// Standardize every log line on this slog handler: our own packages log
+	// through the injected logger, any library using the slog default picks it
+	// up via SetDefault, and client-go (leader election, event broadcaster)
+	// logs through klog, which is routed to the same handler here. Without the
+	// klog routing, lease renewal failures would bypass the JSON format and
+	// land unstructured on stderr.
+	slog.SetDefault(logger)
+	klog.SetSlogLogger(logger)
 	logger.Info("starting external-ebs-autoresizer",
 		"version", version.Version, "commit", version.Commit,
 		"region", cfg.Region, "reconcile_interval", cfg.ReconcileInterval.String(),
@@ -71,48 +77,8 @@ func runDaemon(configFile string) error {
 	metrics := observability.NewMetrics()
 	health := observability.NewHealth()
 
-	// Kubernetes Events about resize attempts attach to this controller's own
-	// Pod. Disabled gracefully when not running in-cluster (no downward API).
-	// Keep the interface nil (not a typed nil) when disabled so the resizer's
-	// nil check works.
-	var emitter resizer.EventEmitter
-	if cfg.PodName != "" {
-		e, err := events.New(cfg.PodName, cfg.PodNamespace, cfg.PodUID)
-		if err != nil {
-			logger.Warn("Kubernetes Event publishing disabled", "error", err)
-		} else {
-			emitter = e
-			defer e.Shutdown()
-		}
-	} else {
-		logger.Info("POD_NAME unset; Kubernetes Event publishing disabled")
-	}
-
-	// Alertmanager alerting about resize attempts. Disabled unless explicitly
-	// enabled. Keep the interface nil (not a typed nil) when disabled so the
-	// resizer's nil check works.
-	var notifier resizer.AlertNotifier
-	if cfg.AlertmanagerEnabled {
-		amClient := alertmanager.New(cfg.AlertmanagerURL, cfg.AlertmanagerTimeout, cfg.AlertmanagerLabels, cfg.AlertmanagerDashboardURL, logger)
-		logger.Info("Alertmanager alerting enabled", "url", cfg.AlertmanagerURL, "notify_on", cfg.AlertmanagerNotifyOn)
-		runPreflight(ctx, logger, "alertmanager", amClient)
-		notifier = amClient
-	} else {
-		logger.Info("Alertmanager alerting disabled")
-	}
-
-	// Grafana annotations about resize attempts. Disabled unless explicitly
-	// enabled. Keep the interface nil (not a typed nil) when disabled so the
-	// resizer's nil check works. The API token is never logged.
-	var annotator resizer.Annotator
-	if cfg.GrafanaAnnotationEnabled {
-		gfClient := grafana.New(cfg.GrafanaURL, cfg.GrafanaAPIToken, cfg.GrafanaTimeout, cfg.GrafanaAnnotationTags, logger)
-		logger.Info("Grafana annotations enabled", "url", cfg.GrafanaURL, "annotate_on", cfg.GrafanaAnnotateOn, "tags", cfg.GrafanaAnnotationTags)
-		runPreflight(ctx, logger, "grafana", gfClient)
-		annotator = gfClient
-	} else {
-		logger.Info("Grafana annotations disabled")
-	}
+	snk := buildSinks(ctx, cfg, logger)
+	defer snk.shutdown()
 
 	go func() {
 		if err := health.Serve(ctx, cfg.HealthPort); err != nil {
@@ -125,7 +91,7 @@ func runDaemon(configFile string) error {
 		}
 	}()
 
-	rsz := resizer.New(cfg, resolver, clients, clients, metrics, emitter, notifier, annotator, logger)
+	rsz := resizer.New(cfg, resolver, clients, clients, metrics, snk.emitter, snk.notifier, snk.annotator, logger)
 	health.SetReady(true)
 
 	runLoop := func(ctx context.Context) {
@@ -179,55 +145,6 @@ func logResizePolicy(logger *slog.Logger, cfg *config.Config) {
 			"grow_percent", cfg.GrowPercent,
 			"usage_threshold_percent", cfg.UsageThresholdPercent,
 			"max_volume_size_gib", cfg.MaxVolumeSizeGiB)
-	}
-}
-
-// preflightAttempts is how many times a startup connectivity check is tried
-// before it is reported as failed. preflightBackoff is the delay between tries.
-const preflightAttempts = 3
-
-// preflightBackoff is the delay between preflight retries. It is a var so tests
-// can shorten it.
-var preflightBackoff = 2 * time.Second
-
-// preflighter performs a one-time startup connectivity check, returning the
-// checked endpoint, the HTTP status, the request latency, and an error.
-type preflighter interface {
-	Preflight(ctx context.Context) (string, int, time.Duration, error)
-}
-
-// runPreflight runs a best-effort startup connectivity check, retrying up to
-// preflightAttempts times, and logs the outcome (endpoint, status, latency).
-// It never blocks startup: a persistent failure is logged at error level so
-// misconfiguration is visible immediately, but the controller still starts
-// because alerting and annotations are auxiliary to the core resize loop.
-func runPreflight(ctx context.Context, logger *slog.Logger, name string, p preflighter) {
-	for attempt := 1; attempt <= preflightAttempts; attempt++ {
-		pctx, cancel := context.WithTimeout(ctx, 10*time.Second)
-		endpoint, status, latency, err := p.Preflight(pctx)
-		cancel()
-		if err == nil {
-			logger.Info(name+" preflight check succeeded",
-				"endpoint", endpoint, "status", status,
-				"latency", latency.Round(time.Millisecond).String(), "attempt", attempt)
-			return
-		}
-		if attempt < preflightAttempts {
-			logger.Warn(name+" preflight check failed, retrying",
-				"endpoint", endpoint, "status", status,
-				"latency", latency.Round(time.Millisecond).String(),
-				"attempt", attempt, "max_attempts", preflightAttempts, "error", err)
-			select {
-			case <-ctx.Done():
-				return
-			case <-time.After(preflightBackoff):
-			}
-			continue
-		}
-		logger.Error(name+" preflight check failed",
-			"endpoint", endpoint, "status", status,
-			"latency", latency.Round(time.Millisecond).String(),
-			"attempts", preflightAttempts, "error", err)
 	}
 }
 

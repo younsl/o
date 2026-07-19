@@ -39,6 +39,7 @@ type SSMAPI interface {
 // Recorder receives metrics observations. observability.Metrics implements it.
 type Recorder interface {
 	ObserveUsage(instanceID, device, volumeID, name string, percent float64)
+	ObserveVolumeSize(instanceID, device, volumeID, name string, sizeGiB int32)
 	ObserveResize(success bool, policy string)
 	ObserveSkip(reason, policy string)
 	ObserveError(stage string)
@@ -82,25 +83,6 @@ type Annotator interface {
 	Annotate(ctx context.Context, text string, tags []string, start, end time.Time)
 }
 
-// Alert severities and names used for the alerts sent per resize operation.
-const (
-	severityWarning = "warning"
-	severityInfo    = "info"
-
-	alertResizeFailed    = "EBSRootVolumeAutoresizeFailed"
-	alertResizeCompleted = "EBSRootVolumeAutoresizeCompleted"
-)
-
-// Event types and reasons used for the Kubernetes Events emitted per instance.
-const (
-	eventTypeNormal  = "Normal"
-	eventTypeWarning = "Warning"
-
-	reasonResizeStarted   = "ResizeStarted"
-	reasonResizeCompleted = "ResizeCompleted"
-	reasonResizeFailed    = "ResizeFailed"
-)
-
 // Resizer holds dependencies for one reconcile pass.
 type Resizer struct {
 	cfg       *config.Config
@@ -129,89 +111,6 @@ func (r *Resizer) effective(inst awsx.Instance) policy.Effective {
 		return policy.FromConfig(r.cfg)
 	}
 	return r.resolver.Resolve(inst.Name, inst.Tags)
-}
-
-// emit publishes a Kubernetes Event when an emitter is configured.
-func (r *Resizer) emit(eventType, reason, messageFmt string, args ...any) {
-	if r.events != nil {
-		r.events.Eventf(eventType, reason, messageFmt, args...)
-	}
-}
-
-// notify sends an alert when a notifier is configured and the resize outcome
-// matches the configured notify-on policy. severityInfo marks a success and
-// severityWarning marks a failure.
-func (r *Resizer) notify(ctx context.Context, severity, alertname, summary, description string, labels map[string]string, startsAt time.Time) {
-	if r.notifier == nil {
-		return
-	}
-	switch r.cfg.AlertmanagerNotifyOn {
-	case config.NotifyOnSuccess:
-		if severity != severityInfo {
-			return
-		}
-	case config.NotifyOnFailure:
-		if severity != severityWarning {
-			return
-		}
-	}
-	r.notifier.Notify(ctx, severity, alertname, summary, description, labels, startsAt)
-}
-
-// annotate posts a Grafana annotation when an annotator is configured and the
-// resize outcome matches the configured annotate-on policy. A successful resize
-// is a region annotation spanning start..end; a failure is a point annotation
-// at start (end is the zero time).
-func (r *Resizer) annotate(ctx context.Context, success bool, text string, inst awsx.Instance, start, end time.Time) {
-	if r.annotator == nil {
-		return
-	}
-	switch r.cfg.GrafanaAnnotateOn {
-	case config.AnnotateOnSuccess:
-		if !success {
-			return
-		}
-	case config.AnnotateOnFailure:
-		if success {
-			return
-		}
-	}
-	r.annotator.Annotate(ctx, text, annotationTags(inst, success), start, end)
-}
-
-// annotationTags builds the per-annotation tags identifying the instance and
-// outcome. They are appended to the configured base tags (e.g. event:ebs-resize)
-// so dashboards can filter resize markers down to a single disk or outcome.
-func annotationTags(inst awsx.Instance, success bool) []string {
-	result := "failure"
-	if success {
-		result = "success"
-	}
-	return []string{
-		"instance_id:" + inst.ID,
-		"instance_name:" + inst.Name,
-		"volume_id:" + inst.RootVolumeID,
-		"device:" + inst.RootDeviceName,
-		"result:" + result,
-	}
-}
-
-// alertLabels builds the identifying labels attached to alerts for an instance.
-func alertLabels(inst awsx.Instance) map[string]string {
-	return map[string]string{
-		"instance_id":   inst.ID,
-		"instance_name": inst.Name,
-		"volume_id":     inst.RootVolumeID,
-		"device":        inst.RootDeviceName,
-	}
-}
-
-// failureDescription builds the alert description for a failed resize as a
-// sentence. The volume is not resized on failure, so only the pre-resize usage
-// is reported alongside the failing instance, device, and reason.
-func failureDescription(inst awsx.Instance, usage int, reason string) string {
-	return fmt.Sprintf("Instance %s (%s) device %s failed to autoresize at %d%% root filesystem usage. Cause: %s.",
-		inst.ID, inst.Name, inst.RootDeviceName, usage, reason)
 }
 
 // Reconcile discovers all target instances and processes each one, returning
@@ -298,6 +197,9 @@ func (r *Resizer) reconcileInstance(ctx context.Context, inst awsx.Instance, eff
 		log.Warn("no root EBS volume resolved, skipping")
 		return nil
 	}
+	// Volume size is known from discovery, so it is recorded before the paused
+	// and threshold gates: even instances that are never measured report a size.
+	r.rec.ObserveVolumeSize(inst.ID, inst.RootDeviceName, inst.RootVolumeID, inst.Name, inst.RootVolumeSizeGiB)
 
 	// A paused policy takes the instance entirely out of scope: no measurement,
 	// no resize.
@@ -348,48 +250,22 @@ func (r *Resizer) reconcileInstance(ctx context.Context, inst awsx.Instance, eff
 	}
 
 	start := time.Now()
-	r.emit(eventTypeNormal, reasonResizeStarted,
-		"Resizing root filesystem on device %s of instance %s (%s) by growing volume %s from %d GiB to %d GiB (usage %d%%)",
-		inst.RootDeviceName, inst.Name, inst.ID, inst.RootVolumeID, current, target, usage)
+	r.reportStarted(inst, current, target, usage)
 	if err := r.ec2.ModifyVolume(ctx, inst.RootVolumeID, target); err != nil {
-		r.rec.ObserveError("modify")
-		r.rec.ObserveResize(false, eff.Policy)
-		r.emit(eventTypeWarning, reasonResizeFailed,
-			"ModifyVolume failed for volume %s (device %s on instance %s): %v", inst.RootVolumeID, inst.RootDeviceName, inst.ID, err)
-		r.notify(ctx, severityWarning, alertResizeFailed,
-			"EBS root volume autoresize failed",
-			failureDescription(inst, usage, fmt.Sprintf("ModifyVolume failed: %v", err)),
-			alertLabels(inst), start)
-		r.annotate(ctx, false, failureDescription(inst, usage, fmt.Sprintf("ModifyVolume failed: %v", err)), inst, start, time.Time{})
+		r.reportFailure(ctx, inst, eff, usage, "modify", fmt.Sprintf("ModifyVolume failed: %v", err), start)
 		return fmt.Errorf("modify volume: %w", err)
 	}
 	log.Info("requested volume modification")
 
 	if err := r.ec2.WaitForModification(ctx, inst.RootVolumeID, r.cfg.VolumeModifyTimeout); err != nil {
-		r.rec.ObserveError("wait")
-		r.rec.ObserveResize(false, eff.Policy)
-		r.emit(eventTypeWarning, reasonResizeFailed,
-			"Volume %s (device %s on instance %s) did not reach optimizing: %v", inst.RootVolumeID, inst.RootDeviceName, inst.ID, err)
-		r.notify(ctx, severityWarning, alertResizeFailed,
-			"EBS root volume autoresize failed",
-			failureDescription(inst, usage, fmt.Sprintf("volume did not reach optimizing: %v", err)),
-			alertLabels(inst), start)
-		r.annotate(ctx, false, failureDescription(inst, usage, fmt.Sprintf("volume did not reach optimizing: %v", err)), inst, start, time.Time{})
+		r.reportFailure(ctx, inst, eff, usage, "wait", fmt.Sprintf("volume did not reach optimizing: %v", err), start)
 		return fmt.Errorf("wait for modification: %w", err)
 	}
 	log.Info("volume modification optimizing", "elapsed", time.Since(start).String())
 
 	res, err := r.ssm.RunScript(ctx, inst.ID, scripts.ResizeRootFS, r.cfg.SSMCommandTimeout)
 	if err != nil {
-		r.rec.ObserveError("resize")
-		r.rec.ObserveResize(false, eff.Policy)
-		r.emit(eventTypeWarning, reasonResizeFailed,
-			"Resize of root filesystem on device %s failed on instance %s (volume %s now %d GiB): %v", inst.RootDeviceName, inst.ID, inst.RootVolumeID, target, err)
-		r.notify(ctx, severityWarning, alertResizeFailed,
-			"EBS root volume autoresize failed",
-			failureDescription(inst, usage, fmt.Sprintf("filesystem resize failed: %v", err)),
-			alertLabels(inst), start)
-		r.annotate(ctx, false, failureDescription(inst, usage, fmt.Sprintf("filesystem resize failed: %v", err)), inst, start, time.Time{})
+		r.reportFailure(ctx, inst, eff, usage, "resize", fmt.Sprintf("filesystem resize failed: %v", err), start)
 		return fmt.Errorf("resize filesystem: %w", err)
 	}
 	log.Info("filesystem resize completed", "stdout", strings.TrimSpace(res.Stdout))
@@ -400,19 +276,7 @@ func (r *Resizer) reconcileInstance(ctx context.Context, inst awsx.Instance, eff
 	} else {
 		log.Info("resize verified", "usage_before_percent", usage, "usage_after_percent", after, "new_size_gib", target)
 	}
-	r.rec.ObserveResize(true, eff.Policy)
-	r.emit(eventTypeNormal, reasonResizeCompleted,
-		"Resized root filesystem on device %s of instance %s (%s) to %d GiB in %s. Disk usage changed from %d%% to %d%%",
-		inst.RootDeviceName, inst.Name, inst.ID, target, time.Since(start).Round(time.Second), usage, after)
-	completedDescription := fmt.Sprintf("Instance %s (%s) device %s was autoresized to %d GiB. Root filesystem usage changed from %d%% to %d%%.",
-		inst.ID, inst.Name, inst.RootDeviceName, target, usage, after)
-	r.notify(ctx, severityInfo, alertResizeCompleted,
-		"EBS root volume autoresize completed",
-		completedDescription,
-		alertLabels(inst), start)
-	// A completed resize is a region annotation spanning the time the resize
-	// took, so dashboards show how long the volume was being grown.
-	r.annotate(ctx, true, completedDescription, inst, start, time.Now())
+	r.reportSuccess(ctx, inst, eff, usage, after, target, start)
 	return nil
 }
 
