@@ -285,3 +285,44 @@ func TestSummaries(t *testing.T) {
 		}
 	}
 }
+
+func TestResolverAccessors(t *testing.T) {
+	cfg := baseCfgForAccessors()
+	r, err := New(cfg)
+	if err != nil {
+		t.Fatalf("New error: %v", err)
+	}
+	if r.Len() != 2 {
+		t.Errorf("Len() = %d, want 2", r.Len())
+	}
+	names := r.Names()
+	if len(names) != 2 || names[0] != "bastion" || names[1] != "shared" {
+		t.Errorf("Names() = %v, want [bastion shared] in file order", names)
+	}
+	def := r.Default()
+	if def.Policy != DefaultPolicyName || def.UsageThresholdPercent != 80 {
+		t.Errorf("Default() = %+v, want default policy at threshold 80", def)
+	}
+	eff, ok := r.EffectiveOf("bastion")
+	if !ok || eff.UsageThresholdPercent != 60 {
+		t.Errorf("EffectiveOf(bastion) = (%+v, %t), want threshold 60, true", eff, ok)
+	}
+	if _, ok := r.EffectiveOf("missing"); ok {
+		t.Error("EffectiveOf(missing) = true, want false")
+	}
+}
+
+func baseCfgForAccessors() *config.Config {
+	threshold := 60
+	return &config.Config{
+		UsageThresholdPercent: 80,
+		GrowMode:              config.GrowModePercent,
+		GrowPercent:           10,
+		MaxVolumeSizeGiB:      1000,
+		Policies: []config.ResizePolicy{
+			{Name: "bastion", InstanceSelector: config.InstanceSelector{NameRegex: "bastion"},
+				Resize: config.ResizeSpec{UsageThresholdPercent: &threshold}},
+			{Name: "shared", InstanceSelector: config.InstanceSelector{NameRegex: "^shared-"}},
+		},
+	}
+}

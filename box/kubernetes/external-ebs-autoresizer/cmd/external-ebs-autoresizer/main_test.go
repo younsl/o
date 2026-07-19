@@ -7,6 +7,8 @@ import (
 	"log/slog"
 	"testing"
 	"time"
+
+	"github.com/younsl/o/box/kubernetes/external-ebs-autoresizer/internal/config"
 )
 
 func testLogger() *slog.Logger {
@@ -74,4 +76,11 @@ func TestNewLogger(t *testing.T) {
 			t.Errorf("newLogger(%q, %q) = nil", tc.level, tc.format)
 		}
 	}
+}
+
+func TestLogResizePolicyBothModes(t *testing.T) {
+	// Purely informational logging: assert both grow-mode branches run without
+	// panicking on a minimal config.
+	logResizePolicy(testLogger(), &config.Config{GrowMode: config.GrowModePercent, GrowPercent: 10})
+	logResizePolicy(testLogger(), &config.Config{GrowMode: config.GrowModeAbsolute, GrowAmount: "10GiB", GrowAmountGiB: 10})
 }

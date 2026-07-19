@@ -635,3 +635,42 @@ func TestReconcileDryRunPostsNoAnnotations(t *testing.T) {
 		t.Errorf("dry-run posted annotations: %v", a.texts)
 	}
 }
+
+func TestReconcileResolvesPoliciesAndCounts(t *testing.T) {
+	threshold := 90
+	cfg := baseConfig()
+	cfg.Policies = []config.ResizePolicy{
+		{Name: "web", InstanceSelector: config.InstanceSelector{NameRegex: "^web-"},
+			Resize: config.ResizeSpec{UsageThresholdPercent: &threshold}},
+		{Name: "unmatched", InstanceSelector: config.InstanceSelector{NameRegex: "^nothing-"}},
+	}
+	resolver, err := policy.New(cfg)
+	if err != nil {
+		t.Fatalf("policy.New error: %v", err)
+	}
+
+	ec2 := &fakeEC2{instances: []awsx.Instance{sampleInstance()}}
+	rec := &fakeRecorder{}
+	// usage 85 is above the global 80 threshold but below the web policy's 90,
+	// so the resolver path must pick the policy override and skip the resize.
+	r := New(cfg, resolver, ec2, &fakeSSM{usage: 85}, rec, nil, nil, nil, discardLogger())
+
+	if _, err := r.Reconcile(context.Background()); err != nil {
+		t.Fatalf("Reconcile error: %v", err)
+	}
+	if len(ec2.modifyCalls) != 0 {
+		t.Errorf("ModifyVolume called %d times, want 0 (policy threshold 90)", len(ec2.modifyCalls))
+	}
+	if !slices.Contains(rec.skipPolicies, "web") {
+		t.Errorf("skip policies = %v, want to contain \"web\"", rec.skipPolicies)
+	}
+	want := map[string]int{"web": 1, "unmatched": 0, policy.DefaultPolicyName: 0}
+	if len(rec.policyCounts) != len(want) {
+		t.Fatalf("policy counts = %v, want %v", rec.policyCounts, want)
+	}
+	for k, v := range want {
+		if rec.policyCounts[k] != v {
+			t.Errorf("policy count %q = %d, want %d", k, rec.policyCounts[k], v)
+		}
+	}
+}

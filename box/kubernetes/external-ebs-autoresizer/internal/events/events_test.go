@@ -5,6 +5,8 @@ import (
 
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/client-go/kubernetes/scheme"
+	"k8s.io/client-go/tools/record"
 )
 
 func TestNewRequiresPodIdentity(t *testing.T) {
@@ -68,4 +70,17 @@ func TestEmitterEventfDelegates(t *testing.T) {
 	if got, ok := rec.obj.(*corev1.ObjectReference); !ok || got != ref {
 		t.Errorf("involvedObject = %v, want the pod ref", rec.obj)
 	}
+}
+
+func TestEmitterShutdownFlushes(t *testing.T) {
+	// A broadcaster without a sink still supports Shutdown; the call must
+	// return (flushing nothing) rather than panic or hang.
+	b := record.NewBroadcaster()
+	e := &Emitter{
+		recorder:    b.NewRecorder(scheme.Scheme, corev1.EventSource{Component: component}),
+		broadcaster: b,
+		ref:         newPodRef("p", "ns", "uid"),
+	}
+	e.Eventf("Normal", "ResizeCompleted", "done")
+	e.Shutdown()
 }
