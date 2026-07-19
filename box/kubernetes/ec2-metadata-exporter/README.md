@@ -1,27 +1,19 @@
 # ec2-metadata-exporter
 
+[![GitHub Container Registry](https://img.shields.io/badge/ghcr.io-ec2--metadata--exporter-black?style=flat-square&logo=docker&logoColor=white)](https://github.com/younsl/o/pkgs/container/ec2-metadata-exporter)
+[![Helm Chart](https://img.shields.io/badge/ghcr.io-charts%2Fec2--metadata--exporter-black?style=flat-square&logo=helm&logoColor=white)](https://github.com/younsl/o/pkgs/container/charts%2Fec2-metadata-exporter)
+[![Go](https://img.shields.io/badge/go-1.26.5-black?style=flat-square&logo=go&logoColor=white)](https://go.dev/)
+[![GitHub license](https://img.shields.io/github/license/younsl/o?style=flat-square&color=black)](https://github.com/younsl/o/blob/main/LICENSE)
+
 Prometheus exporter that polls the EC2 DescribeInstances API and publishes
 every instance's private IP and Name tag as metric labels. Built with Go 1.26
 and shipped as a statically linked binary on a scratch image.
 
 ## Metrics
 
-| Metric | Type | Description |
-|--------|------|-------------|
-| `ec2_metadata_instance_info{instance_id, name, private_ip, instance_type, availability_zone, state, lifecycle, architecture}` | Gauge | Always 1. One series per non-terminated instance with a private IP. `lifecycle` is `on-demand` or `spot`; `architecture` is `x86_64`, `arm64`, etc. |
-| `ec2_metadata_instances` | Gauge | Instance count from the last successful scrape. |
-| `ec2_metadata_scrape_errors_total` | Counter | EC2 API scrape failures. |
-| `ec2_metadata_scrape_duration_seconds` | Gauge | Duration of the last scrape. |
-| `ec2_metadata_last_scrape_success_timestamp_seconds` | Gauge | Unix time of the last successful scrape. |
-
-Example output:
-
-```
-ec2_metadata_instance_info{instance_id="i-0abc123",name="web-1",private_ip="10.0.1.10",instance_type="m5.large",availability_zone="ap-northeast-2a",state="running",lifecycle="on-demand",architecture="x86_64"} 1
-```
-
-The info gauge is fully reset on every refresh, so terminated instances drop
-out instead of going stale.
+The exporter serves metrics on `/metrics` (default port `8081`). All metric
+names share the prefix `ec2_metadata_`. See [docs/metrics.md](docs/metrics.md)
+for the full metric reference, example queries, and alerting hints.
 
 ## Configuration
 
