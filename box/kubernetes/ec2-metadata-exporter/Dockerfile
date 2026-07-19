@@ -1,6 +1,6 @@
 # Statically linked Go binary on scratch. Cross-compilation happens inside the
 # builder stage (CGO disabled), so buildx needs no QEMU for the compile step.
-FROM --platform=$BUILDPLATFORM golang:1.26.4-alpine AS builder
+FROM --platform=$BUILDPLATFORM golang:1.26.5-alpine AS builder
 ARG TARGETOS
 ARG TARGETARCH
 ARG VERSION=dev

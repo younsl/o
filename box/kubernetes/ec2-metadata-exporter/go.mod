@@ -1,6 +1,6 @@
 module github.com/younsl/o/box/kubernetes/ec2-metadata-exporter
 
-go 1.26.4
+go 1.26.5
 
 require (
 	github.com/aws/aws-sdk-go-v2 v1.41.12
