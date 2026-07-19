@@ -7,8 +7,6 @@ on:
     paths:
       - 'box/kubernetes/external-ebs-autoresizer/Dockerfile'
       - 'box/kubernetes/ec2-metadata-exporter/Dockerfile'
-      - 'box/kubernetes/forklift/Dockerfile'
-      - 'box/kubernetes/opensearch-conflict-viewer/Dockerfile'
   workflow_dispatch:
     inputs:
       project:
@@ -18,8 +16,6 @@ on:
         options:
           - external-ebs-autoresizer
           - ec2-metadata-exporter
-          - forklift
-          - opensearch-conflict-viewer
 
 env:
   GO_VERSION: "1.26.5"
@@ -71,8 +67,6 @@ jobs:
           PROJECTS=(
             "external-ebs-autoresizer:external-ebs-autoresizer"
             "ec2-metadata-exporter:ec2-metadata-exporter"
-            "forklift:forklift"
-            "opensearch-conflict-viewer:opensearch-conflict-viewer"
           )
 
           TEST_JSON="[]"
