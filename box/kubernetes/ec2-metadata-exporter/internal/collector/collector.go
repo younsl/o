@@ -5,6 +5,7 @@ package collector
 import (
 	"context"
 	"log/slog"
+	"sync"
 	"time"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
@@ -15,7 +16,7 @@ import (
 
 // InfoLabels is the ordered label set published on ec2_metadata_instance_info.
 // It is the single source of truth for both metric construction and the startup
-// log; the per-instance values in refresh must be passed in this same order.
+// log; the per-instance values in Collect must be passed in this same order.
 var InfoLabels = []string{
 	"instance_id",
 	"name",
@@ -39,55 +40,98 @@ type Instance struct {
 	Architecture     string
 }
 
-// Collector polls EC2 and keeps the metric registry in sync with the latest
-// snapshot. Each refresh fully resets the info gauge so terminated instances
-// disappear instead of going stale.
+// ReadinessReporter receives readiness transitions driven by scrape outcomes.
+// *observability.Health satisfies it.
+type ReadinessReporter interface {
+	SetReady(bool)
+}
+
+// Collector polls EC2 and serves the latest snapshot as Prometheus metrics.
+// It implements prometheus.Collector: instance metrics are emitted as const
+// metrics from the snapshot, so a scrape during a refresh never observes a
+// half-populated (or empty) result, and terminated instances disappear as
+// soon as a new snapshot lands.
 type Collector struct {
 	client   ec2.DescribeInstancesAPIClient
 	logger   *slog.Logger
 	registry *prometheus.Registry
+	ready    ReadinessReporter
 
-	info           *prometheus.GaugeVec
-	instances      prometheus.Gauge
+	mu       sync.RWMutex
+	snapshot []Instance
+
+	infoDesc      *prometheus.Desc
+	instancesDesc *prometheus.Desc
+
 	scrapeErrors   prometheus.Counter
-	scrapeDuration prometheus.Gauge
+	scrapeDuration prometheus.Histogram
 	lastSuccess    prometheus.Gauge
 }
 
 // New builds a Collector and registers its metrics on a private registry.
-func New(client ec2.DescribeInstancesAPIClient, logger *slog.Logger) *Collector {
+// ready may be nil; when set, it is marked ready on the first successful
+// scrape.
+func New(client ec2.DescribeInstancesAPIClient, logger *slog.Logger, ready ReadinessReporter) *Collector {
 	c := &Collector{
 		client:   client,
 		logger:   logger,
 		registry: prometheus.NewRegistry(),
-		info: prometheus.NewGaugeVec(prometheus.GaugeOpts{
-			Name: "ec2_metadata_instance_info",
-			Help: "EC2 instance metadata. Value is always 1; labels carry the private IP, Name tag, instance type, availability zone, lifecycle (on-demand or spot), and CPU architecture.",
-		}, InfoLabels),
-		instances: prometheus.NewGauge(prometheus.GaugeOpts{
-			Name: "ec2_metadata_instances",
-			Help: "Number of EC2 instances observed in the last successful scrape.",
-		}),
+		ready:    ready,
+		infoDesc: prometheus.NewDesc(
+			"ec2_metadata_instance_info",
+			"EC2 instance metadata. Value is always 1; labels carry the private IP, Name tag, instance type, availability zone, lifecycle (on-demand or spot), and CPU architecture.",
+			InfoLabels, nil,
+		),
+		instancesDesc: prometheus.NewDesc(
+			"ec2_metadata_instances",
+			"Number of EC2 instances observed in the last successful scrape, by instance state.",
+			[]string{"state"}, nil,
+		),
 		scrapeErrors: prometheus.NewCounter(prometheus.CounterOpts{
 			Name: "ec2_metadata_scrape_errors_total",
 			Help: "Total EC2 API scrape failures.",
 		}),
-		scrapeDuration: prometheus.NewGauge(prometheus.GaugeOpts{
-			Name: "ec2_metadata_scrape_duration_seconds",
-			Help: "Duration of the last EC2 API scrape.",
+		scrapeDuration: prometheus.NewHistogram(prometheus.HistogramOpts{
+			Name:    "ec2_metadata_scrape_duration_seconds",
+			Help:    "Duration of EC2 API scrapes.",
+			Buckets: prometheus.ExponentialBuckets(0.05, 2, 10), // 50ms .. ~25.6s
 		}),
 		lastSuccess: prometheus.NewGauge(prometheus.GaugeOpts{
 			Name: "ec2_metadata_last_scrape_success_timestamp_seconds",
 			Help: "Unix timestamp of the last successful EC2 API scrape.",
 		}),
 	}
-	c.registry.MustRegister(c.info, c.instances, c.scrapeErrors, c.scrapeDuration, c.lastSuccess)
+	c.registry.MustRegister(c, c.scrapeErrors, c.scrapeDuration, c.lastSuccess)
 	return c
 }
 
 // Registry returns the registry holding all exporter metrics.
 func (c *Collector) Registry() *prometheus.Registry {
 	return c.registry
+}
+
+// Describe implements prometheus.Collector.
+func (c *Collector) Describe(ch chan<- *prometheus.Desc) {
+	ch <- c.infoDesc
+	ch <- c.instancesDesc
+}
+
+// Collect implements prometheus.Collector. It reads the snapshot atomically,
+// so concurrent refreshes never surface partial state to a scrape.
+func (c *Collector) Collect(ch chan<- prometheus.Metric) {
+	c.mu.RLock()
+	snapshot := c.snapshot
+	c.mu.RUnlock()
+
+	byState := make(map[string]int)
+	for _, inst := range snapshot {
+		ch <- prometheus.MustNewConstMetric(c.infoDesc, prometheus.GaugeValue, 1,
+			inst.ID, inst.Name, inst.PrivateIP, inst.InstanceType, inst.AvailabilityZone, inst.State, inst.Lifecycle, inst.Architecture)
+		byState[inst.State]++
+	}
+	for state, count := range byState {
+		ch <- prometheus.MustNewConstMetric(c.instancesDesc, prometheus.GaugeValue, float64(count), state)
+	}
 }
 
 // Run refreshes once immediately, then on every tick until ctx is cancelled.
@@ -105,22 +149,26 @@ func (c *Collector) Run(ctx context.Context, interval time.Duration) {
 	}
 }
 
+// refresh polls EC2 and swaps in a new snapshot. On failure the previous
+// snapshot keeps serving so a transient API error never blanks the metrics.
 func (c *Collector) refresh(ctx context.Context) {
 	start := time.Now()
 	instances, err := c.describeAll(ctx)
-	c.scrapeDuration.Set(time.Since(start).Seconds())
+	c.scrapeDuration.Observe(time.Since(start).Seconds())
 	if err != nil {
 		c.scrapeErrors.Inc()
 		c.logger.Error("failed to describe EC2 instances", "error", err)
 		return
 	}
 
-	c.info.Reset()
-	for _, inst := range instances {
-		c.info.WithLabelValues(inst.ID, inst.Name, inst.PrivateIP, inst.InstanceType, inst.AvailabilityZone, inst.State, inst.Lifecycle, inst.Architecture).Set(1)
-	}
-	c.instances.Set(float64(len(instances)))
+	c.mu.Lock()
+	c.snapshot = instances
+	c.mu.Unlock()
+
 	c.lastSuccess.SetToCurrentTime()
+	if c.ready != nil {
+		c.ready.SetReady(true)
+	}
 	c.logger.Info("refreshed EC2 instance metrics", "instances", len(instances), "duration", time.Since(start).String())
 }
 

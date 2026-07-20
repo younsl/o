@@ -5,7 +5,9 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"log/slog"
 	"net/http"
+	"runtime"
 	"sync/atomic"
 	"time"
 
@@ -28,8 +30,9 @@ func (h *Health) SetReady(ready bool) {
 	h.ready.Store(ready)
 }
 
-// Serve runs the health HTTP server until ctx is cancelled.
-func (h *Health) Serve(ctx context.Context, port int) error {
+// Serve runs the health HTTP server until ctx is cancelled. Server-internal
+// errors are routed through logger so all output stays structured.
+func (h *Health) Serve(ctx context.Context, port int, logger *slog.Logger) error {
 	mux := http.NewServeMux()
 	mux.HandleFunc("/healthz", func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusOK)
@@ -41,22 +44,36 @@ func (h *Health) Serve(ctx context.Context, port int) error {
 		}
 		w.WriteHeader(http.StatusServiceUnavailable)
 	})
-	return serveUntilDone(ctx, port, mux)
+	return serveUntilDone(ctx, port, mux, logger)
+}
+
+// RegisterBuildInfo registers the standard build_info gauge on the registry.
+func RegisterBuildInfo(registry *prometheus.Registry, version, commit string) {
+	buildInfo := prometheus.NewGaugeVec(prometheus.GaugeOpts{
+		Name: "ec2_metadata_build_info",
+		Help: "Build information. Value is always 1; labels carry the version, git commit, and Go runtime version.",
+	}, []string{"version", "commit", "go_version"})
+	buildInfo.WithLabelValues(version, commit, runtime.Version()).Set(1)
+	registry.MustRegister(buildInfo)
 }
 
 // ServeMetrics runs the /metrics HTTP server for the given registry until ctx
-// is cancelled.
-func ServeMetrics(ctx context.Context, port int, registry *prometheus.Registry) error {
+// is cancelled. Handler and server-internal errors are routed through logger
+// so all output stays structured.
+func ServeMetrics(ctx context.Context, port int, registry *prometheus.Registry, logger *slog.Logger) error {
 	mux := http.NewServeMux()
-	mux.Handle("/metrics", promhttp.HandlerFor(registry, promhttp.HandlerOpts{}))
-	return serveUntilDone(ctx, port, mux)
+	mux.Handle("/metrics", promhttp.HandlerFor(registry, promhttp.HandlerOpts{
+		ErrorLog: slog.NewLogLogger(logger.Handler(), slog.LevelError),
+	}))
+	return serveUntilDone(ctx, port, mux, logger)
 }
 
-func serveUntilDone(ctx context.Context, port int, handler http.Handler) error {
+func serveUntilDone(ctx context.Context, port int, handler http.Handler, logger *slog.Logger) error {
 	srv := &http.Server{
 		Addr:              fmt.Sprintf(":%d", port),
 		Handler:           handler,
 		ReadHeaderTimeout: 5 * time.Second,
+		ErrorLog:          slog.NewLogLogger(logger.Handler(), slog.LevelError),
 	}
 	errCh := make(chan error, 1)
 	go func() {
