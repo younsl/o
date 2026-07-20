@@ -384,7 +384,7 @@ image: ghcr.io/younsl/logstash-with-opensearch-plugin:8.17.0
 
 ### backstage - Internal Developer Portal (Node.js)
 
-Custom Backstage (v1.49.0) instance serving as a centralized Internal Developer Platform (IDP). Provides service catalog with GitLab auto-discovery, CI/CD pipeline visibility, infrastructure management, and self-service workflows for developers.
+Custom Backstage (v1.53.0) instance serving as a centralized Internal Developer Platform (IDP). Provides service catalog with GitLab auto-discovery, CI/CD pipeline visibility, infrastructure management, and self-service workflows for developers.
 
 ```bash
 # Local development

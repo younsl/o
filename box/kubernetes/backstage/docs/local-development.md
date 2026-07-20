@@ -19,7 +19,7 @@ The versions below reflect the environment this guide was written against; newer
 | Yarn | 4.12.0 (Berry) | Pinned via `packageManager`; enable with `corepack enable` |
 | Docker or Podman | any recent | Only needed for the container test step |
 
-Backstage version is pinned in `backstage.json` (currently 1.52.1). Yarn is managed by Corepack, so do not install it globally; running any `yarn` command in this directory picks up the pinned 4.12.0.
+Backstage version is pinned in `backstage.json` (currently 1.53.0). Yarn is managed by Corepack, so do not install it globally; running any `yarn` command in this directory picks up the pinned 4.12.0.
 
 ## Local configuration
 
