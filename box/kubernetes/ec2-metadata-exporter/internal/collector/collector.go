@@ -38,6 +38,7 @@ type Instance struct {
 	State            string
 	Lifecycle        string
 	Architecture     string
+	LaunchTime       time.Time
 }
 
 // ReadinessReporter receives readiness transitions driven by scrape outcomes.
@@ -60,8 +61,9 @@ type Collector struct {
 	mu       sync.RWMutex
 	snapshot []Instance
 
-	infoDesc      *prometheus.Desc
-	instancesDesc *prometheus.Desc
+	infoDesc       *prometheus.Desc
+	instancesDesc  *prometheus.Desc
+	launchTimeDesc *prometheus.Desc
 
 	scrapeErrors   prometheus.Counter
 	scrapeDuration prometheus.Histogram
@@ -86,6 +88,11 @@ func New(client ec2.DescribeInstancesAPIClient, logger *slog.Logger, ready Readi
 			"ec2_metadata_instances",
 			"Number of EC2 instances observed in the last successful scrape, by instance state.",
 			[]string{"state"}, nil,
+		),
+		launchTimeDesc: prometheus.NewDesc(
+			"ec2_metadata_instance_launch_time_seconds",
+			"Unix timestamp of the instance's most recent launch. Resets on stop/start; uptime is time() minus this value.",
+			[]string{"instance_id", "name"}, nil,
 		),
 		scrapeErrors: prometheus.NewCounter(prometheus.CounterOpts{
 			Name: "ec2_metadata_scrape_errors_total",
@@ -114,6 +121,7 @@ func (c *Collector) Registry() *prometheus.Registry {
 func (c *Collector) Describe(ch chan<- *prometheus.Desc) {
 	ch <- c.infoDesc
 	ch <- c.instancesDesc
+	ch <- c.launchTimeDesc
 }
 
 // Collect implements prometheus.Collector. It reads the snapshot atomically,
@@ -127,6 +135,10 @@ func (c *Collector) Collect(ch chan<- prometheus.Metric) {
 	for _, inst := range snapshot {
 		ch <- prometheus.MustNewConstMetric(c.infoDesc, prometheus.GaugeValue, 1,
 			inst.ID, inst.Name, inst.PrivateIP, inst.InstanceType, inst.AvailabilityZone, inst.State, inst.Lifecycle, inst.Architecture)
+		if !inst.LaunchTime.IsZero() {
+			ch <- prometheus.MustNewConstMetric(c.launchTimeDesc, prometheus.GaugeValue,
+				float64(inst.LaunchTime.Unix()), inst.ID, inst.Name)
+		}
 		byState[inst.State]++
 	}
 	for state, count := range byState {
@@ -203,6 +215,7 @@ func (c *Collector) describeAll(ctx context.Context) ([]Instance, error) {
 					State:            string(inst.State.Name),
 					Lifecycle:        lifecycle(inst.InstanceLifecycle),
 					Architecture:     string(inst.Architecture),
+					LaunchTime:       aws.ToTime(inst.LaunchTime),
 				})
 			}
 		}

@@ -54,6 +54,8 @@ func newTestCollector(client ec2.DescribeInstancesAPIClient) *Collector {
 	return New(client, testLogger(), nil)
 }
 
+var testLaunchTime = time.Date(2026, 7, 1, 0, 0, 0, 0, time.UTC)
+
 func instance(id, name, privateIP string, state ec2types.InstanceStateName) ec2types.Instance {
 	inst := ec2types.Instance{
 		InstanceId:   aws.String(id),
@@ -61,6 +63,7 @@ func instance(id, name, privateIP string, state ec2types.InstanceStateName) ec2t
 		Architecture: ec2types.ArchitectureValuesX8664,
 		Placement:    &ec2types.Placement{AvailabilityZone: aws.String("ap-northeast-2a")},
 		State:        &ec2types.InstanceState{Name: state},
+		LaunchTime:   aws.Time(testLaunchTime),
 	}
 	if privateIP != "" {
 		inst.PrivateIpAddress = aws.String(privateIP)
@@ -134,6 +137,29 @@ ec2_metadata_instance_info{architecture="x86_64",availability_zone="ap-northeast
 `
 	if err := testutil.CollectAndCompare(c, strings.NewReader(expected), "ec2_metadata_instance_info"); err != nil {
 		t.Fatalf("old instance must be replaced by new snapshot: %v", err)
+	}
+}
+
+func TestCollectPublishesLaunchTime(t *testing.T) {
+	noLaunch := instance("i-nolt", "no-launch", "10.0.1.12", ec2types.InstanceStateNameRunning)
+	noLaunch.LaunchTime = nil
+	client := &fakeEC2{pages: []*ec2.DescribeInstancesOutput{
+		{Reservations: []ec2types.Reservation{{Instances: []ec2types.Instance{
+			instance("i-aaa", "web-1", "10.0.1.10", ec2types.InstanceStateNameRunning),
+			noLaunch,
+		}}}},
+	}}
+	c := newTestCollector(client)
+	c.refresh(context.Background())
+
+	expected := `
+# HELP ec2_metadata_instance_launch_time_seconds Unix timestamp of the instance's most recent launch. Resets on stop/start; uptime is time() minus this value.
+# TYPE ec2_metadata_instance_launch_time_seconds gauge
+ec2_metadata_instance_launch_time_seconds{instance_id="i-aaa",name="web-1"} 1.782864e+09
+`
+	if err := testutil.CollectAndCompare(c, strings.NewReader(expected),
+		"ec2_metadata_instance_launch_time_seconds"); err != nil {
+		t.Fatalf("launch time metric mismatch (instance without LaunchTime must be skipped): %v", err)
 	}
 }
 

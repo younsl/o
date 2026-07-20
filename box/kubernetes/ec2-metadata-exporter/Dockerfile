@@ -21,7 +21,7 @@ FROM scratch AS runtime
 
 LABEL org.opencontainers.image.title="ec2-metadata-exporter" \
       org.opencontainers.image.description="Prometheus exporter that publishes every EC2 instance's private IP and Name tag via the DescribeInstances API" \
-      org.opencontainers.image.version="0.1.0" \
+      org.opencontainers.image.version="0.1.1" \
       org.opencontainers.image.licenses="Apache-2.0" \
       org.opencontainers.image.base.name="scratch" \
       org.opencontainers.image.deprecated="false"

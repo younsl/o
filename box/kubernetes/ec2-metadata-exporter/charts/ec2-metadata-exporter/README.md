@@ -1,6 +1,6 @@
 # ec2-metadata-exporter
 
-![Version: 0.1.0](https://img.shields.io/badge/Version-0.1.0-informational?style=flat-square) ![Type: application](https://img.shields.io/badge/Type-application-informational?style=flat-square) ![AppVersion: 0.1.0](https://img.shields.io/badge/AppVersion-0.1.0-informational?style=flat-square)
+![Version: 0.1.1](https://img.shields.io/badge/Version-0.1.1-informational?style=flat-square) ![Type: application](https://img.shields.io/badge/Type-application-informational?style=flat-square) ![AppVersion: 0.1.1](https://img.shields.io/badge/AppVersion-0.1.1-informational?style=flat-square)
 
 Prometheus exporter that publishes every EC2 instance's private IP and Name tag via the DescribeInstances API
 
@@ -39,7 +39,7 @@ helm install ec2-metadata-exporter oci://ghcr.io/younsl/charts/ec2-metadata-expo
 Install a specific version:
 
 ```console
-helm install ec2-metadata-exporter oci://ghcr.io/younsl/charts/ec2-metadata-exporter --version 0.1.0
+helm install ec2-metadata-exporter oci://ghcr.io/younsl/charts/ec2-metadata-exporter --version 0.1.1
 ```
 
 ### Install from local chart
@@ -47,7 +47,7 @@ helm install ec2-metadata-exporter oci://ghcr.io/younsl/charts/ec2-metadata-expo
 Download ec2-metadata-exporter chart and install from local directory:
 
 ```console
-helm pull oci://ghcr.io/younsl/charts/ec2-metadata-exporter --untar --version 0.1.0
+helm pull oci://ghcr.io/younsl/charts/ec2-metadata-exporter --untar --version 0.1.1
 helm install ec2-metadata-exporter ./ec2-metadata-exporter
 ```
 
