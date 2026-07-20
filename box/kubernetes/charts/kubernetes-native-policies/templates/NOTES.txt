@@ -1,0 +1,49 @@
+Thank you for installing {{ .Chart.Name }}.
+
+Your release is named {{ .Release.Name }}.
+
+{{- $vaps := list }}
+{{- range $key, $value := .Values.validatingAdmissionPolicies }}
+{{- if $value.enabled }}
+{{- $vaps = append $vaps (include "kubernetes-native-policies.policyName" (dict "key" $key "value" $value)) }}
+{{- end }}
+{{- end }}
+{{- $maps := list }}
+{{- range $key, $value := .Values.mutatingAdmissionPolicies }}
+{{- if $value.enabled }}
+{{- $maps = append $maps (include "kubernetes-native-policies.policyName" (dict "key" $key "value" $value)) }}
+{{- end }}
+{{- end }}
+
+{{- if $vaps }}
+
+Enabled ValidatingAdmissionPolicies:
+{{- range $vaps }}
+  - {{ . }}
+{{- end }}
+{{- end }}
+
+{{- if $maps }}
+
+Enabled MutatingAdmissionPolicies:
+{{- range $maps }}
+  - {{ . }}
+{{- end }}
+{{- end }}
+
+{{- if and (not $vaps) (not $maps) }}
+
+No policies are enabled. Enable a policy by setting its `enabled: true` under
+`validatingAdmissionPolicies` or `mutatingAdmissionPolicies` in values.yaml.
+{{- end }}
+
+To check the status of your admission policies:
+
+  kubectl get validatingadmissionpolicies
+  kubectl get validatingadmissionpolicybindings
+  kubectl get mutatingadmissionpolicies
+  kubectl get mutatingadmissionpolicybindings
+
+For more information about Kubernetes Admission Policies:
+  https://kubernetes.io/docs/reference/access-authn-authz/validating-admission-policy/
+  https://kubernetes.io/docs/reference/access-authn-authz/mutating-admission-policy/

@@ -1,0 +1,147 @@
+# -- (string) Override chart name
+# @default -- `""`
+nameOverride: ""
+
+# -- (string) Override full resource names
+# @default -- `""`
+fullnameOverride: ""
+
+# -- (object) Labels applied to all resources
+# @default -- `{}`
+commonLabels: {}
+
+# -- (object) Annotations applied to all resources
+# @default -- `{}`
+commonAnnotations: {}
+
+apiVersions:
+  # -- (string) apiVersion used for ValidatingAdmissionPolicy and ValidatingAdmissionPolicyBinding resources
+  validatingAdmissionPolicy: admissionregistration.k8s.io/v1
+  # -- (string) apiVersion used for MutatingAdmissionPolicy and MutatingAdmissionPolicyBinding resources. Use `admissionregistration.k8s.io/v1alpha1` on Kubernetes 1.32-1.33, `admissionregistration.k8s.io/v1beta1` on 1.34+
+  mutatingAdmissionPolicy: admissionregistration.k8s.io/v1beta1
+
+# -- (object) ValidatingAdmissionPolicy resources keyed by policy name. Each policy has its own `enabled` toggle and a map of bindings, each with its own `enabled` toggle. [Kubernetes Docs](https://kubernetes.io/docs/reference/access-authn-authz/validating-admission-policy/)
+# @default -- `{}`
+validatingAdmissionPolicies: {}
+  # deny-privileged-containers:
+  #   # -- (bool) Enable this policy and its bindings
+  #   enabled: true
+  #   # -- (string) Human-readable description of what this policy does. Rendered as the `policies.kubernetes.io/description` annotation
+  #   description: "Denies pods that run privileged containers"
+  #   # -- (string) Override the generated policy resource name
+  #   # name: ""
+  #   # -- (string) Failure policy for the admission policy (Fail or Ignore)
+  #   failurePolicy: Fail
+  #   # -- (object) Resources this policy applies to
+  #   matchConstraints:
+  #     resourceRules:
+  #       - apiGroups: [""]
+  #         apiVersions: ["v1"]
+  #         operations: ["CREATE", "UPDATE"]
+  #         resources: ["pods"]
+  #   # -- (list) CEL validation expressions
+  #   validations:
+  #     - expression: "!object.spec.containers.exists(c, has(c.securityContext) && has(c.securityContext.privileged) && c.securityContext.privileged)"
+  #       message: "Privileged containers are not allowed"
+  #   # -- (list) CEL match conditions to narrow down requests
+  #   matchConditions: []
+  #   # -- (list) Audit annotations added on policy decisions
+  #   auditAnnotations: []
+  #   # -- (list) CEL variables reusable across expressions
+  #   variables: []
+  #   # -- (object) Kind of parameter resources (paramKind)
+  #   paramKind: {}
+  #   # -- (object) ValidatingAdmissionPolicyBinding resources keyed by binding name
+  #   bindings:
+  #     production:
+  #       # -- (bool) Enable this binding
+  #       enabled: true
+  #       # -- (string) Override the generated binding resource name. Defaults to `<policyName>-<bindingKey>`
+  #       # name: ""
+  #       # -- (list) Validation actions to take on violation (Deny, Warn, Audit)
+  #       validationActions: ["Deny"]
+  #       # -- (object) Match resources for the binding (namespaceSelector, objectSelector, etc.)
+  #       matchResources:
+  #         namespaceSelector:
+  #           matchLabels:
+  #             environment: production
+  #       # -- (object) Reference to parameter resources (paramRef)
+  #       paramRef: {}
+  #     staging:
+  #       enabled: false
+  #       validationActions: ["Warn"]
+  #       matchResources:
+  #         namespaceSelector:
+  #           matchLabels:
+  #             environment: staging
+
+# -- (object) MutatingAdmissionPolicy resources keyed by policy name. Each policy has its own `enabled` toggle and a map of bindings, each with its own `enabled` toggle. Requires Kubernetes 1.34+ (beta). [Kubernetes Docs](https://kubernetes.io/docs/reference/access-authn-authz/mutating-admission-policy/)
+# @default -- `{}`
+mutatingAdmissionPolicies: {}
+  # add-default-labels:
+  #   # -- (bool) Enable this policy and its bindings
+  #   enabled: true
+  #   # -- (string) Human-readable description of what this policy does. Rendered as the `policies.kubernetes.io/description` annotation
+  #   description: "Adds managed-by label to newly created pods"
+  #   # -- (string) Override the generated policy resource name
+  #   # name: ""
+  #   # -- (string) Failure policy for the admission policy (Fail or Ignore)
+  #   failurePolicy: Fail
+  #   # -- (string) Reinvocation policy (Never or IfNeeded)
+  #   reinvocationPolicy: Never
+  #   # -- (object) Resources this policy applies to
+  #   matchConstraints:
+  #     resourceRules:
+  #       - apiGroups: [""]
+  #         apiVersions: ["v1"]
+  #         operations: ["CREATE"]
+  #         resources: ["pods"]
+  #   # -- (list) Mutations applied via CEL (JSONPatch or ApplyConfiguration)
+  #   mutations:
+  #     - patchType: JSONPatch
+  #       jsonPatch:
+  #         expression: |
+  #           [
+  #             JSONPatch{
+  #               op: "add",
+  #               path: "/metadata/labels/managed-by",
+  #               value: "admission-policy"
+  #             }
+  #           ]
+  #   # -- (list) CEL match conditions to narrow down requests
+  #   matchConditions: []
+  #   # -- (list) CEL variables reusable across expressions
+  #   variables: []
+  #   # -- (object) Kind of parameter resources (paramKind)
+  #   paramKind: {}
+  #   # -- (object) MutatingAdmissionPolicyBinding resources keyed by binding name
+  #   bindings:
+  #     dev:
+  #       # -- (bool) Enable this binding
+  #       enabled: true
+  #       # -- (string) Override the generated binding resource name. Defaults to `<policyName>-<bindingKey>`
+  #       # name: ""
+  #       # -- (object) Match resources for the binding (namespaceSelector, objectSelector, etc.)
+  #       matchResources:
+  #         namespaceSelector:
+  #           matchLabels:
+  #             auto-label: "true"
+  #       # -- (object) Reference to parameter resources (paramRef)
+  #       paramRef: {}
+
+# -- (list) Extra Kubernetes objects to deploy alongside the chart. Entries can be plain objects or strings, both rendered through `tpl` so Helm template expressions are supported
+# @default -- `[]`
+extraObjects: []
+  # - apiVersion: v1
+  #   kind: ConfigMap
+  #   metadata:
+  #     name: '{{ include "kubernetes-native-policies.fullname" . }}-params'
+  #   data:
+  #     key: value
+  # - |
+  #   apiVersion: v1
+  #   kind: ConfigMap
+  #   metadata:
+  #     name: {{ .Release.Name }}-inline
+  #   data:
+  #     chartVersion: {{ .Chart.Version }}
