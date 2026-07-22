@@ -7,6 +7,9 @@ crds:
 # -- (int) Number of operator replicas to run.
 replicaCount: 1
 
+# -- (int) Number of old ReplicaSets to retain for rollback.
+revisionHistoryLimit: 5
+
 image:
   # -- (string) Container image repository.
   repository: ghcr.io/younsl/kuo
@@ -112,6 +115,9 @@ prometheusRule:
     #       annotations:
     #         summary: "EKS upgrade stuck for {{ $labels.cluster_name }}"
     #         description: "Cluster {{ $labels.cluster_name }} has been in {{ $labels.phase }} phase for over 60 minutes."
+
+# -- (string) Pod priority class name. Defaults to `system-cluster-critical` so the operator is protected from preemption. Empty uses the Kubernetes default.
+priorityClassName: system-cluster-critical
 
 # -- (string) Pod DNS policy. One of `ClusterFirst`, `ClusterFirstWithHostNet`, `Default`, or `None`. Empty uses the Kubernetes default.
 dnsPolicy: ""

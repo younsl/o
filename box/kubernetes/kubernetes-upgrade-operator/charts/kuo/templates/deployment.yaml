@@ -7,6 +7,7 @@ metadata:
     {{- include "kuo.labels" . | nindent 4 }}
 spec:
   replicas: {{ .Values.replicaCount }}
+  revisionHistoryLimit: {{ .Values.revisionHistoryLimit }}
   selector:
     matchLabels:
       {{- include "kuo.selectorLabels" . | nindent 6 }}
@@ -16,6 +17,9 @@ spec:
         {{- include "kuo.selectorLabels" . | nindent 8 }}
     spec:
       serviceAccountName: {{ include "kuo.serviceAccountName" . }}
+      {{- with .Values.priorityClassName }}
+      priorityClassName: {{ . }}
+      {{- end }}
       {{- with .Values.dnsPolicy }}
       dnsPolicy: {{ . }}
       {{- end }}

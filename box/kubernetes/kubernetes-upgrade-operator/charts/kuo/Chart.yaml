@@ -3,7 +3,7 @@ name: kuo
 description: Kubernetes Upgrade Operator for EKS clusters
 type: application
 deprecated: false
-version: 0.3.0
+version: 0.4.0
 appVersion: "0.3.0"
 home: https://github.com/younsl/o
 sources:
@@ -21,8 +21,6 @@ keywords:
 annotations:
   artifacthub.io/changes: |
     - kind: added
-      description: "Auto-rollback unpinned add-ons to the target minor's default compatible version on rollback (downgrade only)"
+      description: "Set default pod priorityClassName to system-cluster-critical to protect the operator from preemption"
     - kind: added
-      description: "Reject consecutive rollbacks in planning (Failed) until a forward upgrade runs"
-    - kind: changed
-      description: "Require upgradeMode as an explicit field on the EKSUpgrade CR"
+      description: "Set default deployment revisionHistoryLimit to 5"

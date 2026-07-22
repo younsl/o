@@ -1,6 +1,6 @@
 # kuo
 
-![Version: 0.3.0](https://img.shields.io/badge/Version-0.3.0-informational?style=flat-square) ![Type: application](https://img.shields.io/badge/Type-application-informational?style=flat-square) ![AppVersion: 0.3.0](https://img.shields.io/badge/AppVersion-0.3.0-informational?style=flat-square)
+![Version: 0.4.0](https://img.shields.io/badge/Version-0.4.0-informational?style=flat-square) ![Type: application](https://img.shields.io/badge/Type-application-informational?style=flat-square) ![AppVersion: 0.3.0](https://img.shields.io/badge/AppVersion-0.3.0-informational?style=flat-square)
 
 Kubernetes Upgrade Operator for EKS clusters
 
@@ -39,7 +39,7 @@ helm install kuo oci://ghcr.io/younsl/charts/kuo -f values.yaml
 Install a specific version:
 
 ```console
-helm install kuo oci://ghcr.io/younsl/charts/kuo --version 0.3.0
+helm install kuo oci://ghcr.io/younsl/charts/kuo --version 0.4.0
 ```
 
 ### Install from local chart
@@ -47,7 +47,7 @@ helm install kuo oci://ghcr.io/younsl/charts/kuo --version 0.3.0
 Download kuo chart and install from local directory:
 
 ```console
-helm pull oci://ghcr.io/younsl/charts/kuo --untar --version 0.3.0
+helm pull oci://ghcr.io/younsl/charts/kuo --untar --version 0.4.0
 helm install kuo ./kuo
 ```
 
@@ -76,6 +76,7 @@ The following table lists the configurable parameters and their default values.
 | crds.install | bool | `true` | Whether to install CRDs. Set to false if CRDs are managed externally. |
 | crds.annotations | object | `{}` | Annotations to add to the CRD resources. |
 | replicaCount | int | `1` | Number of operator replicas to run. |
+| revisionHistoryLimit | int | `5` | Number of old ReplicaSets to retain for rollback. |
 | image.repository | string | `"ghcr.io/younsl/kuo"` | Container image repository. |
 | image.pullPolicy | string | `"IfNotPresent"` | Image pull policy. |
 | image.tag | string | `""` | Image tag. Defaults to `.Chart.AppVersion` if empty. |
@@ -99,6 +100,7 @@ The following table lists the configurable parameters and their default values.
 | prometheusRule.additionalLabels | object | `{}` | Additional labels to add to the PrometheusRule resource. |
 | prometheusRule.annotations | object | `{}` | Annotations to add to the PrometheusRule resource. |
 | prometheusRule.groups | list | `[]` | Prometheus rule groups. Each group contains a list of alerting/recording rules. |
+| priorityClassName | string | `"system-cluster-critical"` | Pod priority class name. Defaults to `system-cluster-critical` so the operator is protected from preemption. Empty uses the Kubernetes default. |
 | dnsPolicy | string | `""` | Pod DNS policy. One of `ClusterFirst`, `ClusterFirstWithHostNet`, `Default`, or `None`. Empty uses the Kubernetes default. |
 | dnsConfig | object | `{}` | Pod DNS config. Required when dnsPolicy is `None`. See PodDNSConfig spec (nameservers, searches, options). |
 | nodeSelector | object | `{}` | Node selector for pod scheduling. |
