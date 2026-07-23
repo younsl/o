@@ -48,10 +48,6 @@ pub struct EKSUpgradeSpec {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub addon_versions: Option<std::collections::HashMap<String, String>>,
 
-    /// Skip PDB drain deadlock check before node group rolling updates.
-    #[serde(default)]
-    pub skip_pdb_check: bool,
-
     /// Plan only, do not execute.
     #[serde(default)]
     pub dry_run: bool,

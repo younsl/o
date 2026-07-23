@@ -293,18 +293,18 @@ impl StepResult {
     }
 }
 
-/// Compute stale `NodeClaims` and start the next replacement batch.
-async fn start_next_batch(
+/// List a `NodePool`'s `NodeClaims` and compute which are stale replacement targets.
+///
+/// Returns `(all claims, stale NodeClaim names)`. Stale = the backing node's
+/// kubelet minor is below `target_minor` and the claim is not in `completed`.
+/// Shared by planning (to pre-count in dry-run) and the replace loop.
+pub async fn resolve_stale(
     client: &kube::Client,
-    pool: &mut KarpenterPoolStatus,
-    config: &crate::crd::KarpenterNodePoolsConfig,
+    pool_name: &str,
     target_minor: u32,
-    now: DateTime<Utc>,
-) -> Result<StepResult> {
-    let claims = karpenter::list_nodeclaims(client, &pool.name).await?;
-
-    // Resolve each claim's backing-node kubelet version, then decide staleness
-    // with the pure `stale_targets` helper.
+    completed: &[String],
+) -> Result<(Vec<karpenter::NodeClaimInfo>, Vec<String>)> {
+    let claims = karpenter::list_nodeclaims(client, pool_name).await?;
     let mut candidates = Vec::with_capacity(claims.len());
     for claim in &claims {
         let kubelet = if let Some(node_name) = &claim.node_name {
@@ -317,7 +317,25 @@ async fn start_next_batch(
         };
         candidates.push((claim.name.clone(), kubelet));
     }
-    let stale = stale_targets(&candidates, &pool.completed_node_claims, target_minor);
+    let stale = stale_targets(&candidates, completed, target_minor);
+    Ok((claims, stale))
+}
+
+/// Compute stale `NodeClaims` and start the next replacement batch.
+async fn start_next_batch(
+    client: &kube::Client,
+    pool: &mut KarpenterPoolStatus,
+    config: &crate::crd::KarpenterNodePoolsConfig,
+    target_minor: u32,
+    now: DateTime<Utc>,
+) -> Result<StepResult> {
+    let (claims, stale) = resolve_stale(
+        client,
+        &pool.name,
+        target_minor,
+        &pool.completed_node_claims,
+    )
+    .await?;
 
     // Fix the pool total on first observation (replaced + remaining stale).
     if pool.total_nodes == 0 {
@@ -625,6 +643,23 @@ mod tests {
     #[test]
     fn test_stale_targets_empty() {
         assert_eq!(stale_targets(&[], &[], 34), Vec::<String>::new());
+    }
+
+    #[test]
+    fn test_decide_entry_draining_exact_boundary_not_failed() {
+        // elapsed == drain_to is within budget (only strictly greater fails).
+        assert_eq!(
+            decide_entry(STATE_DRAINING, true, false, 900, 900, 600),
+            EntryOutcome::Draining
+        );
+    }
+
+    #[test]
+    fn test_decide_entry_stable_exact_boundary_waits() {
+        assert_eq!(
+            decide_entry(STATE_WAIT_STABLE, false, false, 1500, 900, 600),
+            EntryOutcome::WaitStable
+        );
     }
 
     #[test]

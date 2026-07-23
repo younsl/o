@@ -292,7 +292,6 @@ mod tests {
             upgrade_mode: crate::crd::UpgradeMode::Forward,
             assume_role_arn: None,
             addon_versions: None,
-            skip_pdb_check: false,
             dry_run: false,
             timeouts: None,
             notification: None,

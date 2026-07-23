@@ -190,18 +190,31 @@ async fn plan_karpenter(
         cfg.node_pools.clone()
     };
 
-    Ok(names
-        .into_iter()
-        .map(|name| KarpenterPoolStatus {
+    // Pre-count stale nodes per NodePool so the plan (and dry-run) shows how many
+    // nodes each pool will replace, in processing order. Target minor drives the
+    // kubelet-version staleness comparison.
+    let target_minor = crate::k8s::node::parse_minor(&spec.target_version);
+    let mut pools = Vec::with_capacity(names.len());
+    for name in names {
+        let total_nodes = match target_minor {
+            Some(minor) => {
+                let (_, stale) =
+                    crate::phases::karpenter::resolve_stale(&client, &name, minor, &[]).await?;
+                u32::try_from(stale.len()).unwrap_or(u32::MAX)
+            }
+            None => 0,
+        };
+        pools.push(KarpenterPoolStatus {
             name,
             status: ComponentStatus::Pending,
-            total_nodes: 0,
+            total_nodes,
             replaced_nodes: 0,
             completed_node_claims: vec![],
             replacements: vec![],
             current_batch: vec![],
-        })
-        .collect())
+        });
+    }
+    Ok(pools)
 }
 
 /// If starting this upgrade would be a rollback immediately following a
@@ -309,7 +322,6 @@ mod tests {
             upgrade_mode: mode,
             assume_role_arn: None,
             addon_versions: None,
-            skip_pdb_check: false,
             dry_run: false,
             timeouts: None,
             notification: None,

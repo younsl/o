@@ -17,9 +17,6 @@ spec:
   {{- with .spec.dryRun }}
   dryRun: {{ . }}
   {{- end }}
-  {{- with .spec.skipPdbCheck }}
-  skipPdbCheck: {{ . }}
-  {{- end }}
   {{- with .spec.addonVersions }}
   addonVersions:
     {{- toYaml . | nindent 4 }}

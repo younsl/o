@@ -60,10 +60,6 @@ spec:
                   description: Optional add-on version overrides. Keys are add-on names and values are target versions. If not specified, the operator resolves the default compatible version automatically.
                   additionalProperties:
                     type: string
-                skipPdbCheck:
-                  type: boolean
-                  default: false
-                  description: Skip PDB drain deadlock check before node group rolling updates. When false (default), the operator checks that all PDBs allow at least one disruption.
                 dryRun:
                   type: boolean
                   default: false

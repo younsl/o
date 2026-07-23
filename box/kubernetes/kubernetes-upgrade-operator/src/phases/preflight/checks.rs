@@ -113,14 +113,17 @@ impl PreflightCheckResult {
 
     /// Build a Karpenter AMI selector check result.
     ///
-    /// `pinned_pools` lists `NodePools` whose `EC2NodeClass` pins the AMI to a fixed
-    /// version. Any such pool fails the check, because replacing a node would
-    /// reprovision the same AMI.
-    pub fn karpenter_ami_selector(pinned_pools: &[String]) -> Self {
+    /// `checked` is the number of target `NodePools` inspected. `pinned_pools`
+    /// lists those whose `EC2NodeClass` pins the AMI to a fixed version. Any such
+    /// pool fails the check, because replacing a node would reprovision the same
+    /// AMI.
+    pub fn karpenter_ami_selector(checked: usize, pinned_pools: &[String]) -> Self {
         let (status, summary) = if pinned_pools.is_empty() {
             (
                 CheckStatus::Pass,
-                "All target NodePools resolve their AMI via alias @latest".into(),
+                format!(
+                    "All target NodePools resolve their AMI via alias @latest ({checked} nodepools)"
+                ),
             )
         } else {
             (
@@ -145,15 +148,17 @@ impl PreflightCheckResult {
             (
                 CheckStatus::Fail,
                 format!(
-                    "{}/{} PDB(s) have disruptionsAllowed=0 and may block node drain during rolling update",
-                    summary.blocking_count, summary.total_pdbs
+                    "{} of {} PodDisruptionBudgets block node drain because they allow zero disruptions. Blocking PDBs {}",
+                    summary.blocking_count(),
+                    summary.total_pdbs,
+                    summary.blocking.join(", ")
                 ),
             )
         } else {
             (
                 CheckStatus::Pass,
                 format!(
-                    "No PDB drain deadlock detected ({} PDBs checked)",
+                    "No PodDisruptionBudget blocks node drain, {} checked",
                     summary.total_pdbs
                 ),
             )
@@ -254,22 +259,24 @@ mod tests {
     fn test_pdb_drain_deadlock_pass() {
         let summary = PdbSummary {
             total_pdbs: 5,
-            blocking_count: 0,
+            blocking: vec![],
         };
         let check = PreflightCheckResult::pdb_drain_deadlock(&summary);
         assert_eq!(check.status, CheckStatus::Pass);
-        assert!(check.summary.contains("No PDB drain deadlock"));
+        assert!(check.summary.contains("No PodDisruptionBudget blocks"));
     }
 
     #[test]
-    fn test_pdb_drain_deadlock_fail() {
+    fn test_pdb_drain_deadlock_fail_lists_namespace_name() {
         let summary = PdbSummary {
             total_pdbs: 3,
-            blocking_count: 1,
+            blocking: vec!["payments/worker-pdb".to_string()],
         };
         let check = PreflightCheckResult::pdb_drain_deadlock(&summary);
         assert_eq!(check.status, CheckStatus::Fail);
-        assert!(check.summary.contains("1/3"));
+        assert!(check.summary.contains("1 of 3"));
+        // The blocking PDB is named explicitly as namespace/name.
+        assert!(check.summary.contains("payments/worker-pdb"));
     }
 
     #[test]
@@ -333,16 +340,18 @@ mod tests {
 
     #[test]
     fn test_karpenter_ami_selector_all_latest() {
-        let check = PreflightCheckResult::karpenter_ami_selector(&[]);
+        let check = PreflightCheckResult::karpenter_ami_selector(3, &[]);
         assert_eq!(check.status, CheckStatus::Pass);
+        // Pass message includes the number of nodepools checked.
+        assert!(check.summary.contains("3 nodepools"));
     }
 
     #[test]
     fn test_karpenter_ami_selector_pinned_fails() {
-        let check = PreflightCheckResult::karpenter_ami_selector(&[
-            "default".to_string(),
-            "spot".to_string(),
-        ]);
+        let check = PreflightCheckResult::karpenter_ami_selector(
+            2,
+            &["default".to_string(), "spot".to_string()],
+        );
         assert_eq!(check.status, CheckStatus::Fail);
         assert!(check.summary.contains("default"));
         assert!(check.summary.contains("spot"));
@@ -380,7 +389,7 @@ mod tests {
     fn test_has_mandatory_failures_with_pdb_blocking() {
         let pdb = PdbSummary {
             total_pdbs: 3,
-            blocking_count: 1,
+            blocking: vec!["default/api-pdb".to_string()],
         };
         let results = PreflightResults {
             checks: vec![PreflightCheckResult::pdb_drain_deadlock(&pdb)],
@@ -393,7 +402,7 @@ mod tests {
     fn test_no_mandatory_failures_with_all_pass() {
         let pdb = PdbSummary {
             total_pdbs: 3,
-            blocking_count: 0,
+            blocking: vec![],
         };
         let results = PreflightResults {
             checks: vec![

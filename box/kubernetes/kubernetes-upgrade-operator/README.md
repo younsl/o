@@ -66,7 +66,7 @@ When `dryRun: true` is set, the operator executes planning and preflight validat
 |-------|----------|----------|
 | EKS Cluster Insights | Mandatory | Fails if critical insights exist |
 | [EKS Deletion Protection](https://docs.aws.amazon.com/eks/latest/userguide/delete-cluster.html) | Mandatory | Fails if deletion protection is disabled |
-| PDB Drain Deadlock | Mandatory | Fails if any PDB has `disruptionsAllowed == 0` (skippable via `skipPdbCheck`) |
+| PDB Drain Deadlock | Mandatory | Fails if any PDB has `disruptionsAllowed == 0`, naming the blocking `namespace/name` PDBs (always enforced) |
 | Karpenter v1 API | Mandatory | Only when `karpenterNodePools.enabled`. Fails if the Karpenter v1 API is not served (v1beta1 and earlier unsupported) |
 | Karpenter AMI Selector | Mandatory | Only when `karpenterNodePools.enabled`. Fails if a target NodePool pins its AMI instead of `alias: <family>@latest` |
 
@@ -180,7 +180,6 @@ spec:
 | `upgradeMode` | Yes | — | `Forward` to upgrade, `Rollback` to revert one minor version (N-1). Must be set explicitly |
 | `assumeRoleArn` | No | — | IAM Role ARN for cross-account access |
 | `addonVersions` | No | auto-resolve | Add-on version overrides (`addon-name: version`). On rollback, unpinned add-ons auto-roll-back to the target minor's default compatible version when that is a downgrade |
-| `skipPdbCheck` | No | `false` | Skip PDB drain deadlock check |
 | `dryRun` | No | `false` | Plan only, do not execute |
 | `timeouts.controlPlaneMinutes` | No | `30` | Control plane upgrade timeout |
 | `timeouts.nodegroupMinutes` | No | `60` | Node group upgrade timeout |

@@ -95,6 +95,17 @@ mod tests {
     }
 
     #[test]
+    fn test_is_stale_kubelet_equal_minor_not_stale() {
+        // Same minor as target is not stale (only strictly-lower is).
+        assert!(!is_stale_kubelet("v1.34.9-eks-x", 34));
+    }
+
+    #[test]
+    fn test_parse_minor_leading_whitespace() {
+        assert_eq!(parse_minor("  v1.35.0  "), Some(35));
+    }
+
+    #[test]
     fn test_is_stale_kubelet() {
         assert!(is_stale_kubelet("v1.33.0-eks-abc", 34));
         assert!(!is_stale_kubelet("v1.34.0-eks-abc", 34));

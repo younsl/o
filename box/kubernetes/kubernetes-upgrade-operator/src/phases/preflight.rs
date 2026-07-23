@@ -111,9 +111,11 @@ pub async fn execute(
     }
 
     // ---- PDB Drain Deadlock check ----
+    // Always enforced when node groups are being rolled; there is no opt-out,
+    // because draining into a zero-disruption PDB deadlocks the rollout.
     let has_nodegroup_upgrades = !current_status.phases.nodegroups.is_empty();
 
-    if has_nodegroup_upgrades && !spec.skip_pdb_check {
+    if has_nodegroup_upgrades {
         match crate::k8s::client::resolve_client(
             in_cluster,
             &eks_client,
@@ -142,10 +144,6 @@ pub async fn execute(
                 ));
             }
         }
-    } else if spec.skip_pdb_check {
-        preflight
-            .skipped
-            .push(SkippedCheck::pdb_drain_deadlock("skipped by user"));
     } else {
         preflight.skipped.push(SkippedCheck::pdb_drain_deadlock(
             "no managed node group upgrades",
@@ -283,7 +281,10 @@ async fn run_karpenter_checks(
     }
     preflight
         .checks
-        .push(PreflightCheckResult::karpenter_ami_selector(&pinned));
+        .push(PreflightCheckResult::karpenter_ami_selector(
+            names.len(),
+            &pinned,
+        ));
 }
 
 /// Build preflight check status entries from results.

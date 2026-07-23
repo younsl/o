@@ -415,6 +415,42 @@ mod tests {
     }
 
     #[test]
+    fn test_statefulset_ready_default_replicas() {
+        // spec.replicas None defaults to 1.
+        let sts = StatefulSet {
+            metadata: ObjectMeta {
+                generation: Some(1),
+                ..Default::default()
+            },
+            spec: Some(StatefulSetSpec::default()),
+            status: Some(StatefulSetStatus {
+                ready_replicas: Some(1),
+                observed_generation: Some(1),
+                ..Default::default()
+            }),
+        };
+        assert!(statefulset_ready(&sts));
+    }
+
+    #[test]
+    fn test_daemonset_not_ready_stale_generation() {
+        let ds = DaemonSet {
+            metadata: ObjectMeta {
+                generation: Some(5),
+                ..Default::default()
+            },
+            status: Some(DaemonSetStatus {
+                number_ready: 3,
+                desired_number_scheduled: 3,
+                observed_generation: Some(4),
+                ..Default::default()
+            }),
+            ..Default::default()
+        };
+        assert!(!daemonset_ready(&ds));
+    }
+
+    #[test]
     fn test_daemonset_not_ready() {
         let ds = DaemonSet {
             metadata: ObjectMeta {

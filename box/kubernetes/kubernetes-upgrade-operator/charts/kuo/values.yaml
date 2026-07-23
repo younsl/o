@@ -153,7 +153,6 @@ eksUpgrades: []
   #     targetVersion: "1.31"
   #     region: ap-northeast-2
   #     dryRun: true
-  #     skipPdbCheck: false
   #     addonVersions:
   #       kube-proxy: v1.31.0-eksbuild.1
   #       coredns: v1.11.4-eksbuild.1
