@@ -52,8 +52,21 @@ pub async fn execute(
     let mut new_status = current_status.clone();
     new_status.current_version = Some(plan.current_version.clone());
 
-    // Planning phase details
+    // Planning phase details.
+    //
+    // source_version is sticky: once captured on the first planning pass it is
+    // preserved across re-plans. If the pod crashes after the control plane has
+    // advanced (cluster version already moved past the original), a re-plan
+    // reads the newer cluster version, but the persisted source_version keeps
+    // the upgrade path anchored to where the upgrade actually started.
+    let source_version = current_status
+        .phases
+        .planning
+        .as_ref()
+        .and_then(|p| p.source_version.clone())
+        .or_else(|| Some(plan.current_version.clone()));
     new_status.phases.planning = Some(PlanningStatus {
+        source_version,
         upgrade_path: plan.upgrade_path.clone(),
     });
 

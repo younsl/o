@@ -6,6 +6,32 @@ pub use slack::{SlackMessage, SlackNotifier};
 
 use crate::crd::{EKSUpgradeSpec, EKSUpgradeStatus};
 
+/// Format the upgrade path for display, e.g. `1.34 → 1.35 → 1.36`.
+///
+/// The start of the path is the planning-time `source_version`, which is
+/// immutable across the upgrade. The top-level `current_version` is NOT used
+/// as the start: it advances to each step's target during the control plane
+/// phase, so by completion it equals the final version and would render a
+/// nonsensical path like `1.36 → 1.35 → 1.36`.
+fn format_upgrade_path(spec: &EKSUpgradeSpec, status: &EKSUpgradeStatus) -> String {
+    let planning = status.phases.planning.as_ref();
+
+    let source = planning
+        .and_then(|p| p.source_version.as_deref())
+        .or(status.current_version.as_deref())
+        .unwrap_or("unknown");
+
+    let upgrade_path = planning
+        .map(|p| p.upgrade_path.join(" → "))
+        .unwrap_or_default();
+
+    if upgrade_path.is_empty() {
+        format!("{} → {}", source, spec.target_version)
+    } else {
+        format!("{source} → {upgrade_path}")
+    }
+}
+
 /// Determine whether a notification should be sent for this spec.
 pub const fn should_notify(spec: &EKSUpgradeSpec) -> bool {
     match &spec.notification {
@@ -34,20 +60,7 @@ pub fn build_started_message(
         "Live Upgrade"
     };
 
-    let upgrade_path = status
-        .phases
-        .planning
-        .as_ref()
-        .map(|p| p.upgrade_path.join(" → "))
-        .unwrap_or_default();
-
-    let current = status.current_version.as_deref().unwrap_or("unknown");
-
-    let path_display = if upgrade_path.is_empty() {
-        format!("{} → {}", current, spec.target_version)
-    } else {
-        format!("{current} → {upgrade_path}")
-    };
+    let path_display = format_upgrade_path(spec, status);
 
     let karpenter_enabled = spec
         .karpenter_node_pools
@@ -96,20 +109,7 @@ pub fn build_completed_message(
     spec: &EKSUpgradeSpec,
     status: &EKSUpgradeStatus,
 ) -> SlackMessage {
-    let upgrade_path = status
-        .phases
-        .planning
-        .as_ref()
-        .map(|p| p.upgrade_path.join(" → "))
-        .unwrap_or_default();
-
-    let current = status.current_version.as_deref().unwrap_or("unknown");
-
-    let path_display = if upgrade_path.is_empty() {
-        format!("{} → {}", current, spec.target_version)
-    } else {
-        format!("{current} → {upgrade_path}")
-    };
+    let path_display = format_upgrade_path(spec, status);
 
     let duration = match (status.started_at, status.completed_at) {
         (Some(start), Some(end)) => {
@@ -431,13 +431,52 @@ mod tests {
     }
 
     fn make_status_with_path(path: Vec<String>) -> EKSUpgradeStatus {
+        // Simulate a completed upgrade: the control plane phase advances the
+        // top-level current_version to the final step (see control_plane.rs),
+        // while planning.source_version stays at the original "1.30".
+        let current = path.last().cloned().or_else(|| Some("1.30".to_string()));
         EKSUpgradeStatus {
-            current_version: Some("1.30".to_string()),
+            current_version: current,
             phases: crate::crd::PhaseStatuses {
-                planning: Some(PlanningStatus { upgrade_path: path }),
+                planning: Some(PlanningStatus {
+                    source_version: Some("1.30".to_string()),
+                    upgrade_path: path,
+                }),
                 ..Default::default()
             },
             ..Default::default()
         }
+    }
+
+    #[test]
+    fn test_upgrade_path_uses_source_not_mutated_current() {
+        // Regression: 1.30 → 1.31 → 1.32 upgrade. After completion the
+        // top-level current_version is "1.32", but the path must still start
+        // at the source "1.30", not render "1.32 → 1.31 → 1.32".
+        let spec = make_spec(None, false);
+        let status = make_status_with_path(vec!["1.31".into(), "1.32".into()]);
+        assert_eq!(status.current_version.as_deref(), Some("1.32"));
+
+        let path = format_upgrade_path(&spec, &status);
+        assert_eq!(path, "1.30 → 1.31 → 1.32");
+    }
+
+    #[test]
+    fn test_upgrade_path_falls_back_to_current_when_no_source() {
+        // Backward compat: a CR planned before source_version existed has no
+        // planning.source_version; fall back to current_version.
+        let spec = make_spec(None, false);
+        let status = EKSUpgradeStatus {
+            current_version: Some("1.30".to_string()),
+            phases: crate::crd::PhaseStatuses {
+                planning: Some(PlanningStatus {
+                    source_version: None,
+                    upgrade_path: vec!["1.31".into()],
+                }),
+                ..Default::default()
+            },
+            ..Default::default()
+        };
+        assert_eq!(format_upgrade_path(&spec, &status), "1.30 → 1.31");
     }
 }

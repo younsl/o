@@ -15,6 +15,12 @@ use super::types::{ComponentStatus, UpgradePhase};
 #[derive(Deserialize, Serialize, Clone, Debug, Default, JsonSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct PlanningStatus {
+    /// Cluster version at planning time, i.e. the start of the upgrade path.
+    /// Immutable across the upgrade; unlike the top-level `current_version`
+    /// which is advanced to each step's target during the control plane phase.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub source_version: Option<String>,
+
     /// Planned upgrade path (e.g., `["1.33", "1.34"]`).
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub upgrade_path: Vec<String>,

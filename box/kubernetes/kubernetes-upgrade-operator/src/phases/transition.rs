@@ -174,6 +174,7 @@ mod tests {
     fn status(cp: bool, addons: bool, ngs: bool) -> EKSUpgradeStatus {
         let mut s = EKSUpgradeStatus::default();
         s.phases.planning = Some(PlanningStatus {
+            source_version: None,
             upgrade_path: if cp { vec!["1.32".to_string()] } else { vec![] },
         });
         if addons {

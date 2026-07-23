@@ -399,6 +399,7 @@ mod tests {
         let spec = make_spec();
         let mut status = EKSUpgradeStatus::default();
         status.phases.planning = Some(crate::crd::PlanningStatus {
+            source_version: None,
             upgrade_path: vec!["1.33".to_string()],
         });
         status.phases.control_plane = Some(ControlPlaneStatus {
@@ -430,6 +431,7 @@ mod tests {
         let spec = make_spec();
         let mut status = EKSUpgradeStatus::default();
         status.phases.planning = Some(crate::crd::PlanningStatus {
+            source_version: None,
             upgrade_path: vec!["1.33".to_string()],
         });
         // Set started_at to 2 hours ago to trigger timeout
@@ -459,6 +461,7 @@ mod tests {
             ..Default::default()
         };
         status.phases.planning = Some(crate::crd::PlanningStatus {
+            source_version: None,
             upgrade_path: vec!["1.32".to_string(), "1.33".to_string()],
         });
         status.phases.control_plane = Some(ControlPlaneStatus {
@@ -483,6 +486,7 @@ mod tests {
         let mut status = EKSUpgradeStatus::default();
         // No current_version set
         status.phases.planning = Some(crate::crd::PlanningStatus {
+            source_version: None,
             upgrade_path: vec!["1.33".to_string()],
         });
         status.phases.control_plane = Some(ControlPlaneStatus {
