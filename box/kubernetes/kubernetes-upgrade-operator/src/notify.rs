@@ -83,17 +83,26 @@ pub fn build_started_message(
     ];
 
     if let Some(kp) = spec.karpenter_node_pools.as_ref().filter(|k| k.enabled) {
-        let pools = if kp.selects_all() {
-            "all".to_string()
-        } else {
-            kp.node_pools.join(", ")
+        // Planning resolves the actual target NodePools and pre-counts stale
+        // nodes per pool, so prefer the concrete count from status over the
+        // spec selector (which may just be "all").
+        let planned = status
+            .phases
+            .karpenter_node_pools
+            .as_ref()
+            .filter(|k| !k.pools.is_empty());
+
+        let pools = match planned {
+            Some(k) => k.pools.len().to_string(),
+            None if kp.selects_all() => "all".to_string(),
+            None => kp.node_pools.len().to_string(),
         };
         fields.push(("Karpenter NodePools".to_string(), pools));
-        fields.push(("Karpenter Strategy".to_string(), kp.strategy.to_string()));
-        fields.push((
-            "Karpenter Concurrency".to_string(),
-            format!("maxUnavailable {}", kp.max_unavailable),
-        ));
+
+        if let Some(k) = planned {
+            let stale: u32 = k.pools.iter().map(|p| p.total_nodes).sum();
+            fields.push(("Karpenter Nodes To Replace".to_string(), stale.to_string()));
+        }
     }
 
     SlackMessage {
@@ -310,21 +319,16 @@ mod tests {
             .map(|(_, v)| v.as_str())
             .unwrap();
         assert!(phases.contains("KarpenterNodePools"));
+        // No planning Karpenter status here, so the count falls back to the
+        // spec selector length (2 pools).
         assert!(
             msg.fields
                 .iter()
-                .any(|(k, v)| k == "Karpenter NodePools" && v == "default, spot")
+                .any(|(k, v)| k == "Karpenter NodePools" && v == "2")
         );
-        assert!(
-            msg.fields
-                .iter()
-                .any(|(k, v)| k == "Karpenter Strategy" && v == "Replace")
-        );
-        assert!(
-            msg.fields
-                .iter()
-                .any(|(k, v)| k == "Karpenter Concurrency" && v.contains("maxUnavailable 1"))
-        );
+        // Only the two counts are shown; strategy/concurrency are not.
+        assert!(!msg.fields.iter().any(|(k, _)| k == "Karpenter Strategy"));
+        assert!(!msg.fields.iter().any(|(k, _)| k == "Karpenter Concurrency"));
     }
 
     #[test]
@@ -523,6 +527,61 @@ mod tests {
             .map(|(_, v)| v.as_str())
             .unwrap();
         assert_eq!(started_path, "1.34 → 1.35 → 1.36");
+    }
+
+    #[test]
+    fn test_started_message_shows_karpenter_planned_counts() {
+        use crate::crd::{
+            ComponentStatus, KarpenterNodePoolsStatus, KarpenterPoolStatus, PhaseStatuses,
+        };
+
+        let mut spec = make_spec(None, false);
+        spec.karpenter_node_pools = Some(crate::crd::KarpenterNodePoolsConfig {
+            enabled: true,
+            node_pools: vec![], // selects all
+            strategy: crate::crd::KarpenterStrategy::Replace,
+            max_unavailable: "1".to_string(),
+            node_drain_timeout_minutes: 15,
+            controller_stable_timeout_minutes: 10,
+        });
+        let mk_pool = |name: &str, total: u32| KarpenterPoolStatus {
+            name: name.to_string(),
+            status: ComponentStatus::Pending,
+            total_nodes: total,
+            replaced_nodes: 0,
+            completed_node_claims: vec![],
+            replacements: vec![],
+            current_batch: vec![],
+        };
+        let status = EKSUpgradeStatus {
+            current_version: Some("1.34".to_string()),
+            phases: PhaseStatuses {
+                planning: Some(PlanningStatus {
+                    source_version: Some("1.34".to_string()),
+                    upgrade_path: vec!["1.35".into(), "1.36".into()],
+                }),
+                karpenter_node_pools: Some(KarpenterNodePoolsStatus {
+                    strategy: "Replace".to_string(),
+                    active_pool: None,
+                    total_nodes: 0, // aggregated later, not at planning
+                    replaced_nodes: 0,
+                    pools: vec![mk_pool("default", 5), mk_pool("spot", 3)],
+                }),
+                ..Default::default()
+            },
+            ..Default::default()
+        };
+
+        let msg = build_started_message("test-cluster", &spec, &status);
+        let get = |k: &str| {
+            msg.fields
+                .iter()
+                .find(|(key, _)| key == k)
+                .map(|(_, v)| v.as_str())
+        };
+        // Resolved count, not the bare "all" selector.
+        assert_eq!(get("Karpenter NodePools"), Some("2"));
+        assert_eq!(get("Karpenter Nodes To Replace"), Some("8"));
     }
 
     #[test]
