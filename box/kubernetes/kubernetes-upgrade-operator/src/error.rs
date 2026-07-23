@@ -25,6 +25,9 @@ pub enum KuoError {
 
     #[error("Kubernetes API error: {0}")]
     KubernetesApi(String),
+
+    #[error("Kubernetes permission denied: {0}")]
+    KubernetesForbidden(String),
 }
 
 impl KuoError {
@@ -101,6 +104,10 @@ impl KuoError {
     }
 
     /// Returns true if this error is transient and should be retried.
+    ///
+    /// `KubernetesForbidden` is deliberately excluded: a permission denial is not
+    /// resolved by retrying, so the upgrade fails fast instead of looping until
+    /// an operator fixes the RBAC.
     pub const fn is_transient(&self) -> bool {
         matches!(self, Self::AwsSdk(_, _) | Self::KubernetesApi(_))
     }
@@ -232,5 +239,11 @@ mod tests {
         assert!(KuoError::AwsSdk("x".into(), "y".into()).is_transient());
         assert!(KuoError::KubernetesApi("z".into()).is_transient());
         assert!(!KuoError::ClusterNotFound("x".into()).is_transient());
+    }
+
+    #[test]
+    fn test_forbidden_is_not_transient() {
+        // Permission denial must not be retried; it fails the upgrade fast.
+        assert!(!KuoError::KubernetesForbidden("nodeclaims delete".into()).is_transient());
     }
 }

@@ -22,10 +22,10 @@ use futures::StreamExt;
 use kube::Api;
 use kube::runtime::Controller;
 use kube::runtime::watcher::Config;
-use tracing::{error, info};
+use tracing::{error, info, warn};
 
 use controller::Context;
-use crd::EKSUpgrade;
+use crd::{EKSUpgrade, EKSUpgradeSpec};
 
 pub const VERSION: &str = env!("CARGO_PKG_VERSION");
 pub const COMMIT: &str = env!("BUILD_COMMIT");
@@ -110,6 +110,10 @@ async fn run() -> Result<()> {
     // Set up the controller
     let api: Api<EKSUpgrade> = Api::all(client.clone());
 
+    // Startup pre-check: for each Karpenter-enabled EKSUpgrade, confirm its
+    // cluster's NodeClaims are queryable (connectivity + RBAC), one line each.
+    precheck_karpenter_nodeclaims(&api).await;
+
     let ctx = Arc::new(Context {
         kube_client: client.clone(),
         metrics,
@@ -131,4 +135,66 @@ async fn run() -> Result<()> {
         .await;
 
     Ok(())
+}
+
+/// Startup pre-check for Karpenter node replacement.
+///
+/// Lists existing `EKSUpgrade` resources and, for those with
+/// `karpenterNodePools.enabled`, verifies their cluster's `NodeClaims` are
+/// queryable (target-cluster connectivity plus delete/list RBAC readiness).
+/// Emits exactly one log line per associated cluster. Best-effort: failures are
+/// logged, never fatal, so a missing target does not block operator startup.
+async fn precheck_karpenter_nodeclaims(api: &Api<EKSUpgrade>) {
+    let items = match api.list(&kube::api::ListParams::default()).await {
+        Ok(list) => list.items,
+        Err(e) => {
+            warn!("Startup precheck skipped, could not list EKSUpgrade resources, {e}");
+            return;
+        }
+    };
+
+    for cr in items {
+        let spec = &cr.spec;
+        if !spec
+            .karpenter_node_pools
+            .as_ref()
+            .is_some_and(|k| k.enabled)
+        {
+            continue;
+        }
+        match probe_nodeclaims(spec).await {
+            Ok((count, true)) => info!(
+                "Startup precheck passed for cluster {}, {count} NodeClaims are queryable and delete permission is granted",
+                spec.cluster_name
+            ),
+            Ok((count, false)) => warn!(
+                "Startup precheck warning for cluster {}, {count} NodeClaims are queryable but delete permission is missing, Karpenter replacement will fail",
+                spec.cluster_name
+            ),
+            Err(e) => warn!(
+                "Startup precheck failed for cluster {}, NodeClaim access probe error {e}",
+                spec.cluster_name
+            ),
+        }
+    }
+}
+
+/// Build a target-cluster client for `spec` and probe `NodeClaim` access.
+///
+/// Returns the queryable `NodeClaim` count and whether the caller may delete
+/// `NodeClaims`, verifying both the read and delete RBAC Karpenter replacement
+/// needs on the spoke cluster.
+async fn probe_nodeclaims(spec: &EKSUpgradeSpec) -> Result<(usize, bool)> {
+    let aws = aws::client::AwsClients::new(&spec.region, spec.assume_role_arn.as_deref()).await?;
+    let eks = eks::client::EksClient::new(aws.eks.clone(), aws.region.clone());
+    let cluster = eks
+        .describe_cluster(&spec.cluster_name)
+        .await?
+        .ok_or_else(|| anyhow::anyhow!("cluster not found"))?;
+    let kube_client =
+        k8s::client::build_kube_client(&cluster, eks.region(), spec.assume_role_arn.as_deref())
+            .await?;
+    let count = k8s::karpenter::count_nodeclaims(&kube_client).await?;
+    let can_delete = k8s::karpenter::can_delete_nodeclaims(&kube_client).await?;
+    Ok((count, can_delete))
 }

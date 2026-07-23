@@ -13,6 +13,27 @@ use crate::error::KuoError;
 /// Label Karpenter sets on both Nodes and `NodeClaims` identifying their `NodePool`.
 pub const NODEPOOL_LABEL: &str = "karpenter.sh/nodepool";
 
+/// Classify an API error by HTTP status code. Pure and unit-tested.
+///
+/// HTTP 403 becomes the permanent `KubernetesForbidden` variant so permission
+/// denials fail fast; anything else stays a (transient) `KubernetesApi` error.
+fn classify_api_error(context: &str, code: Option<u16>, detail: &str) -> KuoError {
+    if code == Some(403) {
+        KuoError::KubernetesForbidden(format!("{context} ({detail})"))
+    } else {
+        KuoError::KubernetesApi(format!("{context}: {detail}"))
+    }
+}
+
+/// Convert a kube error to a `KuoError`, mapping HTTP 403 to `KubernetesForbidden`.
+fn to_kuo_err(context: &str, e: &kube::Error) -> KuoError {
+    let code = match e {
+        kube::Error::Api(status) => Some(status.code),
+        _ => None,
+    };
+    classify_api_error(context, code, &e.to_string())
+}
+
 fn nodepool_resource() -> ApiResource {
     ApiResource::from_gvk_with_plural(
         &GroupVersionKind::gvk("karpenter.sh", "v1", "NodePool"),
@@ -86,7 +107,7 @@ pub async fn list_nodepool_names(client: &kube::Client) -> Result<Vec<String>> {
     let list = api
         .list(&ListParams::default())
         .await
-        .map_err(|e| KuoError::KubernetesApi(format!("Failed to list NodePools: {e}")))?;
+        .map_err(|e| to_kuo_err("Failed to list NodePools", &e))?;
     Ok(list
         .items
         .into_iter()
@@ -94,14 +115,61 @@ pub async fn list_nodepool_names(client: &kube::Client) -> Result<Vec<String>> {
         .collect())
 }
 
+/// Count all `NodeClaims` in the cluster. Used as a startup connectivity and
+/// read-permission pre-check for Karpenter node replacement.
+pub async fn count_nodeclaims(client: &kube::Client) -> Result<usize> {
+    let ar = nodeclaim_resource();
+    let api: Api<DynamicObject> = Api::all_with(client.clone(), &ar);
+    let list = api
+        .list(&ListParams::default())
+        .await
+        .map_err(|e| to_kuo_err("Failed to list NodeClaims", &e))?;
+    Ok(list.items.len())
+}
+
+/// Check whether the caller may delete `NodeClaims`, without deleting anything.
+///
+/// Uses a `SelfSubjectAccessReview` (a non-persisted authorization probe) so the
+/// startup pre-check can confirm the delete RBAC that Karpenter replacement
+/// requires on each spoke cluster.
+pub async fn can_delete_nodeclaims(client: &kube::Client) -> Result<bool> {
+    use k8s_openapi::api::authorization::v1::{
+        ResourceAttributes, SelfSubjectAccessReview, SelfSubjectAccessReviewSpec,
+    };
+    use kube::api::PostParams;
+
+    let ssar = SelfSubjectAccessReview {
+        spec: SelfSubjectAccessReviewSpec {
+            resource_attributes: Some(ResourceAttributes {
+                group: Some("karpenter.sh".to_string()),
+                resource: Some("nodeclaims".to_string()),
+                verb: Some("delete".to_string()),
+                ..Default::default()
+            }),
+            ..Default::default()
+        },
+        ..Default::default()
+    };
+
+    let api: Api<SelfSubjectAccessReview> = Api::all(client.clone());
+    let resp = api
+        .create(&PostParams::default(), &ssar)
+        .await
+        .map_err(|e| {
+            KuoError::KubernetesApi(format!("Failed to run NodeClaim delete access review: {e}"))
+        })?;
+    Ok(resp.status.is_some_and(|s| s.allowed))
+}
+
 /// List `NodeClaims` belonging to a `NodePool`.
 pub async fn list_nodeclaims(client: &kube::Client, nodepool: &str) -> Result<Vec<NodeClaimInfo>> {
     let ar = nodeclaim_resource();
     let api: Api<DynamicObject> = Api::all_with(client.clone(), &ar);
     let params = ListParams::default().labels(&format!("{NODEPOOL_LABEL}={nodepool}"));
-    let list = api.list(&params).await.map_err(|e| {
-        KuoError::KubernetesApi(format!("Failed to list NodeClaims for {nodepool}: {e}"))
-    })?;
+    let list = api
+        .list(&params)
+        .await
+        .map_err(|e| to_kuo_err(&format!("Failed to list NodeClaims for {nodepool}"), &e))?;
     Ok(list.items.iter().map(nodeclaim_info).collect())
 }
 
@@ -111,7 +179,7 @@ pub async fn delete_nodeclaim(client: &kube::Client, name: &str) -> Result<()> {
     let api: Api<DynamicObject> = Api::all_with(client.clone(), &ar);
     api.delete(name, &DeleteParams::default())
         .await
-        .map_err(|e| KuoError::KubernetesApi(format!("Failed to delete NodeClaim {name}: {e}")))?;
+        .map_err(|e| to_kuo_err(&format!("Failed to delete NodeClaim {name}"), &e))?;
     Ok(())
 }
 
@@ -122,7 +190,7 @@ pub async fn nodeclaim_exists(client: &kube::Client, name: &str) -> Result<bool>
     let got = api
         .get_opt(name)
         .await
-        .map_err(|e| KuoError::KubernetesApi(format!("Failed to get NodeClaim {name}: {e}")))?;
+        .map_err(|e| to_kuo_err(&format!("Failed to get NodeClaim {name}"), &e))?;
     Ok(got.is_some())
 }
 
@@ -138,7 +206,7 @@ pub async fn nodepool_ami_terms(
     let np = np_api
         .get(nodepool)
         .await
-        .map_err(|e| KuoError::KubernetesApi(format!("Failed to get NodePool {nodepool}: {e}")))?;
+        .map_err(|e| to_kuo_err(&format!("Failed to get NodePool {nodepool}"), &e))?;
 
     let class_name = np
         .data
@@ -150,9 +218,10 @@ pub async fn nodepool_ami_terms(
 
     let ec_ar = ec2nodeclass_resource();
     let ec_api: Api<DynamicObject> = Api::all_with(client.clone(), &ec_ar);
-    let ec = ec_api.get(class_name).await.map_err(|e| {
-        KuoError::KubernetesApi(format!("Failed to get EC2NodeClass {class_name}: {e}"))
-    })?;
+    let ec = ec_api
+        .get(class_name)
+        .await
+        .map_err(|e| to_kuo_err(&format!("Failed to get EC2NodeClass {class_name}"), &e))?;
 
     Ok(ec
         .data
@@ -184,6 +253,22 @@ pub fn is_pinned_ami(terms: &[serde_json::Value]) -> bool {
 mod tests {
     use super::*;
     use serde_json::json;
+
+    #[test]
+    fn test_classify_api_error_403_is_forbidden() {
+        assert!(matches!(
+            classify_api_error("delete NodeClaim", Some(403), "forbidden"),
+            KuoError::KubernetesForbidden(_)
+        ));
+        assert!(matches!(
+            classify_api_error("delete NodeClaim", Some(500), "server error"),
+            KuoError::KubernetesApi(_)
+        ));
+        assert!(matches!(
+            classify_api_error("delete NodeClaim", None, "transport error"),
+            KuoError::KubernetesApi(_)
+        ));
+    }
 
     #[test]
     fn test_resource_constructors_have_correct_plurals() {

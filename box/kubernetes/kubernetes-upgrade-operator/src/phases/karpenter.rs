@@ -146,6 +146,30 @@ fn decode_controller(s: &str) -> Option<ControllerRef> {
     })
 }
 
+/// Build the phase-entry log line naming the cluster and `NodePool` order. Pure.
+///
+/// Returns `Some` only on the first reconcile of the phase, i.e. when every pool
+/// is still `Pending` (nothing started), so the line is logged once. Empty pool
+/// sets return `None`.
+fn phase_start_line(cluster: &str, pools: &[KarpenterPoolStatus]) -> Option<String> {
+    if pools.is_empty()
+        || !pools
+            .iter()
+            .all(|p| matches!(p.status, ComponentStatus::Pending))
+    {
+        return None;
+    }
+    let order = pools
+        .iter()
+        .map(|p| p.name.as_str())
+        .collect::<Vec<_>>()
+        .join(", ");
+    Some(format!(
+        "Starting Karpenter NodePool replacement for cluster {cluster}, processing {} NodePools in order {order}",
+        pools.len()
+    ))
+}
+
 /// Index of the first pool still needing work.
 fn active_pool_index(pools: &[KarpenterPoolStatus]) -> Option<usize> {
     pools.iter().position(|p| {
@@ -177,6 +201,12 @@ pub async fn execute(
         transition::transition_to(&mut new_status, UpgradePhase::Completed);
         return Ok((new_status, Some(Duration::from_secs(0))));
     };
+
+    // On phase entry (nothing started yet), log the cluster and the order in
+    // which NodePools will be processed.
+    if let Some(line) = phase_start_line(&spec.cluster_name, &kp.pools) {
+        info!("{line}");
+    }
 
     let Some(idx) = active_pool_index(&kp.pools) else {
         // All pools done: finish the phase.
@@ -684,6 +714,60 @@ mod tests {
     #[test]
     fn test_decode_controller_invalid() {
         assert_eq!(decode_controller("bad"), None);
+        // Two segments only (missing name) is also invalid.
+        assert_eq!(decode_controller("Deployment|default"), None);
+    }
+
+    #[test]
+    fn test_stale_targets_all_completed_is_empty() {
+        let candidates = vec![("a".to_string(), Some("v1.33.0".to_string()))];
+        assert!(stale_targets(&candidates, &["a".to_string()], 34).is_empty());
+    }
+
+    #[test]
+    fn test_select_batch_empty_stale() {
+        assert!(select_batch(&[], &[], 3).is_empty());
+    }
+
+    #[test]
+    fn test_decide_entry_wait_stable_timeout_from_wait_state() {
+        // Already in WaitStable, node gone, past drain+stable budget -> Failed.
+        match decide_entry(STATE_WAIT_STABLE, false, false, 2000, 900, 600) {
+            EntryOutcome::Failed(r) => assert!(r.contains("ControllerStableTimeout")),
+            other => panic!("expected failure, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn test_phase_start_line() {
+        let pool = |name: &str, status| KarpenterPoolStatus {
+            name: name.to_string(),
+            status,
+            total_nodes: 0,
+            replaced_nodes: 0,
+            completed_node_claims: vec![],
+            replacements: vec![],
+            current_batch: vec![],
+        };
+        // All pending -> logs cluster + ordered names.
+        let pools = vec![
+            pool("critical", ComponentStatus::Pending),
+            pool("spot", ComponentStatus::Pending),
+        ];
+        let line = phase_start_line("sb-cluster", &pools).unwrap();
+        assert!(line.contains("sb-cluster"));
+        assert!(line.contains("2 NodePools"));
+        assert!(line.contains("critical, spot"));
+
+        // Something already started -> None (not the first reconcile).
+        let started = vec![
+            pool("critical", ComponentStatus::InProgress),
+            pool("spot", ComponentStatus::Pending),
+        ];
+        assert!(phase_start_line("sb-cluster", &started).is_none());
+
+        // Empty -> None.
+        assert!(phase_start_line("sb-cluster", &[]).is_none());
     }
 
     #[test]
@@ -709,6 +793,87 @@ mod tests {
             },
         ];
         assert_eq!(active_pool_index(&pools), Some(1));
+    }
+
+    #[test]
+    fn test_decide_entry_wait_stable_with_node_present_still_waits() {
+        // Unusual: state already WaitStable but node reappeared as existing.
+        // Treated via recovery branch (not draining), so keeps waiting.
+        assert_eq!(
+            decide_entry(STATE_WAIT_STABLE, true, false, 50, 900, 600),
+            EntryOutcome::WaitStable
+        );
+    }
+
+    #[test]
+    fn test_select_batch_max_exceeds_available() {
+        let stale = vec!["a".to_string(), "b".to_string()];
+        assert_eq!(select_batch(&stale, &[], 10), vec!["a", "b"]);
+    }
+
+    #[test]
+    fn test_replacement_events_multiple_new_batch_ordinals() {
+        let old = kp_status(KarpenterPoolStatus {
+            name: "spot".to_string(),
+            status: ComponentStatus::InProgress,
+            total_nodes: 5,
+            replaced_nodes: 2,
+            completed_node_claims: vec![],
+            replacements: vec![],
+            current_batch: vec![],
+        });
+        let new = kp_status(KarpenterPoolStatus {
+            name: "spot".to_string(),
+            status: ComponentStatus::InProgress,
+            total_nodes: 5,
+            replaced_nodes: 2,
+            completed_node_claims: vec![],
+            replacements: vec![],
+            current_batch: vec![
+                entry("spot-a", STATE_DRAINING),
+                entry("spot-b", STATE_DRAINING),
+            ],
+        });
+        let events = replacement_events(Some(&old), Some(&new));
+        let replacing: Vec<&str> = events
+            .iter()
+            .filter(|e| e.reason == "NodeClaimReplacing")
+            .map(|e| e.message.as_str())
+            .collect();
+        assert_eq!(replacing.len(), 2);
+        // replaced_nodes 2 -> ordinals 3 and 4 of 5.
+        assert!(replacing[0].contains("node 3 of 5"));
+        assert!(replacing[1].contains("node 4 of 5"));
+    }
+
+    #[test]
+    fn test_replacement_events_skips_already_seen_replacements() {
+        let rep = |old: &str| crate::crd::NodeClaimReplacement {
+            old_node_claim: old.to_string(),
+            new_node_claim: Some(format!("{old}-new")),
+            node_name: None,
+        };
+        let pool = |reps: Vec<crate::crd::NodeClaimReplacement>| KarpenterPoolStatus {
+            name: "spot".to_string(),
+            status: ComponentStatus::InProgress,
+            total_nodes: 3,
+            replaced_nodes: u32::try_from(reps.len()).unwrap(),
+            completed_node_claims: vec![],
+            replacements: reps,
+            current_batch: vec![],
+        };
+        let old = kp_status(pool(vec![rep("n1")]));
+        let new = kp_status(pool(vec![rep("n1"), rep("n2")]));
+        let events = replacement_events(Some(&old), Some(&new));
+        let replaced: Vec<&str> = events
+            .iter()
+            .filter(|e| e.reason == "NodeClaimReplaced")
+            .map(|e| e.message.as_str())
+            .collect();
+        // Only the newly added replacement (n2) fires, not the already-seen n1.
+        assert_eq!(replaced.len(), 1);
+        assert!(replaced[0].contains("n2"));
+        assert!(replaced[0].contains("node 2 of 3"));
     }
 
     #[test]
@@ -875,6 +1040,49 @@ mod tests {
     #[test]
     fn test_replacement_events_none_new_status() {
         assert!(replacement_events(None, None).is_empty());
+    }
+
+    #[test]
+    fn test_replacement_events_brand_new_pool() {
+        // old tracks pool "a"; new introduces pool "b" with a starting node.
+        let old = kp_status(KarpenterPoolStatus {
+            name: "a".to_string(),
+            status: ComponentStatus::Completed,
+            total_nodes: 1,
+            replaced_nodes: 1,
+            completed_node_claims: vec![],
+            replacements: vec![],
+            current_batch: vec![],
+        });
+        let new = kp_status(KarpenterPoolStatus {
+            name: "b".to_string(),
+            status: ComponentStatus::InProgress,
+            total_nodes: 2,
+            replaced_nodes: 0,
+            completed_node_claims: vec![],
+            replacements: vec![],
+            current_batch: vec![entry("b-1", STATE_DRAINING)],
+        });
+        let events = replacement_events(Some(&old), Some(&new));
+        assert_eq!(events.len(), 1);
+        assert!(events[0].message.contains("NodePool b"));
+        assert!(events[0].message.contains("node 1 of 2"));
+    }
+
+    #[test]
+    fn test_pick_new_nodeclaim_missing_timestamps_falls_back_to_novelty() {
+        use crate::k8s::karpenter::NodeClaimInfo;
+        let claims = vec![NodeClaimInfo {
+            name: "fresh".to_string(),
+            node_name: None,
+            provider_id: None,
+            created_at: None,
+        }];
+        // No `after` and no created_at: novelty alone selects it.
+        assert_eq!(
+            pick_new_nodeclaim(&claims, &[], None),
+            Some("fresh".to_string())
+        );
     }
 
     #[test]
