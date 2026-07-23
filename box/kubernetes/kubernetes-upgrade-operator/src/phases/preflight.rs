@@ -30,6 +30,7 @@ pub async fn execute(
     spec: &EKSUpgradeSpec,
     current_status: &EKSUpgradeStatus,
     aws: &AwsClients,
+    in_cluster: &kube::Client,
 ) -> Result<EKSUpgradeStatus> {
     info!("Running preflight checks for {}", spec.cluster_name);
 
@@ -113,9 +114,10 @@ pub async fn execute(
     let has_nodegroup_upgrades = !current_status.phases.nodegroups.is_empty();
 
     if has_nodegroup_upgrades && !spec.skip_pdb_check {
-        match crate::k8s::client::build_kube_client(
-            &cluster,
-            eks_client.region(),
+        match crate::k8s::client::resolve_client(
+            in_cluster,
+            &eks_client,
+            &spec.cluster_name,
             spec.assume_role_arn.as_deref(),
         )
         .await
@@ -154,9 +156,10 @@ pub async fn execute(
     if let Some(cfg) = &spec.karpenter_node_pools
         && cfg.enabled
     {
-        match crate::k8s::client::build_kube_client(
-            &cluster,
-            eks_client.region(),
+        match crate::k8s::client::resolve_client(
+            in_cluster,
+            &eks_client,
+            &spec.cluster_name,
             spec.assume_role_arn.as_deref(),
         )
         .await

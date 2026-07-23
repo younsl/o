@@ -195,13 +195,13 @@ pub async fn reconcile(obj: Arc<EKSUpgrade>, ctx: Arc<Context>) -> Result<Action
             Ok((new_status, Some(Duration::from_secs(0))))
         }
         UpgradePhase::Planning => {
-            match phases::planning::execute(spec, &current_status, &aws).await {
+            match phases::planning::execute(spec, &current_status, &aws, &ctx.kube_client).await {
                 Ok(s) => Ok((s, Some(Duration::from_secs(0)))),
                 Err(e) => Err(e),
             }
         }
         UpgradePhase::PreflightChecking => {
-            match phases::preflight::execute(spec, &current_status, &aws).await {
+            match phases::preflight::execute(spec, &current_status, &aws, &ctx.kube_client).await {
                 Ok(s) => Ok((s, Some(Duration::from_secs(0)))),
                 Err(e) => Err(e),
             }
@@ -221,7 +221,7 @@ pub async fn reconcile(obj: Arc<EKSUpgrade>, ctx: Arc<Context>) -> Result<Action
         }
         // Karpenter NodePool replacement is forward-only (no rollback variant).
         UpgradePhase::UpgradingKarpenterNodePools => {
-            phases::karpenter::execute(spec, &current_status, &aws).await
+            phases::karpenter::execute(spec, &current_status, &aws, &ctx.kube_client).await
         }
         UpgradePhase::Completed | UpgradePhase::Failed => {
             return Ok(Action::await_change());

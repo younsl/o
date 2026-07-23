@@ -3,11 +3,42 @@
 //! Uses STS presigned URL for token generation instead of subprocess.
 
 use anyhow::{Context, Result};
-use tracing::debug;
+use tracing::{debug, info};
 
 use crate::aws::sts;
-use crate::eks::client::ClusterInfo;
+use crate::eks::client::{ClusterInfo, EksClient};
 use crate::error::KuoError;
+
+/// Resolve the Kubernetes client for a target cluster.
+///
+/// When `assume_role_arn` is `None`, kuo is operating on its own (in-cluster)
+/// cluster, so the in-cluster client (its `ServiceAccount`, already RBAC-bound by
+/// the chart) is reused and talks to the local API server directly. No EKS
+/// access entry is required. When `assume_role_arn` is set, a remote client is
+/// built for the cross-account spoke via an STS-signed EKS token, which does
+/// require an access entry mapping on that cluster.
+pub async fn resolve_client(
+    in_cluster: &kube::Client,
+    eks: &EksClient,
+    cluster_name: &str,
+    assume_role_arn: Option<&str>,
+) -> Result<kube::Client> {
+    if assume_role_arn.is_none() {
+        info!(
+            "Using in cluster Kubernetes client for cluster {cluster_name} because no assume role is set, so kuo talks to its own API server with its ServiceAccount and no EKS access entry is needed"
+        );
+        return Ok(in_cluster.clone());
+    }
+    info!(
+        "Using out of cluster Kubernetes client for cluster {cluster_name} via STS assume role {}, which requires an EKS access entry on that cluster",
+        assume_role_arn.unwrap_or("")
+    );
+    let cluster = eks
+        .describe_cluster(cluster_name)
+        .await?
+        .ok_or_else(|| KuoError::ClusterNotFound(cluster_name.to_string()))?;
+    build_kube_client(&cluster, eks.region(), assume_role_arn).await
+}
 
 /// Build a Kubernetes client for the given EKS cluster.
 ///

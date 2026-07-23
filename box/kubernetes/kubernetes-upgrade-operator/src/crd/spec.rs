@@ -331,6 +331,36 @@ mod tests {
     }
 
     #[test]
+    fn test_resolve_max_unavailable_more_percentages() {
+        let mk = |mu: &str| KarpenterNodePoolsConfig {
+            enabled: true,
+            node_pools: vec![],
+            strategy: KarpenterStrategy::Replace,
+            max_unavailable: mu.to_string(),
+            node_drain_timeout_minutes: 15,
+            controller_stable_timeout_minutes: 10,
+        };
+        assert_eq!(mk("50%").resolve_max_unavailable(3), 1); // 1.5 -> 1
+        assert_eq!(mk("50%").resolve_max_unavailable(10), 5);
+        assert_eq!(mk("200%").resolve_max_unavailable(4), 8);
+        assert_eq!(mk("33%").resolve_max_unavailable(0), 1); // clamps up from 0
+    }
+
+    #[test]
+    fn test_selects_all_whitespace_and_case() {
+        let mk = |pools: Vec<&str>| KarpenterNodePoolsConfig {
+            enabled: true,
+            node_pools: pools.into_iter().map(String::from).collect(),
+            strategy: KarpenterStrategy::Replace,
+            max_unavailable: "1".to_string(),
+            node_drain_timeout_minutes: 15,
+            controller_stable_timeout_minutes: 10,
+        };
+        assert!(mk(vec!["AlL"]).selects_all());
+        assert!(!mk(vec!["all-pool"]).selects_all());
+    }
+
+    #[test]
     fn test_resolve_max_unavailable_invalid_falls_back_to_one() {
         let config = KarpenterNodePoolsConfig {
             enabled: true,

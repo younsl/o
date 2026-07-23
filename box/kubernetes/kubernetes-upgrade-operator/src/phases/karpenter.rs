@@ -189,6 +189,7 @@ pub async fn execute(
     spec: &EKSUpgradeSpec,
     current_status: &EKSUpgradeStatus,
     aws: &AwsClients,
+    in_cluster: &kube::Client,
 ) -> Result<(EKSUpgradeStatus, Option<Duration>)> {
     let config = spec
         .karpenter_node_pools
@@ -218,15 +219,13 @@ pub async fn execute(
         return Ok((new_status, Some(Duration::from_secs(0))));
     };
 
-    // Build a Kubernetes client for the target cluster.
+    // Resolve the target-cluster client: in-cluster (own cluster) when no
+    // assumeRoleArn, else a remote STS client for the cross-account spoke.
     let eks_client = EksClient::new(aws.eks.clone(), aws.region.clone());
-    let cluster = eks_client
-        .describe_cluster(&spec.cluster_name)
-        .await?
-        .ok_or_else(|| crate::error::KuoError::ClusterNotFound(spec.cluster_name.clone()))?;
-    let client = crate::k8s::client::build_kube_client(
-        &cluster,
-        eks_client.region(),
+    let client = crate::k8s::client::resolve_client(
+        in_cluster,
+        &eks_client,
+        &spec.cluster_name,
         spec.assume_role_arn.as_deref(),
     )
     .await?;
