@@ -32,4 +32,8 @@ spec:
   notification:
     {{- toYaml . | nindent 4 }}
   {{- end }}
+  {{- with .spec.karpenterNodePools }}
+  karpenterNodePools:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
 {{- end }}
