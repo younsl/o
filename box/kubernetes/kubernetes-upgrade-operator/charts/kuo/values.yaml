@@ -163,6 +163,13 @@ eksUpgrades: []
   #     notification:
   #       onUpgrade: true
   #       onDryRun: false
+  #     karpenterNodePools:
+  #       enabled: true
+  #       nodePools: ["ALL"]            # empty or ["ALL"] = all NodePools; or list names in order
+  #       strategy: Replace
+  #       maxUnavailable: "1"           # integer or percentage, e.g. "10%"
+  #       nodeDrainTimeoutMinutes: 15
+  #       controllerStableTimeoutMinutes: 10
   #
   # ## Cross-account example: assume a role in another AWS account.
   # ## Works with both IRSA and EKS Pod Identity as the base credential source.
