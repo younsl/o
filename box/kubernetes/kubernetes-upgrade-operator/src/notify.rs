@@ -462,6 +462,50 @@ mod tests {
     }
 
     #[test]
+    fn test_completed_message_1_34_to_1_36_path() {
+        // Real-world scenario: 1.34 → 1.35 → 1.36. After completion the
+        // control plane has advanced currentVersion to "1.36"; the Completed
+        // notification must still show "1.34 → 1.35 → 1.36", not
+        // "1.36 → 1.35 → 1.36".
+        let mut spec = make_spec(None, false);
+        spec.target_version = "1.36".to_string();
+
+        let mut status = EKSUpgradeStatus {
+            current_version: Some("1.36".to_string()), // mutated by control plane
+            phases: crate::crd::PhaseStatuses {
+                planning: Some(PlanningStatus {
+                    source_version: Some("1.34".to_string()),
+                    upgrade_path: vec!["1.35".into(), "1.36".into()],
+                }),
+                ..Default::default()
+            },
+            ..Default::default()
+        };
+        let now = chrono::Utc::now();
+        status.started_at = Some(now - chrono::Duration::seconds(1839));
+        status.completed_at = Some(now);
+
+        let msg = build_completed_message("test-cluster", &spec, &status);
+        let path = msg
+            .fields
+            .iter()
+            .find(|(k, _)| k == "Upgrade Path")
+            .map(|(_, v)| v.as_str())
+            .unwrap();
+        assert_eq!(path, "1.34 → 1.35 → 1.36");
+
+        // Started notification renders the same path.
+        let started = build_started_message("test-cluster", &spec, &status);
+        let started_path = started
+            .fields
+            .iter()
+            .find(|(k, _)| k == "Upgrade Path")
+            .map(|(_, v)| v.as_str())
+            .unwrap();
+        assert_eq!(started_path, "1.34 → 1.35 → 1.36");
+    }
+
+    #[test]
     fn test_upgrade_path_falls_back_to_current_when_no_source() {
         // Backward compat: a CR planned before source_version existed has no
         // planning.source_version; fall back to current_version.
