@@ -14,8 +14,23 @@ rules:
   - apiGroups: ["policy"]
     resources: ["poddisruptionbudgets"]
     verbs: ["get", "list"]
+  # Karpenter NodePool node replacement (kuo deletes NodeClaims; Karpenter drains
+  # and reprovisions). Nodes/pods are read to detect stale kubelets and snapshot
+  # the workloads to wait on.
+  - apiGroups: ["karpenter.sh"]
+    resources: ["nodepools", "nodeclaims"]
+    verbs: ["get", "list"]
+  - apiGroups: ["karpenter.sh"]
+    resources: ["nodeclaims"]
+    verbs: ["delete"]
   - apiGroups: ["karpenter.k8s.aws"]
     resources: ["ec2nodeclasses"]
+    verbs: ["get", "list"]
+  - apiGroups: [""]
+    resources: ["nodes", "pods"]
+    verbs: ["get", "list"]
+  - apiGroups: ["apps"]
+    resources: ["deployments", "statefulsets", "daemonsets", "replicasets"]
     verbs: ["get", "list"]
   - apiGroups: ["", "events.k8s.io"]
     resources: ["events"]

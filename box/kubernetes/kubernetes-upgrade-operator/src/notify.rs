@@ -49,18 +49,43 @@ pub fn build_started_message(
         format!("{current} → {upgrade_path}")
     };
 
-    let phases = "Planning → Preflight → ControlPlane → Addons → NodeGroups";
+    let karpenter_enabled = spec
+        .karpenter_node_pools
+        .as_ref()
+        .is_some_and(|k| k.enabled);
+
+    let phases = if karpenter_enabled {
+        "Planning → Preflight → ControlPlane → Addons → NodeGroups → KarpenterNodePools"
+    } else {
+        "Planning → Preflight → ControlPlane → Addons → NodeGroups"
+    };
+
+    let mut fields = vec![
+        ("Cluster".to_string(), spec.cluster_name.clone()),
+        ("Region".to_string(), spec.region.clone()),
+        ("Target Version".to_string(), spec.target_version.clone()),
+        ("Mode".to_string(), mode.to_string()),
+        ("Upgrade Path".to_string(), path_display),
+        ("Phases".to_string(), phases.to_string()),
+    ];
+
+    if let Some(kp) = spec.karpenter_node_pools.as_ref().filter(|k| k.enabled) {
+        let pools = if kp.selects_all() {
+            "all".to_string()
+        } else {
+            kp.node_pools.join(", ")
+        };
+        fields.push(("Karpenter NodePools".to_string(), pools));
+        fields.push(("Karpenter Strategy".to_string(), kp.strategy.to_string()));
+        fields.push((
+            "Karpenter Concurrency".to_string(),
+            format!("maxUnavailable {}", kp.max_unavailable),
+        ));
+    }
 
     SlackMessage {
         header: "EKS Upgrade Started".to_string(),
-        fields: vec![
-            ("Cluster".to_string(), spec.cluster_name.clone()),
-            ("Region".to_string(), spec.region.clone()),
-            ("Target Version".to_string(), spec.target_version.clone()),
-            ("Mode".to_string(), mode.to_string()),
-            ("Upgrade Path".to_string(), path_display),
-            ("Phases".to_string(), phases.to_string()),
-        ],
+        fields,
         context: format!("Sent by kuo via EKSUpgrade/{resource_name}"),
     }
 }
@@ -245,6 +270,59 @@ mod tests {
     }
 
     #[test]
+    fn test_build_started_message_with_karpenter() {
+        let mut spec = make_spec(None, false);
+        spec.karpenter_node_pools = Some(crate::crd::KarpenterNodePoolsConfig {
+            enabled: true,
+            node_pools: vec!["default".to_string(), "spot".to_string()],
+            strategy: crate::crd::KarpenterStrategy::Replace,
+            max_unavailable: "1".to_string(),
+            node_drain_timeout_minutes: 15,
+            controller_stable_timeout_minutes: 10,
+        });
+        let status = make_status_with_path(vec!["1.33".into()]);
+        let msg = build_started_message("kp", &spec, &status);
+
+        let phases = msg
+            .fields
+            .iter()
+            .find(|(k, _)| k == "Phases")
+            .map(|(_, v)| v.as_str())
+            .unwrap();
+        assert!(phases.contains("KarpenterNodePools"));
+        assert!(
+            msg.fields
+                .iter()
+                .any(|(k, v)| k == "Karpenter NodePools" && v == "default, spot")
+        );
+        assert!(
+            msg.fields
+                .iter()
+                .any(|(k, v)| k == "Karpenter Strategy" && v == "Replace")
+        );
+        assert!(
+            msg.fields
+                .iter()
+                .any(|(k, v)| k == "Karpenter Concurrency" && v.contains("maxUnavailable 1"))
+        );
+    }
+
+    #[test]
+    fn test_build_started_message_karpenter_disabled_omits_fields() {
+        let spec = make_spec(None, false);
+        let status = make_status_with_path(vec!["1.33".into()]);
+        let msg = build_started_message("kp", &spec, &status);
+        let phases = msg
+            .fields
+            .iter()
+            .find(|(k, _)| k == "Phases")
+            .map(|(_, v)| v.as_str())
+            .unwrap();
+        assert!(!phases.contains("KarpenterNodePools"));
+        assert!(!msg.fields.iter().any(|(k, _)| k.starts_with("Karpenter")));
+    }
+
+    #[test]
     fn test_build_started_message_dry_run() {
         let spec = make_spec(None, true);
         let status = EKSUpgradeStatus::default();
@@ -349,6 +427,7 @@ mod tests {
             dry_run,
             timeouts: None,
             notification,
+            karpenter_node_pools: None,
         }
     }
 

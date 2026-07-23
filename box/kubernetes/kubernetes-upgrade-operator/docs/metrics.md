@@ -95,7 +95,7 @@ Current upgrade phase. The active phase has value `1`, all others have value `0`
 | Type | Gauge |
 | Labels | `cluster_name`, `region`, `phase` |
 
-`phase` values: `Pending`, `Planning`, `PreflightChecking`, `UpgradingControlPlane`, `UpgradingAddons`, `UpgradingNodeGroups`, `Completed`, `Failed`
+`phase` values: `Pending`, `Planning`, `PreflightChecking`, `UpgradingControlPlane`, `UpgradingAddons`, `UpgradingNodeGroups`, `UpgradingKarpenterNodePools`, `RollingBackNodeGroups`, `RollingBackAddons`, `RollingBackControlPlane`, `Completed`, `Failed`
 
 ### kuo_phase_transition_total
 

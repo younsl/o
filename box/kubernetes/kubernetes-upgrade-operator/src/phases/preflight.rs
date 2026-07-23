@@ -150,6 +150,27 @@ pub async fn execute(
         ));
     }
 
+    // ---- Karpenter NodePool checks (only when enabled) ----
+    if let Some(cfg) = &spec.karpenter_node_pools
+        && cfg.enabled
+    {
+        match crate::k8s::client::build_kube_client(
+            &cluster,
+            eks_client.region(),
+            spec.assume_role_arn.as_deref(),
+        )
+        .await
+        {
+            Ok(kc) => run_karpenter_checks(&kc, cfg, &mut preflight).await,
+            Err(e) => {
+                warn!("Failed to build Kubernetes client for Karpenter checks: {e}");
+                preflight
+                    .skipped
+                    .push(SkippedCheck::karpenter("Kubernetes API unavailable"));
+            }
+        }
+    }
+
     // ---- Record results into status ----
     let mut new_status = current_status.clone();
 
@@ -191,6 +212,75 @@ pub async fn execute(
     transition::transition_to(&mut new_status, next);
 
     Ok(new_status)
+}
+
+/// Run Karpenter v1-API and AMI-selector preflight checks.
+///
+/// Records a mandatory failure if the v1 API is absent or any target `NodePool`
+/// pins its AMI. Probe failures are recorded as skips rather than hard errors,
+/// mirroring the other non-fatal preflight checks.
+async fn run_karpenter_checks(
+    kc: &kube::Client,
+    cfg: &crate::crd::KarpenterNodePoolsConfig,
+    preflight: &mut PreflightResults,
+) {
+    use crate::k8s::karpenter;
+
+    match karpenter::v1_available(kc).await {
+        Ok(true) => {
+            preflight
+                .checks
+                .push(PreflightCheckResult::karpenter_v1_api(true));
+        }
+        Ok(false) => {
+            preflight
+                .checks
+                .push(PreflightCheckResult::karpenter_v1_api(false));
+            return;
+        }
+        Err(e) => {
+            warn!("Karpenter v1 API probe failed (non-fatal): {e}");
+            preflight
+                .skipped
+                .push(SkippedCheck::karpenter("Karpenter API probe failed"));
+            return;
+        }
+    }
+
+    let names = if cfg.selects_all() {
+        match karpenter::list_nodepool_names(kc).await {
+            Ok(n) => n,
+            Err(e) => {
+                warn!("Failed to list NodePools for AMI check (non-fatal): {e}");
+                preflight
+                    .skipped
+                    .push(SkippedCheck::karpenter("unable to list NodePools"));
+                return;
+            }
+        }
+    } else {
+        cfg.node_pools.clone()
+    };
+
+    let mut pinned = Vec::new();
+    for np in &names {
+        match karpenter::nodepool_ami_terms(kc, np).await {
+            Ok(terms) => {
+                if karpenter::is_pinned_ami(&terms) {
+                    pinned.push(np.clone());
+                }
+            }
+            Err(e) => {
+                warn!("Failed to read EC2NodeClass for NodePool {np} (non-fatal): {e}");
+                preflight
+                    .skipped
+                    .push(SkippedCheck::karpenter("unable to read EC2NodeClass"));
+            }
+        }
+    }
+    preflight
+        .checks
+        .push(PreflightCheckResult::karpenter_ami_selector(&pinned));
 }
 
 /// Build preflight check status entries from results.

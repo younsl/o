@@ -3,8 +3,8 @@ name: kuo
 description: Kubernetes Upgrade Operator for EKS clusters
 type: application
 deprecated: false
-version: 0.4.0
-appVersion: "0.3.0"
+version: 0.5.0
+appVersion: "0.4.0"
 home: https://github.com/younsl/o
 sources:
   - https://github.com/younsl/o/tree/main/box/kubernetes/kubernetes-upgrade-operator
@@ -21,6 +21,6 @@ keywords:
 annotations:
   artifacthub.io/changes: |
     - kind: added
-      description: "Set default pod priorityClassName to system-cluster-critical to protect the operator from preemption"
+      description: "Add Karpenter NodePool node replacement: new UpgradingKarpenterNodePools phase, spec.karpenterNodePools config, and CRD status subtree"
     - kind: added
-      description: "Set default deployment revisionHistoryLimit to 5"
+      description: "Add RBAC for karpenter.sh nodepools/nodeclaims, karpenter.k8s.aws ec2nodeclasses, and core nodes/pods/apps controllers"

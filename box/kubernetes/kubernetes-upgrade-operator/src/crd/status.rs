@@ -113,6 +113,96 @@ pub struct NodegroupStatus {
     pub completed_at: Option<DateTime<Utc>>,
 }
 
+/// One `NodeClaim` currently being replaced within a `NodePool`.
+#[derive(Deserialize, Serialize, Clone, Debug, JsonSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct CurrentBatchEntry {
+    /// Name of the `NodeClaim` being replaced.
+    pub node_claim: String,
+    /// Name of the backing Node resource, if already registered. Recorded
+    /// alongside the `NodeClaim` so operators can cross-reference `kubectl get
+    /// nodes` without an extra lookup.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub node_name: Option<String>,
+    /// Provider ID (e.g. `aws:///<az>/<instance-id>`) for AWS-side correlation.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub provider_id: Option<String>,
+    /// Replacement stage: `Draining` or `WaitingControllerStable`.
+    pub state: String,
+    /// Timestamp when this `NodeClaim`'s replacement started. Used for timeout enforcement.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub started_at: Option<DateTime<Utc>>,
+    /// Owning controllers of the pods evicted from this node, captured before
+    /// deletion, encoded as `kind|namespace|name`. Persisted so a restart
+    /// mid-replacement can still wait for the right controllers to recover.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub controllers: Vec<String>,
+}
+
+/// A completed node replacement, mapping the removed `NodeClaim` to the one
+/// Karpenter provisioned in its place.
+#[derive(Deserialize, Serialize, Clone, Debug, JsonSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct NodeClaimReplacement {
+    /// Name of the removed (old) `NodeClaim`.
+    pub old_node_claim: String,
+    /// Name of the newly provisioned `NodeClaim`, if it could be identified.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub new_node_claim: Option<String>,
+    /// Name of the old backing Node, for cross-reference.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub node_name: Option<String>,
+}
+
+/// Replacement status of a single Karpenter `NodePool`.
+#[derive(Deserialize, Serialize, Clone, Debug, JsonSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct KarpenterPoolStatus {
+    /// `NodePool` name.
+    pub name: String,
+    /// Overall status of this `NodePool`'s replacement.
+    pub status: ComponentStatus,
+    /// Total stale nodes detected in this `NodePool` at planning time.
+    #[serde(default)]
+    pub total_nodes: u32,
+    /// Nodes replaced so far in this `NodePool`.
+    #[serde(default)]
+    pub replaced_nodes: u32,
+    /// `NodeClaims` already replaced (crash-recovery record). Most recent entries
+    /// are retained; the list is not an unbounded history.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub completed_node_claims: Vec<String>,
+    /// Completed replacements mapping each removed `NodeClaim` to the new one.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub replacements: Vec<NodeClaimReplacement>,
+    /// `NodeClaims` currently in flight this batch.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub current_batch: Vec<CurrentBatchEntry>,
+}
+
+/// Karpenter `NodePool` replacement phase status.
+#[derive(Deserialize, Serialize, Clone, Debug, Default, JsonSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct KarpenterNodePoolsStatus {
+    /// Strategy in effect (e.g. `Replace`).
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub strategy: String,
+    /// `NodePool` currently being processed.
+    /// NOTE: No `skip_serializing_if` — None must serialize as `null` so that
+    /// JSON Merge Patch (RFC 7396) clears the field when work moves on.
+    #[serde(default)]
+    pub active_pool: Option<String>,
+    /// Total stale nodes across all target `NodePools`.
+    #[serde(default)]
+    pub total_nodes: u32,
+    /// Nodes replaced so far across all target `NodePools`.
+    #[serde(default)]
+    pub replaced_nodes: u32,
+    /// Per-NodePool replacement statuses.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub pools: Vec<KarpenterPoolStatus>,
+}
+
 /// Per-phase status container.
 #[derive(Deserialize, Serialize, Clone, Debug, Default, JsonSchema)]
 #[serde(rename_all = "camelCase")]
@@ -136,6 +226,10 @@ pub struct PhaseStatuses {
     /// Node group upgrade statuses.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub nodegroups: Vec<NodegroupStatus>,
+
+    /// Karpenter `NodePool` replacement status.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub karpenter_node_pools: Option<KarpenterNodePoolsStatus>,
 }
 
 // ============================================================================
@@ -493,6 +587,69 @@ mod tests {
 
         assert!(obj.contains_key("startedAt"), "startedAt must be present");
         assert!(obj["startedAt"].is_null(), "startedAt must be null");
+    }
+
+    #[test]
+    fn test_karpenter_status_default_and_field() {
+        let ps = PhaseStatuses::default();
+        assert!(ps.karpenter_node_pools.is_none());
+
+        let kp = KarpenterNodePoolsStatus {
+            strategy: "Replace".to_string(),
+            active_pool: Some("spot".to_string()),
+            total_nodes: 8,
+            replaced_nodes: 3,
+            pools: vec![KarpenterPoolStatus {
+                name: "default".to_string(),
+                status: ComponentStatus::Completed,
+                total_nodes: 5,
+                replaced_nodes: 5,
+                completed_node_claims: vec!["default-abc".to_string()],
+                replacements: vec![],
+                current_batch: vec![],
+            }],
+        };
+        let json = serde_json::to_value(&kp).unwrap();
+        assert_eq!(json["strategy"], "Replace");
+        assert_eq!(json["activePool"], "spot");
+        assert_eq!(json["pools"][0]["name"], "default");
+        assert_eq!(json["pools"][0]["completedNodeClaims"][0], "default-abc");
+    }
+
+    /// `active_pool` must serialize as null (not be omitted) when cleared, so a
+    /// JSON Merge Patch removes the stale value once processing moves on.
+    #[test]
+    fn test_karpenter_active_pool_serializes_as_null() {
+        let kp = KarpenterNodePoolsStatus {
+            strategy: "Replace".to_string(),
+            active_pool: None,
+            total_nodes: 0,
+            replaced_nodes: 0,
+            pools: vec![],
+        };
+        let json = serde_json::to_value(&kp).unwrap();
+        let obj = json.as_object().unwrap();
+        assert!(obj.contains_key("activePool"), "activePool must be present");
+        assert!(obj["activePool"].is_null(), "activePool must be null");
+    }
+
+    #[test]
+    fn test_current_batch_entry_omits_optional_when_none() {
+        let entry = CurrentBatchEntry {
+            node_claim: "spot-ghi56".to_string(),
+            node_name: None,
+            provider_id: None,
+            state: "Draining".to_string(),
+            started_at: None,
+            controllers: vec![],
+        };
+        let json = serde_json::to_value(&entry).unwrap();
+        let obj = json.as_object().unwrap();
+        assert_eq!(obj["nodeClaim"], "spot-ghi56");
+        assert_eq!(obj["state"], "Draining");
+        assert!(!obj.contains_key("nodeName"));
+        assert!(!obj.contains_key("providerId"));
+        assert!(!obj.contains_key("controllers"));
     }
 
     /// Minimal RFC 7396 JSON Merge Patch implementation for testing.

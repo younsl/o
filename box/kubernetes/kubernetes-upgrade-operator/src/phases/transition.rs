@@ -43,6 +43,16 @@ const fn has_nodegroups(status: &EKSUpgradeStatus) -> bool {
     !status.phases.nodegroups.is_empty()
 }
 
+/// Whether Karpenter `NodePool` replacement has planned work. Populated by the
+/// planning phase only when `spec.karpenterNodePools.enabled` and stale nodes
+/// exist, so an empty or absent value means the phase is skipped.
+const fn has_karpenter(status: &EKSUpgradeStatus) -> bool {
+    match &status.phases.karpenter_node_pools {
+        Some(k) => !k.pools.is_empty(),
+        None => false,
+    }
+}
+
 /// Next phase after preflight checks pass.
 pub const fn after_preflight(status: &EKSUpgradeStatus, mode: &UpgradeMode) -> UpgradePhase {
     match mode {
@@ -53,6 +63,8 @@ pub const fn after_preflight(status: &EKSUpgradeStatus, mode: &UpgradeMode) -> U
                 UpgradePhase::UpgradingAddons
             } else if has_nodegroups(status) {
                 UpgradePhase::UpgradingNodeGroups
+            } else if has_karpenter(status) {
+                UpgradePhase::UpgradingKarpenterNodePools
             } else {
                 UpgradePhase::Completed
             }
@@ -79,6 +91,8 @@ pub const fn after_control_plane(status: &EKSUpgradeStatus, mode: &UpgradeMode) 
                 UpgradePhase::UpgradingAddons
             } else if has_nodegroups(status) {
                 UpgradePhase::UpgradingNodeGroups
+            } else if has_karpenter(status) {
+                UpgradePhase::UpgradingKarpenterNodePools
             } else {
                 UpgradePhase::Completed
             }
@@ -94,6 +108,8 @@ pub const fn after_addons(status: &EKSUpgradeStatus, mode: &UpgradeMode) -> Upgr
         UpgradeMode::Forward => {
             if has_nodegroups(status) {
                 UpgradePhase::UpgradingNodeGroups
+            } else if has_karpenter(status) {
+                UpgradePhase::UpgradingKarpenterNodePools
             } else {
                 UpgradePhase::Completed
             }
@@ -111,8 +127,15 @@ pub const fn after_addons(status: &EKSUpgradeStatus, mode: &UpgradeMode) -> Upgr
 /// Next phase after the node groups phase completes.
 pub const fn after_nodegroups(status: &EKSUpgradeStatus, mode: &UpgradeMode) -> UpgradePhase {
     match mode {
-        // In forward, node groups run last.
-        UpgradeMode::Forward => UpgradePhase::Completed,
+        // In forward, node groups are followed by Karpenter NodePool
+        // replacement (when planned), then the flow completes.
+        UpgradeMode::Forward => {
+            if has_karpenter(status) {
+                UpgradePhase::UpgradingKarpenterNodePools
+            } else {
+                UpgradePhase::Completed
+            }
+        }
         UpgradeMode::Rollback => {
             if has_addons(status) {
                 UpgradePhase::RollingBackAddons
@@ -123,6 +146,14 @@ pub const fn after_nodegroups(status: &EKSUpgradeStatus, mode: &UpgradeMode) -> 
             }
         }
     }
+}
+
+/// Next phase after the Karpenter `NodePool` replacement phase completes.
+///
+/// Karpenter replacement is forward-only and runs last, so this always
+/// completes the flow. Rollback never reaches this phase.
+pub const fn after_karpenter(_status: &EKSUpgradeStatus, _mode: &UpgradeMode) -> UpgradePhase {
+    UpgradePhase::Completed
 }
 
 /// Apply the selected next phase to the status, setting the terminal `Ready`
@@ -206,6 +237,64 @@ mod tests {
         );
         assert_eq!(
             after_nodegroups(&status(true, true, true), &UpgradeMode::Forward),
+            UpgradePhase::Completed
+        );
+    }
+
+    fn with_karpenter(mut s: EKSUpgradeStatus) -> EKSUpgradeStatus {
+        use crate::crd::{KarpenterNodePoolsStatus, KarpenterPoolStatus};
+        s.phases.karpenter_node_pools = Some(KarpenterNodePoolsStatus {
+            strategy: "Replace".to_string(),
+            active_pool: None,
+            total_nodes: 3,
+            replaced_nodes: 0,
+            pools: vec![KarpenterPoolStatus {
+                name: "default".to_string(),
+                status: ComponentStatus::Pending,
+                total_nodes: 3,
+                replaced_nodes: 0,
+                completed_node_claims: vec![],
+                replacements: vec![],
+                current_batch: vec![],
+            }],
+        });
+        s
+    }
+
+    #[test]
+    fn test_forward_nodegroups_to_karpenter_when_present() {
+        let s = with_karpenter(status(true, true, true));
+        assert_eq!(
+            after_nodegroups(&s, &UpgradeMode::Forward),
+            UpgradePhase::UpgradingKarpenterNodePools
+        );
+    }
+
+    #[test]
+    fn test_forward_addons_skips_to_karpenter_without_nodegroups() {
+        let s = with_karpenter(status(true, true, false));
+        assert_eq!(
+            after_addons(&s, &UpgradeMode::Forward),
+            UpgradePhase::UpgradingKarpenterNodePools
+        );
+    }
+
+    #[test]
+    fn test_after_karpenter_completes() {
+        let s = with_karpenter(status(true, true, true));
+        assert_eq!(
+            after_karpenter(&s, &UpgradeMode::Forward),
+            UpgradePhase::Completed
+        );
+    }
+
+    #[test]
+    fn test_rollback_ignores_karpenter() {
+        // Karpenter is forward-only: a rollback with karpenter status present
+        // still routes through the rollback chain, never to the Karpenter phase.
+        let s = with_karpenter(status(false, false, true));
+        assert_eq!(
+            after_nodegroups(&s, &UpgradeMode::Rollback),
             UpgradePhase::Completed
         );
     }

@@ -92,13 +92,44 @@ spec:
                       type: boolean
                       default: false
                       description: Send Slack notifications for dry-run executions (dryRun true).
+                karpenterNodePools:
+                  type: object
+                  description: Karpenter NodePool node replacement configuration. When enabled, kuo rolls Karpenter-managed nodes after the managed node group phase completes. Absent or disabled leaves Karpenter nodes untouched.
+                  properties:
+                    enabled:
+                      type: boolean
+                      default: false
+                      description: Enable Karpenter NodePool node replacement.
+                    nodePools:
+                      type: array
+                      description: NodePools to process, in order. An empty list or a single "ALL" entry (case-insensitive) selects every NodePool in the cluster.
+                      items:
+                        type: string
+                    strategy:
+                      type: string
+                      enum:
+                        - Replace
+                      default: Replace
+                      description: "Replacement strategy. v1 supports Replace only: kuo deletes NodeClaims directly and controls order, pace, and stability checks while Karpenter performs cordon/drain/provisioning."
+                    maxUnavailable:
+                      type: string
+                      default: "1"
+                      description: 'Maximum nodes replaced concurrently per NodePool. Accepts a bare integer ("1") or a percentage ("10%") of the NodePool node count. Defaults to strictly sequential.'
+                    nodeDrainTimeoutMinutes:
+                      type: integer
+                      default: 15
+                      description: Max minutes to wait for an old node to drain and be removed after the NodeClaim is deleted. Karpenter performs the drain; kuo waits.
+                    controllerStableTimeoutMinutes:
+                      type: integer
+                      default: 10
+                      description: Max minutes to wait for the controllers of evicted pods to become Ready again on other nodes before proceeding.
             status:
               type: object
               description: EKSUpgradeStatus defines the observed state of the upgrade.
               properties:
                 phase:
                   type: string
-                  description: "Current phase. Forward: Pending → Planning → PreflightChecking → UpgradingControlPlane → UpgradingAddons → UpgradingNodeGroups → Completed. Rollback: Pending → Planning → PreflightChecking → RollingBackNodeGroups → RollingBackAddons → RollingBackControlPlane → Completed. Any phase may transition to Failed."
+                  description: "Current phase. Forward: Pending → Planning → PreflightChecking → UpgradingControlPlane → UpgradingAddons → UpgradingNodeGroups → UpgradingKarpenterNodePools → Completed. Rollback: Pending → Planning → PreflightChecking → RollingBackNodeGroups → RollingBackAddons → RollingBackControlPlane → Completed. Any phase may transition to Failed."
                   enum:
                     - Pending
                     - Planning
@@ -106,6 +137,7 @@ spec:
                     - UpgradingControlPlane
                     - UpgradingAddons
                     - UpgradingNodeGroups
+                    - UpgradingKarpenterNodePools
                     - RollingBackNodeGroups
                     - RollingBackAddons
                     - RollingBackControlPlane
@@ -231,6 +263,89 @@ spec:
                             type: string
                             format: date-time
                             description: Timestamp when this node group upgrade completed.
+                    karpenterNodePools:
+                      type: object
+                      description: Karpenter NodePool replacement phase status.
+                      properties:
+                        strategy:
+                          type: string
+                          description: Replacement strategy in effect (e.g., "Replace").
+                        activePool:
+                          type: string
+                          description: NodePool currently being processed.
+                        totalNodes:
+                          type: integer
+                          description: Total stale nodes across all target NodePools.
+                        replacedNodes:
+                          type: integer
+                          description: Nodes replaced so far across all target NodePools.
+                        pools:
+                          type: array
+                          description: Per-NodePool replacement statuses.
+                          items:
+                            type: object
+                            description: Replacement status of a single Karpenter NodePool.
+                            properties:
+                              name:
+                                type: string
+                                description: NodePool name.
+                              status:
+                                type: string
+                                description: "Replacement status of this NodePool: Pending, InProgress, Completed, Failed, or Skipped."
+                              totalNodes:
+                                type: integer
+                                description: Total stale nodes detected in this NodePool.
+                              replacedNodes:
+                                type: integer
+                                description: Nodes replaced so far in this NodePool.
+                              completedNodeClaims:
+                                type: array
+                                description: NodeClaims already replaced (crash-recovery record).
+                                items:
+                                  type: string
+                              replacements:
+                                type: array
+                                description: Completed replacements mapping each removed NodeClaim to the newly provisioned one.
+                                items:
+                                  type: object
+                                  properties:
+                                    oldNodeClaim:
+                                      type: string
+                                      description: Name of the removed (old) NodeClaim.
+                                    newNodeClaim:
+                                      type: string
+                                      description: Name of the newly provisioned NodeClaim.
+                                    nodeName:
+                                      type: string
+                                      description: Name of the old backing Node.
+                              currentBatch:
+                                type: array
+                                description: NodeClaims currently being replaced.
+                                items:
+                                  type: object
+                                  description: One NodeClaim currently being replaced.
+                                  properties:
+                                    nodeClaim:
+                                      type: string
+                                      description: Name of the NodeClaim being replaced.
+                                    nodeName:
+                                      type: string
+                                      description: Name of the backing Node resource, if registered.
+                                    providerID:
+                                      type: string
+                                      description: Provider ID (e.g., aws:///az/instance-id) for AWS correlation.
+                                    state:
+                                      type: string
+                                      description: "Replacement stage: Draining or WaitingControllerStable."
+                                    startedAt:
+                                      type: string
+                                      format: date-time
+                                      description: Timestamp when this NodeClaim replacement started.
+                                    controllers:
+                                      type: array
+                                      description: Owning controllers of evicted pods (kind|namespace|name), captured before deletion.
+                                      items:
+                                        type: string
                 conditions:
                   type: array
                   description: Standard Kubernetes conditions representing the current state of the upgrade.

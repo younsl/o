@@ -203,6 +203,24 @@ aws eks associate-access-policy \
 
 > Spoke cluster does **NOT** need EKS Pod Identity registration. The kubernetes-upgrade-operator pod only runs in the hub cluster and authenticates to spoke accounts via STS AssumeRole.
 
+**Additional access for Karpenter NodePool replacement:**
+
+`AmazonEKSViewPolicy` is read-only and is sufficient for managed-node-group upgrades and PDB preflight checks. When `karpenterNodePools.enabled` is set, kuo must also delete NodeClaims and read nodes, pods, and workload controllers on the target cluster, which the read-only policy does not permit.
+
+NodeClaim is a cluster-scoped Karpenter CRD, and AWS managed access policies are coarse-grained (view, edit, admin, cluster-admin). The only managed policy that reliably grants cluster-scoped CRD deletion is `AmazonEKSClusterAdminPolicy`. The recommended integration is therefore to associate `AmazonEKSClusterAdminPolicy` with the spoke role in place of (or in addition to) the view policy:
+
+```bash
+aws eks associate-access-policy \
+  --cluster-name production-cluster \
+  --principal-arn arn:aws:iam::222222222222:role/kuo-spoke-role \
+  --policy-arn arn:aws:eks::aws:cluster-access-policy/AmazonEKSClusterAdminPolicy \
+  --access-scope type=cluster
+```
+
+This keeps setup to access entries alone with no extra Kubernetes RBAC to apply. The trade-off is that `AmazonEKSClusterAdminPolicy` maps to `cluster-admin`, granting the spoke role full control of the cluster. Only associate it on clusters where `karpenterNodePools.enabled` is used; leave `AmazonEKSViewPolicy` on the rest.
+
+For least privilege instead, keep `AmazonEKSViewPolicy` and add a custom ClusterRole (bound to the access-entry principal via `--kubernetes-groups`) granting only `delete` on `nodeclaims` plus the reads kuo needs. The chart's bundled ClusterRole (`charts/kuo/templates/clusterrole.yaml`) lists exactly these rules and applies them for the hub cluster when kuo upgrades itself.
+
 ### Permission Summary
 
 ```

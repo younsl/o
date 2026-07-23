@@ -4,6 +4,7 @@
 
 pub mod addons;
 pub mod control_plane;
+pub mod karpenter;
 pub mod nodegroups;
 pub mod planning;
 pub mod preflight;

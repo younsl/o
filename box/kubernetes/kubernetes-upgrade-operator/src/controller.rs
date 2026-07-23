@@ -219,6 +219,10 @@ pub async fn reconcile(obj: Arc<EKSUpgrade>, ctx: Arc<Context>) -> Result<Action
         UpgradePhase::UpgradingNodeGroups | UpgradePhase::RollingBackNodeGroups => {
             phases::nodegroups::execute(spec, &current_status, &aws).await
         }
+        // Karpenter NodePool replacement is forward-only (no rollback variant).
+        UpgradePhase::UpgradingKarpenterNodePools => {
+            phases::karpenter::execute(spec, &current_status, &aws).await
+        }
         UpgradePhase::Completed | UpgradePhase::Failed => {
             return Ok(Action::await_change());
         }
@@ -246,6 +250,15 @@ pub async fn reconcile(obj: Arc<EKSUpgrade>, ctx: Arc<Context>) -> Result<Action
             if let Err(e) = status::patch_status(&api, name, &new_status).await {
                 warn!("Failed to patch status for {}: {}", name, e);
                 return Ok(Action::requeue(Duration::from_secs(5)));
+            }
+
+            // Emit an event per Karpenter NodeClaim replacement transition so
+            // each replaced node is identifiable in the EKSUpgrade event stream.
+            for ev in phases::karpenter::replacement_events(
+                current_status.phases.karpenter_node_pools.as_ref(),
+                new_status.phases.karpenter_node_pools.as_ref(),
+            ) {
+                recorder.publish(ev.reason, &ev.message).await;
             }
 
             // Record metrics

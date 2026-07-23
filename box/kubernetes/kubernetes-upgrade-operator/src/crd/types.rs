@@ -12,6 +12,7 @@ pub enum UpgradePhase {
     UpgradingControlPlane,
     UpgradingAddons,
     UpgradingNodeGroups,
+    UpgradingKarpenterNodePools,
     RollingBackNodeGroups,
     RollingBackAddons,
     RollingBackControlPlane,
@@ -28,6 +29,7 @@ impl std::fmt::Display for UpgradePhase {
             Self::UpgradingControlPlane => write!(f, "UpgradingControlPlane"),
             Self::UpgradingAddons => write!(f, "UpgradingAddons"),
             Self::UpgradingNodeGroups => write!(f, "UpgradingNodeGroups"),
+            Self::UpgradingKarpenterNodePools => write!(f, "UpgradingKarpenterNodePools"),
             Self::RollingBackNodeGroups => write!(f, "RollingBackNodeGroups"),
             Self::RollingBackAddons => write!(f, "RollingBackAddons"),
             Self::RollingBackControlPlane => write!(f, "RollingBackControlPlane"),
@@ -93,6 +95,7 @@ mod tests {
             UpgradePhase::UpgradingControlPlane,
             UpgradePhase::UpgradingAddons,
             UpgradePhase::UpgradingNodeGroups,
+            UpgradePhase::UpgradingKarpenterNodePools,
             UpgradePhase::RollingBackNodeGroups,
             UpgradePhase::RollingBackAddons,
             UpgradePhase::RollingBackControlPlane,
@@ -100,13 +103,14 @@ mod tests {
             UpgradePhase::Failed,
         ];
         let displays: Vec<String> = variants.iter().map(ToString::to_string).collect();
-        assert_eq!(displays.len(), 11);
+        assert_eq!(displays.len(), 12);
         assert!(displays.contains(&"Pending".to_string()));
         assert!(displays.contains(&"Planning".to_string()));
         assert!(displays.contains(&"PreflightChecking".to_string()));
         assert!(displays.contains(&"UpgradingControlPlane".to_string()));
         assert!(displays.contains(&"UpgradingAddons".to_string()));
         assert!(displays.contains(&"UpgradingNodeGroups".to_string()));
+        assert!(displays.contains(&"UpgradingKarpenterNodePools".to_string()));
         assert!(displays.contains(&"RollingBackNodeGroups".to_string()));
         assert!(displays.contains(&"RollingBackAddons".to_string()));
         assert!(displays.contains(&"RollingBackControlPlane".to_string()));

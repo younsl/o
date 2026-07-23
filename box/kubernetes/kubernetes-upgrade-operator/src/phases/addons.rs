@@ -170,6 +170,7 @@ mod tests {
             dry_run: false,
             timeouts: None,
             notification: None,
+            karpenter_node_pools: None,
         }
     }
 

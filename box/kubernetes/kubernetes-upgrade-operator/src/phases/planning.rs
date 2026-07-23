@@ -6,7 +6,8 @@ use tracing::{info, warn};
 use crate::aws::AwsClients;
 use crate::crd::{
     AddonStatus, ComponentStatus, ControlPlaneStatus, EKSUpgradeSpec, EKSUpgradeStatus,
-    LifecycleStatus, NodegroupStatus, PlanningStatus, UpgradePhase, VersionLifecycleInfo,
+    KarpenterNodePoolsStatus, KarpenterPoolStatus, LifecycleStatus, NodegroupStatus,
+    PlanningStatus, UpgradePhase, VersionLifecycleInfo,
 };
 use crate::eks::client::EksClient;
 use crate::eks::upgrade;
@@ -17,6 +18,7 @@ use crate::status;
 ///
 /// Fetches cluster info, calculates upgrade path, plans addon and nodegroup upgrades.
 /// Populates the status with `upgrade_path`, `addon_statuses`, and `nodegroup_statuses`.
+#[allow(clippy::too_many_lines)]
 pub async fn execute(
     spec: &EKSUpgradeSpec,
     current_status: &EKSUpgradeStatus,
@@ -95,13 +97,29 @@ pub async fn execute(
         })
         .collect();
 
+    // Plan Karpenter NodePool replacement (populates pool skeletons; stale node
+    // counts are computed by the phase itself on first entry).
+    let karpenter_pools = plan_karpenter(spec, &eks_client).await?;
+    let has_karpenter = !karpenter_pools.is_empty();
+    if let Some(cfg) = &spec.karpenter_node_pools
+        && has_karpenter
+    {
+        new_status.phases.karpenter_node_pools = Some(KarpenterNodePoolsStatus {
+            strategy: cfg.strategy.to_string(),
+            active_pool: None,
+            total_nodes: 0,
+            replaced_nodes: 0,
+            pools: karpenter_pools,
+        });
+    }
+
     // Fetch EKS version lifecycle info (non-blocking)
     new_status.lifecycle = Some(
         fetch_version_lifecycle(&eks_client, &plan.current_version, &spec.target_version).await,
     );
 
-    // Check if nothing to do
-    if plan.is_empty() {
+    // Check if nothing to do. Karpenter work alone is enough to proceed.
+    if plan.is_empty() && !has_karpenter {
         status::set_phase(&mut new_status, UpgradePhase::Completed);
         let msg = "All components already at target version".to_string();
         new_status.message = Some(msg.clone());
@@ -121,13 +139,70 @@ pub async fn execute(
     status::set_condition(&mut new_status, "Ready", "False", "UpgradeInProgress", None);
 
     info!(
-        "Plan created: {} CP steps, {} addons, {} nodegroups",
+        "Plan created: {} CP steps, {} addons, {} nodegroups, {} karpenter nodepools",
         plan.upgrade_path.len(),
         plan.addon_upgrades.len(),
-        plan.nodegroup_upgrades.len()
+        plan.nodegroup_upgrades.len(),
+        if has_karpenter {
+            new_status
+                .phases
+                .karpenter_node_pools
+                .as_ref()
+                .map_or(0, |k| k.pools.len())
+        } else {
+            0
+        }
     );
 
     Ok(new_status)
+}
+
+/// Build the Karpenter `NodePool` skeletons for planning.
+///
+/// Returns an empty vec when Karpenter replacement is disabled or absent. When
+/// enabled, resolves the target `NodePool` names (the configured subset, or all
+/// `NodePools` when unset). Errors propagate: if replacement is enabled it must be
+/// plannable.
+async fn plan_karpenter(
+    spec: &EKSUpgradeSpec,
+    eks_client: &EksClient,
+) -> Result<Vec<KarpenterPoolStatus>> {
+    let Some(cfg) = &spec.karpenter_node_pools else {
+        return Ok(vec![]);
+    };
+    if !cfg.enabled {
+        return Ok(vec![]);
+    }
+
+    let cluster = eks_client
+        .describe_cluster(&spec.cluster_name)
+        .await?
+        .ok_or_else(|| crate::error::KuoError::ClusterNotFound(spec.cluster_name.clone()))?;
+    let client = crate::k8s::client::build_kube_client(
+        &cluster,
+        eks_client.region(),
+        spec.assume_role_arn.as_deref(),
+    )
+    .await?;
+
+    let names = if cfg.selects_all() {
+        crate::k8s::karpenter::list_nodepool_names(&client).await?
+    } else {
+        cfg.node_pools.clone()
+    };
+
+    Ok(names
+        .into_iter()
+        .map(|name| KarpenterPoolStatus {
+            name,
+            status: ComponentStatus::Pending,
+            total_nodes: 0,
+            replaced_nodes: 0,
+            completed_node_claims: vec![],
+            replacements: vec![],
+            current_batch: vec![],
+        })
+        .collect())
 }
 
 /// If starting this upgrade would be a rollback immediately following a
@@ -239,6 +314,7 @@ mod tests {
             dry_run: false,
             timeouts: None,
             notification: None,
+            karpenter_node_pools: None,
         }
     }
 

@@ -13,7 +13,8 @@ Kubernetes Upgrade Operator for EKS clusters. Watches `EKSUpgrade` custom resour
 - **Version rollback** — `upgradeMode: Rollback` reverts a cluster to the previous minor version (N-1) in reverse order (node groups → add-ons → control plane), matching AWS EKS rollback semantics
 - **Add-on version management** — Resolves and applies compatible add-on versions per upgrade step
 - **Managed node group rolling updates** — Triggers rolling updates after control plane and add-on upgrades
-- **Preflight validation** — EKS Cluster Insights, Deletion Protection, PDB drain deadlock checks before upgrade
+- **Karpenter NodePool replacement** — Rolls Karpenter-managed nodes after managed node groups by deleting stale NodeClaims and waiting for workloads to recover, with per-NodePool concurrency and dual timeouts. See [docs/designs/karpenter-nodepool-replacement.md](docs/designs/karpenter-nodepool-replacement.md)
+- **Preflight validation** — EKS Cluster Insights, Deletion Protection, PDB drain deadlock checks before upgrade (plus Karpenter v1 API and AMI-selector checks when Karpenter replacement is enabled)
 - **Cross-account support** — Hub & Spoke model via STS AssumeRole
 - **Crash recovery** — Persists AWS update IDs in CRD status for resuming interrupted operations
 - **Dry-run mode** — Generate upgrade plan without executing
@@ -43,9 +44,10 @@ The Forward flow proceeds through the following phases:
 4. **UpgradingControlPlane** — Step through 1 minor version at a time
 5. **UpgradingAddons** — Update add-ons to compatible versions
 6. **UpgradingNodeGroups** — Trigger managed node group rolling updates
-7. **Completed** — All upgrades finished successfully
+7. **UpgradingKarpenterNodePools** — Replace stale Karpenter nodes (only when `karpenterNodePools.enabled`; skipped otherwise)
+8. **Completed** — All upgrades finished successfully
 
-> Any phase can transition to **Failed** on error. Mandatory preflight check failures also result in **Failed**.
+> Any phase can transition to **Failed** on error. Mandatory preflight check failures also result in **Failed**. `UpgradingKarpenterNodePools` is forward-only and is not part of the rollback path.
 
 ### Dry-Run Mode
 
@@ -65,6 +67,8 @@ When `dryRun: true` is set, the operator executes planning and preflight validat
 | EKS Cluster Insights | Mandatory | Fails if critical insights exist |
 | [EKS Deletion Protection](https://docs.aws.amazon.com/eks/latest/userguide/delete-cluster.html) | Mandatory | Fails if deletion protection is disabled |
 | PDB Drain Deadlock | Mandatory | Fails if any PDB has `disruptionsAllowed == 0` (skippable via `skipPdbCheck`) |
+| Karpenter v1 API | Mandatory | Only when `karpenterNodePools.enabled`. Fails if the Karpenter v1 API is not served (v1beta1 and earlier unsupported) |
+| Karpenter AMI Selector | Mandatory | Only when `karpenterNodePools.enabled`. Fails if a target NodePool pins its AMI instead of `alias: <family>@latest` |
 
 ### Rollback Mode
 
@@ -145,6 +149,27 @@ spec:
     onDryRun: false
 ```
 
+Upgrade including Karpenter NodePool node replacement:
+
+```yaml
+apiVersion: kuo.io/v1alpha1
+kind: EKSUpgrade
+metadata:
+  name: staging-upgrade
+spec:
+  clusterName: staging-cluster
+  targetVersion: "1.34"
+  region: ap-northeast-2
+  upgradeMode: Forward
+  karpenterNodePools:
+    enabled: true
+    nodePools: ["ALL"]       # empty or ["ALL"] = all NodePools; or list names in order
+    strategy: Replace
+    maxUnavailable: "1"      # integer or percentage, e.g. "10%"
+    nodeDrainTimeoutMinutes: 15
+    controllerStableTimeoutMinutes: 10
+```
+
 ### Spec Fields
 
 | Field | Required | Default | Description |
@@ -161,6 +186,12 @@ spec:
 | `timeouts.nodegroupMinutes` | No | `60` | Node group upgrade timeout |
 | `notification.onUpgrade` | No | `false` | Send Slack notifications for actual upgrades (`dryRun: false`) |
 | `notification.onDryRun` | No | `false` | Send Slack notifications for dry-run executions (`dryRun: true`) |
+| `karpenterNodePools.enabled` | No | `false` | Enable Karpenter NodePool node replacement after the node group phase |
+| `karpenterNodePools.nodePools` | No | `[]` (all) | NodePools to process, in order. Empty or `["ALL"]` (case-insensitive) means all NodePools |
+| `karpenterNodePools.strategy` | No | `Replace` | Replacement strategy (v1 supports `Replace` only) |
+| `karpenterNodePools.maxUnavailable` | No | `"1"` | Nodes replaced concurrently per NodePool; integer or percentage (`"10%"`) |
+| `karpenterNodePools.nodeDrainTimeoutMinutes` | No | `15` | Max wait for an old node to drain and be removed |
+| `karpenterNodePools.controllerStableTimeoutMinutes` | No | `10` | Max wait for evicted pods' controllers to become Ready again |
 
 ## Monitoring
 
@@ -207,7 +238,8 @@ make install        # Install to ~/.cargo/bin/
 
 - Control plane upgrades limited to [1 minor version at a time](https://docs.aws.amazon.com/eks/latest/userguide/update-cluster.html) (EKS limitation)
 - [Rollback](https://docs.aws.amazon.com/eks/latest/userguide/rollback-cluster.html) limited to a single minor version (N to N-1) within the AWS 7-day window
-- [Managed Node Groups](https://docs.aws.amazon.com/eks/latest/userguide/managed-node-groups.html) only ([self-managed](https://docs.aws.amazon.com/eks/latest/userguide/worker.html) and [Karpenter](https://karpenter.sh/) nodes are not supported)
+- Node upgrades cover [Managed Node Groups](https://docs.aws.amazon.com/eks/latest/userguide/managed-node-groups.html) and [Karpenter](https://karpenter.sh/) NodePools (Karpenter requires v1 API and `alias: <family>@latest` AMI selectors; [self-managed](https://docs.aws.amazon.com/eks/latest/userguide/worker.html) nodes are not supported)
+- Karpenter NodePool replacement is forward-only (no rollback) and requires Karpenter 1.0+
 - Cluster-scoped CRD (one EKSUpgrade per cluster, not namespaced)
 
 ## License

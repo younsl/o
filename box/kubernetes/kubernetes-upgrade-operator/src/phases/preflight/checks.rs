@@ -93,6 +93,52 @@ impl PreflightCheckResult {
         }
     }
 
+    /// Build a Karpenter v1 API availability check result.
+    pub fn karpenter_v1_api(available: bool) -> Self {
+        let (status, summary) = if available {
+            (CheckStatus::Pass, "Karpenter v1 API is served".into())
+        } else {
+            (
+                CheckStatus::Fail,
+                "Karpenter v1 API (NodePool/NodeClaim/EC2NodeClass) not found; v1beta1 and earlier are unsupported".into(),
+            )
+        };
+        Self {
+            name: "Karpenter v1 API",
+            category: CheckCategory::Mandatory,
+            status,
+            summary,
+        }
+    }
+
+    /// Build a Karpenter AMI selector check result.
+    ///
+    /// `pinned_pools` lists `NodePools` whose `EC2NodeClass` pins the AMI to a fixed
+    /// version. Any such pool fails the check, because replacing a node would
+    /// reprovision the same AMI.
+    pub fn karpenter_ami_selector(pinned_pools: &[String]) -> Self {
+        let (status, summary) = if pinned_pools.is_empty() {
+            (
+                CheckStatus::Pass,
+                "All target NodePools resolve their AMI via alias @latest".into(),
+            )
+        } else {
+            (
+                CheckStatus::Fail,
+                format!(
+                    "NodePool(s) pin a fixed AMI instead of alias @latest: {}. Replacing nodes would reprovision the same version",
+                    pinned_pools.join(", ")
+                ),
+            )
+        };
+        Self {
+            name: "Karpenter AMI Selector",
+            category: CheckCategory::Mandatory,
+            status,
+            summary,
+        }
+    }
+
     /// Build a PDB drain deadlock check result.
     pub fn pdb_drain_deadlock(summary: &PdbSummary) -> Self {
         let (status, msg) = if summary.has_blocking_pdbs() {
@@ -142,6 +188,14 @@ impl SkippedCheck {
     pub fn pdb_drain_deadlock(reason: &str) -> Self {
         Self {
             name: "PDB Drain Deadlock",
+            reason: reason.to_string(),
+        }
+    }
+
+    /// Create a skipped Karpenter check.
+    pub fn karpenter(reason: &str) -> Self {
+        Self {
+            name: "Karpenter NodePools",
             reason: reason.to_string(),
         }
     }
@@ -261,6 +315,44 @@ mod tests {
 
         let pdb = SkippedCheck::pdb_drain_deadlock("skipped by user");
         assert_eq!(pdb.name, "PDB Drain Deadlock");
+    }
+
+    #[test]
+    fn test_karpenter_v1_api_available() {
+        let check = PreflightCheckResult::karpenter_v1_api(true);
+        assert_eq!(check.name, "Karpenter v1 API");
+        assert_eq!(check.status, CheckStatus::Pass);
+    }
+
+    #[test]
+    fn test_karpenter_v1_api_missing_fails() {
+        let check = PreflightCheckResult::karpenter_v1_api(false);
+        assert_eq!(check.status, CheckStatus::Fail);
+        assert!(check.summary.contains("v1beta1"));
+    }
+
+    #[test]
+    fn test_karpenter_ami_selector_all_latest() {
+        let check = PreflightCheckResult::karpenter_ami_selector(&[]);
+        assert_eq!(check.status, CheckStatus::Pass);
+    }
+
+    #[test]
+    fn test_karpenter_ami_selector_pinned_fails() {
+        let check = PreflightCheckResult::karpenter_ami_selector(&[
+            "default".to_string(),
+            "spot".to_string(),
+        ]);
+        assert_eq!(check.status, CheckStatus::Fail);
+        assert!(check.summary.contains("default"));
+        assert!(check.summary.contains("spot"));
+    }
+
+    #[test]
+    fn test_skipped_karpenter_builder() {
+        let sk = SkippedCheck::karpenter("disabled");
+        assert_eq!(sk.name, "Karpenter NodePools");
+        assert_eq!(sk.reason, "disabled");
     }
 
     // ---- PreflightResults tests ----

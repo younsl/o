@@ -36,10 +36,11 @@ pub fn set_phase(status: &mut EKSUpgradeStatus, phase: UpgradePhase) {
 
 /// Compute overall upgrade progress as `completed/total` component units.
 ///
-/// Units = control plane minor steps + planned add-ons + planned node groups,
-/// mirroring a Pod's `Ready` column. Add-ons and node groups count as done once
-/// `Completed` or `Skipped`; control plane counts completed minor steps
-/// (`current_step - 1` while running, all steps once `completedAt` is set).
+/// Units are control plane minor steps, planned add-ons, planned node groups,
+/// and Karpenter `NodePools`, mirroring a Pod's `Ready` column. Add-ons, node
+/// groups, and Karpenter `NodePools` count as done once `Completed` or
+/// `Skipped`; control plane counts completed minor steps (`current_step - 1`
+/// while running, all steps once `completedAt` is set).
 /// Returns `None` when no plan exists yet, and forces `total/total` once the
 /// upgrade has reached `Completed`.
 pub fn compute_progress(status: &EKSUpgradeStatus) -> Option<String> {
@@ -47,8 +48,13 @@ pub fn compute_progress(status: &EKSUpgradeStatus) -> Option<String> {
     let cp_total = cp.map_or(0, |c| c.total_steps);
     let addons = &status.phases.addons;
     let nodegroups = &status.phases.nodegroups;
+    let karpenter = status.phases.karpenter_node_pools.as_ref();
+    // Karpenter counts one unit per NodePool, matching how each node group
+    // counts as one regardless of node count. Per-node progress lives in the
+    // dedicated karpenterNodePools substatus, not this top-level ratio.
+    let kp_total = karpenter.map_or(0, |k| k.pools.len());
 
-    let total = cp_total as usize + addons.len() + nodegroups.len();
+    let total = cp_total as usize + addons.len() + nodegroups.len() + kp_total;
     if total == 0 {
         return None;
     }
@@ -69,8 +75,9 @@ pub fn compute_progress(status: &EKSUpgradeStatus) -> Option<String> {
         |s: &ComponentStatus| matches!(s, ComponentStatus::Completed | ComponentStatus::Skipped);
     let addons_done = addons.iter().filter(|a| is_done(&a.status)).count();
     let ng_done = nodegroups.iter().filter(|n| is_done(&n.status)).count();
+    let kp_done = karpenter.map_or(0, |k| k.pools.iter().filter(|p| is_done(&p.status)).count());
 
-    let done = cp_done + addons_done + ng_done;
+    let done = cp_done + addons_done + ng_done + kp_done;
     Some(format!("{done}/{total}"))
 }
 
@@ -169,7 +176,22 @@ mod tests {
     use super::*;
     use crate::crd::EKSUpgradeStatus;
 
-    use crate::crd::{AddonStatus, ControlPlaneStatus, NodegroupStatus};
+    use crate::crd::{
+        AddonStatus, ControlPlaneStatus, KarpenterNodePoolsStatus, KarpenterPoolStatus,
+        NodegroupStatus,
+    };
+
+    fn karpenter_pool(status: ComponentStatus) -> KarpenterPoolStatus {
+        KarpenterPoolStatus {
+            name: "default".to_string(),
+            status,
+            total_nodes: 3,
+            replaced_nodes: 0,
+            completed_node_claims: vec![],
+            replacements: vec![],
+            current_batch: vec![],
+        }
+    }
 
     fn addon(status: ComponentStatus) -> AddonStatus {
         AddonStatus {
@@ -215,6 +237,30 @@ mod tests {
         s.phases.nodegroups = vec![nodegroup(ComponentStatus::Skipped)];
         // cp_done 1 + addon 1 + ng 1 = 3 of 5
         assert_eq!(compute_progress(&s), Some("3/5".to_string()));
+    }
+
+    #[test]
+    fn test_compute_progress_counts_karpenter_pools_per_pool() {
+        // 1 CP step (in progress, 0 done) + 2 Karpenter NodePools = 3 units.
+        let mut s = EKSUpgradeStatus::default();
+        s.phases.control_plane = Some(ControlPlaneStatus {
+            current_step: 1,
+            total_steps: 1,
+            ..Default::default()
+        });
+        s.phases.karpenter_node_pools = Some(KarpenterNodePoolsStatus {
+            strategy: "Replace".to_string(),
+            active_pool: Some("spot".to_string()),
+            total_nodes: 8,
+            replaced_nodes: 5,
+            pools: vec![
+                karpenter_pool(ComponentStatus::Completed),
+                karpenter_pool(ComponentStatus::InProgress),
+            ],
+        });
+        // cp_done 0 + kp_done 1 (one Completed pool) of total 3.
+        // Mid-replacement node counts (5/8) do NOT affect the top-level ratio.
+        assert_eq!(compute_progress(&s), Some("1/3".to_string()));
     }
 
     #[test]
