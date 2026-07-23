@@ -533,7 +533,7 @@ mod tests {
             ..Default::default()
         };
         let json = serde_json::to_value(&status).unwrap();
-        assert!(json["lifecycle"]["error"] == "test error");
+        assert_eq!(json["lifecycle"]["error"], "test error");
         assert!(json["lifecycle"]["lastCheckedTime"].is_string());
     }
 
