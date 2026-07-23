@@ -2,7 +2,7 @@
 name = "kuo"
 version = "0.4.0"
 edition = "2024"
-rust-version = "1.96.0"
+rust-version = "1.97.1"
 authors = ["Younsung Lee <cysl@kakao.com>"]
 license = "MIT"
 description = "Kubernetes Upgrade Operator for EKS clusters"
