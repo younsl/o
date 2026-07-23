@@ -127,14 +127,34 @@ pub fn build_completed_message(
         "Live Upgrade"
     };
 
+    let mut fields = vec![
+        ("Cluster".to_string(), spec.cluster_name.clone()),
+        ("Mode".to_string(), mode.to_string()),
+        ("Upgrade Path".to_string(), path_display),
+    ];
+
+    // Karpenter summary, only when the Karpenter phase actually ran.
+    if let Some(kp) = status
+        .phases
+        .karpenter_node_pools
+        .as_ref()
+        .filter(|k| !k.pools.is_empty())
+    {
+        fields.push((
+            "Karpenter NodePools".to_string(),
+            kp.pools.len().to_string(),
+        ));
+        fields.push((
+            "Karpenter Nodes Replaced".to_string(),
+            format!("{}/{}", kp.replaced_nodes, kp.total_nodes),
+        ));
+    }
+
+    fields.push(("Duration".to_string(), duration));
+
     SlackMessage {
         header: "EKS Upgrade Completed".to_string(),
-        fields: vec![
-            ("Cluster".to_string(), spec.cluster_name.clone()),
-            ("Mode".to_string(), mode.to_string()),
-            ("Upgrade Path".to_string(), path_display),
-            ("Duration".to_string(), duration),
-        ],
+        fields,
         context: format!("Sent by kuo via EKSUpgrade/{resource_name}"),
     }
 }
@@ -503,6 +523,60 @@ mod tests {
             .map(|(_, v)| v.as_str())
             .unwrap();
         assert_eq!(started_path, "1.34 → 1.35 → 1.36");
+    }
+
+    #[test]
+    fn test_completed_message_shows_karpenter_nodepool_count() {
+        use crate::crd::{
+            ComponentStatus, KarpenterNodePoolsStatus, KarpenterPoolStatus, PhaseStatuses,
+        };
+
+        let spec = make_spec(None, false);
+        let mk_pool = |name: &str, total: u32| KarpenterPoolStatus {
+            name: name.to_string(),
+            status: ComponentStatus::Completed,
+            total_nodes: total,
+            replaced_nodes: total,
+            completed_node_claims: vec![],
+            replacements: vec![],
+            current_batch: vec![],
+        };
+        let status = EKSUpgradeStatus {
+            current_version: Some("1.32".to_string()),
+            phases: PhaseStatuses {
+                planning: Some(PlanningStatus {
+                    source_version: Some("1.31".to_string()),
+                    upgrade_path: vec!["1.32".into()],
+                }),
+                karpenter_node_pools: Some(KarpenterNodePoolsStatus {
+                    strategy: "Replace".to_string(),
+                    active_pool: None,
+                    total_nodes: 8,
+                    replaced_nodes: 8,
+                    pools: vec![mk_pool("default", 5), mk_pool("spot", 3)],
+                }),
+                ..Default::default()
+            },
+            ..Default::default()
+        };
+
+        let msg = build_completed_message("test-cluster", &spec, &status);
+        let get = |k: &str| {
+            msg.fields
+                .iter()
+                .find(|(key, _)| key == k)
+                .map(|(_, v)| v.as_str())
+        };
+        assert_eq!(get("Karpenter NodePools"), Some("2"));
+        assert_eq!(get("Karpenter Nodes Replaced"), Some("8/8"));
+    }
+
+    #[test]
+    fn test_completed_message_omits_karpenter_when_absent() {
+        let spec = make_spec(None, false);
+        let status = make_status_with_path(vec!["1.31".into(), "1.32".into()]);
+        let msg = build_completed_message("test-cluster", &spec, &status);
+        assert!(!msg.fields.iter().any(|(k, _)| k.starts_with("Karpenter")));
     }
 
     #[test]
