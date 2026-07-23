@@ -1,6 +1,6 @@
 # aurora-database-insights-exporter
 
-![Version: 0.1.0](https://img.shields.io/badge/Version-0.1.0-informational?style=flat-square) ![Type: application](https://img.shields.io/badge/Type-application-informational?style=flat-square) ![AppVersion: 0.1.0](https://img.shields.io/badge/AppVersion-0.1.0-informational?style=flat-square)
+![Version: 0.1.1](https://img.shields.io/badge/Version-0.1.1-informational?style=flat-square) ![Type: application](https://img.shields.io/badge/Type-application-informational?style=flat-square) ![AppVersion: 0.1.1](https://img.shields.io/badge/AppVersion-0.1.1-informational?style=flat-square)
 
 Prometheus exporter for AWS Aurora MySQL Database Insights metrics
 
@@ -39,7 +39,7 @@ helm install aurora-database-insights-exporter oci://ghcr.io/younsl/charts/auror
 Install a specific version:
 
 ```console
-helm install aurora-database-insights-exporter oci://ghcr.io/younsl/charts/aurora-database-insights-exporter --version 0.1.0
+helm install aurora-database-insights-exporter oci://ghcr.io/younsl/charts/aurora-database-insights-exporter --version 0.1.1
 ```
 
 ### Install from local chart
@@ -47,7 +47,7 @@ helm install aurora-database-insights-exporter oci://ghcr.io/younsl/charts/auror
 Download aurora-database-insights-exporter chart and install from local directory:
 
 ```console
-helm pull oci://ghcr.io/younsl/charts/aurora-database-insights-exporter --untar --version 0.1.0
+helm pull oci://ghcr.io/younsl/charts/aurora-database-insights-exporter --untar --version 0.1.1
 helm install aurora-database-insights-exporter ./aurora-database-insights-exporter
 ```
 

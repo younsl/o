@@ -1305,6 +1305,7 @@ mod tests {
     }
 
     #[tokio::test]
+    #[allow(clippy::field_reassign_with_default)]
     async fn test_run_collection_cycle_instance_timeout() {
         let pi = Arc::new(SlowPiCollector {
             delay: std::time::Duration::from_secs(5),
@@ -1341,6 +1342,7 @@ mod tests {
     }
 
     #[tokio::test]
+    #[allow(clippy::field_reassign_with_default)]
     async fn test_run_collection_cycle_timeout_does_not_block_other_instances() {
         let pi = Arc::new(SlowPiCollector {
             delay: std::time::Duration::from_secs(5),

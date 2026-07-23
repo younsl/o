@@ -64,6 +64,7 @@ mod tests {
     }
 
     #[test]
+    #[allow(clippy::invalid_regex)] // intentionally invalid to exercise the error path
     fn test_regex_error_from() {
         let regex_err = regex::Regex::new("[invalid").unwrap_err();
         let err = Error::from(regex_err);
