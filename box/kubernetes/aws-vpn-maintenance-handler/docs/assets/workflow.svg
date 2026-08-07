@@ -1,0 +1,197 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 960 1740" width="960" height="1740" role="img" aria-label="aws-vpn-maintenance-handler replacement workflow, from AWS queueing tunnel endpoint maintenance through detection, preflight, maintenance window, traffic gate, Slack approval, replacement and verification">
+  <title>aws-vpn-maintenance-handler replacement workflow</title>
+  <style>
+    .bg    { fill: #ffffff; }
+    .title { fill: #111827; font-weight: 700; font-size: 20px; }
+    .sub   { fill: #6b7280; font-size: 13px; }
+    .lbl   { font-size: 15px; font-weight: 600; }
+    .note  { font-size: 12.5px; font-weight: 400; }
+    /* The preflight box lists every rejection reason, so it needs to fit more text
+       than the other boxes without widening the diagram. */
+    .note-sm { font-size: 11px; font-weight: 400; }
+    .edge  { stroke: #9ca3af; stroke-width: 2; fill: none; }
+    .edgelbl { fill: #6b7280; font-size: 12px; font-weight: 600; }
+
+    .trigger  { fill: #fef3c7; stroke: #d97706; }
+    .trigger-t { fill: #7c2d12; }
+    .process  { fill: #dbeafe; stroke: #3b82f6; }
+    .process-t { fill: #1e3a8a; }
+    .decision { fill: #e0e7ff; stroke: #6366f1; }
+    .decision-t { fill: #312e81; }
+    .danger   { fill: #fee2e2; stroke: #dc2626; }
+    .danger-t { fill: #7f1d1d; }
+    .held     { fill: #f3f4f6; stroke: #9ca3af; }
+    .held-t   { fill: #374151; }
+    .ok       { fill: #dcfce7; stroke: #16a34a; }
+    .ok-t     { fill: #14532d; }
+    .human    { fill: #f5d0fe; stroke: #a855f7; }
+    .human-t  { fill: #581c87; }
+
+    @media (prefers-color-scheme: dark) {
+      .bg    { fill: #0d1117; }
+      .title { fill: #e6edf3; }
+      .sub   { fill: #8b949e; }
+      .edge  { stroke: #6e7681; }
+      .edgelbl { fill: #8b949e; }
+
+      .trigger  { fill: #3f2d0a; stroke: #d29922; }
+      .trigger-t { fill: #f0d58c; }
+      .process  { fill: #0f2942; stroke: #388bfd; }
+      .process-t { fill: #cae0fb; }
+      .decision { fill: #1d1b4b; stroke: #7c74f0; }
+      .decision-t { fill: #d6d3ff; }
+      .danger   { fill: #40191b; stroke: #f85149; }
+      .danger-t { fill: #ffc7c3; }
+      .held     { fill: #21262d; stroke: #6e7681; }
+      .held-t   { fill: #c9d1d9; }
+      .ok       { fill: #0f2f1b; stroke: #3fb950; }
+      .ok-t     { fill: #b7f0c4; }
+      .human    { fill: #331a3d; stroke: #c46be0; }
+      .human-t  { fill: #f0cdfa; }
+    }
+  </style>
+
+  <defs>
+    <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M 0 0 L 10 5 L 0 10 z" fill="#9ca3af"/>
+    </marker>
+  </defs>
+
+  <rect class="bg" x="0" y="0" width="960" height="1740"/>
+
+  <text class="title" x="40" y="34">aws-vpn-maintenance-handler: detection to verified replacement</text>
+  <text class="sub" x="40" y="56">Left: the path a replacement takes. Right: where it stops, and the reason recorded as a metric label.</text>
+
+  <!-- 1. trigger -->
+  <rect class="trigger" x="40" y="84" width="380" height="64" rx="32"/>
+  <text class="lbl trigger-t" x="230" y="112" text-anchor="middle">AWS queues tunnel endpoint maintenance</text>
+  <text class="note trigger-t" x="230" y="132" text-anchor="middle">publishes MaintenanceAutoAppliedAfter deadline</text>
+  <path class="edge" d="M 230 148 L 230 176" marker-end="url(#arrow)"/>
+
+  <!-- 2. reconcile tick -->
+  <rect class="process" x="40" y="180" width="380" height="64" rx="8"/>
+  <text class="lbl process-t" x="230" y="208" text-anchor="middle">Reconcile tick, leader replica only</text>
+  <text class="note process-t" x="230" y="228" text-anchor="middle">every reconcileInterval (5m), independent of the window</text>
+  <path class="edge" d="M 230 244 L 230 272" marker-end="url(#arrow)"/>
+
+  <!-- 3. discover -->
+  <rect class="process" x="40" y="276" width="380" height="64" rx="8"/>
+  <text class="lbl process-t" x="230" y="304" text-anchor="middle">Read AWS state</text>
+  <text class="note process-t" x="230" y="324" text-anchor="middle">DescribeVpnConnections + GetVpnTunnelReplacementStatus</text>
+  <path class="edge" d="M 230 340 L 230 368" marker-end="url(#arrow)"/>
+
+  <!-- 4. lifecycle control -->
+  <polygon class="decision" points="70,372 390,372 420,416 390,460 70,460 40,416"/>
+  <text class="lbl decision-t" x="230" y="411" text-anchor="middle">Endpoint lifecycle control enabled?</text>
+  <text class="note decision-t" x="230" y="431" text-anchor="middle">EnableTunnelLifecycleControl on the tunnel option</text>
+  <path class="edge" d="M 420 416 L 556 416" marker-end="url(#arrow)"/>
+  <text class="edgelbl" x="488" y="408" text-anchor="middle">no</text>
+  <rect class="danger" x="560" y="384" width="360" height="64" rx="8"/>
+  <text class="lbl danger-t" x="740" y="412" text-anchor="middle">lifecycle_control_disabled</text>
+  <text class="note danger-t" x="740" y="432" text-anchor="middle">early replacement impossible until it is turned on</text>
+  <path class="edge" d="M 230 460 L 230 488" marker-end="url(#arrow)"/>
+
+  <!-- 5. pending maintenance -->
+  <polygon class="decision" points="70,492 390,492 420,536 390,580 70,580 40,536"/>
+  <text class="lbl decision-t" x="230" y="531" text-anchor="middle">Pending maintenance available?</text>
+  <text class="note decision-t" x="230" y="551" text-anchor="middle">the actual trigger, not the clock</text>
+  <path class="edge" d="M 420 536 L 556 536" marker-end="url(#arrow)"/>
+  <text class="edgelbl" x="488" y="528" text-anchor="middle">no</text>
+  <rect class="held" x="560" y="504" width="360" height="64" rx="8"/>
+  <text class="lbl held-t" x="740" y="532" text-anchor="middle">no_pending_maintenance</text>
+  <text class="note held-t" x="740" y="552" text-anchor="middle">the normal state; metrics still published</text>
+  <path class="edge" d="M 230 580 L 230 608" marker-end="url(#arrow)"/>
+
+  <!-- 6. preflight -->
+  <polygon class="decision" points="70,612 390,612 420,656 390,700 70,700 40,656"/>
+  <text class="lbl decision-t" x="230" y="651" text-anchor="middle">Peer tunnel safe to rely on?</text>
+  <text class="note decision-t" x="230" y="671" text-anchor="middle">UP, stable 15m, carrying routes, cooldown clear, nothing in flight</text>
+  <path class="edge" d="M 420 656 L 556 656" marker-end="url(#arrow)"/>
+  <text class="edgelbl" x="488" y="648" text-anchor="middle">no</text>
+  <rect class="held" x="560" y="624" width="360" height="64" rx="8"/>
+  <text class="note-sm held-t" x="740" y="646" text-anchor="middle">peer_down · peer_unstable · peer_no_routes · tunnel_count</text>
+  <text class="note-sm held-t" x="740" y="666" text-anchor="middle">connection_unavailable · cooldown · replacement_in_flight · awaiting_approval</text>
+  <path class="edge" d="M 230 700 L 230 728" marker-end="url(#arrow)"/>
+
+  <!-- 7. window -->
+  <polygon class="decision" points="70,732 390,732 420,776 390,820 70,820 40,776"/>
+  <text class="lbl decision-t" x="230" y="771" text-anchor="middle">Inside the maintenance window?</text>
+  <text class="note decision-t" x="230" y="791" text-anchor="middle">cronSchedule fired, within duration, verify time left</text>
+  <path class="edge" d="M 420 776 L 556 776" marker-end="url(#arrow)"/>
+  <text class="edgelbl" x="488" y="768" text-anchor="middle">no</text>
+  <rect class="held" x="560" y="744" width="360" height="64" rx="8"/>
+  <text class="lbl held-t" x="740" y="772" text-anchor="middle">window_closed</text>
+  <text class="note held-t" x="740" y="792" text-anchor="middle">retried next window, escalated as the deadline nears</text>
+  <path class="edge" d="M 230 820 L 230 848" marker-end="url(#arrow)"/>
+
+  <!-- 8. traffic gate -->
+  <polygon class="decision" points="70,852 390,852 420,896 390,940 70,940 40,896"/>
+  <text class="lbl decision-t" x="230" y="891" text-anchor="middle">Tunnel quiet right now?</text>
+  <text class="note decision-t" x="230" y="911" text-anchor="middle">Prometheus / Mimir: now inside the window&#8217;s quietest quietPercentile%</text>
+  <path class="edge" d="M 420 896 L 556 896" marker-end="url(#arrow)"/>
+  <text class="edgelbl" x="488" y="888" text-anchor="middle">no</text>
+  <rect class="held" x="560" y="864" width="360" height="64" rx="8"/>
+  <text class="lbl held-t" x="740" y="892" text-anchor="middle">traffic_high</text>
+  <text class="note held-t" x="740" y="912" text-anchor="middle">unreadable metrics also block, by default</text>
+  <path class="edge" d="M 230 940 L 230 968" marker-end="url(#arrow)"/>
+
+  <!-- 9. approval card -->
+  <rect class="human" x="40" y="972" width="380" height="64" rx="8"/>
+  <text class="lbl human-t" x="230" y="1000" text-anchor="middle">Slack DM approval card</text>
+  <text class="note human-t" x="230" y="1020" text-anchor="middle">Socket Mode, outbound only; no Ingress</text>
+  <path class="edge" d="M 230 1036 L 230 1064" marker-end="url(#arrow)"/>
+
+  <!-- 10. approved? -->
+  <polygon class="decision" points="70,1068 390,1068 420,1112 390,1156 70,1156 40,1112"/>
+  <text class="lbl decision-t" x="230" y="1107" text-anchor="middle">Approved by a configured approver?</text>
+  <text class="note decision-t" x="230" y="1127" text-anchor="middle">confirmation dialog; expires after approval.timeout</text>
+  <path class="edge" d="M 420 1112 L 556 1112" marker-end="url(#arrow)"/>
+  <text class="edgelbl" x="488" y="1104" text-anchor="middle">no</text>
+  <rect class="held" x="560" y="1080" width="360" height="64" rx="8"/>
+  <text class="lbl held-t" x="740" y="1108" text-anchor="middle">denied · timed out</text>
+  <text class="note held-t" x="740" y="1128" text-anchor="middle">tunnel untouched; AWS applies it later if ignored</text>
+  <path class="edge" d="M 230 1156 L 230 1184" marker-end="url(#arrow)"/>
+
+  <!-- 11. re-check -->
+  <polygon class="decision" points="70,1188 390,1188 420,1232 390,1276 70,1276 40,1232"/>
+  <text class="lbl decision-t" x="230" y="1227" text-anchor="middle">Every gate still passing?</text>
+  <text class="note decision-t" x="230" y="1247" text-anchor="middle">re-measured now: approval may be an hour old</text>
+  <path class="edge" d="M 420 1232 L 556 1232" marker-end="url(#arrow)"/>
+  <text class="edgelbl" x="488" y="1224" text-anchor="middle">no</text>
+  <rect class="held" x="560" y="1200" width="360" height="64" rx="8"/>
+  <text class="lbl held-t" x="740" y="1228" text-anchor="middle">aborted before any change</text>
+  <text class="note held-t" x="740" y="1248" text-anchor="middle">reported into the approval thread</text>
+  <path class="edge" d="M 230 1276 L 230 1304" marker-end="url(#arrow)"/>
+
+  <!-- 12. replace -->
+  <rect class="danger" x="40" y="1308" width="380" height="64" rx="8"/>
+  <text class="lbl danger-t" x="230" y="1336" text-anchor="middle">Persist in-flight, then ReplaceVpnTunnel</text>
+  <text class="note danger-t" x="230" y="1356" text-anchor="middle">irreversible; state written first so a crash is visible</text>
+  <path class="edge" d="M 230 1372 L 230 1400" marker-end="url(#arrow)"/>
+
+  <!-- 13. verify -->
+  <rect class="process" x="40" y="1404" width="380" height="64" rx="8"/>
+  <text class="lbl process-t" x="230" y="1432" text-anchor="middle">Verify, narrating into the thread</text>
+  <text class="note process-t" x="230" y="1452" text-anchor="middle">poll telemetry; alert at once if the peer also drops</text>
+  <path class="edge" d="M 230 1468 L 230 1496" marker-end="url(#arrow)"/>
+
+  <!-- 14. healthy? -->
+  <polygon class="decision" points="70,1500 390,1500 420,1544 390,1588 70,1588 40,1544"/>
+  <text class="lbl decision-t" x="230" y="1539" text-anchor="middle">Back UP with routes, having cycled?</text>
+  <text class="note decision-t" x="230" y="1559" text-anchor="middle">within safety.verifyTimeout</text>
+  <path class="edge" d="M 420 1544 L 556 1544" marker-end="url(#arrow)"/>
+  <text class="edgelbl" x="488" y="1536" text-anchor="middle">no</text>
+  <rect class="danger" x="560" y="1512" width="360" height="64" rx="8"/>
+  <text class="lbl danger-t" x="740" y="1540" text-anchor="middle">verify_timeout · peer_lost</text>
+  <text class="note danger-t" x="740" y="1560" text-anchor="middle">cannot be rolled back; needs a human</text>
+  <path class="edge" d="M 230 1588 L 230 1616" marker-end="url(#arrow)"/>
+
+  <!-- 15. record -->
+  <rect class="ok" x="40" y="1620" width="380" height="64" rx="8"/>
+  <text class="lbl ok-t" x="230" y="1648" text-anchor="middle">Record the outcome</text>
+  <text class="note ok-t" x="230" y="1668" text-anchor="middle">cooldown · thread reply · Kubernetes Event · metrics</text>
+
+  <!-- every stop also records -->
+  <path class="edge" d="M 920 1576 L 940 1576 L 940 1652 L 424 1652" stroke-dasharray="5 4" marker-end="url(#arrow)"/>
+  <text class="edgelbl" x="700" y="1670" text-anchor="middle">every stop is recorded the same way</text>
+</svg>

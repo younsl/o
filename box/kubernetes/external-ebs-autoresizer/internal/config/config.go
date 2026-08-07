@@ -1,0 +1,496 @@
+// Package config loads and validates runtime configuration from a single YAML
+// file. A small number of runtime-injected values (the Pod identity from the
+// downward API and the Grafana API token from a Secret) are read from the
+// environment instead, since they cannot live in a plain ConfigMap file.
+package config
+
+import (
+	"fmt"
+	"os"
+	"strings"
+	"time"
+
+	"sigs.k8s.io/yaml"
+)
+
+// DefaultConfigFile is the config file path used when CONFIG_FILE is unset.
+const DefaultConfigFile = "/etc/external-ebs-autoresizer/config.yaml"
+
+// TagFilter is a single EC2 tag key/value used to scope target instances.
+type TagFilter struct {
+	Key   string
+	Value string
+}
+
+// InstanceSelector scopes a resize policy to a group of instances. Both
+// criteria must match (AND); at least one must be set.
+type InstanceSelector struct {
+	// Tags match instances carrying every listed tag key with the exact value.
+	Tags map[string]string `json:"tags,omitempty"`
+	// NameRegex matches against the instance Name tag using Go (RE2) regexp
+	// syntax. Unanchored: anchor with ^ and $ for exact-name matching.
+	NameRegex string `json:"nameRegex,omitempty"`
+}
+
+// ResizeSpec is the volume-expansion settings block, used both as the global
+// defaultPolicy and as a per-policy override. Every field is a pointer, so
+// "declared" is uniformly distinguishable from "omitted" across the whole
+// policy engine: a nil field is unset. Which fields are required versus
+// optional is decided by the consumer, not the type:
+//   - As defaultPolicy: UsageThresholdPercent and GrowMode are REQUIRED (a nil
+//     is a startup error); the rest are OPTIONAL and fall back to built-in
+//     defaults.
+//   - As a per-policy override: ALL fields are OPTIONAL; a nil field inherits
+//     the effective defaultPolicy value.
+type ResizeSpec struct {
+	// Paused, when true, stops the resizer from touching matching instances:
+	// they are skipped with reason "paused" and never measured or resized.
+	Paused *bool `json:"paused,omitempty"`
+	// AlertEnabled, when false, suppresses Alertmanager alerts for resize
+	// outcomes on matching instances. The global alertmanager.enabled switch
+	// remains the master gate: alerts only ever fire when it is true AND the
+	// instance's effective policy has alertEnabled true. Defaults to true.
+	AlertEnabled          *bool   `json:"alertEnabled,omitempty"`
+	UsageThresholdPercent *int    `json:"usageThresholdPercent,omitempty"`
+	GrowMode              *string `json:"growMode,omitempty"`
+	GrowPercent           *int    `json:"growPercent,omitempty"`
+	GrowAmount            *string `json:"growAmount,omitempty"`
+	MaxVolumeSizeGiB      *int    `json:"maxVolumeSizeGiB,omitempty"`
+}
+
+// ResizePolicy is one per-instance-group override entry. The policy package
+// validates and compiles these into an effective settings resolver.
+type ResizePolicy struct {
+	// Name identifies the policy in logs and metrics. Required, unique.
+	Name string `json:"name"`
+	// Weight breaks ties when multiple policies match an instance: the highest
+	// weight wins; equal weights fall back to file order (earlier wins).
+	Weight int `json:"weight,omitempty"`
+	// InstanceSelector selects the instances this policy applies to.
+	InstanceSelector InstanceSelector `json:"instanceSelector"`
+	// Resize overrides the defaultPolicy volume-expansion settings for this
+	// group. Every field is optional; a nil field inherits from defaultPolicy.
+	Resize ResizeSpec `json:"resize"`
+}
+
+// Config holds all runtime settings for the resizer.
+type Config struct {
+	// Region is the AWS region to operate in.
+	Region string
+	// TagFilters selects which standalone EC2 instances are managed. When empty,
+	// every running instance in the account/region is a candidate (subject to
+	// ExcludeEKSNodes).
+	TagFilters []TagFilter
+	// ExcludeEKSNodes drops instances that belong to an EKS cluster (managed node
+	// groups, self-managed nodes, and Karpenter nodes) from the candidate set, so
+	// the addon only ever touches standalone EC2 instances.
+	ExcludeEKSNodes bool
+	// ReconcileInterval is how often the control loop scans instances.
+	ReconcileInterval time.Duration
+	// ReconcileConcurrency bounds how many instances are reconciled in parallel
+	// within a single pass. Defaults to 10.
+	ReconcileConcurrency int
+	// SSMPollInterval is the delay between status polls for SSM command
+	// invocations and EBS volume modifications. Defaults to 1s.
+	SSMPollInterval time.Duration
+	// UsageThresholdPercent triggers a resize when root usage reaches it.
+	UsageThresholdPercent int
+	// GrowMode selects how the target size is computed: "percent" grows the
+	// volume relative to its current size by GrowPercent, "absolute" grows it by
+	// a fixed amount (GrowAmount).
+	GrowMode string
+	// GrowPercent is how much to grow the EBS volume relative to current size.
+	// Used when GrowMode is "percent".
+	GrowPercent int
+	// GrowAmount is the raw fixed growth per resize with a MiB or GiB unit (e.g.
+	// "10GiB", "5120MiB"). Used when GrowMode is "absolute".
+	GrowAmount string
+	// GrowAmountGiB is GrowAmount parsed and rounded up to whole GiB (EBS volumes
+	// are sized in GiB). Populated during Load; used when GrowMode is "absolute"
+	// and as the default absolute amount for per-group policies.
+	GrowAmountGiB int32
+	// MaxVolumeSizeGiB is a safety ceiling; resizes that would exceed it are skipped.
+	MaxVolumeSizeGiB int
+	// Paused is the default-policy pause switch: when true, every instance not
+	// matched by a named policy is skipped without being resized. Named policies
+	// can override it per group.
+	Paused bool
+	// AlertEnabled is the default-policy alert switch: when false, resize
+	// outcomes on instances not matched by a named policy are never alerted.
+	// Named policies can override it per group. Only consulted when
+	// AlertmanagerEnabled is true.
+	AlertEnabled bool
+	// SSMCommandTimeout bounds how long we wait for an SSM command to finish.
+	SSMCommandTimeout time.Duration
+	// VolumeModifyTimeout bounds how long we wait for a volume to reach optimizing.
+	VolumeModifyTimeout time.Duration
+	// DryRun measures and decides but never mutates AWS resources.
+	DryRun bool
+	// HealthPort serves /healthz and /readyz.
+	HealthPort int
+	// MetricsPort serves /metrics.
+	MetricsPort int
+	// LogLevel is one of debug, info, warn, error.
+	LogLevel string
+	// LogFormat is json or text.
+	LogFormat string
+	// PodName, PodNamespace, and PodUID identify the controller's own Pod for
+	// Kubernetes Event publishing. Populated via the downward API (environment);
+	// when empty (e.g. running outside a cluster) Event publishing is disabled.
+	PodName      string
+	PodNamespace string
+	PodUID       string
+	// LeaderElect enables single-active-instance leader election via a Lease,
+	// so the Deployment can run multiple replicas for HA while only the leader
+	// reconciles. Requires in-cluster config; ignored when PodName is empty.
+	LeaderElect bool
+	// LeaseName is the coordination.k8s.io Lease used as the leader-election lock.
+	LeaseName string
+	// AlertmanagerEnabled turns on alert notifications. When false (default),
+	// alerting is disabled regardless of the other Alertmanager settings.
+	AlertmanagerEnabled bool
+	// AlertmanagerURL is the base URL of an Alertmanager v2 endpoint (e.g.
+	// http://alertmanager:9093). Required when AlertmanagerEnabled is true.
+	AlertmanagerURL string
+	// AlertmanagerTimeout bounds each alert POST. Defaults to 5s.
+	AlertmanagerTimeout time.Duration
+	// AlertmanagerLabels are static labels merged into every alert for routing
+	// (e.g. cluster=prod).
+	AlertmanagerLabels map[string]string
+	// AlertmanagerNotifyOn selects which resize outcomes are alerted: "all",
+	// "success" (default), or "failure".
+	AlertmanagerNotifyOn string
+	// AlertmanagerDashboardURL is an optional dashboard URL template appended to
+	// each alert's description as a Slack mrkdwn link. Placeholders in the form
+	// {key} are substituted with the alert's labels (e.g. {instance_id},
+	// {volume_id}, {device}, {instance_name}, plus any static AlertmanagerLabels
+	// key). Empty (default) disables the link.
+	AlertmanagerDashboardURL string
+	// GrafanaAnnotationEnabled turns on Grafana annotations. When false
+	// (default), annotating is disabled regardless of the other Grafana settings.
+	GrafanaAnnotationEnabled bool
+	// GrafanaURL is the base URL of a Grafana instance (e.g.
+	// http://grafana.monitoring:3000). Required when GrafanaAnnotationEnabled is true.
+	GrafanaURL string
+	// GrafanaAPIToken is a Grafana service account token sent as a Bearer
+	// credential. Required when GrafanaAnnotationEnabled is true. Read from the
+	// environment only (never the config file) so the token stays out of the
+	// ConfigMap.
+	GrafanaAPIToken string
+	// GrafanaTimeout bounds each annotation POST. Defaults to 5s.
+	GrafanaTimeout time.Duration
+	// GrafanaAnnotationTags are the base tags merged into every annotation and
+	// subscribed to by dashboards (e.g. event:ebs-resize).
+	GrafanaAnnotationTags []string
+	// GrafanaAnnotateOn selects which resize outcomes are annotated: "all"
+	// (default), "success", or "failure".
+	GrafanaAnnotateOn string
+	// ThroughputRecommendation configures the node EBS throughput recommender,
+	// which is independent of the resize loop above.
+	ThroughputRecommendation ThroughputRecommendation
+	// Policies are the per-instance-group resize overrides, in file order. Empty
+	// means every instance uses the global settings above.
+	Policies []ResizePolicy
+}
+
+// ThroughputRecommendation holds the settings of the node EBS throughput
+// recommender. It is a separate subsystem from the resizer: it reads a
+// Prometheus-compatible metrics backend and the Kubernetes API, targets the
+// in-cluster Nodes rather than the standalone EC2 instances the resizer manages,
+// and never mutates an EBS volume. Disabled by default.
+//
+// The block is deliberately small. Everything that is an AWS limit, a property of
+// how node exporter works, or a judgement call that does not vary per cluster
+// (the observation quantile, the headroom, the recommendation step, the device
+// matcher, the annotation prefix) is a constant in the throughput package rather
+// than a knob here: each one only added a way to configure the recommender into
+// producing nothing.
+type ThroughputRecommendation struct {
+	// Enabled turns the recommender on. When false, none of the other fields are
+	// read and no Kubernetes or Prometheus access is attempted.
+	Enabled bool
+	// PrometheusURL is the base URL of a Prometheus server or a Mimir
+	// query-frontend/gateway. The /prometheus API prefix Mimir usually serves
+	// under may be included or omitted; the client probes for it at startup.
+	PrometheusURL string
+	// PrometheusTenantID is sent as the X-Scope-OrgID header, which Mimir requires
+	// when multi-tenancy is enabled. Leave empty for Prometheus, which ignores it.
+	PrometheusTenantID string
+	// PrometheusBearerToken is sent as an Authorization: Bearer header, for a
+	// gateway that fronts the metrics backend with token auth. Read from the
+	// environment only (never the config file) so the token stays out of the
+	// ConfigMap, the same as GrafanaAPIToken.
+	PrometheusBearerToken string
+	// Interval is how often recommendations are recomputed. It is separate from
+	// ReconcileInterval and defaults higher: the observation window spans days, so
+	// a much shorter interval would re-derive the same answer while repeatedly
+	// running the most expensive query the addon issues.
+	Interval time.Duration
+	// MetricNodeNameLabel is the metric label carrying the Kubernetes node name. It
+	// is named for the metric rather than the Node because a Kubernetes Node also
+	// has labels of its own, and this is not one of them. There is no
+	// default that is right everywhere: kube-prometheus-stack relabels it to
+	// "node", while a plain node exporter scrape leaves only "instance".
+	MetricNodeNameLabel string
+	// LookbackWindow is how far back the observation window reaches, as a
+	// Prometheus duration string (which accepts units Go durations do not, such as
+	// "7d"). It is configurable because the backend's retention bounds it.
+	LookbackWindow string
+	// LookbackDuration is LookbackWindow parsed, used to derive how many data
+	// points a full window holds.
+	LookbackDuration time.Duration
+	// ApplyOnResize lets the resizer fold a fresh increase recommendation into a
+	// volume modification it is already making for a size expansion, so the
+	// throughput change rides the same once-per-6h modification slot. Only an
+	// increase is ever applied, and only on the volumes the resizer manages.
+	// Enabled by default whenever the recommender is: enabling recommendations
+	// is the opt-in, and this key remains as the kill switch that turns the
+	// recommender advisory-only without losing it.
+	ApplyOnResize bool
+}
+
+// Alertmanager notify-on and Grafana annotate-on policy values.
+const (
+	NotifyOnAll     = "all"
+	NotifyOnSuccess = "success"
+	NotifyOnFailure = "failure"
+
+	AnnotateOnAll     = "all"
+	AnnotateOnSuccess = "success"
+	AnnotateOnFailure = "failure"
+)
+
+// Grow mode values selecting how the resize target size is computed.
+const (
+	GrowModePercent  = "percent"
+	GrowModeAbsolute = "absolute"
+)
+
+// fileSchema is the on-disk YAML shape. Durations are strings (Go duration
+// syntax) and are parsed during Load. Pointer fields let an explicit zero (e.g.
+// excludeEKSNodes: false, usageThresholdPercent: 0) be distinguished from an
+// omitted field that should take its default.
+type fileSchema struct {
+	Region               string         `json:"region"`
+	TagFilters           string         `json:"tagFilters"`
+	ExcludeEKSNodes      bool           `json:"excludeEKSNodes"`
+	ReconcileInterval    string         `json:"reconcileInterval"`
+	ReconcileConcurrency int            `json:"reconcileConcurrency"`
+	SSMPollInterval      string         `json:"ssmPollInterval"`
+	DefaultPolicy        ResizeSpec     `json:"defaultPolicy"`
+	SSMCommandTimeout    string         `json:"ssmCommandTimeout"`
+	VolumeModifyTimeout  string         `json:"volumeModifyTimeout"`
+	DryRun               bool           `json:"dryRun"`
+	HealthPort           int            `json:"healthPort"`
+	MetricsPort          int            `json:"metricsPort"`
+	LeaderElect          bool           `json:"leaderElect"`
+	LeaseName            string         `json:"leaseName"`
+	LogLevel             string         `json:"logLevel"`
+	LogFormat            string         `json:"logFormat"`
+	Alertmanager         amFile         `json:"alertmanager"`
+	GrafanaAnnotation    gfFile         `json:"grafanaAnnotation"`
+	ThroughputRec        trFile         `json:"throughputRecommendation"`
+	Policies             []ResizePolicy `json:"policies"`
+}
+
+// ptr returns a pointer to v, for the pre-filled optional defaults below.
+func ptr[T any](v T) *T { return &v }
+
+// defaultFileSchema returns the file schema pre-populated with defaults. Load
+// decodes the YAML on top of it, so any key omitted from the file keeps its
+// default and any key present overrides it, including with an explicit zero.
+// This is the standard Kubernetes pattern (populate defaults, then decode)
+// and removes the need for per-field zero-value sentinels.
+//
+// The two required defaultPolicy fields (usageThresholdPercent, growMode) are
+// deliberately left nil so Load can reject a config that omits them; every
+// other defaultPolicy field is pre-filled and therefore optional.
+func defaultFileSchema() fileSchema {
+	return fileSchema{
+		ExcludeEKSNodes:      true,
+		ReconcileInterval:    "5m",
+		ReconcileConcurrency: 10,
+		SSMPollInterval:      "1s",
+		SSMCommandTimeout:    "5m",
+		VolumeModifyTimeout:  "10m",
+		HealthPort:           8080,
+		MetricsPort:          8081,
+		LeaderElect:          true,
+		LeaseName:            "external-ebs-autoresizer",
+		LogLevel:             "info",
+		LogFormat:            "json",
+		DefaultPolicy: ResizeSpec{
+			Paused:           ptr(false),
+			AlertEnabled:     ptr(true),
+			GrowPercent:      ptr(10),
+			GrowAmount:       ptr("10GiB"),
+			MaxVolumeSizeGiB: ptr(1000),
+		},
+		Alertmanager: amFile{
+			Timeout:  "5s",
+			NotifyOn: NotifyOnSuccess,
+		},
+		GrafanaAnnotation: gfFile{
+			Timeout:    "5s",
+			AnnotateOn: AnnotateOnAll,
+			Tags:       []string{"event:ebs-resize"},
+		},
+		ThroughputRec: trFile{
+			Interval: "30m",
+			// "node" is the label kube-prometheus-stack relabels onto node exporter
+			// series. A plain node exporter scrape leaves only "instance", in which
+			// case this needs overriding.
+			MetricNodeNameLabel: "node",
+			LookbackWindow:      "7d",
+			// Piggybacking rides the recommender's own enabled switch; an explicit
+			// false here is the kill switch that keeps it advisory-only.
+			ApplyOnResize: true,
+		},
+	}
+}
+
+type amFile struct {
+	Enabled      bool              `json:"enabled"`
+	URL          string            `json:"url"`
+	Timeout      string            `json:"timeout"`
+	Labels       map[string]string `json:"labels"`
+	NotifyOn     string            `json:"notifyOn"`
+	DashboardURL string            `json:"dashboardUrl"`
+}
+
+type gfFile struct {
+	Enabled    bool     `json:"enabled"`
+	URL        string   `json:"url"`
+	Timeout    string   `json:"timeout"`
+	Tags       []string `json:"tags"`
+	AnnotateOn string   `json:"annotateOn"`
+}
+
+type trFile struct {
+	Enabled             bool   `json:"enabled"`
+	PrometheusURL       string `json:"prometheusUrl"`
+	PrometheusTenantID  string `json:"prometheusTenantId"`
+	Interval            string `json:"interval"`
+	MetricNodeNameLabel string `json:"metricNodeNameLabel"`
+	LookbackWindow      string `json:"lookbackWindow"`
+	ApplyOnResize       bool   `json:"applyOnResize"`
+}
+
+// Load reads, parses, and validates the YAML config file at path, then layers
+// in the environment-injected runtime values (Pod identity and Grafana token).
+func Load(path string) (*Config, error) {
+	raw, err := os.ReadFile(path)
+	if err != nil {
+		return nil, fmt.Errorf("read config file %s: %w", path, err)
+	}
+	f := defaultFileSchema()
+	if err := yaml.UnmarshalStrict(raw, &f); err != nil {
+		return nil, fmt.Errorf("parse config file %s: %w", path, err)
+	}
+
+	// defaultPolicy.usageThresholdPercent and growMode are required: they set the
+	// baseline every unmatched instance uses, so they must be an explicit choice
+	// rather than an implicit default.
+	dp := f.DefaultPolicy
+	if dp.UsageThresholdPercent == nil {
+		return nil, fmt.Errorf("defaultPolicy.usageThresholdPercent is required")
+	}
+	if dp.GrowMode == nil || strings.TrimSpace(*dp.GrowMode) == "" {
+		return nil, fmt.Errorf("defaultPolicy.growMode is required")
+	}
+
+	c := &Config{
+		Region:                   f.Region,
+		ReconcileConcurrency:     f.ReconcileConcurrency,
+		UsageThresholdPercent:    *dp.UsageThresholdPercent,
+		GrowMode:                 strings.ToLower(strings.TrimSpace(*dp.GrowMode)),
+		GrowPercent:              *dp.GrowPercent,
+		GrowAmount:               *dp.GrowAmount,
+		MaxVolumeSizeGiB:         *dp.MaxVolumeSizeGiB,
+		Paused:                   *dp.Paused,
+		AlertEnabled:             *dp.AlertEnabled,
+		DryRun:                   f.DryRun,
+		HealthPort:               f.HealthPort,
+		MetricsPort:              f.MetricsPort,
+		ExcludeEKSNodes:          f.ExcludeEKSNodes,
+		LeaderElect:              f.LeaderElect,
+		LeaseName:                f.LeaseName,
+		LogLevel:                 f.LogLevel,
+		LogFormat:                f.LogFormat,
+		AlertmanagerEnabled:      f.Alertmanager.Enabled,
+		AlertmanagerURL:          f.Alertmanager.URL,
+		AlertmanagerLabels:       f.Alertmanager.Labels,
+		AlertmanagerNotifyOn:     f.Alertmanager.NotifyOn,
+		AlertmanagerDashboardURL: f.Alertmanager.DashboardURL,
+		GrafanaAnnotationEnabled: f.GrafanaAnnotation.Enabled,
+		GrafanaURL:               f.GrafanaAnnotation.URL,
+		GrafanaAnnotateOn:        f.GrafanaAnnotation.AnnotateOn,
+		GrafanaAnnotationTags:    f.GrafanaAnnotation.Tags,
+		ThroughputRecommendation: ThroughputRecommendation{
+			Enabled:             f.ThroughputRec.Enabled,
+			PrometheusURL:       strings.TrimSpace(f.ThroughputRec.PrometheusURL),
+			PrometheusTenantID:  strings.TrimSpace(f.ThroughputRec.PrometheusTenantID),
+			MetricNodeNameLabel: f.ThroughputRec.MetricNodeNameLabel,
+			ApplyOnResize:       f.ThroughputRec.ApplyOnResize,
+		},
+		Policies: f.Policies,
+		// Runtime-injected: never from the file.
+		PodName:         getEnv("POD_NAME", ""),
+		PodNamespace:    getEnv("POD_NAMESPACE", ""),
+		PodUID:          getEnv("POD_UID", ""),
+		GrafanaAPIToken: getEnv("GRAFANA_API_TOKEN", ""),
+	}
+	c.ThroughputRecommendation.PrometheusBearerToken = getEnv("PROMETHEUS_BEARER_TOKEN", "")
+
+	durations := []struct {
+		name string
+		raw  string
+		dst  *time.Duration
+	}{
+		{"reconcileInterval", f.ReconcileInterval, &c.ReconcileInterval},
+		{"ssmPollInterval", f.SSMPollInterval, &c.SSMPollInterval},
+		{"ssmCommandTimeout", f.SSMCommandTimeout, &c.SSMCommandTimeout},
+		{"volumeModifyTimeout", f.VolumeModifyTimeout, &c.VolumeModifyTimeout},
+		{"alertmanager.timeout", f.Alertmanager.Timeout, &c.AlertmanagerTimeout},
+		{"grafanaAnnotation.timeout", f.GrafanaAnnotation.Timeout, &c.GrafanaTimeout},
+		{"throughputRecommendation.interval", f.ThroughputRec.Interval, &c.ThroughputRecommendation.Interval},
+	}
+	for _, d := range durations {
+		v, err := parseDuration(d.name, d.raw)
+		if err != nil {
+			return nil, err
+		}
+		*d.dst = v
+	}
+
+	// The observation window is a Prometheus duration, not a Go duration: "7d" is
+	// valid PromQL and invalid Go, while "1.5h" is the reverse. The string form is
+	// what the query needs; the parsed form is what the confidence gate needs to
+	// know how many data points a full window holds.
+	window, windowDuration, err := parsePromDuration("throughputRecommendation.lookbackWindow", f.ThroughputRec.LookbackWindow)
+	if err != nil {
+		return nil, err
+	}
+	c.ThroughputRecommendation.LookbackWindow = window
+	c.ThroughputRecommendation.LookbackDuration = windowDuration
+
+	filters, err := parseTagFilters(f.TagFilters)
+	if err != nil {
+		return nil, err
+	}
+	c.TagFilters = filters
+
+	// growAmount is always parsed (not only in absolute mode) so per-group
+	// policies that switch to absolute mode inherit a usable default amount, and
+	// a malformed value fails at startup regardless of the active mode.
+	gib, err := ParseGrowAmount(c.GrowAmount)
+	if err != nil {
+		return nil, fmt.Errorf("invalid growAmount: %w", err)
+	}
+	c.GrowAmountGiB = gib
+
+	if err := c.validate(); err != nil {
+		return nil, err
+	}
+	return c, nil
+}

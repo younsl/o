@@ -1,0 +1,173 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1400 860" width="1400" height="860" role="img" aria-label="aws-vpn-maintenance-handler architecture across Kubernetes and AWS">
+  <title>aws-vpn-maintenance-handler architecture</title>
+  <style>
+    .bg      { fill: #000000; }
+    .title   { fill: #ededed; font-size: 19px; font-weight: 600; letter-spacing: 0.2px; }
+    .subtitle{ fill: #7a7a7a; font-size: 11.5px; }
+    .zone    { fill: none; stroke: #262626; stroke-width: 1; }
+    .zonelbl { fill: #6b6b6b; font-size: 10.5px; font-weight: 600; letter-spacing: 1.4px; }
+    .box     { fill: #0a0a0a; stroke: #3a3a3a; stroke-width: 1; }
+    .boxhi   { fill: #0c0c0c; stroke: #5c5c5c; stroke-width: 1; }
+    .chip    { fill: #101010; stroke: #303030; stroke-width: 1; }
+    .lbl     { fill: #e0e0e0; font-size: 12.5px; font-weight: 600; }
+    .lbl-sm  { fill: #dcdcdc; font-size: 11px; font-weight: 600; }
+    .lbl-xs  { fill: #d4d4d4; font-size: 10px; font-weight: 600; }
+    .note    { fill: #808080; font-size: 9.5px; }
+    .note-b  { fill: #949494; font-size: 10px; }
+    .edge    { fill: none; stroke: #4d4d4d; stroke-width: 1; }
+    .edgelbl { fill: #757575; font-size: 9.5px; letter-spacing: 0.3px; }
+    .dot     { fill: #5c5c5c; }
+    text     { font-family: -apple-system, BlinkMacSystemFont, "Helvetica Neue", Arial, sans-serif; }
+  </style>
+
+  <rect class="bg" x="0" y="0" width="1400" height="860"/>
+
+  <text class="title" x="40" y="52">aws-vpn-maintenance-handler</text>
+  <text class="subtitle" x="40" y="74">Owns AWS Site-to-Site VPN tunnel endpoint maintenance: detect, gate, approve, then replace one tunnel at a time inside a window.</text>
+  <text class="subtitle" x="40" y="92">Nothing is time-driven alone. The schedule decides when it is permitted, AWS state decides if there is work, a human decides that it happens.</text>
+
+  <!-- ============ Kubernetes zone ============ -->
+  <rect class="zone" x="40" y="120" width="600" height="620" rx="3"/>
+  <text class="zonelbl" x="58" y="145">AMAZON EKS CLUSTER</text>
+  <rect class="zone" x="60" y="165" width="560" height="555" rx="3"/>
+  <text class="zonelbl" x="76" y="188" style="letter-spacing:0.8px; font-weight:500;">namespace: kube-system</text>
+
+  <!-- Pod -->
+  <rect class="boxhi" x="80" y="205" width="390" height="260" rx="3"/>
+  <text class="lbl" x="96" y="230">Pod · aws-vpn-maintenance-handler</text>
+  <text class="note" x="96" y="248">Deployment, replicas 1, leader-elected · dryRun true by default</text>
+
+  <rect class="chip" x="96" y="266" width="358" height="32" rx="2"/>
+  <text class="lbl-xs" x="108" y="281">Detect</text>
+  <text class="note" x="108" y="293">DescribeVpnConnections · GetVpnTunnelReplacementStatus · every 5m</text>
+
+  <rect class="chip" x="96" y="304" width="358" height="32" rx="2"/>
+  <text class="lbl-xs" x="108" y="319">Preflight</text>
+  <text class="note" x="108" y="331">peer tunnel UP, stable 15m, BGP routes ≥ 1 · one replacement at a time</text>
+
+  <rect class="chip" x="96" y="342" width="358" height="32" rx="2"/>
+  <text class="lbl-xs" x="108" y="357">Window + traffic gate</text>
+  <text class="note" x="108" y="369">cron 02:00 Asia/Seoul, 3h · quietest 20% of past windows</text>
+
+  <rect class="chip" x="96" y="380" width="358" height="32" rx="2"/>
+  <text class="lbl-xs" x="108" y="395">Approval</text>
+  <text class="note" x="108" y="407">Slack DM to approvers · expires in 1h · never forced through</text>
+
+  <rect class="chip" x="96" y="418" width="358" height="32" rx="2"/>
+  <text class="lbl-xs" x="108" y="433">Replace + verify</text>
+  <text class="note" x="108" y="445">one tunnel, then the sibling · verify UP 30m · cooldown 24h</text>
+
+  <!-- ServiceAccount -->
+  <rect class="box" x="490" y="205" width="120" height="65" rx="3"/>
+  <text class="lbl-xs" x="502" y="228">ServiceAccount</text>
+  <text class="note" x="502" y="244">IRSA role</text>
+  <text class="note" x="502" y="257">annotation</text>
+
+  <!-- spine from pod to the resource grid -->
+  <path class="edge" d="M275,465 V478 H206 V490"/>
+  <path class="edge" d="M275,478 H474 V490"/>
+  <path class="edge" d="M206,548 V562"/>
+  <path class="edge" d="M474,548 V562"/>
+  <path class="edge" d="M206,620 V634"/>
+  <path class="edge" d="M474,620 V634"/>
+
+  <rect class="box" x="80" y="490" width="252" height="58" rx="3"/>
+  <text class="lbl-sm" x="94" y="513">Secret</text>
+  <text class="note" x="94" y="530">slack xapp- / xoxb- tokens</text>
+
+  <rect class="box" x="348" y="490" width="252" height="58" rx="3"/>
+  <text class="lbl-sm" x="362" y="513">ConfigMap · config</text>
+  <text class="note" x="362" y="530">config.yaml mounted, unknown key fails startup</text>
+
+  <rect class="box" x="80" y="562" width="252" height="58" rx="3"/>
+  <text class="lbl-sm" x="94" y="585">ConfigMap · state</text>
+  <text class="note" x="94" y="602">in-flight + cooldown, no PersistentVolume</text>
+
+  <rect class="box" x="348" y="562" width="252" height="58" rx="3"/>
+  <text class="lbl-sm" x="362" y="585">Lease</text>
+  <text class="note" x="362" y="602">coordination.k8s.io, single active reconciler</text>
+
+  <rect class="box" x="80" y="634" width="252" height="58" rx="3"/>
+  <text class="lbl-sm" x="94" y="657">Events</text>
+  <text class="note" x="94" y="674">in-cluster audit trail, no Slack needed</text>
+
+  <rect class="box" x="348" y="634" width="252" height="58" rx="3"/>
+  <text class="lbl-sm" x="362" y="657">Service :9090</text>
+  <text class="note" x="362" y="674">ServiceMonitor scrape, blocked_tunnels{reason}</text>
+
+  <!-- ============ AWS zone ============ -->
+  <rect class="zone" x="700" y="120" width="660" height="430" rx="3"/>
+  <text class="zonelbl" x="718" y="145">AWS ACCOUNT · AP-NORTHEAST-2</text>
+
+  <rect class="box" x="720" y="175" width="300" height="64" rx="3"/>
+  <text class="lbl-sm" x="734" y="198">IAM Role</text>
+  <text class="note" x="734" y="215">ec2:ReplaceVpnTunnel, scoped by resource tag</text>
+  <text class="note" x="734" y="229">assumed through the ServiceAccount, no static key</text>
+
+  <rect class="box" x="720" y="260" width="620" height="110" rx="3"/>
+  <text class="lbl-sm" x="734" y="284">Amazon EC2 · Site-to-Site VPN API</text>
+
+  <rect class="chip" x="736" y="300" width="188" height="52" rx="2"/>
+  <text class="lbl-xs" x="748" y="320">DescribeVpnConnections</text>
+  <text class="note" x="748" y="336">tag filtered, state available</text>
+
+  <rect class="chip" x="936" y="300" width="188" height="52" rx="2"/>
+  <text class="lbl-xs" x="948" y="320">GetVpnTunnel</text>
+  <text class="lbl-xs" x="948" y="333">ReplacementStatus</text>
+  <text class="note" x="948" y="347">PendingMaintenance AVAILABLE</text>
+
+  <rect class="chip" x="1136" y="300" width="188" height="52" rx="2"/>
+  <text class="lbl-xs" x="1148" y="320">ReplaceVpnTunnel</text>
+  <text class="note" x="1148" y="336">irreversible, one call per tunnel</text>
+
+  <path class="edge" d="M1030,370 V390"/>
+  <circle class="dot" cx="1030" cy="370" r="2"/>
+
+  <rect class="box" x="720" y="390" width="620" height="140" rx="3"/>
+  <text class="lbl-sm" x="734" y="414">Site-to-Site VPN connection</text>
+  <text class="note" x="734" y="430">opted in by tag aws-vpn-maintenance-handler.networking.k8s.io/managed=true · deadline published by AWS</text>
+
+  <rect class="chip" x="736" y="444" width="284" height="70" rx="2"/>
+  <text class="lbl-xs" x="748" y="466">Tunnel 1</text>
+  <text class="note" x="748" y="483">EnableTunnelLifecycleControl on</text>
+  <text class="note" x="748" y="498">replaced first, verified back to UP</text>
+
+  <rect class="chip" x="1040" y="444" width="284" height="70" rx="2"/>
+  <text class="lbl-xs" x="1052" y="466">Tunnel 2</text>
+  <text class="note" x="1052" y="483">carries traffic while tunnel 1 is down</text>
+  <text class="note" x="1052" y="498">chained under the same approval, after verify</text>
+
+  <!-- ============ outside the cluster ============ -->
+  <rect class="zone" x="700" y="580" width="660" height="240" rx="3"/>
+  <text class="zonelbl" x="718" y="605">OUTSIDE THE CLUSTER</text>
+
+  <rect class="box" x="720" y="615" width="620" height="88" rx="3"/>
+  <text class="lbl-sm" x="734" y="640">Mimir / Prometheus</text>
+  <text class="note-b" x="734" y="659">PromQL against past occurrences of this same window, not a fixed byte threshold</text>
+  <text class="note" x="734" y="676">quietPercentile 20 · unreadable metrics block instead of pass · median inside the deadline</text>
+  <text class="note" x="734" y="692">picks the moment; the window only says when a replacement is permitted</text>
+
+  <rect class="box" x="720" y="718" width="620" height="88" rx="3"/>
+  <text class="lbl-sm" x="734" y="743">Slack · Socket Mode</text>
+  <text class="note-b" x="734" y="762">outbound WebSocket from the Pod, no Ingress and no public endpoint</text>
+  <text class="note" x="734" y="779">detection notice, approval card, thread updates through verification</text>
+  <text class="note" x="734" y="795">only configured approver IDs are accepted · every gate re-checked after the click</text>
+
+  <!-- ============ edges ============ -->
+  <path class="edge" d="M610,238 H665 V207 H720"/>
+  <text class="edgelbl" x="637" y="232" text-anchor="middle">IRSA</text>
+
+  <path class="edge" d="M470,318 H720"/>
+  <text class="edgelbl" x="595" y="311" text-anchor="middle">EC2 VPN API</text>
+
+  <path class="edge" d="M470,358 H692 V659 H720"/>
+  <text class="edgelbl" x="580" y="351" text-anchor="middle">traffic query</text>
+
+  <path class="edge" d="M470,396 H678 V762 H720"/>
+  <text class="edgelbl" x="573" y="389" text-anchor="middle">approval</text>
+
+  <circle class="dot" cx="470" cy="318" r="2"/>
+  <circle class="dot" cx="470" cy="358" r="2"/>
+  <circle class="dot" cx="470" cy="396" r="2"/>
+  <circle class="dot" cx="610" cy="238" r="2"/>
+</svg>

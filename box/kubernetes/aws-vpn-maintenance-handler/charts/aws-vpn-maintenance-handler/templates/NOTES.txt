@@ -1,0 +1,33 @@
+{{ include "aws-vpn-maintenance-handler.fullname" . }} is installed in namespace {{ .Release.Namespace }}.
+
+Dry run is {{ if .Values.config.dryRun }}ENABLED: approvals validate ReplaceVpnTunnel through the AWS
+DryRun flag and no tunnel is actually replaced. Set config.dryRun=false once you have reviewed the
+approval cards and preflight output in your environment.{{ else }}DISABLED: an approved request
+replaces the tunnel for real, and that cannot be undone.{{ end }}
+
+Maintenance window: {{ .Values.config.maintenanceWindow.days | join "," }} {{ .Values.config.maintenanceWindow.start }}-{{ .Values.config.maintenanceWindow.end }} ({{ .Values.config.maintenanceWindow.timezone }})
+Approvers: {{ len .Values.config.approval.slackUserIDs }} Slack user(s)
+Leader election: {{ if (include "aws-vpn-maintenance-handler.leaderElectEnabled" .) }}enabled ({{ .Values.replicaCount }} replicas){{ else }}disabled (single replica){{ end }}
+
+Verify what the controller currently sees, without changing anything:
+
+  kubectl -n {{ .Release.Namespace }} exec deploy/{{ include "aws-vpn-maintenance-handler.fullname" . }} -- \
+    /app/aws-vpn-maintenance-handler status
+
+Inspect the persisted maintenance and approval state, which is what makes the workflow survive a
+Pod restart without a PersistentVolume:
+
+  kubectl -n {{ .Release.Namespace }} get configmap {{ include "aws-vpn-maintenance-handler.stateConfigMapName" . }} -o yaml
+
+Read the in-cluster audit trail of past replacements:
+
+  kubectl -n {{ .Release.Namespace }} get events --field-selector reportingComponent=aws-vpn-maintenance-handler
+
+Required setup outside this chart:
+
+  1. IRSA role on the ServiceAccount with ec2:DescribeVpnConnections,
+     ec2:GetVpnTunnelReplacementStatus, and ec2:ReplaceVpnTunnel.
+  2. A Slack app with Socket Mode enabled, an app-level token (connections:write),
+     and a bot token with chat:write and im:write.
+  3. The tag from config.targets.tagFilters on every VPN connection this controller may touch.
+     Untagged connections are never eligible.

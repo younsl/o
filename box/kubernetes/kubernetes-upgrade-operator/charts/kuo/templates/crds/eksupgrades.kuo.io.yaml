@@ -1,0 +1,485 @@
+{{- if .Values.crds.install }}
+apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata:
+  name: eksupgrades.kuo.io
+  labels:
+    {{- include "kuo.labels" . | nindent 4 }}
+  {{- with .Values.crds.annotations }}
+  annotations:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+spec:
+  group: kuo.io
+  names:
+    kind: EKSUpgrade
+    listKind: EKSUpgradeList
+    plural: eksupgrades
+    singular: eksupgrade
+    shortNames:
+      - eu
+  scope: Cluster
+  versions:
+    - name: v1alpha1
+      served: true
+      storage: true
+      schema:
+        openAPIV3Schema:
+          type: object
+          description: EKSUpgrade is the Schema for the eksupgrades API. It defines an EKS cluster upgrade operation managed by the kuo operator.
+          properties:
+            spec:
+              type: object
+              description: EKSUpgradeSpec defines the desired state of an EKS cluster upgrade.
+              required:
+                - clusterName
+                - targetVersion
+                - region
+                - upgradeMode
+              properties:
+                clusterName:
+                  type: string
+                  description: Name of the EKS cluster to upgrade.
+                targetVersion:
+                  type: string
+                  description: Target Kubernetes version (e.g., "1.34"). The operator plans sequential minor version upgrades if multiple steps are needed.
+                region:
+                  type: string
+                  description: AWS region where the EKS cluster resides (e.g., "ap-northeast-2").
+                upgradeMode:
+                  type: string
+                  enum:
+                    - Forward
+                    - Rollback
+                  description: 'Direction of the version change (required; must be set explicitly). Forward upgrades toward targetVersion. Rollback reverts a previously upgraded cluster to the previous minor version (N-1), mirroring AWS EKS rollback semantics (node groups first, then add-ons, then the control plane). On rollback, add-ons not pinned in addonVersions are auto-rolled-back to the default version compatible with the target minor, but only when that is a downgrade. Only a single minor rollback (N to N-1) is allowed; targetVersion must be exactly one minor below the current version and within the AWS 7-day rollback window.'
+                assumeRoleArn:
+                  type: string
+                  description: IAM Role ARN to assume for cross-account access. Works with both IRSA and EKS Pod Identity as the base credential source.
+                addonVersions:
+                  type: object
+                  description: Optional add-on version overrides. Keys are add-on names and values are target versions. If not specified, the operator resolves the default compatible version automatically.
+                  additionalProperties:
+                    type: string
+                dryRun:
+                  type: boolean
+                  default: false
+                  description: Plan only, do not execute. The operator generates an upgrade plan and sets the phase to Completed without making any changes to the cluster.
+                timeouts:
+                  type: object
+                  description: Timeout configuration for upgrade operations.
+                  properties:
+                    controlPlaneMinutes:
+                      type: integer
+                      default: 30
+                      description: Control plane upgrade timeout in minutes. The operator fails the upgrade if the control plane update does not complete within this duration.
+                    nodegroupMinutes:
+                      type: integer
+                      default: 60
+                      description: Node group upgrade timeout in minutes. The operator fails the upgrade if a node group rolling update does not complete within this duration.
+                notification:
+                  type: object
+                  description: Slack notification configuration for this upgrade.
+                  properties:
+                    onUpgrade:
+                      type: boolean
+                      default: false
+                      description: Send Slack notifications for actual upgrades (dryRun false).
+                    onDryRun:
+                      type: boolean
+                      default: false
+                      description: Send Slack notifications for dry-run executions (dryRun true).
+                karpenterNodePools:
+                  type: object
+                  description: Karpenter NodePool node replacement configuration. When enabled, kuo rolls Karpenter-managed nodes after the managed node group phase completes. Absent or disabled leaves Karpenter nodes untouched.
+                  properties:
+                    enabled:
+                      type: boolean
+                      default: false
+                      description: Enable Karpenter NodePool node replacement.
+                    nodePools:
+                      type: array
+                      description: NodePools to process, in order. An empty list or a single "ALL" entry (case-insensitive) selects every NodePool in the cluster.
+                      items:
+                        type: string
+                    strategy:
+                      type: string
+                      enum:
+                        - Replace
+                      default: Replace
+                      description: "Replacement strategy. v1 supports Replace only: kuo deletes NodeClaims directly and controls order, pace, and stability checks while Karpenter performs cordon/drain/provisioning."
+                    maxUnavailable:
+                      type: string
+                      default: "1"
+                      description: 'Maximum nodes replaced concurrently per NodePool. Accepts a bare integer ("1") or a percentage ("10%") of the NodePool node count. Defaults to strictly sequential.'
+                    nodeDrainTimeoutMinutes:
+                      type: integer
+                      default: 15
+                      description: Max minutes to wait for an old node to drain and be removed after the NodeClaim is deleted. Karpenter performs the drain; kuo waits.
+                    controllerStableTimeoutMinutes:
+                      type: integer
+                      default: 10
+                      description: Max minutes to wait for the controllers of evicted pods to become Ready again on other nodes before proceeding.
+            status:
+              type: object
+              description: EKSUpgradeStatus defines the observed state of the upgrade.
+              properties:
+                phase:
+                  type: string
+                  description: "Current phase. Forward: Pending → Planning → PreflightChecking → UpgradingControlPlane → UpgradingAddons → UpgradingNodeGroups → UpgradingKarpenterNodePools → Completed. Rollback: Pending → Planning → PreflightChecking → RollingBackNodeGroups → RollingBackAddons → RollingBackControlPlane → Completed. Any phase may transition to Failed."
+                  enum:
+                    - Pending
+                    - Planning
+                    - PreflightChecking
+                    - UpgradingControlPlane
+                    - UpgradingAddons
+                    - UpgradingNodeGroups
+                    - UpgradingKarpenterNodePools
+                    - RollingBackNodeGroups
+                    - RollingBackAddons
+                    - RollingBackControlPlane
+                    - Completed
+                    - Failed
+                currentVersion:
+                  type: string
+                  description: Current Kubernetes version of the EKS cluster control plane as observed by the operator.
+                progress:
+                  type: string
+                  description: 'Overall progress as completed/total component units (control plane minor steps + add-ons + node groups), analogous to a Pod Ready column (e.g., "3/6").'
+                phases:
+                  type: object
+                  description: Per-phase status details grouped by upgrade phase.
+                  properties:
+                    planning:
+                      type: object
+                      description: Planning phase details. Populated after the Planning phase completes.
+                      properties:
+                        sourceVersion:
+                          type: string
+                          description: Cluster version at planning time, i.e. the start of the upgrade path. Immutable across the upgrade, unlike status.currentVersion which advances to each step's target during the control plane phase.
+                        upgradePath:
+                          type: array
+                          description: Planned sequential upgrade path from current to target version (e.g., ["1.32", "1.33", "1.34"]). Each entry represents one minor version step.
+                          items:
+                            type: string
+                    preflight:
+                      type: object
+                      description: Preflight checking phase details. Populated after the PreflightChecking phase completes.
+                      properties:
+                        checks:
+                          type: array
+                          description: Results of preflight validation checks.
+                          items:
+                            type: object
+                            description: Result of a single preflight check.
+                            properties:
+                              name:
+                                type: string
+                                description: Name of the preflight check (e.g., "EKS Deletion Protection", "PDB Drain Deadlock").
+                              status:
+                                type: string
+                                description: "Result of the check: Pass, Fail, Skip, or Info."
+                              message:
+                                type: string
+                                description: Human-readable summary of the check result.
+                              resources:
+                                type: array
+                                description: Resources flagged by the check, one entry per resource (e.g., ["payments/worker-pdb"] for blocking PodDisruptionBudgets, ["deployment:kube-system/coredns"] for insight findings). Empty when the check flagged nothing.
+                                items:
+                                  type: string
+                    controlPlane:
+                      type: object
+                      description: Control plane upgrade phase details. Tracks sequential minor version upgrades.
+                      properties:
+                        currentStep:
+                          type: integer
+                          description: Current step number (1-based) in the upgrade path. Indicates which minor version upgrade is currently in progress.
+                        totalSteps:
+                          type: integer
+                          description: Total number of control plane upgrade steps required to reach the target version.
+                        target:
+                          type: string
+                          description: Target version of the current control plane upgrade step (e.g., "1.33"). Present only while an upgrade step is active.
+                        updateId:
+                          type: string
+                          description: Active AWS EKS update ID for the control plane operation. Used for crash recovery to resume monitoring a previously initiated update.
+                        startedAt:
+                          type: string
+                          format: date-time
+                          description: Timestamp when the current upgrade step was initiated. Used for timeout enforcement.
+                        completedAt:
+                          type: string
+                          format: date-time
+                          description: Timestamp when all control plane upgrade steps completed.
+                    addons:
+                      type: array
+                      description: Status of each EKS add-on upgrade.
+                      items:
+                        type: object
+                        description: Status of an individual add-on upgrade.
+                        properties:
+                          name:
+                            type: string
+                            description: Name of the EKS add-on (e.g., "vpc-cni", "coredns", "kube-proxy").
+                          currentVersion:
+                            type: string
+                            description: Current installed version of the add-on before upgrade.
+                          targetVersion:
+                            type: string
+                            description: Target version the add-on will be upgraded to.
+                          status:
+                            type: string
+                            description: "Upgrade status of this add-on: Pending, InProgress, Completed, Failed, or Skipped."
+                          startedAt:
+                            type: string
+                            format: date-time
+                            description: Timestamp when this add-on upgrade was initiated.
+                          completedAt:
+                            type: string
+                            format: date-time
+                            description: Timestamp when this add-on upgrade completed.
+                    nodegroups:
+                      type: array
+                      description: Status of each managed node group upgrade.
+                      items:
+                        type: object
+                        description: Status of an individual managed node group upgrade.
+                        properties:
+                          name:
+                            type: string
+                            description: Name of the managed node group.
+                          currentVersion:
+                            type: string
+                            description: Current Kubernetes version of the node group AMI before upgrade.
+                          targetVersion:
+                            type: string
+                            description: Target Kubernetes version the node group will be upgraded to.
+                          status:
+                            type: string
+                            description: "Upgrade status of this node group: Pending, InProgress, Completed, Failed, or Skipped."
+                          updateId:
+                            type: string
+                            description: Active AWS EKS update ID for this node group operation. Used for crash recovery.
+                          startedAt:
+                            type: string
+                            format: date-time
+                            description: Timestamp when this node group upgrade was initiated. Used for timeout enforcement.
+                          completedAt:
+                            type: string
+                            format: date-time
+                            description: Timestamp when this node group upgrade completed.
+                    karpenterNodePools:
+                      type: object
+                      description: Karpenter NodePool replacement phase status.
+                      properties:
+                        strategy:
+                          type: string
+                          description: Replacement strategy in effect (e.g., "Replace").
+                        activePool:
+                          type: string
+                          description: NodePool currently being processed.
+                        totalNodes:
+                          type: integer
+                          description: Total stale nodes across all target NodePools.
+                        replacedNodes:
+                          type: integer
+                          description: Nodes replaced so far across all target NodePools.
+                        pools:
+                          type: array
+                          description: Per-NodePool replacement statuses.
+                          items:
+                            type: object
+                            description: Replacement status of a single Karpenter NodePool.
+                            properties:
+                              name:
+                                type: string
+                                description: NodePool name.
+                              status:
+                                type: string
+                                description: "Replacement status of this NodePool: Pending, InProgress, Completed, Failed, or Skipped."
+                              totalNodes:
+                                type: integer
+                                description: Total stale nodes detected in this NodePool.
+                              replacedNodes:
+                                type: integer
+                                description: Nodes replaced so far in this NodePool.
+                              completedNodeClaims:
+                                type: array
+                                description: NodeClaims already replaced (crash-recovery record).
+                                items:
+                                  type: string
+                              replacements:
+                                type: array
+                                description: Completed replacements mapping each removed NodeClaim to the newly provisioned one.
+                                items:
+                                  type: object
+                                  properties:
+                                    oldNodeClaim:
+                                      type: string
+                                      description: Name of the removed (old) NodeClaim.
+                                    newNodeClaim:
+                                      type: string
+                                      description: Name of the newly provisioned NodeClaim.
+                                    nodeName:
+                                      type: string
+                                      description: Name of the old backing Node.
+                              currentBatch:
+                                type: array
+                                description: NodeClaims currently being replaced.
+                                items:
+                                  type: object
+                                  description: One NodeClaim currently being replaced.
+                                  properties:
+                                    nodeClaim:
+                                      type: string
+                                      description: Name of the NodeClaim being replaced.
+                                    nodeName:
+                                      type: string
+                                      description: Name of the backing Node resource, if registered.
+                                    providerID:
+                                      type: string
+                                      description: Provider ID (e.g., aws:///az/instance-id) for AWS correlation.
+                                    state:
+                                      type: string
+                                      description: "Replacement stage: Draining or WaitingControllerStable."
+                                    startedAt:
+                                      type: string
+                                      format: date-time
+                                      description: Timestamp when this NodeClaim replacement started.
+                                    controllers:
+                                      type: array
+                                      description: Owning controllers of evicted pods (kind|namespace|name), captured before deletion.
+                                      items:
+                                        type: string
+                conditions:
+                  type: array
+                  description: Standard Kubernetes conditions representing the current state of the upgrade.
+                  items:
+                    type: object
+                    description: A condition on the EKSUpgrade resource.
+                    properties:
+                      type:
+                        type: string
+                        description: Type of the condition (e.g., "AWSAuthenticated").
+                      status:
+                        type: string
+                        description: "Status of the condition: \"True\", \"False\", or \"Unknown\"."
+                      reason:
+                        type: string
+                        description: Machine-readable reason for the condition's last transition (e.g., "AssumeRoleSuccess", "IdentityVerified").
+                      message:
+                        type: string
+                        description: Human-readable message with details about the condition.
+                      lastTransitionTime:
+                        type: string
+                        format: date-time
+                        description: Last time the condition transitioned from one status to another.
+                startedAt:
+                  type: string
+                  format: date-time
+                  description: Timestamp when the upgrade process started.
+                completedAt:
+                  type: string
+                  format: date-time
+                  description: Timestamp when the upgrade completed (Completed or Failed).
+                observedGeneration:
+                  type: integer
+                  description: Last observed generation of the EKSUpgrade spec. Used for leader election and change detection.
+                message:
+                  type: string
+                  description: Human-readable message providing additional details about the current phase or error information if the upgrade failed.
+                identity:
+                  type: object
+                  description: AWS caller identity resolved via STS GetCallerIdentity. Shows which IAM principal the operator is using for API calls.
+                  properties:
+                    accountId:
+                      type: string
+                      description: AWS account ID of the caller.
+                    arn:
+                      type: string
+                      description: IAM ARN of the caller (e.g., the assumed role ARN or pod identity ARN).
+                lifecycle:
+                  type: object
+                  description: EKS version lifecycle information including standard and extended support end dates for current and target versions.
+                  properties:
+                    lastCheckedTime:
+                      type: string
+                      format: date-time
+                      description: Timestamp when lifecycle information was last fetched from the DescribeClusterVersions API.
+                    currentVersion:
+                      type: object
+                      description: Lifecycle info for the current cluster version.
+                      properties:
+                        version:
+                          type: string
+                          description: Kubernetes version (e.g., "1.32").
+                        versionStatus:
+                          type: string
+                          description: "Version support status (e.g., \"standard-support\", \"extended-support\")."
+                        endOfStandardSupportDate:
+                          type: string
+                          format: date-time
+                          description: End of standard support date for this version.
+                        endOfExtendedSupportDate:
+                          type: string
+                          format: date-time
+                          description: End of extended support date for this version.
+                    targetVersion:
+                      type: object
+                      description: Lifecycle info for the target upgrade version.
+                      properties:
+                        version:
+                          type: string
+                          description: Kubernetes version (e.g., "1.34").
+                        versionStatus:
+                          type: string
+                          description: "Version support status (e.g., \"standard-support\", \"extended-support\")."
+                        endOfStandardSupportDate:
+                          type: string
+                          format: date-time
+                          description: End of standard support date for this version.
+                        endOfExtendedSupportDate:
+                          type: string
+                          format: date-time
+                          description: End of extended support date for this version.
+                    error:
+                      type: string
+                      description: Error message if lifecycle information could not be fetched from the DescribeClusterVersions API.
+                lastTransition:
+                  type: object
+                  description: The last upgrade or rollback that reached Completed. Preserved across spec-change resets and used to reject a rollback that immediately follows another completed rollback (EKS only permits rolling back to a version the cluster was recently upgraded from).
+                  properties:
+                    mode:
+                      type: string
+                      description: Direction of the completed transition (Forward or Rollback).
+                      enum:
+                        - Forward
+                        - Rollback
+                    toVersion:
+                      type: string
+                      description: Cluster version the transition settled on.
+                    completedAt:
+                      type: string
+                      format: date-time
+                      description: Timestamp when the transition completed.
+      subresources:
+        status: {}
+      additionalPrinterColumns:
+        - name: CLUSTER
+          type: string
+          jsonPath: .spec.clusterName
+        - name: TARGET
+          type: string
+          jsonPath: .spec.targetVersion
+        - name: PHASE
+          type: string
+          jsonPath: .status.phase
+        - name: PROGRESS
+          type: string
+          jsonPath: .status.progress
+        - name: AUTH
+          type: string
+          jsonPath: .status.conditions[?(@.type=="AWSAuthenticated")].reason
+        - name: AGE
+          type: date
+          jsonPath: .metadata.creationTimestamp
+{{- end }}

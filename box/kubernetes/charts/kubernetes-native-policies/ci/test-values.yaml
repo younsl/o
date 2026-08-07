@@ -1,0 +1,71 @@
+validatingAdmissionPolicies:
+  deny-privileged-containers:
+    enabled: true
+    description: "Denies pods that run privileged containers"
+    failurePolicy: Fail
+    matchConstraints:
+      resourceRules:
+        - apiGroups: [""]
+          apiVersions: ["v1"]
+          operations: ["CREATE", "UPDATE"]
+          resources: ["pods"]
+    validations:
+      - expression: "!object.spec.containers.exists(c, has(c.securityContext) && has(c.securityContext.privileged) && c.securityContext.privileged)"
+        message: "Privileged containers are not allowed"
+    bindings:
+      production:
+        enabled: true
+        validationActions: ["Deny"]
+        matchResources:
+          namespaceSelector:
+            matchLabels:
+              environment: production
+      staging:
+        enabled: false
+        validationActions: ["Warn"]
+
+mutatingAdmissionPolicies:
+  add-default-labels:
+    enabled: true
+    description: "Adds managed-by label to newly created pods"
+    failurePolicy: Fail
+    reinvocationPolicy: Never
+    matchConstraints:
+      resourceRules:
+        - apiGroups: [""]
+          apiVersions: ["v1"]
+          operations: ["CREATE"]
+          resources: ["pods"]
+    mutations:
+      - patchType: JSONPatch
+        jsonPatch:
+          expression: |
+            [
+              JSONPatch{
+                op: "add",
+                path: "/metadata/labels/managed-by",
+                value: "admission-policy"
+              }
+            ]
+    bindings:
+      dev:
+        enabled: true
+        matchResources:
+          namespaceSelector:
+            matchLabels:
+              auto-label: "true"
+
+extraObjects:
+  - apiVersion: v1
+    kind: ConfigMap
+    metadata:
+      name: '{{ include "kubernetes-native-policies.fullname" . }}-params'
+    data:
+      key: value
+  - |
+    apiVersion: v1
+    kind: ConfigMap
+    metadata:
+      name: {{ .Release.Name }}-inline
+    data:
+      chartVersion: {{ .Chart.Version }}

@@ -1,0 +1,32 @@
+# -- Grafana sidecar configuration for dashboard discovery
+sidecar:
+  # -- (map) Labels for Grafana sidecar to discover dashboards
+  labels:
+    grafana_dashboard: "1"
+  # -- (string) Annotation key for specifying dashboard folder
+  folderAnnotation: grafana_folder
+
+# -- Dashboard configurations
+dashboards:
+  node-problem-detector:
+    # -- (bool) Enable or disable this dashboard
+    enabled: true
+    # -- (string) Dashboard JSON file path under dashboards/
+    file: nodes/node-problem-detector.json
+    # -- (string) Grafana folder name (empty = root folder)
+    folder: ""
+    # -- (map) Additional labels for this dashboard ConfigMap
+    labels: {}
+    # -- (map) Additional annotations for this dashboard ConfigMap
+    annotations:
+      grafana-dashboards/compatibility: node-problem-detector v1.35.1
+      grafana-dashboards/metrics-source: servicemonitor
+
+  istiod-control-plane:
+    enabled: true
+    file: istio/istiod-control-plane.json
+    folder: "Istio"
+    labels: {}
+    annotations:
+      grafana-dashboards/compatibility: istio v1.28.2
+      grafana-dashboards/metrics-source: servicemonitor 

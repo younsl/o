@@ -1,0 +1,164 @@
+mod ami_cleanup;
+mod asg_scaling;
+mod aws_mfa;
+mod config;
+mod ec2;
+mod error;
+mod file_config;
+mod forward;
+mod session;
+mod ssm_connect;
+mod tabs;
+mod ui;
+mod wizard;
+
+use clap::Parser;
+use colored::Colorize;
+
+use config::{Args, Command, Config};
+use error::Error;
+use file_config::FileConfig;
+use forward::PortForward;
+use session::{SessionCredentials, SessionManager};
+use tabs::TabResult;
+
+fn init_logging(config: &Config) {
+    let filter = format!("error,ij={}", config.log_level);
+    tracing_subscriber::fmt()
+        .with_env_filter(
+            tracing_subscriber::EnvFilter::try_from_default_env()
+                .unwrap_or_else(|_| tracing_subscriber::EnvFilter::new(&filter)),
+        )
+        .with_target(false)
+        .init();
+}
+
+#[tokio::main]
+async fn main() {
+    let args = Args::parse();
+
+    // Handle subcommands
+    match args.command {
+        Some(Command::Init) => {
+            if let Err(e) = wizard::run_wizard() {
+                match e {
+                    Error::Cancelled => {
+                        println!("\n{}", "Configuration cancelled.".yellow());
+                    }
+                    _ => {
+                        eprintln!("{} {}", "Error:".red().bold(), e);
+                        std::process::exit(1);
+                    }
+                }
+            }
+            return;
+        }
+        Some(Command::AmiCleanup(ami_args)) => {
+            if let Err(e) = ami_cleanup::run(ami_args).await {
+                eprintln!("{} {}", "Error:".red().bold(), e);
+                std::process::exit(1);
+            }
+            return;
+        }
+        None => {}
+    }
+
+    // Load file config and build config
+    let file_config = FileConfig::load_default().ok().flatten();
+    let config = Config::from_args_and_file(args, file_config);
+    init_logging(&config);
+
+    // Parse port forward spec early to fail fast
+    let port_forward = config
+        .forward
+        .as_deref()
+        .map(PortForward::parse)
+        .transpose();
+    let port_forward = match port_forward {
+        Ok(pf) => pf,
+        Err(e) => {
+            eprintln!("{} {}", "Error:".red().bold(), e);
+            std::process::exit(1);
+        }
+    };
+
+    // Resolve MFA credentials before entering the TUI. dialoguer cannot
+    // read input once crossterm is in raw mode, so prompts must happen here.
+    // For non-MFA profiles this is a no-op that warms the credential cache.
+    if let Err(e) =
+        aws_mfa::build_sdk_config(config.profile.as_deref(), config.aws_config_file.as_deref())
+            .await
+    {
+        eprintln!("{} {}", "Error:".red().bold(), e);
+        std::process::exit(1);
+    }
+
+    // Pull the cached STS credentials so the spawned `aws ssm start-session`
+    // can reuse them via env vars. Without this, AWS CLI re-runs its own
+    // credential resolution and prompts for the OTP a second time.
+    let session_credentials = match aws_mfa::resolve_credentials(
+        config.profile.as_deref(),
+        config.aws_config_file.as_deref(),
+    )
+    .await
+    {
+        Ok(Some(creds)) => creds.session_token().map(|token| SessionCredentials {
+            access_key_id: creds.access_key_id().to_string(),
+            secret_access_key: creds.secret_access_key().to_string(),
+            session_token: token.to_string(),
+        }),
+        Ok(None) => None,
+        Err(e) => {
+            eprintln!("{} {}", "Error:".red().bold(), e);
+            std::process::exit(1);
+        }
+    };
+
+    // Run tabbed TUI
+    match tabs::run_tabbed(config.clone()).await {
+        Ok(TabResult::Connect(instance)) => {
+            // Print selection info
+            println!(
+                "{} {} ({})",
+                "Selected:".bright_blue(),
+                instance.name.bright_cyan().bold(),
+                instance.az.bright_blue()
+            );
+
+            let mut session =
+                SessionManager::new(config.profile.clone(), config.shell_commands.clone());
+            if let Some(creds) = session_credentials {
+                session = session.with_credentials(creds);
+            }
+
+            if let Some(ref pf) = port_forward {
+                println!(
+                    "{} {}",
+                    "Port forwarding:".bright_blue(),
+                    pf.display_info().bright_yellow().bold(),
+                );
+                println!(
+                    "{} {} ({})",
+                    "Via:".bright_blue(),
+                    instance.name.bright_cyan(),
+                    instance.instance_id.bright_blue(),
+                );
+                println!("{}", "Press Ctrl+C to stop the tunnel.".bright_black());
+                if let Err(e) = session.port_forward(&instance, pf) {
+                    eprintln!("{} {}", "Error:".red().bold(), e);
+                    std::process::exit(1);
+                }
+            } else if let Err(e) = session.connect(&instance) {
+                eprintln!("{} {}", "Error:".red().bold(), e);
+                std::process::exit(1);
+            }
+        }
+        Ok(TabResult::Quit) => {
+            println!("\n{}", "Exiting.".yellow());
+        }
+        Err(e) => {
+            eprintln!("{} {}", "Error:".red().bold(), e);
+            std::process::exit(1);
+        }
+    }
+}

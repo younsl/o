@@ -1,0 +1,76 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 800 360" font-family="-apple-system, Segoe UI, Helvetica, Arial, sans-serif">
+  <defs>
+    <marker id="arrow" markerWidth="10" markerHeight="10" refX="8" refY="3" orient="auto" markerUnits="strokeWidth">
+      <path d="M0,0 L8,3 L0,6 Z" fill="#111111"/>
+    </marker>
+  </defs>
+
+  <rect x="0" y="0" width="800" height="360" fill="#ffffff"/>
+
+  <!-- region boundaries -->
+  <rect x="20" y="40" width="390" height="300" rx="10" fill="#ffffff" stroke="#111111" stroke-width="1.5" stroke-dasharray="6 4"/>
+  <text x="36" y="62" font-size="14" font-weight="700" fill="#111111">Kubernetes cluster</text>
+  <rect x="470" y="40" width="300" height="300" rx="10" fill="#ffffff" stroke="#111111" stroke-width="1.5" stroke-dasharray="6 4"/>
+  <text x="486" y="62" font-size="14" font-weight="700" fill="#111111">AWS</text>
+
+  <!-- deployment holds the pods -->
+  <rect x="44" y="80" width="346" height="230" rx="8" fill="#f6f6f6" stroke="#111111" stroke-width="1.2" stroke-dasharray="4 3"/>
+  <text x="56" y="100" font-size="12" font-weight="700" fill="#333333">Deployment (replicas=N)</text>
+
+  <g font-size="12">
+    <rect x="250" y="104" width="120" height="196" rx="6" fill="#111111" stroke="#111111" stroke-width="2.5"/>
+    <text x="310" y="196" text-anchor="middle" font-weight="700" fill="#ffffff">Pod (leader)</text>
+    <text x="310" y="216" text-anchor="middle" font-size="11" fill="#cccccc">reconcile every 5m</text>
+
+    <rect x="64" y="120" width="120" height="80" rx="6" fill="#dddddd" stroke="#999999" stroke-dasharray="5 4"/>
+    <text x="124" y="164" text-anchor="middle" font-weight="700" fill="#555555">Pod (standby)</text>
+  </g>
+
+  <!-- aws resources (compact: small boxes, tight gaps, snug container) -->
+  <g font-size="12">
+    <!-- IAM role lives outside the cluster; the pod assumes it for AWS API calls -->
+    <rect x="510" y="92" width="230" height="40" rx="6" fill="#111111" stroke="#111111"/>
+    <text x="625" y="116" text-anchor="middle" font-weight="700" fill="#ffffff">IAM Role</text>
+
+    <rect x="494" y="150" width="262" height="176" rx="8" fill="#f6f6f6" stroke="#111111" stroke-width="1.2" stroke-dasharray="4 3"/>
+    <text x="506" y="170" font-size="12" font-weight="700" fill="#333333">EC2 instance (standalone)</text>
+
+    <rect x="510" y="184" width="230" height="44" rx="6" fill="#111111" stroke="#111111"/>
+    <text x="625" y="210" text-anchor="middle" font-weight="700" fill="#ffffff">SSM Agent</text>
+
+    <rect x="510" y="268" width="230" height="44" rx="6" fill="#111111" stroke="#111111"/>
+    <text x="625" y="294" text-anchor="middle" font-weight="700" fill="#ffffff">EBS root volume</text>
+  </g>
+
+  <!-- edges (orthogonal: horizontal or vertical only) -->
+  <g stroke="#111111" stroke-width="1.5" fill="none">
+    <path d="M184,160 H250" marker-end="url(#arrow)" stroke-dasharray="5 4"/>
+    <path d="M370,112 H510" marker-end="url(#arrow)"/>
+    <path d="M370,206 H510" marker-end="url(#arrow)"/>
+    <path d="M370,290 H510" marker-end="url(#arrow)"/>
+    <path d="M625,228 V268" marker-end="url(#arrow)"/>
+  </g>
+
+  <!-- label backgrounds (white, so text reads cleanly) -->
+  <g stroke="none" fill="#ffffff">
+    <rect x="191" y="125" width="52" height="24" rx="2"/>
+    <rect x="402" y="85" width="76" height="24" rx="2"/>
+    <rect x="394" y="191" width="92" height="13" rx="2"/>
+    <rect x="401" y="261" width="78" height="24" rx="2"/>
+    <rect x="628" y="241" width="112" height="13" rx="2"/>
+  </g>
+
+  <!-- edge labels (placed above the arrow so the line never crosses the text) -->
+  <g font-size="10" fill="#333333" text-anchor="middle">
+    <text x="217" y="134">leader</text>
+    <text x="217" y="145">election</text>
+    <text x="440" y="94">IRSA or EKS</text>
+    <text x="440" y="105">Pod Identity</text>
+    <text x="440" y="200">ssm:SendCommand</text>
+    <text x="440" y="270">ec2:Describe /</text>
+    <text x="440" y="281">ModifyVolume</text>
+  </g>
+  <g font-size="10" fill="#333333">
+    <text x="631" y="250">growpart + resize2fs</text>
+  </g>
+</svg>

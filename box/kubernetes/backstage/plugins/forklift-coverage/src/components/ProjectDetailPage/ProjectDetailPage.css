@@ -1,0 +1,157 @@
+/* Repository name as the page title, which is also the link into GitLab. */
+.fc-detail-title {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 24px;
+  font-weight: 700;
+  line-height: 1.2;
+  color: var(--bui-color-text-default, #e0e0e0);
+  text-decoration: none;
+}
+
+.fc-detail-title svg {
+  opacity: 0.5;
+  flex-shrink: 0;
+}
+
+.fc-detail-title:hover {
+  text-decoration: underline;
+}
+
+.fc-detail-title:hover svg {
+  opacity: 0.9;
+}
+
+.fc-pipeline-view {
+  margin: 0;
+  padding: 8px 0;
+  max-height: 480px;
+  overflow: auto;
+  border: 1px solid var(--bui-color-border-default, rgba(255, 255, 255, 0.12));
+  border-radius: 6px;
+  background: var(--bui-bg-neutral-2, rgba(255, 255, 255, 0.04));
+  font-family: var(--bui-font-mono, ui-monospace, SFMono-Regular, Menlo, monospace);
+  font-size: 12px;
+  line-height: 1.6;
+}
+
+.fc-pipeline-line {
+  display: flex;
+  gap: 12px;
+  padding: 0 12px;
+  white-space: pre;
+}
+
+/* Lines that reference the Forklift host or token, the actual wiring. */
+.fc-pipeline-hit {
+  background-color: rgba(34, 197, 94, 0.12);
+}
+
+.fc-pipeline-lineno {
+  flex-shrink: 0;
+  min-width: 32px;
+  text-align: right;
+  user-select: none;
+  color: var(--bui-color-text-secondary, #888);
+}
+
+.fc-pipeline-code {
+  flex: 1;
+  color: var(--bui-color-text-default, #e0e0e0);
+}
+
+/* GitLab CI tokens. Job names are the strongest accent since they are what a
+   reviewer scans for; the reserved keywords sit one step below. */
+.fc-yaml-job {
+  color: #e5c07b;
+  font-weight: 600;
+}
+
+.fc-yaml-keyword {
+  color: #569cd6;
+}
+
+.fc-yaml-key {
+  color: #9cdcfe;
+}
+
+.fc-yaml-string {
+  color: #ce9178;
+}
+
+.fc-yaml-variable {
+  color: #4ec9b0;
+}
+
+.fc-yaml-bool {
+  color: #c586c0;
+}
+
+.fc-yaml-number {
+  color: #b5cea8;
+}
+
+.fc-yaml-anchor {
+  color: #c586c0;
+  font-style: italic;
+}
+
+.fc-yaml-comment {
+  color: #6a9955;
+  font-style: italic;
+}
+
+.fc-yaml-punct {
+  color: #9a9a9a;
+}
+
+/* Scope toggle: copy on the left, switch on the right, whole row is the target. */
+.fc-toggle-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 10px 12px;
+  border: 1px solid var(--bui-color-border-default, rgba(255, 255, 255, 0.12));
+  border-radius: 8px;
+  cursor: pointer;
+}
+
+.fc-toggle-row:hover {
+  background-color: rgba(128, 128, 128, 0.06);
+}
+
+.fc-toggle-copy {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+/* Minimal switch. BUI ships the indicator as a CSS module class, so the hashed
+   name is matched by substring. */
+.fc-switch [class*='SwitchIndicator'] {
+  width: 34px !important;
+  height: 18px !important;
+  border-radius: 9px !important;
+  background: rgba(156, 163, 175, 0.35) !important;
+  border: none !important;
+}
+
+.fc-switch [class*='SwitchIndicator']::before {
+  margin: 2px !important;
+  width: 14px !important;
+  height: 14px !important;
+  border-radius: 50% !important;
+  background: #fff !important;
+  box-shadow: none !important;
+}
+
+.fc-switch[data-selected] [class*='SwitchIndicator'] {
+  background: #10b981 !important;
+}
+
+.fc-switch[data-disabled] {
+  opacity: 0.45;
+}

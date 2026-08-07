@@ -1,0 +1,30 @@
+apiVersion: v2
+name: kuo
+description: Kubernetes Upgrade Operator for EKS clusters
+type: application
+deprecated: false
+version: 0.6.0
+appVersion: "0.5.0"
+home: https://github.com/younsl/o
+sources:
+  - https://github.com/younsl/o/tree/main/box/kubernetes/kubernetes-upgrade-operator
+maintainers:
+  - name: younsl
+    email: cysl@kakao.com
+    url: https://github.com/younsl
+keywords:
+  - eks
+  - kubernetes
+  - upgrade
+  - operator
+  - aws
+annotations:
+  artifacthub.io/changes: |
+    - kind: added
+      description: "Record upgrade phases as Grafana annotations: a point annotation per phase start and a region annotation spanning each finished run, tagged with cluster, region, resource, mode and phase"
+    - kind: added
+      description: "Add grafanaAnnotation values (enabled, url, tags, annotateOn, secretAnnotations) with apiToken or existingSecret token sources; point existingSecret at an ExternalSecret target in extraObjects to source the token from AWS"
+    - kind: added
+      description: "Verify the Grafana endpoint is reachable at startup, classifying an unreachable endpoint apart from a refused token, and log the response code and latency of every Grafana request"
+    - kind: changed
+      description: "A missing or refused Grafana token logs a warning and disables annotating instead of stopping the operator, so annotation setup can never block an upgrade"

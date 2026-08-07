@@ -1,0 +1,83 @@
+# Example aws-vpn-maintenance-handler configuration.
+#
+# The Helm chart renders this file from values.yaml and mounts it at
+# /etc/aws-vpn-maintenance-handler/config.yaml. Use this copy for `make validate` and
+# local runs. Unknown keys are a startup error, so a typo in a safety threshold
+# fails loudly instead of silently leaving the default in place.
+
+region: ap-northeast-2
+reconcileInterval: "5m"
+
+# Ask for approval as usual, but call ReplaceVpnTunnel with the AWS DryRun flag,
+# which validates permissions and arguments and replaces nothing.
+dryRun: true
+
+# VPN connections are opted in by tag. An untagged connection is never eligible,
+# so creating a new VPN cannot accidentally enroll it in automated replacement.
+targets:
+  tagFilters:
+    - key: aws-vpn-maintenance-handler.networking.k8s.io/managed
+      value: "true"
+  excludeConnectionIDs: []
+
+# Each cron firing opens the window for `duration`; cron alone only names instants.
+maintenanceWindow:
+  timezone: Asia/Seoul
+  cronSchedule: "0 2 * * 2,3,4"
+  duration: "3h"
+  # Left unset, minRemaining becomes safety.verifyTimeout, so a replacement can only
+  # start while the window can still contain the verification of it.
+
+safety:
+  # How long the surviving tunnel must have held UP. Also the wait the sibling tunnel
+  # serves after a replacement before it may be chained, which is the only place this
+  # value costs time. Left unset it is 5m.
+  peerMinStableFor: "5m"
+  peerMinAcceptedRoutes: 1
+  perConnectionCooldown: "24h"
+  # One approval covers the connection: both tunnels are replaced in sequence, never at
+  # the same time. The cooldown still applies to a repeat attempt on the same tunnel and
+  # to any connection whose last replacement did not end healthy.
+  chainSiblingTunnel: true
+  verifyTimeout: "30m"
+  verifyPollInterval: "10s"
+  # A week, so "this needs a window soon" is raised while more than one window is
+  # left to act in. Inside it the traffic gate settles for a median moment rather
+  # than holding out for the quietest one.
+  escalateBefore: "168h"
+
+approval:
+  # Slack user IDs, not display names. These receive the approval DM and are the
+  # only users whose clicks are accepted.
+  slackUserIDs:
+    - U0123456789
+  # timeout is the upper bound, not the only one. An outstanding request is re-checked
+  # against the preflight rules and withdrawn early once no click could still succeed,
+  # most often because the window ran out of room to start and verify a replacement.
+  timeout: "1h"
+  progressHeartbeat: "5m"
+
+# The window says when maintenance is permitted; this says which moment inside it to
+# take. The comparison is against what this connection carries during that same
+# window, so "quiet" means quiet for this tunnel at this time of day, and the only
+# number to pick is how quiet.
+trafficGate:
+  enabled: false
+  endpoint: https://mimir.example.com/prometheus
+  headers:
+    X-Scope-OrgID: anonymous
+  timeout: "10s"
+  # Act once traffic falls into the quietest fifth of the last four weeks of this
+  # window. Lower waits for a calmer moment and may not find one; higher acts sooner.
+  quietPercentile: 20
+  # Unreadable metrics are not evidence that the tunnel is quiet.
+  onError: block
+
+leaderElect: false
+leaseName: aws-vpn-maintenance-handler
+stateConfigMapName: aws-vpn-maintenance-handler-state
+
+healthPort: 8081
+metricsPort: 9090
+logLevel: info
+logFormat: text

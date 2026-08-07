@@ -1,0 +1,588 @@
+//! Preflight check types and results for EKS upgrade validation.
+
+use crate::eks::insights::InsightsSummary;
+use crate::k8s::pdb::PdbSummary;
+
+/// Category of a preflight check.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum CheckCategory {
+    Mandatory,
+}
+
+/// Status of a preflight check.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum CheckStatus {
+    Pass,
+    Fail,
+}
+
+/// A single preflight check result.
+#[derive(Debug, Clone)]
+pub struct PreflightCheckResult {
+    pub name: &'static str,
+    pub category: CheckCategory,
+    pub status: CheckStatus,
+    pub summary: String,
+    /// Resources the check flagged, so they are enumerable in the CR status
+    /// instead of only being embedded in `summary`.
+    pub resources: Vec<String>,
+}
+
+/// A preflight check that was skipped.
+#[derive(Debug, Clone)]
+pub struct SkippedCheck {
+    pub name: &'static str,
+    pub reason: String,
+}
+
+/// Aggregated results of all preflight checks.
+#[derive(Debug, Clone, Default)]
+pub struct PreflightResults {
+    pub checks: Vec<PreflightCheckResult>,
+    pub skipped: Vec<SkippedCheck>,
+}
+
+// ============================================================================
+// Builder functions
+// ============================================================================
+
+impl PreflightCheckResult {
+    /// Build a deletion protection check result.
+    pub fn deletion_protection(enabled: bool) -> Self {
+        let (status, summary) = if enabled {
+            (CheckStatus::Pass, "Deletion protection is enabled".into())
+        } else {
+            (CheckStatus::Fail, "Deletion protection is disabled".into())
+        };
+        Self {
+            name: "EKS Deletion Protection",
+            category: CheckCategory::Mandatory,
+            status,
+            summary,
+            resources: Vec::new(),
+        }
+    }
+
+    /// Build an EKS Cluster Insights check result.
+    pub fn cluster_insights(summary: &InsightsSummary) -> Self {
+        let (status, msg) = if summary.has_critical_blockers() {
+            (
+                CheckStatus::Fail,
+                format!(
+                    "{} critical insight(s) found that may block upgrade ({} total: {} warning, {} passing, {} info)",
+                    summary.critical_count,
+                    summary.total_findings,
+                    summary.warning_count,
+                    summary.passing_count,
+                    summary.info_count,
+                ),
+            )
+        } else {
+            (
+                CheckStatus::Pass,
+                format!(
+                    "No critical insights ({} total: {} warning, {} passing, {} info)",
+                    summary.total_findings,
+                    summary.warning_count,
+                    summary.passing_count,
+                    summary.info_count,
+                ),
+            )
+        };
+        // Enumerate the resources behind critical findings as `type:id`, matching
+        // the format used in the preflight logs.
+        let resources = summary
+            .findings
+            .iter()
+            .filter(|f| f.severity == "ERROR" || f.severity == "CRITICAL")
+            .flat_map(|f| {
+                f.resources
+                    .iter()
+                    .map(|r| format!("{}:{}", r.resource_type, r.resource_id))
+            })
+            .collect();
+
+        Self {
+            name: "EKS Cluster Insights",
+            category: CheckCategory::Mandatory,
+            status,
+            summary: msg,
+            resources,
+        }
+    }
+
+    /// Build a Karpenter v1 API availability check result.
+    pub fn karpenter_v1_api(available: bool) -> Self {
+        let (status, summary) = if available {
+            (CheckStatus::Pass, "Karpenter v1 API is served".into())
+        } else {
+            (
+                CheckStatus::Fail,
+                "Karpenter v1 API (NodePool/NodeClaim/EC2NodeClass) not found; v1beta1 and earlier are unsupported".into(),
+            )
+        };
+        Self {
+            name: "Karpenter v1 API",
+            category: CheckCategory::Mandatory,
+            status,
+            summary,
+            resources: Vec::new(),
+        }
+    }
+
+    /// Build a Karpenter AMI selector check result.
+    ///
+    /// `checked` is the number of target `NodePools` inspected. `pinned_pools`
+    /// lists those whose `EC2NodeClass` pins the AMI to a fixed version. Any such
+    /// pool fails the check, because replacing a node would reprovision the same
+    /// AMI.
+    pub fn karpenter_ami_selector(checked: usize, pinned_pools: &[String]) -> Self {
+        let (status, summary) = if pinned_pools.is_empty() {
+            (
+                CheckStatus::Pass,
+                format!(
+                    "All target NodePools resolve their AMI via alias @latest ({checked} nodepools)"
+                ),
+            )
+        } else {
+            (
+                CheckStatus::Fail,
+                format!(
+                    "{} of {checked} NodePool(s) pin a fixed AMI instead of alias @latest. Replacing nodes would reprovision the same version",
+                    pinned_pools.len()
+                ),
+            )
+        };
+        Self {
+            name: "Karpenter AMI Selector",
+            category: CheckCategory::Mandatory,
+            status,
+            summary,
+            resources: pinned_pools.to_vec(),
+        }
+    }
+
+    /// Build a PDB drain deadlock check result.
+    pub fn pdb_drain_deadlock(summary: &PdbSummary) -> Self {
+        let (status, msg) = if summary.has_blocking_pdbs() {
+            (
+                CheckStatus::Fail,
+                format!(
+                    "{} of {} PodDisruptionBudgets block node drain because they allow zero disruptions",
+                    summary.blocking_count(),
+                    summary.total_pdbs,
+                ),
+            )
+        } else {
+            (
+                CheckStatus::Pass,
+                format!(
+                    "No PodDisruptionBudget blocks node drain, {} checked",
+                    summary.total_pdbs
+                ),
+            )
+        };
+        Self {
+            name: "PDB Drain Deadlock",
+            category: CheckCategory::Mandatory,
+            status,
+            summary: msg,
+            resources: summary.blocking.clone(),
+        }
+    }
+}
+
+impl SkippedCheck {
+    /// Create a skipped deletion protection check.
+    pub fn deletion_protection(reason: &str) -> Self {
+        Self {
+            name: "EKS Deletion Protection",
+            reason: reason.to_string(),
+        }
+    }
+
+    /// Create a skipped EKS Cluster Insights check.
+    pub fn cluster_insights(reason: &str) -> Self {
+        Self {
+            name: "EKS Cluster Insights",
+            reason: reason.to_string(),
+        }
+    }
+
+    /// Create a skipped PDB drain deadlock check.
+    pub fn pdb_drain_deadlock(reason: &str) -> Self {
+        Self {
+            name: "PDB Drain Deadlock",
+            reason: reason.to_string(),
+        }
+    }
+
+    /// Create a skipped Karpenter check.
+    pub fn karpenter(reason: &str) -> Self {
+        Self {
+            name: "Karpenter NodePools",
+            reason: reason.to_string(),
+        }
+    }
+}
+
+// ============================================================================
+// PreflightResults methods
+// ============================================================================
+
+impl PreflightResults {
+    /// Returns true if any mandatory preflight check has failed.
+    pub fn has_mandatory_failures(&self) -> bool {
+        self.checks
+            .iter()
+            .any(|c| c.category == CheckCategory::Mandatory && c.status == CheckStatus::Fail)
+    }
+
+    /// Returns human-readable descriptions of failed mandatory preflight checks.
+    ///
+    /// Flagged resources are inlined here even though each check also lists them
+    /// in `resources`: these reasons collapse into the single top-level
+    /// `status.message`, which has no structured counterpart and is what Slack
+    /// notifications and `kubectl get` surface.
+    pub fn mandatory_failure_reasons(&self) -> Vec<String> {
+        self.checks
+            .iter()
+            .filter(|c| c.category == CheckCategory::Mandatory && c.status == CheckStatus::Fail)
+            .map(|c| {
+                if c.resources.is_empty() {
+                    format!("[{}] {}", c.name, c.summary)
+                } else {
+                    format!("[{}] {}: {}", c.name, c.summary, c.resources.join(", "))
+                }
+            })
+            .collect()
+    }
+}
+
+// ============================================================================
+// Tests
+// ============================================================================
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::k8s::pdb::PdbSummary;
+
+    // ---- Builder tests ----
+
+    #[test]
+    fn test_deletion_protection_enabled() {
+        let check = PreflightCheckResult::deletion_protection(true);
+        assert_eq!(check.name, "EKS Deletion Protection");
+        assert_eq!(check.category, CheckCategory::Mandatory);
+        assert_eq!(check.status, CheckStatus::Pass);
+        assert!(check.summary.contains("enabled"));
+    }
+
+    #[test]
+    fn test_deletion_protection_disabled() {
+        let check = PreflightCheckResult::deletion_protection(false);
+        assert_eq!(check.status, CheckStatus::Fail);
+        assert!(check.summary.contains("disabled"));
+    }
+
+    #[test]
+    fn test_pdb_drain_deadlock_pass() {
+        let summary = PdbSummary {
+            total_pdbs: 5,
+            blocking: vec![],
+        };
+        let check = PreflightCheckResult::pdb_drain_deadlock(&summary);
+        assert_eq!(check.status, CheckStatus::Pass);
+        assert!(check.summary.contains("No PodDisruptionBudget blocks"));
+    }
+
+    #[test]
+    fn test_pdb_drain_deadlock_fail_lists_namespace_name() {
+        let summary = PdbSummary {
+            total_pdbs: 3,
+            blocking: vec!["payments/worker-pdb".to_string()],
+        };
+        let check = PreflightCheckResult::pdb_drain_deadlock(&summary);
+        assert_eq!(check.status, CheckStatus::Fail);
+        assert!(check.summary.contains("1 of 3"));
+        // The blocking PDB is named as namespace/name in `resources`, not inlined
+        // into the message, which states only why the check failed.
+        assert_eq!(check.resources, vec!["payments/worker-pdb"]);
+        assert!(!check.summary.contains("payments/worker-pdb"));
+    }
+
+    #[test]
+    fn test_pdb_drain_deadlock_fail_enumerates_resources() {
+        let summary = PdbSummary {
+            total_pdbs: 12,
+            blocking: vec![
+                "payments/worker-pdb".to_string(),
+                "kube-system/coredns-pdb".to_string(),
+            ],
+        };
+        let check = PreflightCheckResult::pdb_drain_deadlock(&summary);
+        assert_eq!(
+            check.resources,
+            vec!["payments/worker-pdb", "kube-system/coredns-pdb"]
+        );
+        assert_eq!(
+            check.summary,
+            "2 of 12 PodDisruptionBudgets block node drain because they allow zero disruptions"
+        );
+    }
+
+    #[test]
+    fn test_pdb_drain_deadlock_pass_has_no_resources() {
+        let summary = PdbSummary {
+            total_pdbs: 5,
+            blocking: vec![],
+        };
+        let check = PreflightCheckResult::pdb_drain_deadlock(&summary);
+        assert!(check.resources.is_empty());
+    }
+
+    #[test]
+    fn test_karpenter_ami_selector_pinned_enumerates_resources() {
+        let check = PreflightCheckResult::karpenter_ami_selector(
+            2,
+            &["default".to_string(), "spot".to_string()],
+        );
+        assert_eq!(check.resources, vec!["default", "spot"]);
+    }
+
+    #[test]
+    fn test_cluster_insights_enumerates_critical_resources_only() {
+        use crate::eks::insights::{InsightFinding, InsightResource};
+
+        let summary = InsightsSummary {
+            total_findings: 2,
+            critical_count: 1,
+            warning_count: 1,
+            passing_count: 0,
+            info_count: 0,
+            findings: vec![
+                InsightFinding {
+                    category: "UPGRADE_READINESS".to_string(),
+                    description: "Deprecated API in use".to_string(),
+                    severity: "ERROR".to_string(),
+                    recommendation: None,
+                    resources: vec![InsightResource {
+                        resource_type: "deployment".to_string(),
+                        resource_id: "kube-system/coredns".to_string(),
+                    }],
+                },
+                InsightFinding {
+                    category: "UPGRADE_READINESS".to_string(),
+                    description: "Addon behind".to_string(),
+                    severity: "WARNING".to_string(),
+                    recommendation: None,
+                    resources: vec![InsightResource {
+                        resource_type: "addon".to_string(),
+                        resource_id: "vpc-cni".to_string(),
+                    }],
+                },
+            ],
+        };
+        let check = PreflightCheckResult::cluster_insights(&summary);
+        // Only ERROR/CRITICAL findings contribute resources.
+        assert_eq!(check.resources, vec!["deployment:kube-system/coredns"]);
+    }
+
+    #[test]
+    fn test_deletion_protection_has_no_resources() {
+        assert!(
+            PreflightCheckResult::deletion_protection(false)
+                .resources
+                .is_empty()
+        );
+        assert!(
+            PreflightCheckResult::karpenter_v1_api(false)
+                .resources
+                .is_empty()
+        );
+    }
+
+    #[test]
+    fn test_cluster_insights_pass() {
+        let summary = InsightsSummary {
+            total_findings: 5,
+            critical_count: 0,
+            warning_count: 2,
+            passing_count: 2,
+            info_count: 1,
+            findings: vec![],
+        };
+        let check = PreflightCheckResult::cluster_insights(&summary);
+        assert_eq!(check.name, "EKS Cluster Insights");
+        assert_eq!(check.status, CheckStatus::Pass);
+        assert!(check.summary.contains("No critical insights"));
+        assert!(check.summary.contains("2 warning"));
+    }
+
+    #[test]
+    fn test_cluster_insights_fail_with_critical() {
+        let summary = InsightsSummary {
+            total_findings: 3,
+            critical_count: 1,
+            warning_count: 1,
+            passing_count: 0,
+            info_count: 1,
+            findings: vec![],
+        };
+        let check = PreflightCheckResult::cluster_insights(&summary);
+        assert_eq!(check.status, CheckStatus::Fail);
+        assert!(check.summary.contains("1 critical insight"));
+    }
+
+    #[test]
+    fn test_skipped_check_builders() {
+        let dp = SkippedCheck::deletion_protection("unable to determine");
+        assert_eq!(dp.name, "EKS Deletion Protection");
+        assert_eq!(dp.reason, "unable to determine");
+
+        let ci = SkippedCheck::cluster_insights("API unavailable");
+        assert_eq!(ci.name, "EKS Cluster Insights");
+
+        let pdb = SkippedCheck::pdb_drain_deadlock("skipped by user");
+        assert_eq!(pdb.name, "PDB Drain Deadlock");
+    }
+
+    #[test]
+    fn test_karpenter_v1_api_available() {
+        let check = PreflightCheckResult::karpenter_v1_api(true);
+        assert_eq!(check.name, "Karpenter v1 API");
+        assert_eq!(check.status, CheckStatus::Pass);
+    }
+
+    #[test]
+    fn test_karpenter_v1_api_missing_fails() {
+        let check = PreflightCheckResult::karpenter_v1_api(false);
+        assert_eq!(check.status, CheckStatus::Fail);
+        assert!(check.summary.contains("v1beta1"));
+    }
+
+    #[test]
+    fn test_karpenter_ami_selector_all_latest() {
+        let check = PreflightCheckResult::karpenter_ami_selector(3, &[]);
+        assert_eq!(check.status, CheckStatus::Pass);
+        // Pass message includes the number of nodepools checked.
+        assert!(check.summary.contains("3 nodepools"));
+    }
+
+    #[test]
+    fn test_karpenter_ami_selector_pinned_fails() {
+        let check = PreflightCheckResult::karpenter_ami_selector(
+            2,
+            &["default".to_string(), "spot".to_string()],
+        );
+        assert_eq!(check.status, CheckStatus::Fail);
+        assert!(check.summary.contains("2 of 2 NodePool(s) pin a fixed AMI"));
+        // Pool names live in `resources`, not in the message.
+        assert!(!check.summary.contains("spot"));
+    }
+
+    #[test]
+    fn test_skipped_karpenter_builder() {
+        let sk = SkippedCheck::karpenter("disabled");
+        assert_eq!(sk.name, "Karpenter NodePools");
+        assert_eq!(sk.reason, "disabled");
+    }
+
+    // ---- PreflightResults tests ----
+
+    #[test]
+    fn test_default_has_no_failures() {
+        let results = PreflightResults::default();
+        assert!(!results.has_mandatory_failures());
+        assert!(results.mandatory_failure_reasons().is_empty());
+    }
+
+    #[test]
+    fn test_has_mandatory_failures_with_deletion_protection_off() {
+        let results = PreflightResults {
+            checks: vec![PreflightCheckResult::deletion_protection(false)],
+            skipped: vec![],
+        };
+        assert!(results.has_mandatory_failures());
+        let reasons = results.mandatory_failure_reasons();
+        assert_eq!(reasons.len(), 1);
+        assert!(reasons[0].contains("EKS Deletion Protection"));
+    }
+
+    #[test]
+    fn test_has_mandatory_failures_with_pdb_blocking() {
+        let pdb = PdbSummary {
+            total_pdbs: 3,
+            blocking: vec!["default/api-pdb".to_string()],
+        };
+        let results = PreflightResults {
+            checks: vec![PreflightCheckResult::pdb_drain_deadlock(&pdb)],
+            skipped: vec![],
+        };
+        assert!(results.has_mandatory_failures());
+    }
+
+    #[test]
+    fn test_mandatory_failure_reasons_inline_resources() {
+        let pdb = PdbSummary {
+            total_pdbs: 3,
+            blocking: vec![
+                "default/api-pdb".to_string(),
+                "payments/worker-pdb".to_string(),
+            ],
+        };
+        let results = PreflightResults {
+            checks: vec![PreflightCheckResult::pdb_drain_deadlock(&pdb)],
+            skipped: vec![],
+        };
+        let reasons = results.mandatory_failure_reasons();
+        // The flat top-level status.message has no resources array, so names are
+        // appended here.
+        assert_eq!(
+            reasons[0],
+            "[PDB Drain Deadlock] 2 of 3 PodDisruptionBudgets block node drain because they allow zero disruptions: default/api-pdb, payments/worker-pdb"
+        );
+    }
+
+    #[test]
+    fn test_mandatory_failure_reasons_without_resources() {
+        let results = PreflightResults {
+            checks: vec![PreflightCheckResult::deletion_protection(false)],
+            skipped: vec![],
+        };
+        // No resources, no trailing colon.
+        assert_eq!(
+            results.mandatory_failure_reasons()[0],
+            "[EKS Deletion Protection] Deletion protection is disabled"
+        );
+    }
+
+    #[test]
+    fn test_no_mandatory_failures_with_all_pass() {
+        let pdb = PdbSummary {
+            total_pdbs: 3,
+            blocking: vec![],
+        };
+        let results = PreflightResults {
+            checks: vec![
+                PreflightCheckResult::deletion_protection(true),
+                PreflightCheckResult::pdb_drain_deadlock(&pdb),
+            ],
+            skipped: vec![],
+        };
+        assert!(!results.has_mandatory_failures());
+    }
+
+    #[test]
+    fn test_skipped_checks() {
+        let results = PreflightResults {
+            checks: vec![],
+            skipped: vec![SkippedCheck::pdb_drain_deadlock(
+                "no managed node group upgrades",
+            )],
+        };
+        assert_eq!(results.skipped.len(), 1);
+        assert_eq!(results.skipped[0].name, "PDB Drain Deadlock");
+    }
+}

@@ -1,0 +1,30 @@
+{{- if .Values.rbac.create }}
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: {{ include "aws-vpn-maintenance-handler.fullname" . }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "aws-vpn-maintenance-handler.labels" . | nindent 4 }}
+rules:
+  # State ConfigMap: in-flight replacement and cooldown, in place of a
+  # PersistentVolume. `create` cannot be name-scoped, so it is granted separately.
+  - apiGroups: [""]
+    resources: ["configmaps"]
+    verbs: ["create"]
+  - apiGroups: [""]
+    resources: ["configmaps"]
+    resourceNames:
+      - {{ include "aws-vpn-maintenance-handler.stateConfigMapName" . }}
+    # The controller reads and rewrites the whole snapshot, so get and update are
+    # what it uses; patch is deliberately not granted.
+    verbs: ["get", "update"]
+  # Leader election, so two replicas cannot replace both tunnels of one connection.
+  - apiGroups: ["coordination.k8s.io"]
+    resources: ["leases"]
+    verbs: ["get", "create", "update"]
+  # In-cluster audit trail, readable without Slack or CloudTrail.
+  - apiGroups: [""]
+    resources: ["events"]
+    verbs: ["create", "patch"]
+{{- end }}

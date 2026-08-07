@@ -1,0 +1,88 @@
+.gta-cal-grid {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  gap: 4px;
+}
+
+.gta-cal-dow {
+  padding: 6px 8px;
+  text-align: center;
+  background: var(--bui-bg-neutral-2, rgba(255, 255, 255, 0.04));
+  border-radius: 6px;
+}
+
+.gta-cal-cell {
+  min-height: 90px;
+  padding: 6px 8px;
+  border: 1px solid var(--bui-border-1, rgba(255, 255, 255, 0.08));
+  border-radius: 6px;
+  background: var(--bui-bg-neutral-1, rgba(255, 255, 255, 0.02));
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.gta-cal-cell-empty {
+  background: transparent;
+  border-color: transparent;
+}
+
+.gta-cal-cell-today {
+  border-color: rgba(59, 130, 246, 0.5);
+  background: rgba(59, 130, 246, 0.08);
+}
+
+/* Korean calendar convention: Sunday red, Saturday blue. */
+.gta-cal-dow-sun,
+.gta-cal-cell-sun .gta-cal-day-number {
+  color: #ef4444 !important;
+}
+
+.gta-cal-dow-sat,
+.gta-cal-cell-sat .gta-cal-day-number {
+  color: #3b82f6 !important;
+}
+
+.gta-cal-token {
+  display: block;
+  width: 100%;
+  text-align: left;
+  padding: 2px 6px;
+  margin-top: 2px;
+  border-radius: 4px;
+  border: 1px solid transparent;
+  font-size: 11px;
+  line-height: 1.4;
+  cursor: pointer;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.gta-cal-token:hover {
+  filter: brightness(1.15);
+}
+
+.gta-cal-token-expired {
+  background: rgba(239, 68, 68, 0.18);
+  border-color: rgba(239, 68, 68, 0.4);
+  color: #fca5a5;
+}
+
+.gta-cal-token-danger {
+  background: rgba(239, 68, 68, 0.12);
+  border-color: rgba(239, 68, 68, 0.35);
+  color: #fca5a5;
+}
+
+.gta-cal-token-warning {
+  background: rgba(245, 158, 11, 0.12);
+  border-color: rgba(245, 158, 11, 0.35);
+  color: #fcd34d;
+}
+
+.gta-cal-token-ok {
+  background: rgba(34, 197, 94, 0.1);
+  border-color: rgba(34, 197, 94, 0.3);
+  color: #86efac;
+}

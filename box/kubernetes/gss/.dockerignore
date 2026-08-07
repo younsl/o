@@ -1,0 +1,54 @@
+# Rust
+target/
+**/*.rs.bk
+*.pdb
+
+# Go (old implementation)
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+*.test
+*.out
+vendor/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# Git
+.git/
+.gitignore
+.gitattributes
+
+# CI/CD
+.github/
+
+# Documentation
+*.md
+!README.md
+docs/
+
+# Tests
+coverage/
+*.profraw
+*.profdata
+
+# Build artifacts
+dist/
+bin/
+
+# Dependencies
+go.sum
+go.mod
+
+# Misc
+.DS_Store
+Thumbs.db
+.env
+.env.local
+*.log

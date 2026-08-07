@@ -1,0 +1,89 @@
+/* AWS Identity Settings */
+.aws-id-card {
+  max-width: 480px;
+}
+
+.aws-id-caution {
+  border-left: 4px solid var(--bui-border-warning);
+}
+
+.aws-id-warning {
+  border-left: 4px solid var(--bui-border-warning);
+}
+
+.aws-id-critical {
+  border-left: 4px solid var(--bui-border-danger);
+}
+
+.aws-id-card-body {
+  display: flex;
+  flex-direction: column;
+  gap: var(--bui-space-4);
+}
+
+.aws-id-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+}
+
+.aws-id-arn {
+  display: block;
+  margin-top: var(--bui-space-1);
+  word-break: break-all;
+  font-family: var(--bui-font-monospace);
+}
+
+.aws-id-inactive-badge {
+  flex-shrink: 0;
+  margin-left: var(--bui-space-2);
+}
+
+.aws-id-inactive-days {
+  min-width: 36px;
+  min-height: 36px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: var(--bui-radius-full);
+  background-color: var(--bui-bg-neutral-2);
+  border: 1px solid var(--bui-border-1);
+  font-size: var(--bui-font-size-3);
+}
+
+.aws-id-critical .aws-id-inactive-days {
+  background-color: var(--bui-bg-danger-2);
+  border-color: var(--bui-border-danger);
+}
+
+.aws-id-warning .aws-id-inactive-days {
+  background-color: var(--bui-bg-warning-2);
+  border-color: var(--bui-border-warning);
+}
+
+.aws-id-caution .aws-id-inactive-days {
+  background-color: var(--bui-bg-warning-2);
+  border-color: var(--bui-border-warning);
+}
+
+.aws-id-fields {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: var(--bui-space-3);
+}
+
+.aws-id-field-label {
+  display: block;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  margin-bottom: var(--bui-space-1);
+}
+
+.aws-id-field-value-mono {
+  font-family: var(--bui-font-monospace);
+}
+
+.aws-id-empty {
+  text-align: center;
+  padding: var(--bui-space-8);
+}

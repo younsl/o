@@ -1,0 +1,10 @@
+# Build output
+/bin/
+
+# Coverage artifacts
+*.out
+
+# The repo-root .gitignore ignores any path named "config"; that bare pattern
+# also matches this Go package. Re-include it so the source is tracked.
+!internal/config/
+!internal/config/**

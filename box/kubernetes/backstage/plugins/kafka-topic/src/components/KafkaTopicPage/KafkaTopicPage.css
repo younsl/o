@@ -1,0 +1,178 @@
+/* Results table */
+.kafka-results-table-wrap {
+  border: 1px solid rgba(128, 128, 128, 0.12);
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+.kafka-results-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+}
+
+.kafka-results-table thead {
+  background: rgba(128, 128, 128, 0.06);
+}
+
+.kafka-results-table th {
+  padding: 8px 8px;
+  text-align: left;
+  font-weight: 600;
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  color: rgba(255, 255, 255, 0.5);
+  border-bottom: 1px solid rgba(128, 128, 128, 0.12);
+}
+
+.kafka-results-table td {
+  padding: 8px 8px;
+  border-bottom: 1px solid rgba(128, 128, 128, 0.08);
+  color: rgba(255, 255, 255, 0.85);
+}
+
+.kafka-results-table tbody tr:last-child td {
+  border-bottom: none;
+}
+
+.kafka-results-table tbody tr:hover {
+  background: rgba(128, 128, 128, 0.04);
+}
+
+.kafka-results-table th.kafka-col-compact,
+.kafka-results-table td.kafka-col-compact {
+  padding-left: 6px;
+  padding-right: 6px;
+  text-align: center;
+}
+
+.kafka-results-topic-name {
+  font-family: var(--bui-font-family-mono, monospace);
+  font-weight: 600;
+}
+
+.kafka-results-time {
+  font-size: 12px;
+  color: rgba(255, 255, 255, 0.5);
+}
+
+/* Status badges */
+.kafka-results-badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px 8px;
+  border-radius: 4px;
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.kafka-results-badge-pending {
+  background: rgba(255, 152, 0, 0.15);
+  color: #ff9800;
+}
+
+.kafka-results-badge-approved {
+  background: rgba(76, 175, 80, 0.15);
+  color: #4caf50;
+}
+
+.kafka-results-badge-rejected {
+  background: rgba(244, 67, 54, 0.15);
+  color: #f44336;
+}
+
+.kafka-results-badge-created {
+  background: rgba(110, 168, 254, 0.15);
+  color: #6ea8fe;
+}
+
+/* Approval flow pipeline */
+.kafka-approval-flow {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+}
+
+.kafka-approval-btn {
+  width: 24px;
+  height: 24px;
+  min-width: 24px;
+  min-height: 24px;
+  flex-shrink: 0;
+}
+
+.kafka-approval-tooltip {
+  max-width: 220px;
+}
+
+.kafka-approval-tooltip-label {
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.3px;
+  margin-bottom: 2px;
+  color: rgba(255, 255, 255, 0.6);
+}
+
+.kafka-approval-tooltip-name {
+  font-size: 13px;
+  font-weight: 600;
+  color: rgba(255, 255, 255, 0.95);
+}
+
+.kafka-approval-tooltip-time {
+  font-size: 11px;
+  color: rgba(255, 255, 255, 0.45);
+  margin-top: 2px;
+}
+
+/* Review detail grid */
+.kafka-review-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+  gap: 16px;
+}
+
+.kafka-review-item {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.kafka-review-default-hint {
+  font-weight: 400;
+  font-size: 11px;
+  color: rgba(255, 255, 255, 0.4);
+}
+
+/* Batch count badge in table */
+.kafka-batch-count {
+  width: auto;
+  height: 20px;
+  min-width: auto;
+  min-height: 20px;
+  padding: 0 6px;
+  border-radius: 4px;
+  font-size: 11px;
+  font-weight: 600;
+  background: rgba(128, 128, 128, 0.15);
+  color: rgba(255, 255, 255, 0.6);
+  white-space: nowrap;
+}
+
+/* Batch tooltip */
+.kafka-batch-tooltip {
+  max-width: 320px;
+  word-break: break-word;
+}
+
+/* Pagination */
+.kafka-pagination {
+  padding: 8px 0;
+}
+
+.kafka-pagination-info {
+  min-width: 100px;
+  text-align: center;
+}

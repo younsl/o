@@ -1,0 +1,298 @@
+/* fc-table-wrapper keeps no font overrides — inherit @backstage/ui defaults. */
+
+/* Evidence column: compress tag gaps so more file names fit in one row. */
+.fc-table-wrapper [class*='TagGroup'],
+.fc-table-wrapper [class*='TagList'] {
+  gap: 3px !important;
+  row-gap: 3px !important;
+  column-gap: 3px !important;
+}
+
+/* List/Groups/Trend toggle. A fixed min-width clipped the longer labels, so
+   the width follows the text and only the padding is pinned. */
+.fc-view-toggle-btn {
+  justify-content: center !important;
+  padding-inline: 12px !important;
+  white-space: nowrap !important;
+  overflow: visible !important;
+  text-overflow: clip !important;
+}
+
+/* Icon-only button used for search and settings. */
+.fc-search-toggle {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  border-radius: 6px;
+  border: 1px solid var(--bui-color-border-default, rgba(255, 255, 255, 0.12));
+  background: transparent;
+  color: var(--bui-color-text-secondary, #9ca3af);
+  cursor: pointer;
+  transition: background-color 0.12s, color 0.12s;
+}
+
+.fc-search-toggle:hover {
+  background-color: rgba(128, 128, 128, 0.12);
+  color: var(--bui-color-text-default, #e0e0e0);
+}
+
+.fc-search-toggle:focus-visible {
+  outline: 2px solid var(--bui-border-accent, #3b82f6);
+  outline-offset: 2px;
+}
+
+.fc-search-open {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 32px;
+  padding: 0 10px;
+  border-radius: 6px;
+  border: 1px solid var(--bui-border-accent, #3b82f6);
+  background: transparent;
+  min-width: 240px;
+}
+
+.fc-search-icon {
+  flex-shrink: 0;
+  color: var(--bui-color-text-secondary, #9ca3af);
+}
+
+.fc-search-input {
+  flex: 1;
+  min-width: 0;
+  border: none;
+  background: transparent;
+  outline: none;
+  color: var(--bui-color-text-default, #e0e0e0);
+  font: inherit;
+  font-size: 13px;
+}
+
+.fc-search-input::placeholder {
+  color: var(--bui-color-text-secondary, #9ca3af);
+}
+
+/* Status cell: the LED carries the colour so the label can stay plain text. */
+.fc-status {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.fc-led {
+  width: 7px;
+  height: 7px;
+  flex-shrink: 0;
+  border-radius: 50%;
+  background-color: #9ca3af;
+}
+
+.fc-led-yes {
+  background-color: #10b981;
+}
+
+.fc-led-partial {
+  background-color: #f59e0b;
+}
+
+.fc-led-no {
+  background-color: #ef4444;
+}
+
+/* Scan error and excluded stay grey: neither is a verdict about the project. */
+.fc-led-error,
+.fc-led-excluded {
+  background-color: transparent;
+  border: 1px solid #9ca3af;
+}
+
+/* Filter chips double as the summary counters, so they carry the numbers. */
+.fc-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 10px;
+  border-radius: 14px;
+  border: 1px solid var(--bui-color-border-default, rgba(255, 255, 255, 0.12));
+  background: transparent;
+  color: var(--bui-color-text-secondary, #9ca3af);
+  font: inherit;
+  font-size: 12px;
+  line-height: 18px;
+  cursor: pointer;
+  transition: background-color 0.12s, border-color 0.12s, color 0.12s;
+}
+
+.fc-chip:hover {
+  background-color: rgba(128, 128, 128, 0.12);
+}
+
+.fc-chip:focus-visible {
+  outline: 2px solid var(--bui-border-accent, #3b82f6);
+  outline-offset: 2px;
+}
+
+.fc-chip-count {
+  font-weight: 700;
+  color: var(--bui-color-text-default, #e0e0e0);
+}
+
+.fc-chip-selected {
+  border-color: var(--bui-border-accent, #3b82f6);
+  background-color: rgba(59, 130, 246, 0.12);
+  color: var(--bui-color-text-default, #e0e0e0);
+}
+
+.fc-chip-success .fc-chip-count {
+  color: #22c55e;
+}
+
+.fc-chip-warning .fc-chip-count {
+  color: #f59e0b;
+}
+
+.fc-chip-danger .fc-chip-count {
+  color: #ef4444;
+}
+
+/* Scan progress bar. */
+.fc-progress {
+  position: relative;
+  width: 100%;
+  height: 6px;
+  border-radius: 3px;
+  overflow: hidden;
+  background-color: rgba(156, 163, 175, 0.2);
+}
+
+.fc-progress-fill {
+  height: 100%;
+  border-radius: 3px;
+  background-color: #3b82f6;
+  transition: width 0.4s ease;
+}
+
+/* Project listing has no total yet, so sweep instead of filling. */
+.fc-progress-indeterminate::after {
+  content: '';
+  position: absolute;
+  inset-block: 0;
+  width: 30%;
+  border-radius: 3px;
+  background-color: #3b82f6;
+  animation: fc-progress-sweep 1.2s ease-in-out infinite;
+}
+
+@keyframes fc-progress-sweep {
+  0% {
+    inset-inline-start: -30%;
+  }
+  100% {
+    inset-inline-start: 100%;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .fc-progress-indeterminate::after {
+    animation: none;
+    inset-inline-start: 0;
+    width: 100%;
+    opacity: 0.4;
+  }
+}
+
+/* One row per group: name and counts on the left, bar filling the rest. */
+.fc-group-row {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 6px 0;
+}
+
+.fc-group-label {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 8px;
+  flex: 0 0 auto;
+  /* Keeps every bar starting at the same x, so the lengths stay comparable. */
+  min-width: 260px;
+}
+
+@media (max-width: 700px) {
+  .fc-group-row {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 4px;
+  }
+
+  .fc-group-label {
+    min-width: 0;
+  }
+}
+
+/* Marks a group where every project is wired. */
+.fc-group-done {
+  color: #10b981;
+  flex-shrink: 0;
+  align-self: center;
+}
+
+/* Group name doubles as the link to the group in GitLab. */
+.fc-group-link {
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--bui-color-text-default, #e0e0e0);
+  text-decoration: none;
+}
+
+.fc-group-link:hover {
+  text-decoration: underline;
+}
+
+/* Per group coverage bar in the Groups view. */
+.fc-coverage-bar {
+  position: relative;
+  flex: 1 1 auto;
+  width: 100%;
+  height: 6px;
+  border-radius: 3px;
+  overflow: hidden;
+  background-color: rgba(156, 163, 175, 0.2);
+}
+
+.fc-coverage-bar-fill {
+  height: 100%;
+  border-radius: 3px;
+  background-color: #10b981;
+}
+
+/* Minimal switch used in the Scanned column. BUI ships the indicator as a CSS
+   module class, so the hashed name is matched by substring. */
+.fc-switch [class*='SwitchIndicator'] {
+  width: 30px !important;
+  height: 16px !important;
+  border-radius: 8px !important;
+  background: rgba(156, 163, 175, 0.35) !important;
+  border: none !important;
+}
+
+.fc-switch [class*='SwitchIndicator']::before {
+  margin: 2px !important;
+  width: 12px !important;
+  height: 12px !important;
+  border-radius: 50% !important;
+  background: #fff !important;
+  box-shadow: none !important;
+}
+
+.fc-switch[data-selected] [class*='SwitchIndicator'] {
+  background: #10b981 !important;
+}
+
+.fc-switch[data-disabled] {
+  opacity: 0.4;
+}

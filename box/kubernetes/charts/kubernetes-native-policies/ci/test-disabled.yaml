@@ -1,0 +1,9 @@
+validatingAdmissionPolicies:
+  deny-privileged-containers:
+    enabled: false
+    validations:
+      - expression: "true"
+
+mutatingAdmissionPolicies:
+  add-default-labels:
+    enabled: false

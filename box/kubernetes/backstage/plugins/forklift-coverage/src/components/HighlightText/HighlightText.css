@@ -1,0 +1,7 @@
+/* Search hit. Inherits the cell colour so only the background marks the match. */
+.fc-hl {
+  background-color: rgba(245, 158, 11, 0.3);
+  color: inherit;
+  border-radius: 2px;
+  padding: 0 1px;
+}

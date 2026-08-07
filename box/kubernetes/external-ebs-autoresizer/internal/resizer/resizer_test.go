@@ -1,0 +1,719 @@
+package resizer
+
+import (
+	"context"
+	"errors"
+	"io"
+	"log/slog"
+	"slices"
+	"strings"
+	"testing"
+	"time"
+
+	"github.com/younsl/o/box/kubernetes/external-ebs-autoresizer/internal/awsx"
+	"github.com/younsl/o/box/kubernetes/external-ebs-autoresizer/internal/config"
+	"github.com/younsl/o/box/kubernetes/external-ebs-autoresizer/internal/policy"
+	"github.com/younsl/o/box/kubernetes/external-ebs-autoresizer/scripts"
+)
+
+func discardLogger() *slog.Logger {
+	return slog.New(slog.NewTextHandler(io.Discard, nil))
+}
+
+func TestTargetSize(t *testing.T) {
+	tests := []struct {
+		current int32
+		grow    int
+		want    int32
+	}{
+		{100, 10, 110},
+		{105, 10, 116}, // 115.5 -> ceil 116
+		{8, 10, 9},     // 8.8 -> 9
+		{1, 10, 2},     // 1.1 -> ceil 2, but also min current+1
+		{10, 5, 11},    // 10.5 -> 11
+		{200, 50, 300},
+	}
+	for _, tt := range tests {
+		eff := policy.Effective{GrowMode: config.GrowModePercent, GrowPercent: tt.grow}
+		if got := TargetSize(tt.current, eff); got != tt.want {
+			t.Errorf("TargetSize(%d, percent %d) = %d, want %d", tt.current, tt.grow, got, tt.want)
+		}
+	}
+}
+
+func TestTargetSizeAbsolute(t *testing.T) {
+	tests := []struct {
+		current   int32
+		amountGiB int32
+		want      int32
+	}{
+		{100, 10, 110},
+		{100, 1, 101},
+		{8, 50, 58},
+		{100, 0, 101}, // zero increment still grows by at least 1 GiB
+	}
+	for _, tt := range tests {
+		eff := policy.Effective{GrowMode: config.GrowModeAbsolute, GrowAmountGiB: tt.amountGiB}
+		if got := TargetSize(tt.current, eff); got != tt.want {
+			t.Errorf("TargetSize(%d, absolute %d GiB) = %d, want %d", tt.current, tt.amountGiB, got, tt.want)
+		}
+	}
+}
+
+func TestParseUsagePercent(t *testing.T) {
+	valid := map[string]int{"73\n": 73, " 80% ": 80, "0": 0, "100": 100}
+	for in, want := range valid {
+		got, err := parseUsagePercent(in)
+		if err != nil || got != want {
+			t.Errorf("parseUsagePercent(%q) = (%d, %v), want (%d, nil)", in, got, err, want)
+		}
+	}
+	for _, in := range []string{"", "abc", "150", "-5"} {
+		if _, err := parseUsagePercent(in); err == nil {
+			t.Errorf("parseUsagePercent(%q) = nil error, want error", in)
+		}
+	}
+}
+
+// fakeEC2 implements resizer.EC2API.
+type fakeEC2 struct {
+	instances   []awsx.Instance
+	lastMod     *awsx.VolumeModification
+	modifyCalls []int32
+	modifySpecs []awsx.ModifySpec
+	modifyErr   error
+	// failCombined makes only requests carrying a throughput change fail, so
+	// the size-only fallback path can be exercised.
+	failCombined bool
+	waitErr      error
+	describeErr  error
+}
+
+func (f *fakeEC2) DescribeTargetInstances(_ context.Context, _ []awsx.TagFilter, _ bool) ([]awsx.Instance, error) {
+	return f.instances, f.describeErr
+}
+func (f *fakeEC2) ModifyVolume(_ context.Context, _ string, spec awsx.ModifySpec) error {
+	f.modifyCalls = append(f.modifyCalls, spec.SizeGiB)
+	f.modifySpecs = append(f.modifySpecs, spec)
+	if f.failCombined && spec.ThroughputMiBps > 0 {
+		return errors.New("combined modification rejected")
+	}
+	return f.modifyErr
+}
+func (f *fakeEC2) DescribeLastModification(_ context.Context, _ string) (*awsx.VolumeModification, error) {
+	return f.lastMod, nil
+}
+func (f *fakeEC2) WaitForModification(_ context.Context, _ string, _ time.Duration) error {
+	return f.waitErr
+}
+
+// fakeSSM implements resizer.SSMAPI, returning usage for measure and ok for resize.
+type fakeSSM struct {
+	usage     int
+	runErr    error
+	resizeOut string
+	scripts   []string
+}
+
+func (f *fakeSSM) RunScript(_ context.Context, _, script string, _ time.Duration) (awsx.CommandResult, error) {
+	f.scripts = append(f.scripts, script)
+	if f.runErr != nil {
+		return awsx.CommandResult{}, f.runErr
+	}
+	if script == scripts.MeasureRootFS {
+		return awsx.CommandResult{Status: "Success", Stdout: itoa(f.usage)}, nil
+	}
+	return awsx.CommandResult{Status: "Success", Stdout: f.resizeOut}, nil
+}
+
+func itoa(n int) string {
+	if n == 0 {
+		return "0"
+	}
+	neg := n < 0
+	if neg {
+		n = -n
+	}
+	var b []byte
+	for n > 0 {
+		b = append([]byte{byte('0' + n%10)}, b...)
+		n /= 10
+	}
+	if neg {
+		b = append([]byte{'-'}, b...)
+	}
+	return string(b)
+}
+
+type fakeRecorder struct {
+	resizeSuccess  int
+	resizeFail     int
+	skips          []string
+	errors         []string
+	resizePolicies []string
+	skipPolicies   []string
+	policyCounts   map[string]int
+	// throughputApplies and throughputApplySkips record each
+	// ObserveThroughputApply / ObserveThroughputApplySkip value in order.
+	throughputApplies    []string
+	throughputApplySkips []string
+}
+
+func (r *fakeRecorder) ObserveUsage(string, string, string, string, float64)    {}
+func (r *fakeRecorder) ObserveVolumeSize(string, string, string, string, int32) {}
+func (r *fakeRecorder) ObserveResize(success bool, policy string) {
+	if success {
+		r.resizeSuccess++
+	} else {
+		r.resizeFail++
+	}
+	r.resizePolicies = append(r.resizePolicies, policy)
+}
+func (r *fakeRecorder) ObserveSkip(reason, policy string) {
+	r.skips = append(r.skips, reason)
+	r.skipPolicies = append(r.skipPolicies, policy)
+}
+func (r *fakeRecorder) ObserveError(stage string) { r.errors = append(r.errors, stage) }
+func (r *fakeRecorder) ObservePolicyInstances(counts map[string]int) {
+	r.policyCounts = counts
+}
+func (r *fakeRecorder) ObserveThroughputApply(result string) {
+	r.throughputApplies = append(r.throughputApplies, result)
+}
+func (r *fakeRecorder) ObserveThroughputApplySkip(reason string) {
+	r.throughputApplySkips = append(r.throughputApplySkips, reason)
+}
+
+// fakeEmitter records the reasons of emitted Kubernetes Events.
+type fakeEmitter struct {
+	reasons []string
+}
+
+func (e *fakeEmitter) Eventf(_, reason, _ string, _ ...any) {
+	e.reasons = append(e.reasons, reason)
+}
+
+// fakeNotifier records the alertname/severity of each alert it receives.
+type fakeNotifier struct {
+	alertnames      []string
+	severities      []string
+	lastLabels      map[string]string
+	lastDescription string
+}
+
+func (n *fakeNotifier) Notify(_ context.Context, severity, alertname, _, description string, labels map[string]string, _ time.Time) {
+	n.alertnames = append(n.alertnames, alertname)
+	n.severities = append(n.severities, severity)
+	n.lastLabels = labels
+	n.lastDescription = description
+}
+
+// fakeAnnotator records the text/tags and region span of each annotation.
+type fakeAnnotator struct {
+	texts    []string
+	lastTags []string
+	regions  []bool // true when end is non-zero (region annotation)
+}
+
+func (a *fakeAnnotator) Annotate(_ context.Context, text string, tags []string, _, end time.Time) {
+	a.texts = append(a.texts, text)
+	a.lastTags = tags
+	a.regions = append(a.regions, !end.IsZero())
+}
+
+func baseConfig() *config.Config {
+	return &config.Config{
+		TagFilters:            []config.TagFilter{{Key: "App", Value: "web"}},
+		AlertEnabled:          true,
+		UsageThresholdPercent: 80,
+		GrowPercent:           10,
+		MaxVolumeSizeGiB:      1000,
+		SSMCommandTimeout:     time.Second,
+		VolumeModifyTimeout:   time.Second,
+	}
+}
+
+func sampleInstance() awsx.Instance {
+	return awsx.Instance{
+		ID: "i-123", Name: "web-1",
+		RootDeviceName: "/dev/xvda", RootVolumeID: "vol-123", RootVolumeSizeGiB: 100,
+	}
+}
+
+func newResizer(t *testing.T, cfg *config.Config, ec2 EC2API, ssm SSMAPI, rec Recorder) *Resizer {
+	t.Helper()
+	return New(cfg, nil, ec2, ssm, rec, nil, nil, nil, nil, nil, discardLogger())
+}
+
+func TestReconcileBelowThreshold(t *testing.T) {
+	ec2 := &fakeEC2{instances: []awsx.Instance{sampleInstance()}}
+	ssm := &fakeSSM{usage: 50}
+	rec := &fakeRecorder{}
+	r := newResizer(t, baseConfig(), ec2, ssm, rec)
+
+	n, err := r.Reconcile(context.Background())
+	if err != nil {
+		t.Fatalf("Reconcile error: %v", err)
+	}
+	if n != 1 {
+		t.Errorf("Reconcile returned %d instances, want 1", n)
+	}
+	if len(ec2.modifyCalls) != 0 {
+		t.Errorf("ModifyVolume called %d times, want 0", len(ec2.modifyCalls))
+	}
+}
+
+func TestReconcileTriggersResize(t *testing.T) {
+	ec2 := &fakeEC2{instances: []awsx.Instance{sampleInstance()}}
+	ssm := &fakeSSM{usage: 85}
+	rec := &fakeRecorder{}
+	r := newResizer(t, baseConfig(), ec2, ssm, rec)
+
+	if _, err := r.Reconcile(context.Background()); err != nil {
+		t.Fatalf("Reconcile error: %v", err)
+	}
+	if len(ec2.modifyCalls) != 1 || ec2.modifyCalls[0] != 110 {
+		t.Errorf("modifyCalls = %v, want [110]", ec2.modifyCalls)
+	}
+	if rec.resizeSuccess != 1 {
+		t.Errorf("resizeSuccess = %d, want 1", rec.resizeSuccess)
+	}
+}
+
+func TestReconcileDryRun(t *testing.T) {
+	cfg := baseConfig()
+	cfg.DryRun = true
+	ec2 := &fakeEC2{instances: []awsx.Instance{sampleInstance()}}
+	ssm := &fakeSSM{usage: 95}
+	rec := &fakeRecorder{}
+	r := newResizer(t, cfg, ec2, ssm, rec)
+
+	if _, err := r.Reconcile(context.Background()); err != nil {
+		t.Fatalf("Reconcile error: %v", err)
+	}
+	if len(ec2.modifyCalls) != 0 {
+		t.Errorf("dry-run modified volume: %v", ec2.modifyCalls)
+	}
+	if want := []string{"dry_run"}; !slices.Equal(rec.skips, want) {
+		t.Errorf("skips = %v, want %v", rec.skips, want)
+	}
+}
+
+func TestReconcileCooldownSkips(t *testing.T) {
+	ec2 := &fakeEC2{
+		instances: []awsx.Instance{sampleInstance()},
+		lastMod:   &awsx.VolumeModification{State: "completed", StartTime: time.Now().Add(-time.Hour)},
+	}
+	rec := &fakeRecorder{}
+	r := newResizer(t, baseConfig(), ec2, &fakeSSM{usage: 90}, rec)
+
+	if _, err := r.Reconcile(context.Background()); err != nil {
+		t.Fatalf("Reconcile error: %v", err)
+	}
+	if len(ec2.modifyCalls) != 0 {
+		t.Errorf("cooldown should skip modify, got %v", ec2.modifyCalls)
+	}
+	if want := []string{"cooldown"}; !slices.Equal(rec.skips, want) {
+		t.Errorf("skips = %v, want %v", rec.skips, want)
+	}
+}
+
+func TestReconcileInProgressSkips(t *testing.T) {
+	ec2 := &fakeEC2{
+		instances: []awsx.Instance{sampleInstance()},
+		lastMod:   &awsx.VolumeModification{State: "optimizing"},
+	}
+	rec := &fakeRecorder{}
+	r := newResizer(t, baseConfig(), ec2, &fakeSSM{usage: 90}, rec)
+
+	if _, err := r.Reconcile(context.Background()); err != nil {
+		t.Fatalf("Reconcile error: %v", err)
+	}
+	if len(ec2.modifyCalls) != 0 {
+		t.Errorf("in-progress modification should skip, got %v", ec2.modifyCalls)
+	}
+	if want := []string{"cooldown"}; !slices.Equal(rec.skips, want) {
+		t.Errorf("skips = %v, want %v", rec.skips, want)
+	}
+}
+
+func TestReconcileMaxSizeSkips(t *testing.T) {
+	cfg := baseConfig()
+	cfg.MaxVolumeSizeGiB = 105
+	ec2 := &fakeEC2{instances: []awsx.Instance{sampleInstance()}}
+	rec := &fakeRecorder{}
+	r := newResizer(t, cfg, ec2, &fakeSSM{usage: 90}, rec)
+
+	if _, err := r.Reconcile(context.Background()); err != nil {
+		t.Fatalf("Reconcile error: %v", err)
+	}
+	if len(ec2.modifyCalls) != 0 {
+		t.Errorf("target above max should skip, got %v", ec2.modifyCalls)
+	}
+	if want := []string{"max_size"}; !slices.Equal(rec.skips, want) {
+		t.Errorf("skips = %v, want %v", rec.skips, want)
+	}
+}
+
+func TestReconcilePausedSkips(t *testing.T) {
+	cfg := baseConfig()
+	cfg.Paused = true
+	ec2 := &fakeEC2{instances: []awsx.Instance{sampleInstance()}}
+	ssm := &fakeSSM{usage: 95}
+	rec := &fakeRecorder{}
+	// nil resolver -> effective policy is the default, which is paused.
+	r := newResizer(t, cfg, ec2, ssm, rec)
+
+	if _, err := r.Reconcile(context.Background()); err != nil {
+		t.Fatalf("Reconcile error: %v", err)
+	}
+	if len(ec2.modifyCalls) != 0 {
+		t.Errorf("paused policy modified volume: %v", ec2.modifyCalls)
+	}
+	if len(ssm.scripts) != 0 {
+		t.Errorf("paused policy ran SSM scripts: %v (should not even measure)", ssm.scripts)
+	}
+	if want := []string{"paused"}; !slices.Equal(rec.skips, want) {
+		t.Errorf("skips = %v, want %v", rec.skips, want)
+	}
+}
+
+func TestReconcileNoRootVolume(t *testing.T) {
+	inst := sampleInstance()
+	inst.RootVolumeID = ""
+	ec2 := &fakeEC2{instances: []awsx.Instance{inst}}
+	r := newResizer(t, baseConfig(), ec2, &fakeSSM{usage: 90}, &fakeRecorder{})
+
+	if _, err := r.Reconcile(context.Background()); err != nil {
+		t.Fatalf("Reconcile error: %v", err)
+	}
+	if len(ec2.modifyCalls) != 0 {
+		t.Errorf("no root volume should skip, got %v", ec2.modifyCalls)
+	}
+}
+
+func TestReconcileDiscoverError(t *testing.T) {
+	ec2 := &fakeEC2{describeErr: errors.New("boom")}
+	rec := &fakeRecorder{}
+	r := newResizer(t, baseConfig(), ec2, &fakeSSM{}, rec)
+
+	if _, err := r.Reconcile(context.Background()); err == nil {
+		t.Error("Reconcile = nil error, want discover error")
+	}
+	if len(rec.errors) != 1 || rec.errors[0] != "discover" {
+		t.Errorf("errors = %v, want [discover]", rec.errors)
+	}
+}
+
+func TestReconcileModifyError(t *testing.T) {
+	ec2 := &fakeEC2{instances: []awsx.Instance{sampleInstance()}, modifyErr: errors.New("nope")}
+	rec := &fakeRecorder{}
+	r := newResizer(t, baseConfig(), ec2, &fakeSSM{usage: 90}, rec)
+
+	if _, err := r.Reconcile(context.Background()); err != nil {
+		t.Fatalf("Reconcile should swallow per-instance error, got %v", err)
+	}
+	if rec.resizeFail != 1 {
+		t.Errorf("resizeFail = %d, want 1", rec.resizeFail)
+	}
+}
+
+func reasonsEqual(got, want []string) bool {
+	if len(got) != len(want) {
+		return false
+	}
+	for i := range got {
+		if got[i] != want[i] {
+			return false
+		}
+	}
+	return true
+}
+
+func TestReconcileEmitsStartedAndCompletedEvents(t *testing.T) {
+	ec2 := &fakeEC2{instances: []awsx.Instance{sampleInstance()}}
+	ev := &fakeEmitter{}
+	r := New(baseConfig(), nil, ec2, &fakeSSM{usage: 85}, &fakeRecorder{}, ev, nil, nil, nil, nil, discardLogger())
+
+	if _, err := r.Reconcile(context.Background()); err != nil {
+		t.Fatalf("Reconcile error: %v", err)
+	}
+	want := []string{reasonResizeStarted, reasonResizeCompleted}
+	if !reasonsEqual(ev.reasons, want) {
+		t.Errorf("event reasons = %v, want %v", ev.reasons, want)
+	}
+}
+
+func TestReconcileEmitsFailedEvent(t *testing.T) {
+	ec2 := &fakeEC2{instances: []awsx.Instance{sampleInstance()}, modifyErr: errors.New("nope")}
+	ev := &fakeEmitter{}
+	r := New(baseConfig(), nil, ec2, &fakeSSM{usage: 90}, &fakeRecorder{}, ev, nil, nil, nil, nil, discardLogger())
+
+	if _, err := r.Reconcile(context.Background()); err != nil {
+		t.Fatalf("Reconcile should swallow per-instance error, got %v", err)
+	}
+	want := []string{reasonResizeStarted, reasonResizeFailed}
+	if !reasonsEqual(ev.reasons, want) {
+		t.Errorf("event reasons = %v, want %v", ev.reasons, want)
+	}
+}
+
+func TestReconcileSendsCompletedAlert(t *testing.T) {
+	ec2 := &fakeEC2{instances: []awsx.Instance{sampleInstance()}}
+	n := &fakeNotifier{}
+	r := New(baseConfig(), nil, ec2, &fakeSSM{usage: 85}, &fakeRecorder{}, nil, n, nil, nil, nil, discardLogger())
+
+	if _, err := r.Reconcile(context.Background()); err != nil {
+		t.Fatalf("Reconcile error: %v", err)
+	}
+	if len(n.alertnames) != 1 || n.alertnames[0] != alertResizeCompleted {
+		t.Errorf("alertnames = %v, want [%s]", n.alertnames, alertResizeCompleted)
+	}
+	if len(n.severities) != 1 || n.severities[0] != severityInfo {
+		t.Errorf("severities = %v, want [%s]", n.severities, severityInfo)
+	}
+	if n.lastLabels["instance_id"] != "i-123" || n.lastLabels["volume_id"] != "vol-123" {
+		t.Errorf("alert labels = %v, missing instance_id/volume_id", n.lastLabels)
+	}
+	// Description must be a sentence carrying the instance ID, device, new size,
+	// and usage. The fake SSM reports a constant usage, so before and after match.
+	for _, want := range []string{"i-123", "/dev/xvda", "110 GiB", "85%"} {
+		if !strings.Contains(n.lastDescription, want) {
+			t.Errorf("description %q missing %q", n.lastDescription, want)
+		}
+	}
+	if strings.Contains(n.lastDescription, "->") {
+		t.Errorf("description %q must be a sentence, not use arrows", n.lastDescription)
+	}
+}
+
+func TestReconcileSendsFailedAlert(t *testing.T) {
+	ec2 := &fakeEC2{instances: []awsx.Instance{sampleInstance()}, modifyErr: errors.New("nope")}
+	n := &fakeNotifier{}
+	r := New(baseConfig(), nil, ec2, &fakeSSM{usage: 90}, &fakeRecorder{}, nil, n, nil, nil, nil, discardLogger())
+
+	if _, err := r.Reconcile(context.Background()); err != nil {
+		t.Fatalf("Reconcile should swallow per-instance error, got %v", err)
+	}
+	if len(n.alertnames) != 1 || n.alertnames[0] != alertResizeFailed {
+		t.Errorf("alertnames = %v, want [%s]", n.alertnames, alertResizeFailed)
+	}
+	if len(n.severities) != 1 || n.severities[0] != severityWarning {
+		t.Errorf("severities = %v, want [%s]", n.severities, severityWarning)
+	}
+}
+
+func TestReconcileNotifyOnFailureSuppressesSuccess(t *testing.T) {
+	cfg := baseConfig()
+	cfg.AlertmanagerNotifyOn = config.NotifyOnFailure
+	ec2 := &fakeEC2{instances: []awsx.Instance{sampleInstance()}}
+	n := &fakeNotifier{}
+	r := New(cfg, nil, ec2, &fakeSSM{usage: 85}, &fakeRecorder{}, nil, n, nil, nil, nil, discardLogger())
+
+	if _, err := r.Reconcile(context.Background()); err != nil {
+		t.Fatalf("Reconcile error: %v", err)
+	}
+	if len(n.alertnames) != 0 {
+		t.Errorf("notify-on=failure sent success alert: %v", n.alertnames)
+	}
+}
+
+func TestReconcileNotifyOnSuccessSuppressesFailure(t *testing.T) {
+	cfg := baseConfig()
+	cfg.AlertmanagerNotifyOn = config.NotifyOnSuccess
+	ec2 := &fakeEC2{instances: []awsx.Instance{sampleInstance()}, modifyErr: errors.New("nope")}
+	n := &fakeNotifier{}
+	r := New(cfg, nil, ec2, &fakeSSM{usage: 90}, &fakeRecorder{}, nil, n, nil, nil, nil, discardLogger())
+
+	if _, err := r.Reconcile(context.Background()); err != nil {
+		t.Fatalf("Reconcile should swallow per-instance error, got %v", err)
+	}
+	if len(n.alertnames) != 0 {
+		t.Errorf("notify-on=success sent failure alert: %v", n.alertnames)
+	}
+}
+
+// TestReconcileAlertDisabledPolicySuppressesAlerts verifies the per-policy
+// alert switch: an effective policy with alertEnabled false sends no alert for
+// either outcome even though a notifier is configured.
+func TestReconcileAlertDisabledPolicySuppressesAlerts(t *testing.T) {
+	for name, ec2 := range map[string]*fakeEC2{
+		"success": {instances: []awsx.Instance{sampleInstance()}},
+		"failure": {instances: []awsx.Instance{sampleInstance()}, modifyErr: errors.New("nope")},
+	} {
+		t.Run(name, func(t *testing.T) {
+			cfg := baseConfig()
+			cfg.AlertEnabled = false
+			n := &fakeNotifier{}
+			r := New(cfg, nil, ec2, &fakeSSM{usage: 90}, &fakeRecorder{}, nil, n, nil, nil, nil, discardLogger())
+
+			if _, err := r.Reconcile(context.Background()); err != nil {
+				t.Fatalf("Reconcile error: %v", err)
+			}
+			if len(n.alertnames) != 0 {
+				t.Errorf("alertEnabled=false sent alerts: %v", n.alertnames)
+			}
+		})
+	}
+}
+
+func TestReconcileDryRunSendsNoAlerts(t *testing.T) {
+	cfg := baseConfig()
+	cfg.DryRun = true
+	ec2 := &fakeEC2{instances: []awsx.Instance{sampleInstance()}}
+	n := &fakeNotifier{}
+	r := New(cfg, nil, ec2, &fakeSSM{usage: 95}, &fakeRecorder{}, nil, n, nil, nil, nil, discardLogger())
+
+	if _, err := r.Reconcile(context.Background()); err != nil {
+		t.Fatalf("Reconcile error: %v", err)
+	}
+	if len(n.alertnames) != 0 {
+		t.Errorf("dry-run sent alerts: %v", n.alertnames)
+	}
+}
+
+func TestReconcileDryRunEmitsNoEvents(t *testing.T) {
+	cfg := baseConfig()
+	cfg.DryRun = true
+	ec2 := &fakeEC2{instances: []awsx.Instance{sampleInstance()}}
+	ev := &fakeEmitter{}
+	r := New(cfg, nil, ec2, &fakeSSM{usage: 95}, &fakeRecorder{}, ev, nil, nil, nil, nil, discardLogger())
+
+	if _, err := r.Reconcile(context.Background()); err != nil {
+		t.Fatalf("Reconcile error: %v", err)
+	}
+	if len(ev.reasons) != 0 {
+		t.Errorf("dry-run emitted events: %v", ev.reasons)
+	}
+}
+
+func tagsContain(tags []string, want string) bool {
+	return slices.Contains(tags, want)
+}
+
+func TestReconcilePostsCompletedRegionAnnotation(t *testing.T) {
+	ec2 := &fakeEC2{instances: []awsx.Instance{sampleInstance()}}
+	a := &fakeAnnotator{}
+	r := New(baseConfig(), nil, ec2, &fakeSSM{usage: 85}, &fakeRecorder{}, nil, nil, a, nil, nil, discardLogger())
+
+	if _, err := r.Reconcile(context.Background()); err != nil {
+		t.Fatalf("Reconcile error: %v", err)
+	}
+	if len(a.texts) != 1 {
+		t.Fatalf("got %d annotations, want 1", len(a.texts))
+	}
+	// A completed resize is a region annotation (non-zero end).
+	if !a.regions[0] {
+		t.Error("completed resize annotation must be a region (non-zero end)")
+	}
+	if !tagsContain(a.lastTags, "instance_id:i-123") || !tagsContain(a.lastTags, "volume_id:vol-123") {
+		t.Errorf("tags %v missing instance_id/volume_id", a.lastTags)
+	}
+	if !tagsContain(a.lastTags, "result:success") {
+		t.Errorf("tags %v missing result:success", a.lastTags)
+	}
+}
+
+func TestReconcilePostsFailedPointAnnotation(t *testing.T) {
+	ec2 := &fakeEC2{instances: []awsx.Instance{sampleInstance()}, modifyErr: errors.New("nope")}
+	a := &fakeAnnotator{}
+	r := New(baseConfig(), nil, ec2, &fakeSSM{usage: 90}, &fakeRecorder{}, nil, nil, a, nil, nil, discardLogger())
+
+	if _, err := r.Reconcile(context.Background()); err != nil {
+		t.Fatalf("Reconcile should swallow per-instance error, got %v", err)
+	}
+	if len(a.texts) != 1 {
+		t.Fatalf("got %d annotations, want 1", len(a.texts))
+	}
+	// A failed resize is a point annotation (zero end).
+	if a.regions[0] {
+		t.Error("failed resize annotation must be a point (zero end)")
+	}
+	if !tagsContain(a.lastTags, "result:failure") {
+		t.Errorf("tags %v missing result:failure", a.lastTags)
+	}
+}
+
+func TestReconcileAnnotateOnFailureSuppressesSuccess(t *testing.T) {
+	cfg := baseConfig()
+	cfg.GrafanaAnnotateOn = config.AnnotateOnFailure
+	ec2 := &fakeEC2{instances: []awsx.Instance{sampleInstance()}}
+	a := &fakeAnnotator{}
+	r := New(cfg, nil, ec2, &fakeSSM{usage: 85}, &fakeRecorder{}, nil, nil, a, nil, nil, discardLogger())
+
+	if _, err := r.Reconcile(context.Background()); err != nil {
+		t.Fatalf("Reconcile error: %v", err)
+	}
+	if len(a.texts) != 0 {
+		t.Errorf("annotate-on=failure posted success annotation: %v", a.texts)
+	}
+}
+
+func TestReconcileAnnotateOnSuccessSuppressesFailure(t *testing.T) {
+	cfg := baseConfig()
+	cfg.GrafanaAnnotateOn = config.AnnotateOnSuccess
+	ec2 := &fakeEC2{instances: []awsx.Instance{sampleInstance()}, modifyErr: errors.New("nope")}
+	a := &fakeAnnotator{}
+	r := New(cfg, nil, ec2, &fakeSSM{usage: 90}, &fakeRecorder{}, nil, nil, a, nil, nil, discardLogger())
+
+	if _, err := r.Reconcile(context.Background()); err != nil {
+		t.Fatalf("Reconcile should swallow per-instance error, got %v", err)
+	}
+	if len(a.texts) != 0 {
+		t.Errorf("annotate-on=success posted failure annotation: %v", a.texts)
+	}
+}
+
+func TestReconcileDryRunPostsNoAnnotations(t *testing.T) {
+	cfg := baseConfig()
+	cfg.DryRun = true
+	ec2 := &fakeEC2{instances: []awsx.Instance{sampleInstance()}}
+	a := &fakeAnnotator{}
+	r := New(cfg, nil, ec2, &fakeSSM{usage: 95}, &fakeRecorder{}, nil, nil, a, nil, nil, discardLogger())
+
+	if _, err := r.Reconcile(context.Background()); err != nil {
+		t.Fatalf("Reconcile error: %v", err)
+	}
+	if len(a.texts) != 0 {
+		t.Errorf("dry-run posted annotations: %v", a.texts)
+	}
+}
+
+func TestReconcileResolvesPoliciesAndCounts(t *testing.T) {
+	threshold := 90
+	cfg := baseConfig()
+	cfg.Policies = []config.ResizePolicy{
+		{Name: "web", InstanceSelector: config.InstanceSelector{NameRegex: "^web-"},
+			Resize: config.ResizeSpec{UsageThresholdPercent: &threshold}},
+		{Name: "unmatched", InstanceSelector: config.InstanceSelector{NameRegex: "^nothing-"}},
+	}
+	resolver, err := policy.New(cfg)
+	if err != nil {
+		t.Fatalf("policy.New error: %v", err)
+	}
+
+	ec2 := &fakeEC2{instances: []awsx.Instance{sampleInstance()}}
+	rec := &fakeRecorder{}
+	// usage 85 is above the global 80 threshold but below the web policy's 90,
+	// so the resolver path must pick the policy override and skip the resize.
+	r := New(cfg, resolver, ec2, &fakeSSM{usage: 85}, rec, nil, nil, nil, nil, nil, discardLogger())
+
+	if _, err := r.Reconcile(context.Background()); err != nil {
+		t.Fatalf("Reconcile error: %v", err)
+	}
+	if len(ec2.modifyCalls) != 0 {
+		t.Errorf("ModifyVolume called %d times, want 0 (policy threshold 90)", len(ec2.modifyCalls))
+	}
+	if !slices.Contains(rec.skipPolicies, "web") {
+		t.Errorf("skip policies = %v, want to contain \"web\"", rec.skipPolicies)
+	}
+	want := map[string]int{"web": 1, "unmatched": 0, policy.DefaultPolicyName: 0}
+	if len(rec.policyCounts) != len(want) {
+		t.Fatalf("policy counts = %v, want %v", rec.policyCounts, want)
+	}
+	for k, v := range want {
+		if rec.policyCounts[k] != v {
+			t.Errorf("policy count %q = %d, want %d", k, rec.policyCounts[k], v)
+		}
+	}
+}

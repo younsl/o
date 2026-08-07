@@ -1,0 +1,96 @@
+/* ================================
+   Minimal Dark Theme
+   ================================ */
+
+/* Base dark background */
+html, body, #root {
+  background-color: #121212;
+  color: #ffffff;
+  overflow-x: hidden;
+}
+
+/* @backstage/ui typography scale override
+   Bump each step by ~2px for better readability */
+:root {
+  --bui-font-size-1: 0.75rem;    /* 12px (default 10px) */
+  --bui-font-size-2: 0.875rem;   /* 14px (default 12px) */
+  --bui-font-size-3: 1rem;       /* 16px (default 14px) */
+  --bui-font-size-4: 1.125rem;   /* 18px (default 16px) */
+  --bui-font-size-5: 1.375rem;   /* 22px (default 20px) */
+}
+
+/* Remove PluginHeader top color bar (conflicts with custom body background) */
+[class*="bui-PluginHeaderToolbar"]::before {
+  background-color: transparent !important;
+}
+
+/* Fix horizontal overflow on main content */
+main {
+  min-width: 0;
+  overflow-x: hidden;
+  width: 100%;
+}
+
+/* Sidebar */
+[class*="MuiDrawer-paper"] {
+  background-color: #0d0d0d;
+}
+
+/* Cards and Papers */
+[class*="MuiPaper-root"] {
+  background-color: #1a1a1a;
+  border: 1px solid #333333;
+}
+
+/* Input fields */
+[class*="MuiOutlinedInput-root"] {
+  background-color: #1e1e1e;
+}
+
+[class*="MuiOutlinedInput-notchedOutline"] {
+  border-color: #424242;
+}
+
+/* Dropdown menus */
+[class*="MuiMenu-paper"],
+[class*="MuiPopover-paper"],
+[class*="MuiAutocomplete-paper"] {
+  background-color: #1e1e1e;
+}
+
+/* Scrollbar */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: #1a1a1a;
+}
+
+::-webkit-scrollbar-thumb {
+  background: #424242;
+  border-radius: 4px;
+}
+
+/* Platform card wrapper hover effect */
+.platform-card-wrapper {
+  transition: transform 0.2s ease, box-shadow 0.2s ease;
+  border-radius: 8px;
+}
+
+.platform-card-wrapper:hover {
+  transform: translateY(-4px);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
+}
+
+/* @backstage/ui and legacy layout fixes - unified width */
+[class*="bui-container"],
+[class*="bui-Container"],
+[class*="BackstagePage-root"],
+[class*="BackstageContent-root"],
+article[class*="Page"],
+article[class*="Content"] {
+  max-width: 100% !important;
+  box-sizing: border-box !important;
+}

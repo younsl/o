@@ -1,0 +1,33 @@
+{{ include "external-ebs-autoresizer.fullname" . }} is deployed.
+
+Watching instances in region {{ .Values.config.region | default "(unset!)" }}
+matching tags: {{ .Values.config.tagFilters | default "(unset!)" }}
+Reconcile interval: {{ .Values.config.reconcileInterval }}
+Threshold: {{ .Values.config.defaultPolicy.usageThresholdPercent }}%   Grow: {{ if eq .Values.config.defaultPolicy.growMode "absolute" }}{{ .Values.config.defaultPolicy.growAmount }}{{ else }}{{ .Values.config.defaultPolicy.growPercent }}%{{ end }}
+Dry run: {{ .Values.config.dryRun }}
+
+Check status:
+  kubectl -n {{ .Release.Namespace }} logs deploy/{{ include "external-ebs-autoresizer.fullname" . }} -f
+
+{{- if .Values.config.throughputRecommendation.enabled }}
+
+Node EBS throughput recommendations are enabled, reading
+{{ .Values.config.throughputRecommendation.prometheusUrl | default "(prometheusUrl unset!)" }}
+every {{ .Values.config.throughputRecommendation.interval }} over a {{ .Values.config.throughputRecommendation.lookbackWindow }} window.
+Recommendations are published as Node annotations and never applied to a volume.
+
+Confirm the metrics backend is readable:
+  kubectl -n {{ .Release.Namespace }} logs deploy/{{ include "external-ebs-autoresizer.fullname" . }} | grep "metrics check"
+
+List the current recommendations:
+  kubectl get nodes -o custom-columns='NODE:.metadata.name,ACTION:.metadata.annotations.external-ebs-autoresizer/throughput-recommendation,CURRENT:.metadata.annotations.external-ebs-autoresizer/throughput-current-mibps,UTIL%:.metadata.annotations.external-ebs-autoresizer/throughput-utilization-percent,TARGET:.metadata.annotations.external-ebs-autoresizer/throughput-recommended-mibps'
+{{- end }}
+
+{{- if not .Values.serviceAccount.annotations }}
+
+WARNING: serviceAccount.annotations has no eks.amazonaws.com/role-arn set.
+The addon needs an IRSA role with ec2:DescribeInstances, ec2:DescribeVolumes,
+ec2:DescribeVolumesModifications, ec2:ModifyVolume, ssm:SendCommand,
+ssm:GetCommandInvocation, ssm:DescribeInstanceInformation{{ if .Values.config.throughputRecommendation.enabled }},
+ec2:DescribeInstanceTypes{{ end }}.
+{{- end }}

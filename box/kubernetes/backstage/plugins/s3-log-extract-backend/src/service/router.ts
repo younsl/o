@@ -1,0 +1,560 @@
+import { Router } from 'express';
+import express from 'express';
+import rateLimit from 'express-rate-limit';
+import * as fs from 'fs';
+import {
+  HttpAuthService,
+  LoggerService,
+} from '@backstage/backend-plugin-api';
+import { parseEntityRef } from '@backstage/catalog-model';
+import { Config } from '@backstage/config';
+import { RequestStore } from './RequestStore';
+import { S3LogService } from './S3LogService';
+import { ExtractionQueue } from './ExtractionQueue';
+import {
+  CreateLogExtractInput,
+  EC2_LOG_TYPES,
+  Ec2LogType,
+  ReviewLogExtractInput,
+} from './types';
+
+export interface RouterOptions {
+  logger: LoggerService;
+  config: Config;
+  store: RequestStore;
+  s3LogService: S3LogService;
+  extractionQueue: ExtractionQueue;
+  httpAuth: HttpAuthService;
+}
+
+export async function createRouter(options: RouterOptions): Promise<Router> {
+  const { config, logger, store, s3LogService, extractionQueue, httpAuth } =
+    options;
+
+  const admins = config.getOptionalStringArray('permission.admins') ?? [];
+  const isDevMode =
+    config.getOptionalBoolean('backend.auth.dangerouslyDisableDefaultAuthPolicy') ?? false;
+
+  async function tryGetUserRef(
+    req: express.Request,
+  ): Promise<string | undefined> {
+    try {
+      const credentials = await httpAuth.credentials(req as any, {
+        allow: ['user'],
+      });
+      return credentials.principal.userEntityRef;
+    } catch {
+      if (isDevMode) {
+        return 'user:development/guest';
+      }
+      return undefined;
+    }
+  }
+
+  const router = Router();
+  router.use(express.json());
+
+  // Resolve an explicit ec2 log stream value: null when absent (ec2 app
+  // entries carry their own `{app}/{category}`), undefined when invalid.
+  const resolveLogType = (
+    source: string,
+    raw: unknown,
+  ): Ec2LogType | null | undefined => {
+    if (source !== 'ec2') return null;
+    if (raw === undefined || raw === null || raw === '') return null;
+    return EC2_LOG_TYPES.includes(raw as Ec2LogType)
+      ? (raw as Ec2LogType)
+      : undefined;
+  };
+  const logTypeError = `logType must be one of: ${EC2_LOG_TYPES.join(', ')}`;
+
+  // ec2 app entries are `{app}` (legacy, java stream) or `{app}/{category}`;
+  // k8s app entries never contain a slash.
+  const invalidAppEntry = (source: string, app: string): boolean => {
+    const parts = app.split('/');
+    if (source !== 'ec2') return parts.length !== 1;
+    if (parts.length === 1) return false;
+    return (
+      parts.length !== 2 ||
+      !parts[0] ||
+      !EC2_LOG_TYPES.includes(parts[1] as Ec2LogType)
+    );
+  };
+  const appsError = `ec2 apps must be "app" or "app/{${EC2_LOG_TYPES.join('|')}}"; k8s apps must not contain "/"`;
+
+  router.get('/health', (_, res) => {
+    res.json({ status: 'ok' });
+  });
+
+  router.get('/config', (_, res) => {
+    const bucket = config.getOptionalString('s3LogExtract.bucket') ?? '';
+    const region = config.getOptionalString('s3LogExtract.region') ?? 'ap-northeast-2';
+    const prefix = config.getOptionalString('s3LogExtract.prefix') ?? '';
+    const maxTimeRangeMinutes =
+      config.getOptionalNumber('s3LogExtract.maxTimeRangeMinutes') ?? 60;
+    res.json({ bucket, region, prefix, maxTimeRangeMinutes });
+  });
+
+  let healthCache: { connected: boolean; checkedAt: string; error?: string } | null = null;
+  let healthCacheExpiry = 0;
+
+  const runHealthCheck = async () => {
+    const result = await s3LogService.checkHealth();
+    healthCache = result;
+    healthCacheExpiry = Date.now() + 60_000;
+    return result;
+  };
+
+  runHealthCheck().catch(() => {});
+
+  const healthInterval = setInterval(() => {
+    runHealthCheck().catch(() => {});
+  }, 60_000);
+  process.on('SIGTERM', () => clearInterval(healthInterval));
+
+  router.get('/s3-health', async (_req, res) => {
+    if (healthCache && Date.now() < healthCacheExpiry) {
+      res.json(healthCache);
+      return;
+    }
+    const result = await runHealthCheck();
+    res.json(result);
+  });
+
+  const listAppsLimiter = rateLimit({
+    windowMs: 15 * 60 * 1000,
+    max: 20,
+    standardHeaders: true,
+    legacyHeaders: false,
+    message: { error: 'Too many requests, please try again later' },
+  });
+
+  router.get('/apps', listAppsLimiter, async (req, res) => {
+    try {
+      const env = req.query.env as string;
+      const date = req.query.date as string;
+      const source = (req.query.source as string) || 'k8s';
+
+      if (!env || !date) {
+        res.status(400).json({ error: 'env and date are required' });
+        return;
+      }
+
+      if (source !== 'k8s' && source !== 'ec2') {
+        res.status(400).json({ error: 'source must be "k8s" or "ec2"' });
+        return;
+      }
+
+      const apps = await s3LogService.listApps(env, date, source);
+      res.json(apps);
+    } catch (error) {
+      logger.error(`Failed to list apps: ${error}`);
+      res.status(500).json({
+        error: error instanceof Error ? error.message : 'Unknown error',
+      });
+    }
+  });
+
+  const precheckLimiter = rateLimit({
+    windowMs: 15 * 60 * 1000,
+    max: 30,
+    standardHeaders: true,
+    legacyHeaders: false,
+    message: { error: 'Too many requests, please try again later' },
+  });
+
+  // Advisory availability check (List-only, no downloads): how many S3
+  // objects could overlap the requested window. Zero is a definitive "no
+  // logs yet"; logs may still arrive later due to batch upload delays.
+  router.get('/precheck', precheckLimiter, async (req, res) => {
+    try {
+      const env = req.query.env as string;
+      const date = req.query.date as string;
+      const source = (req.query.source as string) || 'k8s';
+      const startTime = req.query.startTime as string;
+      const endTime = req.query.endTime as string;
+      const apps = String(req.query.apps ?? '')
+        .split(',')
+        .filter(Boolean);
+
+      if (!env || !date || !startTime || !endTime || apps.length === 0) {
+        res.status(400).json({
+          error: 'env, date, apps, startTime, and endTime are required',
+        });
+        return;
+      }
+
+      if (source !== 'k8s' && source !== 'ec2') {
+        res.status(400).json({ error: 'source must be "k8s" or "ec2"' });
+        return;
+      }
+
+      const logType = resolveLogType(source, req.query.logType);
+      if (logType === undefined) {
+        res.status(400).json({ error: logTypeError });
+        return;
+      }
+
+      if (apps.some(app => invalidAppEntry(source, app))) {
+        res.status(400).json({ error: appsError });
+        return;
+      }
+
+      const result = await s3LogService.countCandidateObjects(
+        source,
+        logType ?? 'java',
+        env,
+        date,
+        apps,
+        startTime,
+        endTime,
+      );
+      res.json(result);
+    } catch (error) {
+      logger.error(`Failed to precheck: ${error}`);
+      res.status(500).json({
+        error: error instanceof Error ? error.message : 'Unknown error',
+      });
+    }
+  });
+
+  const submitLimiter = rateLimit({
+    windowMs: 15 * 60 * 1000,
+    max: 5,
+    standardHeaders: true,
+    legacyHeaders: false,
+    message: { error: 'Too many requests, please try again later' },
+  });
+
+  router.post('/requests', submitLimiter, async (req, res) => {
+    try {
+      const userRef = (await tryGetUserRef(req)) ?? 'user:default/unknown';
+
+      const input = req.body as CreateLogExtractInput;
+      if (
+        !input.source ||
+        !input.env ||
+        !input.date ||
+        !input.apps?.length ||
+        !input.startTime ||
+        !input.endTime ||
+        !input.reason ||
+        !input.encryption
+      ) {
+        res.status(400).json({
+          error:
+            'source, env, date, apps, startTime, endTime, reason, and encryption are required',
+        });
+        return;
+      }
+
+      if (input.source !== 'k8s' && input.source !== 'ec2') {
+        res.status(400).json({ error: 'source must be "k8s" or "ec2"' });
+        return;
+      }
+
+      const logType = resolveLogType(input.source, input.logType);
+      if (logType === undefined) {
+        res.status(400).json({ error: logTypeError });
+        return;
+      }
+      input.logType = logType ?? undefined;
+
+      if (input.apps.some(app => invalidAppEntry(input.source, app))) {
+        res.status(400).json({ error: appsError });
+        return;
+      }
+
+      // Only AES-256 is offered; reject anything else explicitly.
+      if (input.encryption !== 'aes256') {
+        res.status(400).json({ error: 'encryption must be "aes256"' });
+        return;
+      }
+
+      const maxMinutes =
+        config.getOptionalNumber('s3LogExtract.maxTimeRangeMinutes') ?? 60;
+      const parseMinutes = (t: string) => {
+        const m = t.match(/^(\d{2}):(\d{2})$/);
+        return m ? parseInt(m[1], 10) * 60 + parseInt(m[2], 10) : null;
+      };
+      const startMin = parseMinutes(input.startTime);
+      const endMin = parseMinutes(input.endTime);
+      if (startMin !== null && endMin !== null) {
+        const range = endMin >= startMin
+          ? endMin - startMin
+          : 24 * 60 - startMin + endMin;
+        if (range > maxMinutes) {
+          res.status(400).json({
+            error: `Time range ${range}m exceeds maximum of ${maxMinutes}m`,
+          });
+          return;
+        }
+      }
+
+      const request = await store.createRequest(input, userRef);
+      logger.info(
+        `Log extract requested [${request.id}] by ${userRef}: ${input.env} ${input.date} ${input.apps.join(',')}`,
+      );
+
+      res.status(201).json(request);
+    } catch (error) {
+      logger.error(`Failed to create request: ${error}`);
+      res.status(500).json({
+        error: error instanceof Error ? error.message : 'Unknown error',
+      });
+    }
+  });
+
+  router.get('/requests', async (req, res) => {
+    try {
+      const userRef = await tryGetUserRef(req);
+
+      if (!userRef) {
+        res.status(403).json({ error: 'Authentication required' });
+        return;
+      }
+
+      const requests = await store.listRequests();
+      res.json(requests);
+    } catch (error) {
+      logger.error(`Failed to list requests: ${error}`);
+      res.status(500).json({
+        error: error instanceof Error ? error.message : 'Unknown error',
+      });
+    }
+  });
+
+  router.get('/requests/:id', async (req, res) => {
+    try {
+      const id = req.params.id as string;
+      const request = await store.getRequest(id);
+      if (!request) {
+        res.status(404).json({ error: 'Request not found' });
+        return;
+      }
+      res.json(request);
+    } catch (error) {
+      logger.error(`Failed to get request: ${error}`);
+      res.status(500).json({
+        error: error instanceof Error ? error.message : 'Unknown error',
+      });
+    }
+  });
+
+  const reviewLimiter = rateLimit({
+    windowMs: 15 * 60 * 1000,
+    max: 10,
+    standardHeaders: true,
+    legacyHeaders: false,
+    message: { error: 'Too many review requests, please try again later' },
+  });
+
+  router.post(
+    '/requests/:id/review',
+    reviewLimiter,
+    async (req, res) => {
+      try {
+        const id = req.params.id as string;
+        const reviewerRef = await tryGetUserRef(req);
+
+        if (!reviewerRef || !admins.includes(reviewerRef)) {
+          res
+            .status(403)
+            .json({ error: 'Only admins can review requests' });
+          return;
+        }
+
+        const input = req.body as ReviewLogExtractInput;
+
+        if (!input.action || !['approve', 'reject'].includes(input.action)) {
+          res
+            .status(400)
+            .json({ error: 'action must be "approve" or "reject"' });
+          return;
+        }
+
+        if (!input.comment?.trim()) {
+          res.status(400).json({ error: 'comment is required' });
+          return;
+        }
+
+        const existing = await store.getRequest(id);
+        if (!existing) {
+          res.status(404).json({ error: 'Request not found' });
+          return;
+        }
+        if (existing.status !== 'pending') {
+          res
+            .status(409)
+            .json({ error: `Request already ${existing.status}` });
+          return;
+        }
+
+        if (input.action === 'reject') {
+          const updated = await store.updateStatus(id, 'rejected', {
+            reviewerRef,
+            reviewComment: input.comment,
+          });
+          logger.info(`Request rejected [${id}] by ${reviewerRef}`);
+          res.json(updated);
+          return;
+        }
+
+        await store.updateStatus(id, 'approved', {
+          reviewerRef,
+          reviewComment: input.comment,
+        });
+
+        logger.info(
+          `Request approved [${id}] by ${reviewerRef}, queued for extraction`,
+        );
+
+        // Approved requests run one at a time in approval order; this one
+        // starts immediately when nothing else is extracting.
+        extractionQueue.pump();
+
+        const updated = await store.getRequest(id);
+        res.json(updated);
+      } catch (error) {
+        logger.error(`Failed to review request: ${error}`);
+        res.status(500).json({
+          error: error instanceof Error ? error.message : 'Unknown error',
+        });
+      }
+    },
+  );
+
+  const downloadLimiter = rateLimit({
+    windowMs: 10 * 60 * 1000,
+    max: 5,
+    standardHeaders: true,
+    legacyHeaders: false,
+    message: { error: 'Too many download requests, please try again later' },
+  });
+
+  router.get(
+    '/requests/:id/download',
+    downloadLimiter,
+    async (req, res) => {
+      try {
+        const id = req.params.id as string;
+        const userRef = await tryGetUserRef(req);
+        const request = await store.getRequest(id);
+
+        if (!request) {
+          res.status(404).json({ error: 'Request not found' });
+          return;
+        }
+
+        if (request.status !== 'completed') {
+          res.status(400).json({ error: 'Archive is not ready' });
+          return;
+        }
+
+        // No logs matched the window: there is nothing worth downloading.
+        if (request.fileCount === 0) {
+          res.status(400).json({ error: 'Archive contains no logs' });
+          return;
+        }
+
+        if (!request.archivePath || !fs.existsSync(request.archivePath)) {
+          res.status(404).json({ error: 'Archive file not found' });
+          return;
+        }
+
+        if (!userRef || (userRef !== request.requesterRef && !admins.includes(userRef))) {
+          res
+            .status(403)
+            .json({ error: 'Only the requester or admin can download' });
+          return;
+        }
+
+        const fileName = `backstage-s3logs-${request.env}-${request.date}.zip`;
+        res.setHeader('Content-Type', 'application/zip');
+        res.setHeader(
+          'Content-Disposition',
+          `attachment; filename="${fileName}"`,
+        );
+        res.setHeader('Content-Length', request.archiveSize ?? 0);
+
+        const stream = fs.createReadStream(request.archivePath);
+        stream.pipe(res);
+      } catch (error) {
+        logger.error(`Failed to download: ${error}`);
+        res.status(500).json({
+          error: error instanceof Error ? error.message : 'Unknown error',
+        });
+      }
+    },
+  );
+
+  const revealLimiter = rateLimit({
+    windowMs: 10 * 60 * 1000,
+    max: 10,
+    standardHeaders: true,
+    legacyHeaders: false,
+    message: { error: 'Too many reveal requests, please try again later' },
+  });
+
+  // One-time password reveal (IAM secret key style): only the first caller
+  // ever receives the plaintext; the store atomically destroys it afterwards.
+  router.post(
+    '/requests/:id/reveal-password',
+    revealLimiter,
+    async (req, res) => {
+      try {
+        const id = req.params.id as string;
+        const userRef = await tryGetUserRef(req);
+        const request = await store.getRequest(id);
+
+        if (!request) {
+          res.status(404).json({ error: 'Request not found' });
+          return;
+        }
+
+        if (!userRef || (userRef !== request.requesterRef && !admins.includes(userRef))) {
+          res.status(403).json({
+            error: 'Only the requester or admin can reveal the password',
+          });
+          return;
+        }
+
+        if (request.status !== 'completed') {
+          res.status(400).json({ error: 'Archive is not ready' });
+          return;
+        }
+
+        // Don't burn the one-time password on an empty archive.
+        if (request.fileCount === 0) {
+          res.status(400).json({ error: 'Archive contains no logs' });
+          return;
+        }
+
+        const password = await store.revealPassword(id, userRef);
+        if (!password) {
+          res.status(410).json({
+            error: 'Password already revealed and cannot be shown again',
+            revealedTo: request.passwordRevealedTo,
+            revealedAt: request.passwordRevealedAt,
+          });
+          return;
+        }
+
+        logger.info(`Archive password revealed [${id}] to ${userRef}`);
+        res.json({ password });
+      } catch (error) {
+        logger.error(`Failed to reveal password: ${error}`);
+        res.status(500).json({
+          error: error instanceof Error ? error.message : 'Unknown error',
+        });
+      }
+    },
+  );
+
+  router.get('/admin-status', async (req, res) => {
+    const userRef = await tryGetUserRef(req);
+    res.json({ isAdmin: !!userRef && admins.includes(userRef) });
+  });
+
+  return router;
+}

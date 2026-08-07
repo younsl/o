@@ -1,0 +1,53 @@
+/* Warning icon button */
+.kafka-warning-btn {
+  width: 20px;
+  height: 20px;
+  min-width: 20px;
+  min-height: 20px;
+  flex-shrink: 0;
+}
+
+/* Warning tooltip */
+.kafka-warning-tooltip {
+  max-width: 360px;
+  word-break: break-word;
+}
+
+/* Filter box */
+.kafka-filter-box {
+  background-color: var(--bui-color-bg-elevated, #1a1a1a);
+  border-radius: 8px;
+}
+
+.kafka-filter-bar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  align-items: flex-end;
+}
+
+.kafka-filter-bar > * {
+  min-width: 160px;
+  flex: 1;
+}
+
+/* Count badge */
+.kafka-count-badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px 8px;
+  border-radius: 4px;
+  font-size: 12px;
+  font-weight: 700;
+  font-family: var(--bui-font-family-mono, monospace);
+  background: rgba(79, 143, 247, 0.15);
+  color: #6ea8fe;
+}
+
+/* Search highlight */
+.kafka-search-highlight {
+  background: rgba(255, 213, 79, 0.3);
+  color: #ffd54f;
+  border-radius: 2px;
+  padding: 0 1px;
+}

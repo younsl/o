@@ -1,0 +1,40 @@
+# Example config for local CLI verification (make validate/policies/instances).
+# Mirrors the ConfigMap the Helm chart renders to
+# /etc/external-ebs-autoresizer/config.yaml.
+region: ap-northeast-2
+tagFilters: ""            # empty scans every instance in the account/region
+excludeEKSNodes: true
+reconcileInterval: 5m
+dryRun: true
+
+defaultPolicy:
+  usageThresholdPercent: 80
+  growMode: percent
+  growPercent: 10
+  maxVolumeSizeGiB: 1000
+  alertEnabled: true        # default-policy alert switch; named policies can override
+
+throughputRecommendation:
+  enabled: false
+  prometheusUrl: http://mimir-gateway.monitoring   # or a Prometheus base URL
+  prometheusTenantId: ""                           # Mimir X-Scope-OrgID
+  metricNodeNameLabel: node                                  # "instance" for a plain node exporter scrape
+  lookbackWindow: 7d
+  interval: 30m
+
+policies:
+  - name: bastion
+    weight: 5
+    instanceSelector:
+      nameRegex: bastion
+    resize:
+      paused: true
+      alertEnabled: false   # mute alerts for this group only
+      usageThresholdPercent: 60
+  - name: shared
+    weight: 1
+    instanceSelector:
+      nameRegex: "^shared-"
+    resize:
+      growMode: absolute
+      growAmount: 50GiB

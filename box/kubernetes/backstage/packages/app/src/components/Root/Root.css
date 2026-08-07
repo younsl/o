@@ -1,0 +1,32 @@
+.sidebar-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 20px;
+  height: 20px;
+  padding: 0 6px;
+  border-radius: 10px;
+  background-color: #f59e0b;
+  color: #fff;
+  font-size: 11px;
+  font-weight: 700;
+  line-height: 1;
+  margin-left: auto;
+}
+
+.sidebar-badge-zero {
+  background-color: rgba(255, 255, 255, 0.2);
+  color: rgba(255, 255, 255, 0.5);
+}
+
+/* core-components pins the sidebar label to a 110px box and clips it, so a
+   name like "Forklift Coverage" comes out truncated even though the open
+   drawer is 224px with a 72px icon column. The label is a MUI Typography
+   subtitle2 span, which keeps a stable class name unlike the JSS generated
+   one, so the cap is lifted only for items opted in with sidebar-item-wide. */
+.sidebar-item-wide .MuiTypography-subtitle2 {
+  width: auto !important;
+  min-width: 0 !important;
+  overflow: visible !important;
+  text-overflow: clip !important;
+}

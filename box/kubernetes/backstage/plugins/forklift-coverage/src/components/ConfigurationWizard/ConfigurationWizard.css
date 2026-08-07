@@ -1,0 +1,176 @@
+/* Toggle row: copy on the left, switch on the right, whole row is the target. */
+.fc-toggle-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 10px 12px;
+  border: 1px solid var(--bui-color-border-default, rgba(255, 255, 255, 0.12));
+  border-radius: 8px;
+  cursor: pointer;
+}
+
+.fc-toggle-row:hover {
+  background-color: rgba(128, 128, 128, 0.06);
+}
+
+.fc-toggle-copy {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+/* Minimal switch: a flat track with a plain knob, no gradient or shadow.
+   BUI ships the indicator as a CSS module class, so the hashed name is matched
+   by substring rather than by the plain bui-SwitchIndicator name. */
+.fc-switch {
+  flex-shrink: 0;
+}
+
+.fc-switch [class*='SwitchIndicator'] {
+  width: 34px !important;
+  height: 18px !important;
+  border-radius: 9px !important;
+  background: rgba(156, 163, 175, 0.35) !important;
+  border: none !important;
+  transition: background 0.15s ease !important;
+}
+
+/* Thumb. Its width also drives BUI's translateX(100%) when selected. */
+.fc-switch [class*='SwitchIndicator']::before {
+  margin: 2px !important;
+  width: 14px !important;
+  height: 14px !important;
+  border-radius: 50% !important;
+  background: #fff !important;
+  box-shadow: none !important;
+  transition: transform 0.15s ease !important;
+}
+
+.fc-switch[data-selected] [class*='SwitchIndicator'] {
+  background: #10b981 !important;
+}
+
+.fc-switch[data-selected] [class*='SwitchIndicator']::before {
+  background: #fff !important;
+}
+
+.fc-switch[data-focus-visible] [class*='SwitchIndicator'] {
+  outline: 2px solid var(--bui-border-accent, #3b82f6);
+  outline-offset: 2px;
+}
+
+.fc-switch[data-disabled] {
+  opacity: 0.5;
+}
+
+/* Host check status. Fixed height so the form does not jump between states. */
+.fc-probe-status {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 20px;
+}
+
+.fc-probe-ok {
+  color: #10b981;
+  flex-shrink: 0;
+}
+
+.fc-probe-bad {
+  color: #ef4444;
+  flex-shrink: 0;
+}
+
+.fc-probe-spinner {
+  width: 12px;
+  height: 12px;
+  flex-shrink: 0;
+  border-radius: 50%;
+  border: 2px solid rgba(156, 163, 175, 0.35);
+  border-top-color: var(--bui-border-accent, #3b82f6);
+  animation: fc-probe-spin 0.7s linear infinite;
+}
+
+@keyframes fc-probe-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .fc-probe-spinner {
+    animation: none;
+  }
+}
+
+/* Slack preview: source on the left, rendered message on the right. */
+.fc-preview-split {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+}
+
+@media (max-width: 900px) {
+  .fc-preview-split {
+    grid-template-columns: 1fr;
+  }
+}
+
+.fc-preview-pane {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+}
+
+.fc-wizard-preview {
+  margin: 0;
+  padding: 12px;
+  max-height: 320px;
+  overflow: auto;
+  white-space: pre-wrap;
+  word-break: break-word;
+  border: 1px solid var(--bui-color-border-default, rgba(255, 255, 255, 0.12));
+  border-radius: 6px;
+  background: var(--bui-bg-neutral-2, rgba(255, 255, 255, 0.04));
+  color: var(--bui-color-text-default, #e0e0e0);
+  font-family: var(--bui-font-mono, ui-monospace, SFMono-Regular, Menlo, monospace);
+  font-size: 12px;
+  line-height: 1.6;
+}
+
+/* Slack-like card. The left rule is the accent Slack puts on attachments. */
+.fc-slack-card {
+  padding: 12px;
+  max-height: 320px;
+  overflow: auto;
+  border: 1px solid var(--bui-color-border-default, rgba(255, 255, 255, 0.12));
+  border-left: 3px solid #4a154b;
+  border-radius: 6px;
+  background: var(--bui-bg-neutral-2, rgba(255, 255, 255, 0.04));
+}
+
+.fc-slack-body {
+  color: var(--bui-color-text-default, #e0e0e0);
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.fc-slack-line {
+  word-break: break-word;
+}
+
+.fc-slack-blank {
+  height: 8px;
+}
+
+.fc-slack-link {
+  color: #1d9bd1;
+  text-decoration: none;
+}
+
+.fc-slack-link:hover {
+  text-decoration: underline;
+}

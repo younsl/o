@@ -1,0 +1,19 @@
+apiVersion: v2
+name: aws-vpn-maintenance-handler
+description: Owns AWS Site-to-Site VPN tunnel endpoint maintenance, applying it in a maintenance window after Slack approval instead of letting AWS pick the time
+type: application
+version: 0.1.0
+appVersion: "0.1.0"
+keywords:
+  - aws
+  - vpn
+  - site-to-site-vpn
+  - maintenance
+  - slack
+home: https://github.com/younsl/o
+sources:
+  - https://github.com/younsl/o/tree/main/box/kubernetes/aws-vpn-maintenance-handler
+maintainers:
+  - name: younsl
+    email: cysl@kakao.com
+    url: https://github.com/younsl

@@ -1,0 +1,12 @@
+{% set k = kind | default(value="") %}
+{% set a = author | default(value="") %}
+{% set au = author_url | default(value="") %}
+<section class="card{% if k %} {{ k }}{% endif %}">
+  <h2>{{ title }}</h2>
+  {% if k == "cover" and a %}<div class="author">{% if au %}<a href="{{ au }}" target="_blank" rel="noopener">{{ a }}</a>{% else %}{{ a }}{% endif %}</div>{% endif %}
+  <div class="body">{{ body | markdown(inline=false) | safe }}</div>
+  {% if k == "cover" %}
+    {% if page.updated %}<div class="lastmod">Last updated · {{ page.updated | date(format="%Y-%m-%d") }}</div>
+    {% elif page.date %}<div class="lastmod">Last updated · {{ page.date | date(format="%Y-%m-%d") }}</div>{% endif %}
+  {% endif %}
+</section>

@@ -1,0 +1,19 @@
+{{- $cfg := deepCopy .Values.config }}
+{{- $_ := set $cfg "healthPort" (.Values.ports.health | int) }}
+{{- $_ := set $cfg "metricsPort" (.Values.ports.metrics | int) }}
+{{- $_ := set $cfg "leaderElect" (eq (include "external-ebs-autoresizer.leaderElectEnabled" .) "true") }}
+{{- $_ := set $cfg "leaseName" (include "external-ebs-autoresizer.fullname" .) }}
+{{- $ga := deepCopy (.Values.config.grafanaAnnotation | default dict) }}
+{{- $_ := unset $ga "apiToken" }}
+{{- $_ := unset $ga "existingSecret" }}
+{{- $_ := unset $ga "existingSecretKey" }}
+{{- $_ := set $cfg "grafanaAnnotation" $ga }}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "external-ebs-autoresizer.fullname" . }}
+  labels:
+    {{- include "external-ebs-autoresizer.labels" . | nindent 4 }}
+data:
+  config.yaml: |
+    {{- toYaml $cfg | nindent 4 }}

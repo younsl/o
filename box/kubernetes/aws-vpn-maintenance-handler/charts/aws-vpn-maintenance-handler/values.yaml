@@ -1,0 +1,232 @@
+# -- (string) Override the chart name
+nameOverride: ""
+# -- (string) Override the fully qualified release name
+fullnameOverride: ""
+
+image:
+  # -- (string) Container image registry
+  registry: ghcr.io/younsl
+  # -- (string) Container image repository
+  repository: aws-vpn-maintenance-handler
+  # -- (string) Image tag; defaults to the chart appVersion
+  tag: ""
+  # -- (string) Image pull policy
+  pullPolicy: IfNotPresent
+
+# -- (list) Image pull secrets for private registries
+imagePullSecrets: []
+
+# -- (int) Number of replicas. Above 1 enables leader election so only one replica reconciles.
+replicaCount: 1
+
+# -- (int) Number of old ReplicaSets to retain for rollback
+revisionHistoryLimit: 3
+
+# -- (string) ConfigMap holding in-flight and cooldown state; defaults to `<fullname>-state`. No PersistentVolume needed.
+stateConfigMapName: ""
+
+# -- (object) Deployment update strategy
+strategy:
+  type: Recreate
+
+# Rendered verbatim into config.yaml and mounted at
+# /etc/aws-vpn-maintenance-handler/config.yaml. Unknown keys fail at startup.
+config:
+  # -- (string) AWS region (required)
+  region: ""
+  # -- (string) Poll interval for telemetry and pending maintenance
+  reconcileInterval: "5m"
+  # -- (bool) Validate ReplaceVpnTunnel with the AWS DryRun flag instead of replacing
+  dryRun: true
+
+  # -- (object) Which VPN connections this controller owns
+  targets:
+    # -- (list) Tags that must all match. Required, so connections are opted in explicitly.
+    tagFilters:
+      - key: aws-vpn-maintenance-handler.networking.k8s.io/managed
+        value: "true"
+    # -- (list) VPN connection IDs to skip even when tags match
+    excludeConnectionIDs: []
+
+  # -- (object) Window during which a replacement may start. Each cron firing opens it for `duration`. This is the only schedule to set: within the window, the moment is chosen by measuring traffic rather than by more configuration.
+  maintenanceWindow:
+    # -- (string) IANA timezone the schedule is evaluated in
+    timezone: "UTC"
+    # -- (string) Standard 5-field cron expression: minute hour dom month dow. Descriptors like `@daily` also work.
+    cronSchedule: "0 2 * * 2,3,4"
+    # -- (string) How long the window stays open after each firing
+    duration: "3h"
+
+  # -- (object) Preflight and verification thresholds. Keys left out keep their built-in defaults.
+  safety:
+    # -- (string) Raise notification severity, and let the traffic gate settle for a median moment instead of the quietest one, once the AWS auto-apply deadline is nearer than this
+    escalateBefore: "168h"
+    # -- (string) How long a tunnel must have held UP before its sibling may be replaced. Unset means 5m.
+    peerMinStableFor: ~
+
+  # -- (object) Human approval gate
+  approval:
+    # -- (list) Slack user IDs (Uxxxxxxxx) that receive the DM and may approve. Required.
+    slackUserIDs: []
+    # -- (string) Expire an unanswered request after this long
+    timeout: "1h"
+    # -- (string) How often to post a "still waiting" thread reply while verifying
+    progressHeartbeat: "5m"
+
+  # -- (object) Query Prometheus or Mimir so a replacement only runs at a quiet moment of the window. Which exporter publishes VPN traffic, what the connection normally carries, and when the window is calmest are all measured, so the only threshold is a percentile.
+  trafficGate:
+    # -- (bool) Enable the traffic gate
+    enabled: false
+    # -- (string) Query API base URL, the part before /api/v1/query. For Mimir usually the `.../prometheus` path.
+    endpoint: ""
+    # -- (float) Share of what this connection carries during its own maintenance window that counts as quiet. 20 acts once traffic falls into the quietest fifth of the last four weeks of that window; lower waits for a calmer moment, higher acts sooner. Needs no knowledge of the connection: a busy VPN and an idle one both have a quietest fifth.
+    quietPercentile: 20
+    # -- (string) What an unreadable metric source means: `block` (no evidence of quiet) or `allow`
+    onError: "block"
+    # -- (object) Headers sent with every query, e.g. `X-Scope-OrgID` for a Mimir tenant
+    headers: {}
+
+  # -- (string) Log level (debug, info, warn, error)
+  logLevel: "info"
+  # -- (string) Log format (json or text)
+  logFormat: "json"
+
+# -- (object) Slack credentials. Approvals arrive over Socket Mode, so no Ingress is needed.
+slack:
+  # -- (string) Existing Secret with `botToken` and `appToken` keys; skips Secret creation
+  existingSecret: ""
+  # -- (string) Slack bot token (xoxb-) with chat:write and im:write, plus users:read to log approver names
+  botToken: ""
+  # -- (string) Slack app-level token (xapp-) with connections:write
+  appToken: ""
+
+# -- (int) Port serving /healthz and /readyz
+healthPort: 8081
+# -- (int) Port serving /metrics
+metricsPort: 9090
+
+serviceAccount:
+  # -- (bool) Create a ServiceAccount
+  create: true
+  # -- (string) ServiceAccount name; defaults to the fullname
+  name: ""
+  # -- (object) ServiceAccount annotations; put the IRSA role ARN here
+  annotations: {}
+
+rbac:
+  # -- (bool) Create the Role and RoleBinding for the state ConfigMap, Lease, and Events
+  create: true
+
+service:
+  # -- (string) Service type
+  type: ClusterIP
+  # -- (object) Service annotations
+  annotations: {}
+  # -- (string) Traffic distribution, e.g. `PreferClose` (Kubernetes 1.31+); empty omits the field
+  trafficDistribution: ""
+
+serviceMonitor:
+  # -- (bool) Create a Prometheus Operator ServiceMonitor
+  enabled: false
+  # -- (string) ServiceMonitor namespace; defaults to the release namespace
+  namespace: ""
+  # -- (string) Scrape interval
+  interval: 60s
+  # -- (string) Scrape timeout
+  scrapeTimeout: 10s
+  # -- (object) Extra ServiceMonitor labels, e.g. the Prometheus release selector
+  labels: {}
+
+podDisruptionBudget:
+  # -- (bool) Create a PodDisruptionBudget
+  enabled: false
+  # -- (string|int) Minimum available Pods
+  minAvailable: 1
+  # -- (string) Unhealthy Pod eviction policy, `IfHealthyBudget` or `AlwaysAllow` (Kubernetes 1.27+); empty omits the field
+  unhealthyPodEvictionPolicy: ""
+
+# -- (object) Resource requests and limits. No CPU limit, so verification is never throttled.
+resources:
+  requests:
+    cpu: 10m
+    memory: 64Mi
+  limits:
+    memory: 128Mi
+
+# -- (list) Container resize policy for in-place vertical scaling
+resizePolicy:
+  - resourceName: cpu
+    restartPolicy: NotRequired
+  - resourceName: memory
+    restartPolicy: RestartContainer
+
+# -- (object) Container security context
+securityContext:
+  allowPrivilegeEscalation: false
+  readOnlyRootFilesystem: true
+  runAsNonRoot: true
+  runAsUser: 65532
+  runAsGroup: 65532
+  capabilities:
+    drop:
+      - ALL
+  seccompProfile:
+    type: RuntimeDefault
+
+# -- (object) Pod security context
+podSecurityContext:
+  fsGroup: 65532
+
+# -- (object) Pod annotations
+podAnnotations: {}
+# -- (object) Pod labels
+podLabels: {}
+
+# -- (string) PriorityClass for the Pod, e.g. `system-cluster-critical`. Keeps the controller from being evicted mid-replacement.
+priorityClassName: ""
+
+# -- (object) Node selector
+nodeSelector: {}
+# -- (list) Tolerations
+tolerations: []
+# -- (object) Affinity rules
+affinity: {}
+
+# -- (list) Topology spread constraints
+topologySpreadConstraints: []
+  # - maxSkew: 1
+  #   topologyKey: topology.kubernetes.io/zone
+  #   whenUnsatisfiable: ScheduleAnyway
+  #   labelSelector:
+  #     matchLabels:
+  #       app.kubernetes.io/name: aws-vpn-maintenance-handler
+
+# -- (string) DNS policy for the Pod
+dnsPolicy: ""
+
+# -- (object) DNS configuration for the Pod
+dnsConfig: {}
+  # nameservers:
+  #   - 1.1.1.1
+  # searches:
+  #   - ns1.svc.cluster-domain.example
+  # options:
+  #   - name: ndots
+  #     value: "2"
+
+# -- (int) Termination grace period, long enough to post a closing Slack update
+terminationGracePeriodSeconds: 60
+
+# -- (list) Extra environment variables
+extraEnv: []
+  # - name: HTTPS_PROXY
+  #   value: http://proxy.example.com:3128
+
+# -- (list) Extra manifests rendered through `tpl`
+extraObjects: []
+  # - apiVersion: v1
+  #   kind: ConfigMap
+  #   metadata:
+  #     name: '{{ include "aws-vpn-maintenance-handler.fullname" . }}-extra-config'
+  #   data:
+  #     key: value

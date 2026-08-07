@@ -1,0 +1,40 @@
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: {{ include "kuo.fullname" . }}
+  labels:
+    {{- include "kuo.labels" . | nindent 4 }}
+rules:
+  - apiGroups: ["kuo.io"]
+    resources: ["eksupgrades"]
+    verbs: ["get", "list", "watch"]
+  - apiGroups: ["kuo.io"]
+    resources: ["eksupgrades/status"]
+    verbs: ["get", "patch", "update"]
+  - apiGroups: ["policy"]
+    resources: ["poddisruptionbudgets"]
+    verbs: ["get", "list"]
+  # Karpenter NodePool node replacement (kuo deletes NodeClaims; Karpenter drains
+  # and reprovisions). Nodes/pods are read to detect stale kubelets and snapshot
+  # the workloads to wait on.
+  - apiGroups: ["karpenter.sh"]
+    resources: ["nodepools", "nodeclaims"]
+    verbs: ["get", "list"]
+  - apiGroups: ["karpenter.sh"]
+    resources: ["nodeclaims"]
+    verbs: ["delete"]
+  - apiGroups: ["karpenter.k8s.aws"]
+    resources: ["ec2nodeclasses"]
+    verbs: ["get", "list"]
+  - apiGroups: [""]
+    resources: ["nodes", "pods"]
+    verbs: ["get", "list"]
+  - apiGroups: ["apps"]
+    resources: ["deployments", "statefulsets", "daemonsets", "replicasets"]
+    verbs: ["get", "list"]
+  - apiGroups: ["", "events.k8s.io"]
+    resources: ["events"]
+    verbs: ["create", "patch"]
+  - apiGroups: ["coordination.k8s.io"]
+    resources: ["leases"]
+    verbs: ["get", "create", "update"]

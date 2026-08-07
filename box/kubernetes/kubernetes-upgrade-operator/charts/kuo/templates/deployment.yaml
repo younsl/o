@@ -1,0 +1,104 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "kuo.fullname" . }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "kuo.labels" . | nindent 4 }}
+spec:
+  replicas: {{ .Values.replicaCount }}
+  revisionHistoryLimit: {{ .Values.revisionHistoryLimit }}
+  selector:
+    matchLabels:
+      {{- include "kuo.selectorLabels" . | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "kuo.selectorLabels" . | nindent 8 }}
+    spec:
+      serviceAccountName: {{ include "kuo.serviceAccountName" . }}
+      {{- with .Values.priorityClassName }}
+      priorityClassName: {{ . }}
+      {{- end }}
+      {{- with .Values.dnsPolicy }}
+      dnsPolicy: {{ . }}
+      {{- end }}
+      {{- with .Values.dnsConfig }}
+      dnsConfig:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      containers:
+        - name: kuo
+          image: "{{ .Values.image.repository }}:{{ .Values.image.tag | default .Chart.AppVersion }}"
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          {{- if or .Values.slack.enabled .Values.grafanaAnnotation.enabled }}
+          env:
+            {{- if .Values.slack.enabled }}
+            - name: SLACK_WEBHOOK_URL
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "kuo.fullname" . }}-slack
+                  key: webhook-url
+            {{- end }}
+            {{- if .Values.grafanaAnnotation.enabled }}
+            - name: GRAFANA_ANNOTATION_ENABLED
+              value: "true"
+            - name: GRAFANA_URL
+              value: {{ .Values.grafanaAnnotation.url | quote }}
+            - name: GRAFANA_ANNOTATION_TAGS
+              value: {{ join "," .Values.grafanaAnnotation.tags | quote }}
+            - name: GRAFANA_ANNOTATE_ON
+              value: {{ .Values.grafanaAnnotation.annotateOn | quote }}
+            {{- if or .Values.grafanaAnnotation.existingSecret .Values.grafanaAnnotation.apiToken }}
+            - name: GRAFANA_API_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.grafanaAnnotation.existingSecret | default (printf "%s-grafana-annotation" (include "kuo.fullname" .)) }}
+                  key: {{ .Values.grafanaAnnotation.existingSecretKey }}
+                  optional: true
+            {{- end }}
+            {{- end }}
+          {{- end }}
+          ports:
+            - name: health
+              containerPort: 8080
+              protocol: TCP
+            - name: metrics
+              containerPort: 8081
+              protocol: TCP
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: health
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          readinessProbe:
+            httpGet:
+              path: /readyz
+              port: health
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          resources:
+            {{- toYaml .Values.resources | nindent 12 }}
+          {{- with .Values.resizePolicy }}
+          resizePolicy:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          securityContext:
+            {{- toYaml .Values.securityContext | nindent 12 }}
+      {{- with .Values.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.affinity }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}

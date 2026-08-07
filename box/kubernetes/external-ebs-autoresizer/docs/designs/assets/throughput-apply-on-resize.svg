@@ -1,0 +1,107 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 980 760" width="980" height="760" role="img" aria-label="Decision flow of applying a throughput recommendation on a volume size expansion">
+  <!-- Styling is inline rather than in a <style> block: markdown renderers that
+       sanitize embedded SVG strip <style>, which would leave this diagram as
+       unreadable default-black text on a black background. -->
+  <defs>
+    <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" fill="#6e6e6e"/>
+    </marker>
+  </defs>
+
+  <rect x="0" y="0" width="980" height="760" fill="#0a0a0a"/>
+  <g font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace">
+    <text x="24" y="28" font-size="14" fill="#f0f0f0">throughput-apply-on-resize — decision flow</text>
+    <text x="24" y="46" font-size="10.5" fill="#6e6e6e">increase only · fresh only · a size expansion is the only ride</text>
+
+    <!-- left lane: recommender feeds the hand-off store -->
+    <rect x="24" y="92" width="220" height="78" rx="3" fill="#0f0f0f" stroke="#4a4a4a" stroke-width="1"/>
+    <text x="38" y="114" font-size="11.5" fill="#d4d4d4">recommender loop</text>
+    <text x="38" y="132" font-size="10.5" fill="#8a8a8a">every 30m, leader only</text>
+    <text x="38" y="150" font-size="10.5" fill="#8a8a8a">Decide() per node</text>
+
+    <line x1="134" y1="170" x2="134" y2="200" stroke="#6e6e6e" stroke-width="1" marker-end="url(#arrow)"/>
+
+    <rect x="24" y="200" width="220" height="96" rx="3" fill="#0f0f0f" stroke="#4a4a4a" stroke-width="1"/>
+    <text x="38" y="222" font-size="11.5" fill="#d4d4d4">recstore (in-memory)</text>
+    <text x="38" y="242" font-size="10.5" fill="#8a8a8a">Publish(volumeID, entry)</text>
+    <text x="38" y="258" font-size="10.5" fill="#8a8a8a">Delete on undecidable</text>
+    <text x="38" y="274" font-size="10.5" fill="#8a8a8a">Retain(live) after pass</text>
+
+    <polyline points="244,248 302,248 302,274 352,274" fill="none" stroke="#6e6e6e" stroke-width="1" stroke-dasharray="4 3" marker-end="url(#arrow)"/>
+
+    <!-- main column: the resize pass -->
+    <rect x="360" y="92" width="320" height="64" rx="3" fill="#0f0f0f" stroke="#4a4a4a" stroke-width="1"/>
+    <text x="374" y="116" font-size="11.5" fill="#d4d4d4">resizer: size expansion decided</text>
+    <text x="374" y="138" font-size="10" fill="#8a8a8a">usage &gt;= threshold · under max · cooldown passed</text>
+
+    <line x1="520" y1="156" x2="520" y2="180" stroke="#6e6e6e" stroke-width="1" marker-end="url(#arrow)"/>
+
+    <!-- gates: any "no" exits right to the size-only path -->
+    <rect x="360" y="180" width="320" height="44" rx="3" fill="#0f0f0f" stroke="#4a4a4a" stroke-width="1"/>
+    <text x="374" y="207" font-size="10.5" fill="#d4d4d4">applyOnResize enabled?</text>
+
+    <text x="528" y="244" font-size="10" fill="#6e6e6e">yes</text>
+    <line x1="520" y1="224" x2="520" y2="252" stroke="#6e6e6e" stroke-width="1" marker-end="url(#arrow)"/>
+    <text x="700" y="196" font-size="10" fill="#6e6e6e">no</text>
+    <line x1="680" y1="202" x2="752" y2="202" stroke="#6e6e6e" stroke-width="1" marker-end="url(#arrow)"/>
+
+    <rect x="360" y="252" width="320" height="44" rx="3" fill="#0f0f0f" stroke="#4a4a4a" stroke-width="1"/>
+    <text x="374" y="279" font-size="10.5" fill="#d4d4d4">fresh entry? Lookup, max 2 x interval</text>
+
+    <text x="528" y="316" font-size="10" fill="#6e6e6e">yes</text>
+    <line x1="520" y1="296" x2="520" y2="324" stroke="#6e6e6e" stroke-width="1" marker-end="url(#arrow)"/>
+    <text x="700" y="268" font-size="10" fill="#6e6e6e">no</text>
+    <line x1="680" y1="274" x2="752" y2="274" stroke="#6e6e6e" stroke-width="1" marker-end="url(#arrow)"/>
+
+    <rect x="360" y="324" width="320" height="44" rx="3" fill="#0f0f0f" stroke="#4a4a4a" stroke-width="1"/>
+    <text x="374" y="351" font-size="10.5" fill="#d4d4d4">action == increase?</text>
+
+    <text x="528" y="388" font-size="10" fill="#6e6e6e">yes</text>
+    <line x1="520" y1="368" x2="520" y2="396" stroke="#6e6e6e" stroke-width="1" marker-end="url(#arrow)"/>
+    <text x="700" y="340" font-size="10" fill="#6e6e6e">no</text>
+    <line x1="680" y1="346" x2="752" y2="346" stroke="#6e6e6e" stroke-width="1" marker-end="url(#arrow)"/>
+
+    <rect x="360" y="396" width="320" height="44" rx="3" fill="#0f0f0f" stroke="#4a4a4a" stroke-width="1"/>
+    <text x="374" y="423" font-size="10.5" fill="#d4d4d4">recommended &gt; current throughput?</text>
+
+    <text x="528" y="460" font-size="10" fill="#6e6e6e">yes</text>
+    <line x1="520" y1="440" x2="520" y2="468" stroke="#6e6e6e" stroke-width="1" marker-end="url(#arrow)"/>
+    <text x="700" y="412" font-size="10" fill="#6e6e6e">no</text>
+    <line x1="680" y1="418" x2="752" y2="418" stroke="#6e6e6e" stroke-width="1" marker-end="url(#arrow)"/>
+
+    <!-- combined request -->
+    <rect x="360" y="468" width="320" height="64" rx="3" fill="#0f0f0f" stroke="#5a5a5a" stroke-width="1.2"/>
+    <text x="374" y="492" font-size="11.5" fill="#f0f0f0">ModifyVolume: size + throughput + IOPS</text>
+    <text x="374" y="514" font-size="10" fill="#8a8a8a">one modification slot, same 6h budget</text>
+
+    <!-- size-only rail: every "no" lands here -->
+    <rect x="760" y="180" width="196" height="260" rx="3" fill="#0f0f0f" stroke="#4a4a4a" stroke-width="1"/>
+    <text x="774" y="208" font-size="11.5" fill="#d4d4d4">ModifyVolume:</text>
+    <text x="774" y="226" font-size="11.5" fill="#d4d4d4">size only</text>
+    <text x="774" y="250" font-size="10" fill="#8a8a8a">throughput untouched</text>
+
+    <!-- fallback: combined rejected, retry size only -->
+    <text x="694" y="486" font-size="10" fill="#6e6e6e">error</text>
+    <line x1="680" y1="492" x2="752" y2="492" stroke="#6e6e6e" stroke-width="1" marker-end="url(#arrow)"/>
+    <rect x="760" y="468" width="160" height="84" rx="3" fill="#0f0f0f" stroke="#4a4a4a" stroke-width="1"/>
+    <text x="774" y="492" font-size="10.5" fill="#d4d4d4">fallback:</text>
+    <text x="774" y="508" font-size="10.5" fill="#d4d4d4">retry size only</text>
+    <text x="774" y="532" font-size="9.5" fill="#6e6e6e">apply_total=</text>
+    <text x="774" y="544" font-size="9.5" fill="#6e6e6e">fallback_size_only</text>
+
+    <!-- joins into the shared continuation -->
+    <line x1="520" y1="532" x2="520" y2="580" stroke="#6e6e6e" stroke-width="1" marker-end="url(#arrow)"/>
+    <polyline points="940,440 940,572 940,580" fill="none" stroke="#6e6e6e" stroke-width="1" marker-end="url(#arrow)"/>
+    <line x1="840" y1="552" x2="840" y2="580" stroke="#6e6e6e" stroke-width="1" marker-end="url(#arrow)"/>
+
+    <rect x="360" y="580" width="596" height="56" rx="3" fill="#0f0f0f" stroke="#4a4a4a" stroke-width="1"/>
+    <text x="374" y="602" font-size="11.5" fill="#d4d4d4">WaitForModification → SSM filesystem resize → verify</text>
+    <text x="374" y="622" font-size="10" fill="#8a8a8a">unchanged flow, throughput change needs no guest action</text>
+
+    <line x1="520" y1="636" x2="520" y2="664" stroke="#6e6e6e" stroke-width="1" marker-end="url(#arrow)"/>
+
+    <rect x="360" y="664" width="596" height="64" rx="3" fill="#0f0f0f" stroke="#4a4a4a" stroke-width="1"/>
+    <text x="374" y="686" font-size="11.5" fill="#d4d4d4">report: Node event VolumeModified names every changed dimension</text>
+    <text x="374" y="708" font-size="10" fill="#8a8a8a">apply_total=applied when piggybacked · a rejected change is named in the event</text>
+  </g>
+</svg>

@@ -1,0 +1,136 @@
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: {{ .Chart.Name }}
+  labels:
+    {{- include "gss.labels" . | nindent 4 }}
+  {{- with .Values.annotations }}
+  annotations:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+spec:
+  suspend: {{ .Values.suspend }}
+  schedule: {{ .Values.schedule | quote }}
+  concurrencyPolicy: {{ .Values.concurrencyPolicy }}
+  timeZone: {{ .Values.timeZone | default "Etc/UTC" }}
+  successfulJobsHistoryLimit: {{ .Values.successfulJobsHistoryLimit }}
+  failedJobsHistoryLimit: {{ .Values.failedJobsHistoryLimit }}
+  jobTemplate:
+    spec:
+      ttlSecondsAfterFinished: {{ .Values.ttlSecondsAfterFinished }}
+      template:
+        metadata:
+          {{- with .Values.podAnnotations }}
+          annotations:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          labels:
+            {{- include "gss.labels" . | nindent 12 }}
+        spec:
+          {{- with .Values.imagePullSecrets }}
+          imagePullSecrets:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          {{- if .Values.dnsConfig }}
+          dnsConfig:
+            {{- toYaml .Values.dnsConfig | nindent 12 }}
+          {{- end }}
+          {{- with .Values.podSecurityContext }}
+          securityContext:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          containers:
+          - name: {{ .Chart.Name }}
+            image: "{{ .Values.image.repository }}:{{ include "gss.imageTag" . }}"
+            imagePullPolicy: {{ .Values.image.pullPolicy }}
+            {{- with .Values.securityContext }}
+            securityContext:
+              {{- toYaml . | nindent 14 }}
+            {{- end }}
+            env:
+            - name: GITHUB_BASE_URL
+              valueFrom:
+                configMapKeyRef:
+                  name: {{ include "gss.configMapName" . }}
+                  key: GITHUB_BASE_URL
+            - name: GITHUB_ORG
+              valueFrom:
+                configMapKeyRef:
+                  name: {{ include "gss.configMapName" . }}
+                  key: GITHUB_ORG
+            - name: LOG_LEVEL
+              valueFrom:
+                configMapKeyRef:
+                  name: {{ include "gss.configMapName" . }}
+                  key: LOG_LEVEL
+            - name: REQUEST_TIMEOUT
+              valueFrom:
+                configMapKeyRef:
+                  name: {{ include "gss.configMapName" . }}
+                  key: REQUEST_TIMEOUT
+            - name: CONCURRENT_SCANS
+              valueFrom:
+                configMapKeyRef:
+                  name: {{ include "gss.configMapName" . }}
+                  key: CONCURRENT_SCANS
+            - name: GITHUB_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.secretName }}
+                  key: GITHUB_TOKEN
+            - name: SLACK_TOKEN
+              valueFrom:
+                configMapKeyRef:
+                  name: {{ include "gss.configMapName" . }}
+                  key: SLACK_TOKEN
+            - name: SLACK_CHANNEL_ID
+              valueFrom:
+                configMapKeyRef:
+                  name: {{ include "gss.configMapName" . }}
+                  key: SLACK_CHANNEL_ID
+            - name: SLACK_CANVAS_ID
+              valueFrom:
+                configMapKeyRef:
+                  name: {{ include "gss.configMapName" . }}
+                  key: SLACK_CANVAS_ID
+            - name: PUBLISHER_TYPE
+              valueFrom:
+                configMapKeyRef:
+                  name: {{ include "gss.configMapName" . }}
+                  key: PUBLISHER_TYPE
+            {{- with .Values.resources }}
+            resources:
+              {{- toYaml . | nindent 14 }}
+            {{- end }}
+            {{- if or .Values.configMap.enabled .Values.configMap.name }}
+            volumeMounts:
+              - name: exclude-config-volume
+                mountPath: /etc/gss
+                readOnly: true
+            {{- end }}
+          restartPolicy: {{ .Values.restartPolicy }}
+          {{- with .Values.nodeSelector }}
+          nodeSelector:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          {{- with .Values.tolerations }}
+          tolerations:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          {{- with .Values.affinity }}
+          affinity:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          {{- with .Values.topologySpreadConstraints }}
+          topologySpreadConstraints:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          {{- if or .Values.configMap.enabled .Values.configMap.name }}
+          volumes:
+            - name: exclude-config-volume
+              configMap:
+                name: {{ include "gss.excludeConfigMapName" . }}
+                items:
+                - key: exclude-repos.txt
+                  path: exclude-repos.txt
+          {{- end }}

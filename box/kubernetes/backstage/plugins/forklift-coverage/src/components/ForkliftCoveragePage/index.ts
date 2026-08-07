@@ -1,0 +1,1 @@
+export { ForkliftCoveragePage } from './ForkliftCoveragePage';

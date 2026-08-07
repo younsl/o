@@ -1,0 +1,196 @@
+# -- (int) Number of replicas
+replicaCount: 1
+
+# -- (int) Number of old ReplicaSets to retain
+revisionHistoryLimit: 3
+
+# -- (object) Additional pod annotations
+podAnnotations: {}
+
+image:
+  # -- (string) Container image repository
+  repository: ghcr.io/younsl/aurora-database-insights-exporter
+  # -- (string) Image tag (defaults to chart appVersion)
+  tag: ""
+  # -- (string) Image pull policy
+  pullPolicy: IfNotPresent
+
+# -- (list) Image pull secrets for private registries
+imagePullSecrets: []
+  # - name: regcred
+
+serviceAccount:
+  # -- (bool) Create a ServiceAccount
+  create: true
+  # -- (string) ServiceAccount name (defaults to fullname template)
+  name: ""
+  # -- (object) Annotations for the ServiceAccount (e.g., IRSA role ARN)
+  annotations: {}
+  # -- (bool) Automount API credentials for the ServiceAccount
+  automountServiceAccountToken: true
+
+service:
+  # -- (string) Service type
+  type: ClusterIP
+  # -- (int) Service port
+  port: 9090
+  # -- (string) Traffic distribution policy
+  trafficDistribution: ""
+
+serviceMonitor:
+  # -- (bool) Enable ServiceMonitor for Prometheus Operator
+  enabled: true
+  # -- (string) Scrape interval
+  interval: 60s
+  # -- (string) Scrape timeout
+  scrapeTimeout: 30s
+  # -- (object) Additional labels for ServiceMonitor
+  labels: {}
+  # -- (list) Metric relabeling rules applied after scrape
+  metricRelabelings: []
+    # - sourceLabels: [__name__]
+    #   regex: "aurora_dbinsights_sql_info"
+    #   action: drop
+
+prometheusRules:
+  # -- (bool) Enable PrometheusRule for Prometheus Operator
+  enabled: false
+  # -- (string) Namespace override for PrometheusRule
+  namespace: ""
+  # -- (object) Additional labels for PrometheusRule
+  labels: {}
+  # -- (list) Alerting rules
+  # @default -- See `values.yaml`
+  rules: []
+    # - alert: AuroraDBInsightsExporterDown
+    #   expr: aurora_dbinsights_up == 0
+    #   for: 5m
+    #   labels:
+    #     severity: warning
+    #   annotations:
+    #     summary: "Aurora Database Insights collection failed for {{ $labels.instance }}"
+    # - alert: AuroraDBLoadHigh
+    #   expr: aurora_dbinsights_db_load > aurora_dbinsights_vcpu * 2
+    #   for: 10m
+    #   labels:
+    #     severity: critical
+    #   annotations:
+    #     summary: "DB Load exceeds 2x vCPU on {{ $labels.instance }}"
+
+# -- (object) adie config (mounted as ConfigMap)
+config:
+  aws:
+    # -- (string) AWS region for RDS instance discovery and PI API calls (single region only)
+    region: ap-northeast-2
+  discovery:
+    # -- (int) Discovery interval in seconds
+    intervalSeconds: 300
+    # -- (list) Target RDS engines to discover
+    engines:
+      - aurora-mysql
+      - aurora-postgresql
+    # -- (bool) Only discover instances with Performance Insights enabled
+    requirePIEnabled: true
+    # -- (list) AWS tags to export as Prometheus labels (YACE-style exportedTags)
+    exportedTags: []
+      # - Team
+      # - Environment
+    include:
+      # -- (list) Regex patterns for instance identifiers to include
+      identifiers: []
+        # - "^prod-"
+      # -- (list) AWS tag filters (AND logic)
+      tags: []
+        # - key: Environment
+        #   value: production
+    exclude:
+      # -- (list) Regex patterns for instance identifiers to exclude
+      identifiers: []
+        # - "-test$"
+        # - "-dev-"
+  collection:
+    # -- (int) Collection interval in seconds
+    intervalSeconds: 60
+    # -- (int) Top SQL limit per instance
+    topSqlLimit: 10
+    # -- (int) Top host limit per instance
+    topHostLimit: 20
+    # -- (int) Maximum number of instances collected in parallel.
+    # Controls concurrency via semaphore.
+    maxConcurrentInstances: 10
+    # -- (int) Per-instance collection timeout in seconds.
+    # If a single instance's PI API metrics collection (including retries)
+    # exceeds this duration, it is aborted and marked as failed (up=0).
+    instanceTimeoutSeconds: 30
+
+# -- (list) Container resize policy for in-place resource updates (requires InPlacePodVerticalScaling feature gate)
+# @default -- See `values.yaml`
+resizePolicy:
+  - resourceName: cpu
+    restartPolicy: NotRequired
+  - resourceName: memory
+    restartPolicy: RestartContainer
+
+resources:
+  requests:
+    # -- (string) CPU request
+    cpu: 30m
+    # -- (string) Memory request
+    memory: 64Mi
+  limits:
+    # -- (string) Memory limit
+    memory: 128Mi
+
+# -- (string) Priority class name for the pod
+priorityClassName: ""
+
+# -- (object) Pod-level security context
+# @default -- See `values.yaml`
+podSecurityContext:
+  runAsNonRoot: true
+  runAsUser: 65532
+  runAsGroup: 65532
+  fsGroup: 65532
+  seccompProfile:
+    type: RuntimeDefault
+
+# -- (object) Container-level security context
+# @default -- See `values.yaml`
+securityContext:
+  allowPrivilegeEscalation: false
+  readOnlyRootFilesystem: true
+  capabilities:
+    drop:
+      - ALL
+
+pdb:
+  # -- (bool) Enable PodDisruptionBudget
+  enabled: false
+  # -- (int) Maximum number of pods that can be unavailable during disruption
+  maxUnavailable: 1
+  # -- (string) Unhealthy pod eviction policy (IfReady or AlwaysAllow)
+  unhealthyPodEvictionPolicy: IfReady
+
+# -- (object) Node selector
+nodeSelector: {}
+# -- (list) Tolerations
+tolerations: []
+# -- (object) Affinity rules
+affinity: {}
+# -- (list) Topology spread constraints
+topologySpreadConstraints: []
+  # - maxSkew: 1
+  #   topologyKey: topology.kubernetes.io/zone
+  #   whenUnsatisfiable: ScheduleAnyway
+  #   labelSelector:
+  #     matchLabels:
+  #       app.kubernetes.io/name: aurora-database-insights-exporter
+
+# -- (list) Extra Kubernetes objects to deploy with tpl support
+extraObjects: []
+  # - apiVersion: v1
+  #   kind: ConfigMap
+  #   metadata:
+  #     name: "{{ include \"aurora-database-insights-exporter.fullname\" . }}-extra"
+  #   data:
+  #     key: value

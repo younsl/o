@@ -1,0 +1,18 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "aws-vpn-maintenance-handler.fullname" . }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "aws-vpn-maintenance-handler.labels" . | nindent 4 }}
+data:
+  config.yaml: |
+    {{- toYaml .Values.config | nindent 4 }}
+    {{- /* Injected, not exposed under .Values.config: the ports are shared with
+    the Service and probes, leader election follows replicaCount, and the state
+    ConfigMap name is derived from the release name. */}}
+    leaderElect: {{ if (include "aws-vpn-maintenance-handler.leaderElectEnabled" .) }}true{{ else }}false{{ end }}
+    leaseName: {{ include "aws-vpn-maintenance-handler.fullname" . }}
+    stateConfigMapName: {{ include "aws-vpn-maintenance-handler.stateConfigMapName" . }}
+    healthPort: {{ .Values.healthPort }}
+    metricsPort: {{ .Values.metricsPort }}

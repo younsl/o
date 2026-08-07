@@ -1,0 +1,24 @@
+{{- if .Values.service.enabled -}}
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "ec2-metadata-exporter.fullname" . }}
+  labels:
+    {{- include "ec2-metadata-exporter.labels" . | nindent 4 }}
+spec:
+  type: {{ .Values.service.type }}
+  {{- with .Values.service.trafficDistribution }}
+  trafficDistribution: {{ . }}
+  {{- end }}
+  selector:
+    {{- include "ec2-metadata-exporter.selectorLabels" . | nindent 4 }}
+  ports:
+    - name: health
+      port: {{ .Values.ports.health }}
+      targetPort: health
+      protocol: TCP
+    - name: metrics
+      port: {{ .Values.ports.metrics }}
+      targetPort: metrics
+      protocol: TCP
+{{- end }}
