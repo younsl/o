@@ -18,6 +18,11 @@ on:
           - backstage
           - logstash-with-opensearch-plugin
           - jenkins-inbound-agent
+      force:
+        description: "Rebuild even if the version already exists on GHCR (overwrites the tag)"
+        required: false
+        default: false
+        type: boolean
 
 jobs:
   # ---------------------------------------------------------------------------
@@ -43,6 +48,7 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           SELECTED: ${{ inputs.container }}
+          FORCE: ${{ inputs.force }}
         run: |
           extract_version() {
             grep -oP 'org\.opencontainers\.image\.version="\K[^"]+' "$1" || echo ""
@@ -92,8 +98,17 @@ jobs:
 
             status=$(check_ghcr "younsl/${container}" "${version}")
             if [[ "${status}" == "exists" ]]; then
-              echo "✅ ${container}:${version} already exists on GHCR — skip"
-              echo "${var}_release=false" >> "$GITHUB_OUTPUT"
+              # The duplicate check keeps a merge from rebuilding an unchanged
+              # version. A manual run asking for force is a statement of intent, and
+              # GHCR refuses to delete the last tagged version of a package, so
+              # overwriting the tag is the only way to re-release one.
+              if [[ "${FORCE}" == "true" ]]; then
+                echo "♻️ ${container}:${version} exists on GHCR — forced rebuild, the tag will be overwritten"
+                echo "${var}_release=true" >> "$GITHUB_OUTPUT"
+              else
+                echo "✅ ${container}:${version} already exists on GHCR — skip"
+                echo "${var}_release=false" >> "$GITHUB_OUTPUT"
+              fi
             else
               echo "🆕 ${container}:${version} not found on GHCR — will release"
               echo "${var}_release=true" >> "$GITHUB_OUTPUT"
