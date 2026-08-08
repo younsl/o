@@ -9,6 +9,13 @@ Prometheus exporter that polls the EC2 DescribeInstances API and publishes
 every instance's private IP and Name tag as metric labels. Built with Go 1.26
 and shipped as a statically linked binary on a scratch image.
 
+## Architecture
+
+![ec2-metadata-exporter architecture](./docs/architecture.svg)
+
+The exporter polls EC2 on its own schedule and serves the last successful
+snapshot, so a Prometheus scrape never waits on the AWS API.
+
 ## Metrics
 
 The exporter serves metrics on `/metrics` (default port `8081`). All metric
