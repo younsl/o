@@ -1,4 +1,9 @@
-import { normalizeHost, probeHost, validateHost } from './hostProbe';
+import {
+  isValidProbeTarget,
+  normalizeHost,
+  probeHost,
+  validateHost,
+} from './hostProbe';
 
 jest.mock('node-fetch', () => jest.fn());
 const fetchMock = jest.requireMock('node-fetch') as jest.Mock;
@@ -11,6 +16,47 @@ describe('normalizeHost', () => {
     ['forklift.example.com:8443', 'forklift.example.com:8443'],
   ])('normalizes %s', (raw, expected) => {
     expect(normalizeHost(raw)).toBe(expected);
+  });
+
+  it('strips a long run of trailing slashes in linear time', () => {
+    const start = Date.now();
+    expect(normalizeHost(`forklift.example.com${'/'.repeat(100_000)}`)).toBe(
+      'forklift.example.com',
+    );
+    expect(Date.now() - start).toBeLessThan(1_000);
+  });
+});
+
+describe('isValidProbeTarget', () => {
+  it.each([
+    'forklift.example.com',
+    'forklift.example.com:8443',
+    'forklift.forklift.svc.cluster.local',
+  ])('accepts %s', host => {
+    expect(isValidProbeTarget(host)).toBe(true);
+  });
+
+  it.each([
+    'forklift',
+    'localhost',
+    '127.0.0.1',
+    '169.254.169.254',
+    'example..com',
+    'example.com.',
+    'example.com:abc',
+    'example.com:8443:9000',
+    'example.com:70000',
+    `${'a'.repeat(64)}.example.com`,
+    `${'a.'.repeat(130)}com`,
+    '',
+  ])('rejects %s', host => {
+    expect(isValidProbeTarget(host)).toBe(false);
+  });
+
+  it('rejects adversarial input without catastrophic backtracking', () => {
+    const start = Date.now();
+    expect(isValidProbeTarget(`${'a-'.repeat(50_000)}.com`)).toBe(false);
+    expect(Date.now() - start).toBeLessThan(1_000);
   });
 });
 

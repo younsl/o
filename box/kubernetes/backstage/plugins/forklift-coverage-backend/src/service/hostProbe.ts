@@ -3,6 +3,15 @@ import { HostProbeResult } from './types';
 
 const PROBE_TIMEOUT_MS = 8_000;
 
+// Anchored with a single bounded quantifier each, so neither regex can
+// backtrack polynomially on adversarial input.
+const LABEL_RE = /^[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?$/i;
+const TLD_RE = /^[a-z]{2,63}$/i;
+const PORT_RE = /^\d{1,5}$/;
+
+const MAX_HOST_LENGTH = 253;
+const MAX_PORT = 65535;
+
 /**
  * A host is a bare `host` or `host:port`. Rejecting a scheme, path, userinfo,
  * or query keeps the probe from turning an admin form into a general purpose
@@ -14,17 +23,30 @@ const PROBE_TIMEOUT_MS = 8_000;
  * backend itself or at cloud instance metadata, so accepting them would make
  * the probe an internal reachability scanner.
  */
-const HOST_RE =
-  /^(?=.{1,253}$)([a-z0-9]([a-z0-9-]*[a-z0-9])?\.)+[a-z]{2,63}(:\d{1,5})?$/i;
+export function isValidProbeTarget(host: string): boolean {
+  const parts = host.split(':');
+  if (parts.length > 2) return false;
 
-const MAX_PORT = 65535;
+  const [name, port] = parts;
+  if (port !== undefined && (!PORT_RE.test(port) || Number(port) > MAX_PORT)) {
+    return false;
+  }
 
-function hostPort(host: string): number {
-  return Number(host.split(':')[1] ?? 0);
+  if (!name || name.length > MAX_HOST_LENGTH) return false;
+  const labels = name.split('.');
+  if (labels.length < 2) return false;
+  if (!TLD_RE.test(labels[labels.length - 1])) return false;
+  return labels.every(label => LABEL_RE.test(label));
 }
 
 export function normalizeHost(raw: string): string {
-  return raw.trim().replace(/^https?:\/\//i, '').replace(/\/+$/, '');
+  let host = raw.trim().replace(/^https?:\/\//i, '');
+  // Trailing slashes are stripped with a loop: `/\/+$/` backtracks
+  // polynomially on a long run of slashes (js/polynomial-redos).
+  while (host.endsWith('/')) {
+    host = host.slice(0, -1);
+  }
+  return host;
 }
 
 export function validateHost(raw: string): string | null {
@@ -33,10 +55,13 @@ export function validateHost(raw: string): string | null {
   if (/[/@?#\s]/.test(host)) {
     return 'Enter a bare host such as forklift.example.com, with no scheme or path';
   }
-  if (!HOST_RE.test(host)) {
+  const port = host.split(':')[1];
+  if (port && PORT_RE.test(port) && Number(port) > MAX_PORT) {
+    return 'Port is out of range';
+  }
+  if (!isValidProbeTarget(host)) {
     return 'Host must be a public domain name such as forklift.example.com, not an IP address';
   }
-  if (hostPort(host) > MAX_PORT) return 'Port is out of range';
   return null;
 }
 
@@ -53,7 +78,7 @@ export async function probeHost(rawHost: string): Promise<HostProbeResult> {
   // Checked here and not only in the caller: the host arrives in a request
   // body, so the grammar check has to guard the outbound call itself rather
   // than sit in a validator a later caller could forget.
-  if (!HOST_RE.test(host) || hostPort(host) > MAX_PORT) {
+  if (!isValidProbeTarget(host)) {
     return {
       reachable: false,
       status: null,
