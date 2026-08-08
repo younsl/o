@@ -3,6 +3,21 @@ import { Config } from '@backstage/config';
 import { LoggerService } from '@backstage/backend-plugin-api';
 import { ApplicationSetResponse, MUTE_ANNOTATION } from './types';
 
+// One bounded quantifier, anchored: no polynomial backtracking.
+const PROJECT_PATH_SEGMENT_RE = /^[a-z0-9_][a-z0-9_.-]{0,254}$/i;
+
+/**
+ * A GitLab project path is `group/subgroup/.../project`. Each segment must
+ * start with an alphanumeric, which also rules out `.` and `..` segments:
+ * those survive encodeURIComponent unchanged and would let a caller-supplied
+ * repoUrl escape `/projects/<path>/` into arbitrary GitLab API endpoints.
+ */
+export function isValidProjectPath(path: string): boolean {
+  const segments = path.split('/');
+  if (segments.length < 2) return false;
+  return segments.every(segment => PROJECT_PATH_SEGMENT_RE.test(segment));
+}
+
 export class ApplicationSetService {
   private readonly config: Config;
   private readonly logger: LoggerService;
@@ -123,6 +138,9 @@ export class ApplicationSetService {
       ?? `https://${parsedUrl.hostname}/api/v4`;
 
     const projectPath = parsedUrl.pathname.replace(/^\//, '').replace(/\.git$/, '');
+    if (!isValidProjectPath(projectPath)) {
+      throw new Error(`Invalid GitLab project path in repoUrl: ${repoUrl}`);
+    }
     const encodedPath = encodeURIComponent(projectPath);
 
     const response = await fetch(

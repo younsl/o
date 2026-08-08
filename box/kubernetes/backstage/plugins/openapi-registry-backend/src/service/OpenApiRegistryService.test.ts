@@ -1,7 +1,7 @@
 jest.mock('node-fetch', () => jest.fn());
 
 import fetch from 'node-fetch';
-import { OpenApiRegistryService } from './OpenApiRegistryService';
+import { isValidSpecUrl, OpenApiRegistryService } from './OpenApiRegistryService';
 import { OpenApiSpec } from './types';
 
 const mockFetch = fetch as jest.MockedFunction<typeof fetch>;
@@ -347,6 +347,34 @@ describe('OpenApiRegistryService', () => {
       mockStore.getRegistration.mockResolvedValue(undefined);
 
       await expect(service.deleteRegistration('nonexistent')).rejects.toThrow('not found');
+    });
+  });
+
+  describe('spec URL validation', () => {
+    it.each([
+      'https://example.com/openapi.json',
+      'http://petstore.internal.svc:8080/v3/api-docs',
+    ])('accepts %s', url => {
+      expect(isValidSpecUrl(url)).toBe(true);
+    });
+
+    it.each([
+      'file:///etc/passwd',
+      'gopher://example.com/1',
+      'ftp://example.com/spec.json',
+      'https://user:pass@example.com/spec.json',
+      'not a url',
+      '',
+    ])('rejects %s', url => {
+      expect(isValidSpecUrl(url)).toBe(false);
+    });
+
+    it('refuses to fetch a non-http(s) spec URL', async () => {
+      const result = await service.previewSpec('file:///etc/passwd');
+
+      expect(result.valid).toBe(false);
+      expect(result.error).toContain('http(s) URL');
+      expect(mockFetch).not.toHaveBeenCalled();
     });
   });
 });

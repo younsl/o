@@ -1,5 +1,5 @@
 import { ConfigReader } from '@backstage/config';
-import { ApplicationSetService } from './ApplicationSetService';
+import { ApplicationSetService, isValidProjectPath } from './ApplicationSetService';
 import { MUTE_ANNOTATION } from './types';
 
 const mockListNamespacedCustomObject = jest.fn();
@@ -249,6 +249,31 @@ describe('ApplicationSetService', () => {
       );
       expect(result.syncedCount).toBe(0);
       expect(result.syncedApplications).toEqual([]);
+    });
+  });
+
+  // The path is interpolated into a GitLab API URL, so `.` and `..` segments
+  // (which survive encodeURIComponent unchanged) must never pass.
+  describe('isValidProjectPath', () => {
+    it.each([
+      'group/project',
+      'group/subgroup/project',
+      'group/my-repo.name_v2',
+    ])('accepts %s', path => {
+      expect(isValidProjectPath(path)).toBe(true);
+    });
+
+    it.each([
+      '..',
+      '.',
+      'group/..',
+      '../group/project',
+      'group/.hidden',
+      'project',
+      '',
+      'group//project',
+    ])('rejects %s', path => {
+      expect(isValidProjectPath(path)).toBe(false);
     });
   });
 });

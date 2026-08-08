@@ -4,6 +4,24 @@ import fetch from 'node-fetch';
 import { GitlabProject, GitlabBranch, CoverageResponse, GroupCoverage, SubmitCatalogInfoRequest, SubmitCatalogInfoResponse } from './types';
 import { CoverageHistoryStore } from './CoverageHistoryStore';
 
+/**
+ * The id is interpolated into GitLab API URLs, and request bodies can carry
+ * any runtime type regardless of the declared one. Coercing to a positive
+ * integer means a value like `1/repository/files/x` can never rewrite the
+ * request path.
+ */
+export function toValidProjectId(value: unknown): number {
+  // typeof first: Number() also coerces arrays and objects (['1'] becomes 1).
+  const id =
+    typeof value === 'number' || typeof value === 'string'
+      ? Number(value)
+      : NaN;
+  if (!Number.isSafeInteger(id) || id <= 0) {
+    throw new Error(`Invalid GitLab project id: ${String(value)}`);
+  }
+  return id;
+}
+
 export class CatalogHealthService {
   private readonly config: Config;
   private readonly logger: LoggerService;
@@ -225,7 +243,8 @@ export class CatalogHealthService {
       .sort((a, b) => a.namespace.localeCompare(b.namespace));
   }
 
-  async toggleIgnore(projectId: number): Promise<{ ignored: boolean }> {
+  async toggleIgnore(rawProjectId: number): Promise<{ ignored: boolean }> {
+    const projectId = toValidProjectId(rawProjectId);
     const { apiBaseUrl, token } = this.getGitlabConfig();
     const IGNORE_TOPIC = CatalogHealthService.IGNORE_TOPIC;
 
@@ -264,7 +283,8 @@ export class CatalogHealthService {
     return { ignored };
   }
 
-  async getBranches(projectId: number): Promise<GitlabBranch[]> {
+  async getBranches(rawProjectId: number): Promise<GitlabBranch[]> {
+    const projectId = toValidProjectId(rawProjectId);
     const { apiBaseUrl, token } = this.getGitlabConfig();
     const branches: GitlabBranch[] = [];
     let page = 1;
@@ -291,7 +311,11 @@ export class CatalogHealthService {
 
   async submitCatalogInfo(req: SubmitCatalogInfoRequest): Promise<SubmitCatalogInfoResponse> {
     const { apiBaseUrl, token } = this.getGitlabConfig();
-    const { projectId, name, description, type, lifecycle, owner, tags, targetBranch } = req;
+    const { name, description, type, lifecycle, owner, tags, targetBranch } = req;
+    // The declared `number` type is not a runtime guarantee: the value comes
+    // straight from a request body, and a string here would be spliced into
+    // every GitLab API path below.
+    const projectId = toValidProjectId(req.projectId);
 
     const project = this.projects.find(p => p.id === projectId);
     const defaultBranch = targetBranch || project?.defaultBranch || 'main';

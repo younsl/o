@@ -19,6 +19,24 @@ export interface OpenApiRegistryServiceOptions {
   baseUrl: string;
 }
 
+/**
+ * A spec URL is fetched server side, so it must not smuggle another protocol
+ * (`file:`, `gopher:`) or embedded credentials into the request. Internal
+ * hostnames stay allowed on purpose: registering in-cluster API specs is what
+ * this plugin is for.
+ */
+export function isValidSpecUrl(raw: string): boolean {
+  let url: URL;
+  try {
+    url = new URL(raw);
+  } catch {
+    return false;
+  }
+  if (url.protocol !== 'https:' && url.protocol !== 'http:') return false;
+  if (url.username || url.password) return false;
+  return true;
+}
+
 export class OpenApiRegistryService {
   private readonly store: OpenApiRegistryStore;
   private readonly catalogClient: CatalogApi;
@@ -234,6 +252,12 @@ export class OpenApiRegistryService {
 
   private async fetchSpec(specUrl: string): Promise<OpenApiSpec> {
     this.logger.debug(`Fetching spec from: ${specUrl}`);
+
+    if (!isValidSpecUrl(specUrl)) {
+      throw new Error(
+        'specUrl must be an http(s) URL without embedded credentials',
+      );
+    }
 
     const response = await fetch(specUrl, {
       headers: {
