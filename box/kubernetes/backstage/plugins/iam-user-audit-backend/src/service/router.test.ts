@@ -574,4 +574,79 @@ describe('iam-user-audit-backend router', () => {
       );
     });
   });
+
+  // A repeated query parameter or JSON field arrives as an array, so a handler
+  // that trusts its `as string` cast would pass an array into string only code.
+  describe('tampered parameter types', () => {
+    it('rejects a repeated userName query parameter on slack-user-info', async () => {
+      setAuth('user:default/admin');
+      mockCache.getUsers.mockReturnValue([makeUser('alice', 100)]);
+
+      const res = await request(app).get(
+        '/admin/slack-user-info?userName=alice&userName=bob',
+      );
+
+      expect(res.status).toBe(400);
+      expect(mockOwnerResolver.resolveSlackRecipient).not.toHaveBeenCalled();
+    });
+
+    it('returns an empty map for a repeated userNames query parameter', async () => {
+      setAuth('user:default/admin');
+
+      const res = await request(app).get(
+        '/status/warning-dm-logs?userNames=alice&userNames=bob',
+      );
+
+      expect(res.status).toBe(200);
+      expect(res.body).toEqual({});
+      expect(mockWarningDmStore.getLastDmMap).not.toHaveBeenCalled();
+    });
+
+    it('rejects non-string members of the check-slack-users array', async () => {
+      setAuth('user:default/admin');
+
+      const res = await request(app)
+        .post('/admin/check-slack-users')
+        .send({ userNames: ['alice', ['bob']] });
+
+      expect(res.status).toBe(400);
+      expect(mockSlackNotifier.checkSlackUser).not.toHaveBeenCalled();
+    });
+
+    it('rejects an array userName on notify-user', async () => {
+      setAuth('user:default/admin');
+      mockCache.getUsers.mockReturnValue([makeUser('alice', 100)]);
+
+      const res = await request(app)
+        .post('/admin/notify-user')
+        .send({ userName: ['alice'], message: 'hello' });
+
+      expect(res.status).toBe(400);
+      expect(mockSlackNotifier.sendStatusDm).not.toHaveBeenCalled();
+    });
+
+    it('rejects an array iamUserName on password reset creation', async () => {
+      setAuth('user:default/johndoe');
+
+      const res = await request(app).post('/password-reset/requests').send({
+        iamUserName: ['alice'],
+        iamUserArn: 'arn:aws:iam::123456789012:user/alice',
+        reason: 'forgot password',
+      });
+
+      expect(res.status).toBe(400);
+      expect(mockStore.createRequest).not.toHaveBeenCalled();
+    });
+
+    it('rejects an array userName on mute', async () => {
+      setAuth('user:default/admin');
+
+      const res = await request(app)
+        .post('/admin/muted-users')
+        .send({ userName: ['alice'], reason: 'offboarded' });
+
+      expect(res.status).toBe(400);
+      expect(mockMutedUserStore.add).not.toHaveBeenCalled();
+    });
+  });
 });

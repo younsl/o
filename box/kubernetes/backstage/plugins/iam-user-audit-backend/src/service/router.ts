@@ -96,6 +96,17 @@ export async function createRouter(options: RouterOptions): Promise<Router> {
     return (await tryGetUserIdentity(req))?.userRef;
   }
 
+  // Express hands back an array when a query parameter or a JSON field is
+  // repeated, so a value declared `string` can arrive as `string[]` and take
+  // the array branch of a downstream `includes` or `split` instead of failing.
+  function asString(value: unknown): string | null {
+    return typeof value === 'string' ? value : null;
+  }
+
+  function isStringArray(value: unknown): value is string[] {
+    return Array.isArray(value) && value.every(item => typeof item === 'string');
+  }
+
   const router = Router();
   router.use(express.json());
 
@@ -153,7 +164,7 @@ export async function createRouter(options: RouterOptions): Promise<Router> {
 
   router.get('/status/warning-dm-logs', async (req, res) => {
     try {
-      const raw = req.query.userNames as string | undefined;
+      const raw = asString(req.query.userNames);
       if (!raw) {
         res.json({});
         return;
@@ -201,13 +212,24 @@ export async function createRouter(options: RouterOptions): Promise<Router> {
     try {
       const userRef = (await tryGetUserRef(req)) ?? 'user:default/unknown';
 
-      const input = req.body as CreatePasswordResetInput;
-      if (!input.iamUserName || !input.iamUserArn || !input.reason) {
-        res
-          .status(400)
-          .json({ error: 'iamUserName, iamUserArn, and reason are required' });
+      const raw = (req.body ?? {}) as Partial<
+        Record<keyof CreatePasswordResetInput, unknown>
+      >;
+      const iamUserName = asString(raw.iamUserName);
+      const iamUserArn = asString(raw.iamUserArn);
+      const reason = asString(raw.reason);
+      if (!iamUserName || !iamUserArn || !reason) {
+        res.status(400).json({
+          error: 'iamUserName, iamUserArn, and reason are required strings',
+        });
         return;
       }
+      const input: CreatePasswordResetInput = {
+        iamUserName,
+        iamUserArn,
+        reason,
+        requesterEmail: asString(raw.requesterEmail) ?? undefined,
+      };
 
       const request = await store.createRequest(input, userRef);
       logger.info(
@@ -295,21 +317,30 @@ export async function createRouter(options: RouterOptions): Promise<Router> {
         return;
       }
 
-      const input = req.body as ReviewPasswordResetInput;
-
-      if (!input.action || !['approve', 'reject'].includes(input.action)) {
+      const raw = (req.body ?? {}) as Partial<
+        Record<keyof ReviewPasswordResetInput, unknown>
+      >;
+      const action = asString(raw.action);
+      if (action !== 'approve' && action !== 'reject') {
         res
           .status(400)
           .json({ error: 'action must be "approve" or "reject"' });
         return;
       }
 
-      if (!input.comment?.trim()) {
+      const comment = asString(raw.comment)?.trim();
+      if (!comment) {
         res
           .status(400)
           .json({ error: 'comment is required' });
         return;
       }
+
+      const input: ReviewPasswordResetInput = {
+        action,
+        comment,
+        newPassword: asString(raw.newPassword) ?? undefined,
+      };
 
       const existing = await store.getRequest(String(req.params.id));
       if (!existing) {
@@ -423,15 +454,24 @@ export async function createRouter(options: RouterOptions): Promise<Router> {
         return;
       }
 
-      const { userNames } = req.body as { userNames: string[] };
-      if (!Array.isArray(userNames) || userNames.length === 0) {
-        res.status(400).json({ error: 'userNames array is required' });
+      const { userNames } = (req.body ?? {}) as { userNames?: unknown };
+      if (!isStringArray(userNames) || userNames.length === 0) {
+        res
+          .status(400)
+          .json({ error: 'userNames must be a non-empty array of strings' });
         return;
       }
 
       const results: Record<string, boolean> = {};
       const usersByName = new Map(cache.getUsers().map(u => [u.userName, u]));
+      // A blank name has no recipient to resolve, so it is reported as
+      // unreachable instead of failing the whole batch.
       for (const userName of userNames) {
+        if (!userName.trim()) {
+          results[userName] = false;
+          continue;
+        }
+
         const recipient = await ownerResolver.resolveSlackRecipient(
           usersByName.get(userName) ?? { userName, ownerRef: null },
         );
@@ -457,7 +497,7 @@ export async function createRouter(options: RouterOptions): Promise<Router> {
         return;
       }
 
-      const userName = req.query.userName as string;
+      const userName = asString(req.query.userName);
       if (!userName) {
         res.status(400).json({ error: 'userName query parameter is required' });
         return;
@@ -497,16 +537,22 @@ export async function createRouter(options: RouterOptions): Promise<Router> {
         return;
       }
 
-      const input = req.body as { userName: string; message: string };
-      if (!input.message?.trim()) {
+      const input = (req.body ?? {}) as { userName?: unknown; message?: unknown };
+      const message = asString(input.message)?.trim();
+      if (!message) {
         res.status(400).json({ error: 'message is required' });
+        return;
+      }
+      const targetUserName = asString(input.userName);
+      if (!targetUserName) {
+        res.status(400).json({ error: 'userName is required' });
         return;
       }
 
       const allUsers = cache.getUsers();
-      const user = allUsers.find(u => u.userName === input.userName);
+      const user = allUsers.find(u => u.userName === targetUserName);
       if (!user) {
-        res.status(404).json({ error: `IAM user ${input.userName} not found` });
+        res.status(404).json({ error: `IAM user ${targetUserName} not found` });
         return;
       }
 
@@ -517,17 +563,17 @@ export async function createRouter(options: RouterOptions): Promise<Router> {
           user,
           user.inactiveDays,
           userRef,
-          input.message.trim(),
+          message,
         );
         await warningDmStore.recordDm({
-          iamUserName: input.userName,
+          iamUserName: targetUserName,
           senderRef: userRef,
           platform: 'slack',
           status: 'success',
         });
       } catch (sendError) {
         await warningDmStore.recordDm({
-          iamUserName: input.userName,
+          iamUserName: targetUserName,
           senderRef: userRef,
           platform: 'slack',
           status: 'failed',
@@ -578,20 +624,22 @@ export async function createRouter(options: RouterOptions): Promise<Router> {
         return;
       }
 
-      const input = req.body as MuteUserInput;
-      if (!input.userName?.trim()) {
+      const input = (req.body ?? {}) as Partial<Record<keyof MuteUserInput, unknown>>;
+      const mutedUserName = asString(input.userName)?.trim();
+      if (!mutedUserName) {
         res.status(400).json({ error: 'userName is required' });
         return;
       }
-      if (!input.reason?.trim()) {
+      const reason = asString(input.reason)?.trim();
+      if (!reason) {
         res.status(400).json({ error: 'reason is required' });
         return;
       }
 
       const muted = await mutedUserStore.add({
-        iamUserName: input.userName.trim(),
+        iamUserName: mutedUserName,
         mutedBy: userRef!,
-        reason: input.reason.trim(),
+        reason,
       });
 
       logger.info(

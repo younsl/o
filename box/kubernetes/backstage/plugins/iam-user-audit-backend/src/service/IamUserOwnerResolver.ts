@@ -57,10 +57,20 @@ export function canManageIamUser(
   return ownershipRefs.has(normalizedOwner);
 }
 
+/**
+ * `userName` can originate from a request parameter, which Express turns into
+ * an array when it is repeated. A non string value would silently take the
+ * array branch of `includes` and end up in a Slack recipient address, so it is
+ * rejected here rather than trusted from the caller.
+ */
 function deriveFallbackEmail(
   config: Config,
-  userName: string,
+  userName: unknown,
 ): SlackRecipientResolution {
+  if (typeof userName !== 'string') {
+    throw new Error(`IAM user name must be a string, got ${typeof userName}`);
+  }
+
   if (userName.includes('@')) {
     return { email: userName, source: 'iam-user-name' };
   }
