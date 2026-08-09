@@ -1,7 +1,7 @@
 # Backstage with GitLab Discovery
 
 [![GHCR](https://img.shields.io/badge/GHCR-ghcr.io%2Fyounsl%2Fbackstage-black?style=flat-square&logo=github&logoColor=white)](https://ghcr.io/younsl/backstage)
-[![Backstage](https://img.shields.io/badge/Backstage-1.53.0-black?style=flat-square&logo=backstage&logoColor=white)](https://github.com/backstage/backstage/releases/tag/v1.53.0)
+[![Backstage](https://img.shields.io/badge/Backstage-1.53.1-black?style=flat-square&logo=backstage&logoColor=white)](https://github.com/backstage/backstage/releases/tag/v1.53.1)
 
 Custom Backstage image with GitLab auto-discovery, Keycloak OIDC, and in-house plugins built on [Backstage UI](https://backstage.io/docs/getting-started/ui) (BUI). Optimized for the official [Backstage Helm chart](https://github.com/backstage/charts): just swap the image.
 
@@ -21,6 +21,7 @@ Authentication is Keycloak OIDC only. Guest login is disabled.
 - [Installation](docs/installation.md)
 - [Plugins](docs/plugins.md)
 - [Helm Chart](docs/helm-chart.md)
+- [Changelog](docs/changelog.md)
 
 ### Plugin Docs
 

@@ -19,7 +19,7 @@ backstage:
   image:
     registry: ghcr.io
     repository: younsl/backstage
-    tag: "1.52.1-2"
+    tag: "1.53.1-1"
     pullPolicy: IfNotPresent
 
   extraEnvVars:
