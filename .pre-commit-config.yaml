@@ -9,3 +9,9 @@ repos:
         language: system
         files: 'box/kubernetes/.*\.(yaml|tpl|gotmpl)$'
         pass_filenames: false
+      - id: resume-pdf
+        name: resume-pdf
+        entry: make -C notes/resume pdf
+        language: system
+        files: '^notes/resume/resume\.html$'
+        pass_filenames: false
