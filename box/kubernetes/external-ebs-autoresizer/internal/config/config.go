@@ -294,7 +294,9 @@ type fileSchema struct {
 }
 
 // ptr returns a pointer to v, for the pre-filled optional defaults below.
-func ptr[T any](v T) *T { return &v }
+//
+//go:fix inline
+func ptr[T any](v T) *T { return new(v) }
 
 // defaultFileSchema returns the file schema pre-populated with defaults. Load
 // decodes the YAML on top of it, so any key omitted from the file keeps its
@@ -320,11 +322,11 @@ func defaultFileSchema() fileSchema {
 		LogLevel:             "info",
 		LogFormat:            "json",
 		DefaultPolicy: ResizeSpec{
-			Paused:           ptr(false),
-			AlertEnabled:     ptr(true),
-			GrowPercent:      ptr(10),
-			GrowAmount:       ptr("10GiB"),
-			MaxVolumeSizeGiB: ptr(1000),
+			Paused:           new(false),
+			AlertEnabled:     new(true),
+			GrowPercent:      new(10),
+			GrowAmount:       new("10GiB"),
+			MaxVolumeSizeGiB: new(1000),
 		},
 		Alertmanager: amFile{
 			Timeout:  "5s",

@@ -1,7 +1,6 @@
 package observability
 
 import (
-	"context"
 	"io"
 	"net/http"
 	"testing"
@@ -140,8 +139,7 @@ func TestHealthReadiness(t *testing.T) {
 
 func TestHealthServeEndpoints(t *testing.T) {
 	h := NewHealth()
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
+	ctx := t.Context()
 
 	const port = 18099
 	go func() { _ = h.Serve(ctx, port) }()
@@ -164,8 +162,7 @@ func TestHealthServeEndpoints(t *testing.T) {
 func TestMetricsServeEndpoint(t *testing.T) {
 	m := NewMetrics()
 	m.ObserveReconcile()
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
+	ctx := t.Context()
 
 	const port = 18098
 	go func() { _ = m.Serve(ctx, port) }()
@@ -179,7 +176,7 @@ func TestMetricsServeEndpoint(t *testing.T) {
 func waitForListener(t *testing.T, port int) {
 	t.Helper()
 	url := "http://127.0.0.1:" + itoa(port) + "/healthz"
-	for i := 0; i < 50; i++ {
+	for range 50 {
 		if resp, err := http.Get(url); err == nil {
 			_, _ = io.Copy(io.Discard, resp.Body)
 			_ = resp.Body.Close()

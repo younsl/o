@@ -18,8 +18,11 @@ func baseCfg() *config.Config {
 	}
 }
 
-func ptrInt(n int) *int       { return &n }
-func ptrStr(s string) *string { return &s }
+//go:fix inline
+func ptrInt(n int) *int { return new(n) }
+
+//go:fix inline
+func ptrStr(s string) *string { return new(s) }
 
 func TestResolveNoPolicies(t *testing.T) {
 	r, err := New(baseCfg())
@@ -41,9 +44,9 @@ func TestResolveTagMatch(t *testing.T) {
 		Name:             "db",
 		InstanceSelector: config.InstanceSelector{Tags: map[string]string{"Role": "database"}},
 		Resize: config.ResizeSpec{
-			UsageThresholdPercent: ptrInt(70),
+			UsageThresholdPercent: new(70),
 			GrowMode:              ptrStr(config.GrowModeAbsolute),
-			GrowAmount:            ptrStr("50GiB"),
+			GrowAmount:            new("50GiB"),
 		},
 	}}
 	r, err := New(cfg)
@@ -77,7 +80,7 @@ func TestResolveNameRegex(t *testing.T) {
 	cfg.Policies = []config.ResizePolicy{{
 		Name:             "batch",
 		InstanceSelector: config.InstanceSelector{NameRegex: "^batch-.*"},
-		Resize:           config.ResizeSpec{GrowPercent: ptrInt(30)},
+		Resize:           config.ResizeSpec{GrowPercent: new(30)},
 	}}
 	r, err := New(cfg)
 	if err != nil {
@@ -99,7 +102,7 @@ func TestResolveTagAndRegexAND(t *testing.T) {
 			Tags:      map[string]string{"Env": "prod"},
 			NameRegex: "^db-",
 		},
-		Resize: config.ResizeSpec{UsageThresholdPercent: ptrInt(60)},
+		Resize: config.ResizeSpec{UsageThresholdPercent: new(60)},
 	}}
 	r, err := New(cfg)
 	if err != nil {
@@ -126,13 +129,13 @@ func TestResolveWeightWins(t *testing.T) {
 			Name:             "broad",
 			Weight:           1,
 			InstanceSelector: config.InstanceSelector{NameRegex: ".*"},
-			Resize:           config.ResizeSpec{UsageThresholdPercent: ptrInt(90)},
+			Resize:           config.ResizeSpec{UsageThresholdPercent: new(90)},
 		},
 		{
 			Name:             "specific",
 			Weight:           10,
 			InstanceSelector: config.InstanceSelector{Tags: map[string]string{"Role": "db"}},
-			Resize:           config.ResizeSpec{UsageThresholdPercent: ptrInt(60)},
+			Resize:           config.ResizeSpec{UsageThresholdPercent: new(60)},
 		},
 	}
 	r, err := New(cfg)
@@ -180,19 +183,19 @@ func TestNewValidationErrors(t *testing.T) {
 			Name: "x", InstanceSelector: config.InstanceSelector{NameRegex: "[unclosed"},
 		}},
 		"bad grow mode": {{
-			Name: "x", InstanceSelector: config.InstanceSelector{NameRegex: ".*"}, Resize: config.ResizeSpec{GrowMode: ptrStr("linear")},
+			Name: "x", InstanceSelector: config.InstanceSelector{NameRegex: ".*"}, Resize: config.ResizeSpec{GrowMode: new("linear")},
 		}},
 		"threshold out of range": {{
-			Name: "x", InstanceSelector: config.InstanceSelector{NameRegex: ".*"}, Resize: config.ResizeSpec{UsageThresholdPercent: ptrInt(150)},
+			Name: "x", InstanceSelector: config.InstanceSelector{NameRegex: ".*"}, Resize: config.ResizeSpec{UsageThresholdPercent: new(150)},
 		}},
 		"grow percent zero": {{
-			Name: "x", InstanceSelector: config.InstanceSelector{NameRegex: ".*"}, Resize: config.ResizeSpec{GrowPercent: ptrInt(0)},
+			Name: "x", InstanceSelector: config.InstanceSelector{NameRegex: ".*"}, Resize: config.ResizeSpec{GrowPercent: new(0)},
 		}},
 		"bad grow amount": {{
-			Name: "x", InstanceSelector: config.InstanceSelector{NameRegex: ".*"}, Resize: config.ResizeSpec{GrowAmount: ptrStr("10TB")},
+			Name: "x", InstanceSelector: config.InstanceSelector{NameRegex: ".*"}, Resize: config.ResizeSpec{GrowAmount: new("10TB")},
 		}},
 		"max size zero": {{
-			Name: "x", InstanceSelector: config.InstanceSelector{NameRegex: ".*"}, Resize: config.ResizeSpec{MaxVolumeSizeGiB: ptrInt(0)},
+			Name: "x", InstanceSelector: config.InstanceSelector{NameRegex: ".*"}, Resize: config.ResizeSpec{MaxVolumeSizeGiB: new(0)},
 		}},
 		"duplicate name": {
 			{Name: "dup", InstanceSelector: config.InstanceSelector{NameRegex: ".*"}},
@@ -249,7 +252,7 @@ func TestResolvePause(t *testing.T) {
 	cfg.Policies = []config.ResizePolicy{{
 		Name:             "active-db",
 		InstanceSelector: config.InstanceSelector{Tags: map[string]string{"Role": "db"}},
-		Resize:           config.ResizeSpec{Paused: ptrBool(false)}, // un-pause this group
+		Resize:           config.ResizeSpec{Paused: new(false)}, // un-pause this group
 	}}
 	r, err := New(cfg)
 	if err != nil {
@@ -265,7 +268,8 @@ func TestResolvePause(t *testing.T) {
 	}
 }
 
-func ptrBool(b bool) *bool { return &b }
+//go:fix inline
+func ptrBool(b bool) *bool { return new(b) }
 
 // TestResolveAlertEnabled mirrors TestResolvePause for the per-policy alert
 // switch: unmatched instances inherit the default-policy value and a named
@@ -277,7 +281,7 @@ func TestResolveAlertEnabled(t *testing.T) {
 		{
 			Name:             "quiet-db",
 			InstanceSelector: config.InstanceSelector{Tags: map[string]string{"Role": "db"}},
-			Resize:           config.ResizeSpec{AlertEnabled: ptrBool(false)}, // mute this group
+			Resize:           config.ResizeSpec{AlertEnabled: new(false)}, // mute this group
 		},
 		{
 			Name:             "inheriting-web",
@@ -308,7 +312,7 @@ func TestSummaries(t *testing.T) {
 	cfg.Policies = []config.ResizePolicy{
 		{Name: "a", Weight: 5, InstanceSelector: config.InstanceSelector{NameRegex: ".*"}},
 		{Name: "b", Weight: 2, InstanceSelector: config.InstanceSelector{NameRegex: ".*"},
-			Resize: config.ResizeSpec{Paused: ptrBool(true), AlertEnabled: ptrBool(false)}},
+			Resize: config.ResizeSpec{Paused: new(true), AlertEnabled: new(false)}},
 	}
 	r, err := New(cfg)
 	if err != nil {
@@ -331,7 +335,7 @@ func TestAlertPolicyNames(t *testing.T) {
 	cfg.Policies = []config.ResizePolicy{
 		{Name: "loud", InstanceSelector: config.InstanceSelector{NameRegex: ".*"}},
 		{Name: "quiet", InstanceSelector: config.InstanceSelector{NameRegex: ".*"},
-			Resize: config.ResizeSpec{AlertEnabled: ptrBool(false)}},
+			Resize: config.ResizeSpec{AlertEnabled: new(false)}},
 	}
 	r, err := New(cfg)
 	if err != nil {
