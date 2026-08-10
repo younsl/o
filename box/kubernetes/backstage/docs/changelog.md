@@ -14,6 +14,7 @@ Tags released before this file existed (`1.51.0-1` through `1.53.0-3`) are not r
 
 Released 2026-08-09. Built on Backstage [v1.53.1](https://github.com/backstage/backstage/releases/tag/v1.53.1) as the base version.
 
+- Added the `platforms-backend` plugin, which records a visit each time someone opens a platform from the Platforms page and serves per-platform visitor stats. The Platforms page now shows a rank, a week-over-week trend, and daily and weekly visitor counts, inline on each card and in the hover tooltip in grid view. Tags on a card became buttons that toggle the page's tag filter. The plugin needs no app-config entry and is always on.
 - Upgraded Backstage from 1.53.0 to 1.53.1. Errors in TypeScript configuration schema definitions no longer prevent the app from building or starting and are logged as warnings instead.
 - Bumped `@backstage/backend-defaults` from 0.17.5 to 0.17.6 in `packages/backend`, `plugins/grafana-dashboard-map-backend`, and `plugins/openapi-registry-backend`.
 - No create-app template changes in this release.

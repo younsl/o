@@ -50,7 +50,7 @@ Most custom plugins ship as `<name>` (frontend) plus `<name>-backend` (backend).
 
 | Feature | Plugin | Description |
 |---------|--------|-------------|
-| Platforms | — | Internal platform services link cards with search and tag filtering |
+| Platforms | `platforms-backend` | Internal platform services link cards with search and tag filtering, plus popularity ranking and daily visitor counts |
 | OpenAPI Registry | `openapi-registry` | Register external OpenAPI specs by URL with search and filters |
 | ArgoCD AppSets | `argocd-appset` | View/manage ArgoCD ApplicationSets with mute/unmute, Slack alerts, audit log |
 | IAM User Audit | `iam-user-audit` | AWS IAM inactive user monitoring with password reset and Slack DM |

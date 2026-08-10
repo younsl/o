@@ -43,6 +43,8 @@ backend.add(import('@backstage/plugin-techdocs-backend'));
 backend.add(import('@backstage/plugin-search-backend'));
 backend.add(import('@backstage/plugin-search-backend-module-catalog'));
 
+backend.add(import('@internal/plugin-platforms-backend'));
+
 backend.add(import('@internal/plugin-openapi-registry-backend'));
 
 backend.add(import('@internal/plugin-argocd-appset-backend'));

@@ -14,6 +14,8 @@ import {
   Text,
 } from '@backstage/ui';
 import { configApiRef, useApi } from '@backstage/core-plugin-api';
+import { PlatformStats, usePlatformStats } from './usePlatformStats';
+import { PlatformStatBlock } from './PlatformStatsDisplay';
 
 const FALLBACK_LOGO = 'https://backstage.io/logo_assets/svg/Icon_Teal.svg';
 const FAVORITES_STORAGE_KEY = 'backstage-platforms-favorites';
@@ -35,6 +37,30 @@ const activeTagStyle: React.CSSProperties = {
   border: '1px solid var(--bui-color-border-accent, #3b82f6)',
   color: '#fff',
 };
+
+/**
+ * Tags wrap onto as many lines as they need, at full width. Cards in a grid row
+ * are stretched to a common height instead, so a card whose tags take two lines
+ * does not stand taller than its neighbours.
+ *
+ * Earlier attempts pinned the row to one line, by clipping the overflow and then
+ * by ellipsizing the chips. Both traded away readable tag labels to hold the
+ * stats on a fixed line, which is the wrong way round: the tags are what the
+ * reader clicks.
+ *
+ * The single chip line is only a floor, so an untagged platform still leaves a
+ * normal gap above its stats. 13px text at 1.4 line-height plus 2px vertical
+ * padding and a 1px border is a ~25px chip.
+ */
+const TAG_CHIP_HEIGHT = 25;
+const TAG_ROW_GAP = 4;
+
+/**
+ * The production VPN notice is overlaid on the card's fixed-height logo band, so
+ * it renders only where it applies without adding height to those cards or
+ * pushing anything below it out of line.
+ */
+const VPN_NOTICE_HEIGHT = 22;
 
 interface Platform {
   name: string;
@@ -117,10 +143,16 @@ const GridTile = ({
   platform,
   isFavorite,
   onToggleFavorite,
+  stats,
+  rankedCount,
+  onVisit,
 }: {
   platform: Platform;
   isFavorite: boolean;
   onToggleFavorite: (name: string, e: React.MouseEvent) => void;
+  stats?: PlatformStats;
+  rankedCount: number;
+  onVisit: (name: string) => void;
 }) => {
   const [hovered, setHovered] = useState(false);
   const isPrd = platform.tags.includes('prd');
@@ -134,6 +166,7 @@ const GridTile = ({
         href={platform.url || '#'}
         target="_blank"
         rel="noopener noreferrer"
+        onClick={() => onVisit(platform.name)}
         style={{
           display: 'flex',
           alignItems: 'center',
@@ -182,7 +215,7 @@ const GridTile = ({
             left: '50%',
             transform: 'translateX(-50%)',
             marginBottom: 8,
-            width: 220,
+            width: 240,
             padding: 12,
             borderRadius: 8,
             backgroundColor: 'var(--bui-color-bg-elevated, #1e1e1e)',
@@ -223,12 +256,13 @@ const GridTile = ({
               </span>
             ))}
           </div>
+          <PlatformStatBlock stats={stats} rankedCount={rankedCount} />
           {isPrd && (
             <div
               style={{
                 display: 'flex',
                 alignItems: 'center',
-                gap: 4,
+                gap: 2,
                 marginTop: 8,
                 padding: '3px 6px',
                 backgroundColor: 'rgba(255, 152, 0, 0.15)',
@@ -238,7 +272,7 @@ const GridTile = ({
               }}
             >
               <WarningIcon />
-              운영망 VPN 연결 필요
+              업무망 VPN 연결 필요
             </div>
           )}
         </div>
@@ -304,6 +338,9 @@ const PlatformCard = ({
   onTagClick,
   selectedTags,
   searchQuery,
+  stats,
+  rankedCount,
+  onVisit,
 }: {
   platform: Platform;
   isFavorite: boolean;
@@ -311,7 +348,14 @@ const PlatformCard = ({
   onTagClick: (tag: string) => void;
   selectedTags: string[];
   searchQuery: string;
+  stats?: PlatformStats;
+  rankedCount: number;
+  onVisit: (name: string) => void;
 }) => (
+  // Cards stretch to the tallest in their grid row, so a two-line tag list does
+  // not make one card overhang its neighbours. Nothing inside the card grows to
+  // absorb the extra height, so it collects below the stats as bottom padding
+  // rather than opening a gap in the middle of the card.
   <div className="platform-card-wrapper" style={{ position: 'relative', height: '100%' }}>
     <button
       onClick={e => onToggleFavorite(platform.name, e)}
@@ -332,15 +376,36 @@ const PlatformCard = ({
     >
       {isFavorite ? <StarFilledIcon /> : <StarOutlineIcon />}
     </button>
-    <a
-      href={platform.url || '#'}
-      target="_blank"
-      rel="noopener noreferrer"
-      style={{ textDecoration: 'none', color: 'inherit', display: 'block', height: '100%' }}
+    <Card
+      style={{
+        height: '100%',
+        overflow: 'hidden',
+        display: 'flex',
+        flexDirection: 'column',
+        padding: 0,
+      }}
     >
-      <Card style={{ height: '100%', cursor: 'pointer', overflow: 'hidden', display: 'flex', flexDirection: 'column', padding: 0 }}>
+      {/*
+        The link stops above the tag row. Tags are buttons that toggle the page
+        filter, and a button nested inside an anchor is neither valid markup nor
+        reliably clickable, so the two live side by side instead.
+      */}
+      <a
+        href={platform.url || '#'}
+        target="_blank"
+        rel="noopener noreferrer"
+        onClick={() => onVisit(platform.name)}
+        style={{
+          textDecoration: 'none',
+          color: 'inherit',
+          cursor: 'pointer',
+          display: 'flex',
+          flexDirection: 'column',
+        }}
+      >
         <div
           style={{
+            position: 'relative',
             height: 96,
             display: 'flex',
             alignItems: 'center',
@@ -357,12 +422,37 @@ const PlatformCard = ({
               e.currentTarget.src = FALLBACK_LOGO;
             }}
           />
+          {/*
+            Sits inside the fixed-height logo band rather than in the flow below
+            it. The band is 96px on every card, so the notice costs no height and
+            cannot shift the tags or stats underneath it.
+          */}
+          {platform.tags.includes('prd') && (
+            <div
+              style={{
+                position: 'absolute',
+                left: 8,
+                bottom: 6,
+                display: 'flex',
+                alignItems: 'center',
+                gap: 2,
+                height: VPN_NOTICE_HEIGHT,
+                padding: '0 8px',
+                backgroundColor: 'rgba(255, 152, 0, 0.15)',
+                borderRadius: 4,
+                fontSize: 11,
+                color: '#ff9800',
+              }}
+            >
+              <WarningIcon />
+              업무망 VPN 연결 필요
+            </div>
+          )}
         </div>
         <div
           style={{
             backgroundColor: 'var(--bui-color-bg-default, #121212)',
-            padding: '12px 16px',
-            flex: 1,
+            padding: '12px 16px 0',
           }}
         >
           <Flex justify="between" align="center" mb="1">
@@ -374,42 +464,76 @@ const PlatformCard = ({
           <Text variant="body-small" color="secondary" style={{ lineHeight: 1.5 }}>
             {highlightText(platform.description, searchQuery)}
           </Text>
-          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4, marginTop: 10 }}>
-            {platform.tags.map(tag => (
-              <span
+        </div>
+      </a>
+      {/*
+        Tags, then the stats. This block takes the card's leftover height rather
+        than the linked head above it, so the slack lands between the tags and
+        the stats instead of under the description, where it read as a hole in
+        the card.
+      */}
+      <div
+        style={{
+          backgroundColor: 'var(--bui-color-bg-default, #121212)',
+          padding: '10px 16px 12px',
+          flex: 1,
+          display: 'flex',
+          flexDirection: 'column',
+        }}
+      >
+        <div
+          style={{
+            display: 'flex',
+            flexWrap: 'wrap',
+            gap: TAG_ROW_GAP,
+            minHeight: TAG_CHIP_HEIGHT,
+          }}
+        >
+          {platform.tags.map(tag => {
+            const selected = selectedTags.includes(tag);
+            return (
+              <button
                 key={tag}
-                style={selectedTags.includes(tag) ? activeTagStyle : { ...tagStyle, cursor: 'default' }}
+                type="button"
+                onClick={() => onTagClick(tag)}
+                aria-pressed={selected}
+                title={selected ? `Remove "${tag}" filter` : `Filter by "${tag}"`}
+                style={{
+                  color: 'inherit',
+                  ...(selected ? activeTagStyle : tagStyle),
+                  fontFamily: 'inherit',
+                  fontSize: 13,
+                  lineHeight: 1.4,
+                  // Chips keep their label intact and wrap to the next line
+                  // rather than shrinking to fit.
+                  flexShrink: 0,
+                  whiteSpace: 'nowrap',
+                }}
               >
                 {highlightText(tag, searchQuery)}
-              </span>
-            ))}
-          </div>
-          {platform.tags.includes('prd') && (
-            <div
-              style={{
-                display: 'flex',
-                alignItems: 'center',
-                gap: 4,
-                marginTop: 10,
-                padding: '4px 8px',
-                backgroundColor: 'rgba(255, 152, 0, 0.15)',
-                borderRadius: 4,
-                fontSize: 12,
-                color: '#ff9800',
-              }}
-            >
-              <WarningIcon />
-              운영망 VPN 연결 필요
-            </div>
-          )}
+              </button>
+            );
+          })}
         </div>
-      </Card>
-    </a>
+        {/*
+          Pinned to the bottom edge, so the stats sit on one horizontal line
+          across a row of cards however many lines their tags take.
+        */}
+        <div style={{ marginTop: 'auto' }}>
+          <PlatformStatBlock stats={stats} rankedCount={rankedCount} />
+        </div>
+      </div>
+    </Card>
   </div>
 );
 
 export const PlatformsPage = () => {
   const configApi = useApi(configApiRef);
+  const {
+    byPlatform: statsByPlatform,
+    rankedCount,
+    recordVisit,
+  } = usePlatformStats();
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedTags, setSelectedTags] = useState<string[]>([]);
   const [tagDropdownOpen, setTagDropdownOpen] = useState(false);
@@ -907,6 +1031,9 @@ export const PlatformsPage = () => {
                             platform={platform}
                             isFavorite
                             onToggleFavorite={handleToggleFavorite}
+                            stats={statsByPlatform[platform.name]}
+                            rankedCount={rankedCount}
+                            onVisit={recordVisit}
                           />
                         ))}
                       </div>
@@ -924,6 +1051,9 @@ export const PlatformsPage = () => {
                               onTagClick={handleTagToggle}
                               selectedTags={selectedTags}
                               searchQuery={searchQuery}
+                              stats={statsByPlatform[platform.name]}
+                              rankedCount={rankedCount}
+                              onVisit={recordVisit}
                             />
                           </Grid.Item>
                         ))}
@@ -991,6 +1121,9 @@ export const PlatformsPage = () => {
                                     platform.name,
                                   )}
                                   onToggleFavorite={handleToggleFavorite}
+                                  stats={statsByPlatform[platform.name]}
+                                  rankedCount={rankedCount}
+                                  onVisit={recordVisit}
                                 />
                               ))}
                             </div>
@@ -1024,6 +1157,9 @@ export const PlatformsPage = () => {
                                     onTagClick={handleTagToggle}
                                     selectedTags={selectedTags}
                                     searchQuery={searchQuery}
+                                    stats={statsByPlatform[platform.name]}
+                                    rankedCount={rankedCount}
+                                    onVisit={recordVisit}
                                   />
                                 </Grid.Item>
                               ))}
