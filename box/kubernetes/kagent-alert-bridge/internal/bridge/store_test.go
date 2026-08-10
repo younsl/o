@@ -72,11 +72,9 @@ func TestStoreIsConcurrencySafe(t *testing.T) {
 	var wg sync.WaitGroup
 	allowed := make(chan bool, 50)
 	for range 50 {
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
+		wg.Go(func() {
 			allowed <- s.allow("gk", now)
-		}()
+		})
 	}
 	wg.Wait()
 	close(allowed)

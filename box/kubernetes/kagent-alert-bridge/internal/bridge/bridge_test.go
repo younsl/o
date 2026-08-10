@@ -590,7 +590,7 @@ func TestResolveAgent(t *testing.T) {
 	cfg := testConfig()
 	cfg.KagentAgentRoutingLabel = "slack_channel"
 	cfg.KagentAgentRoutingMap = map[string]string{
-		"infra-alerts":      "aws-alert-triage-agent",
+		"infra-alerts":    "aws-alert-triage-agent",
 		"security-alerts": "security-alert-triage-agent",
 	}
 	b := newTestBridge(t, cfg, newFakeSlack(), &fakeAgent{})

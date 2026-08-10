@@ -280,7 +280,7 @@ func setEnv(key, fallback string) (map[string]bool, error) {
 		v = fallback
 	}
 	set := map[string]bool{}
-	for _, item := range strings.Split(v, ",") {
+	for item := range strings.SplitSeq(v, ",") {
 		if item = strings.TrimSpace(item); item != "" {
 			set[item] = true
 		}
@@ -295,7 +295,7 @@ func pairsEnv(key string) (map[string]string, error) {
 	if v == "" {
 		return pairs, nil
 	}
-	for _, item := range strings.Split(v, ",") {
+	for item := range strings.SplitSeq(v, ",") {
 		if item = strings.TrimSpace(item); item == "" {
 			continue
 		}

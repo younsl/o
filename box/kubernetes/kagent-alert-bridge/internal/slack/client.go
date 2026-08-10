@@ -596,9 +596,6 @@ func Truncate(text string, maxRunes int) string {
 		return text
 	}
 	const marker = "\n_(truncated)_"
-	keep := maxRunes - len([]rune(marker))
-	if keep < 0 {
-		keep = 0
-	}
+	keep := max(maxRunes-len([]rune(marker)), 0)
 	return string(runes[:keep]) + marker
 }

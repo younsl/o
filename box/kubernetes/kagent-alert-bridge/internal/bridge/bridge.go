@@ -202,11 +202,9 @@ func (b *Bridge) handleWebhook(w http.ResponseWriter, r *http.Request) {
 	}
 
 	b.metrics.WebhooksReceived.WithLabelValues("analyzing").Inc()
-	b.wg.Add(1)
-	go func() {
-		defer b.wg.Done()
+	b.wg.Go(func() {
 		b.analyze(payload, agent, channel, threadTS, logger)
-	}()
+	})
 	w.WriteHeader(http.StatusAccepted)
 }
 
