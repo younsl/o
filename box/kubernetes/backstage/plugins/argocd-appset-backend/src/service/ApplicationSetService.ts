@@ -451,7 +451,9 @@ export class ApplicationSetService {
     const api = resolveGitLabApi(this.config, repoUrl);
 
     const response = await fetch(
-      `${api.apiBaseUrl}/projects/${api.encodedPath}/repository/branches?per_page=100`,
+      api.url(`projects/${api.encodedPath}/repository/branches`, {
+        per_page: '100',
+      }),
       { headers: { 'PRIVATE-TOKEN': api.token } },
     );
 

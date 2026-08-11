@@ -1,9 +1,10 @@
-import { knownUpstreamPairs } from './router';
+import { knownRepoUrls, knownUpstreamPairs, singleQueryValue } from './router';
 import { ApplicationSetResponse } from './types';
 
 function appSet(
   name: string,
   infos: { name: string; upstreamRepository?: string; upstreamChart?: string }[],
+  repoUrl = '',
 ): ApplicationSetResponse {
   return {
     name,
@@ -34,7 +35,7 @@ function appSet(
     ),
     charts: [],
     chartVersions: [],
-    repoUrl: '',
+    repoUrl,
     repoName: '',
     targetRevisions: ['HEAD'],
     isHeadRevision: true,
@@ -117,5 +118,48 @@ describe('knownUpstreamPairs', () => {
 
   it('returns nothing for an empty cache', () => {
     expect(knownUpstreamPairs(cacheOf([])).size).toBe(0);
+  });
+});
+
+/*
+ * A query parameter repeated in the URL arrives as an array, and code expecting a
+ * string would fail on it rather than the request being rejected.
+ */
+describe('singleQueryValue', () => {
+  it('accepts a single string', () => {
+    expect(singleQueryValue('https://example.com/charts')).toBe(
+      'https://example.com/charts',
+    );
+  });
+
+  it.each([
+    ['an array', ['a', 'b']],
+    ['an empty string', ''],
+    ['undefined', undefined],
+    ['an object', { nested: 'value' }],
+    ['a number', 1],
+  ])('rejects %s', (_label, value) => {
+    expect(singleQueryValue(value)).toBeNull();
+  });
+});
+
+describe('knownRepoUrls', () => {
+  const REPO = 'https://gitlab.example.com/devops/k8s.git';
+
+  it('collects the repositories ApplicationSets point at', () => {
+    const urls = knownRepoUrls(cacheOf([appSet('a', [], REPO)]));
+
+    expect(urls.get(REPO)).toBe(REPO);
+  });
+
+  it('skips an ApplicationSet with no repository', () => {
+    expect(knownRepoUrls(cacheOf([appSet('a', [])])).size).toBe(0);
+  });
+
+  // A repository a caller invented must not be reachable.
+  it('does not contain a repository no ApplicationSet uses', () => {
+    const urls = knownRepoUrls(cacheOf([appSet('a', [], REPO)]));
+
+    expect(urls.get('https://attacker.example.com/x.git')).toBeUndefined();
   });
 });

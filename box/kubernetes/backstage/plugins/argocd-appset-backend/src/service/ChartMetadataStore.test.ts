@@ -169,7 +169,8 @@ describe('ChartMetadataStore', () => {
     );
 
     expect(result!.upstreamVersion).toBe('0.6.3');
-    const [url, options] = (global.fetch as jest.Mock).mock.calls[0];
+    const [rawUrl, options] = (global.fetch as jest.Mock).mock.calls[0];
+    const url = String(rawUrl);
     expect(url).toBe(
       'https://gitlab.example.com/api/v4/projects/devops%2Fk8s/repository/files/' +
         'shared%2Fchart-repo%2Falloy-operator%2FChart.yaml/raw?ref=sandbox',
@@ -184,8 +185,8 @@ describe('ChartMetadataStore', () => {
 
     await createStore().get(REPO_URL, 'shared/chart-repo/alloy-operator', 'HEAD');
 
-    const [projectUrl] = (global.fetch as jest.Mock).mock.calls[0];
-    const [fileUrl] = (global.fetch as jest.Mock).mock.calls[1];
+    const projectUrl = String((global.fetch as jest.Mock).mock.calls[0][0]);
+    const fileUrl = String((global.fetch as jest.Mock).mock.calls[1][0]);
     expect(projectUrl).toBe('https://gitlab.example.com/api/v4/projects/devops%2Fk8s');
     expect(fileUrl).toContain('ref=master');
   });

@@ -11,6 +11,23 @@ export interface UpstreamVersionStoreOptions {
 }
 
 /**
+ * Normalizes whatever the driver hands back for a timestamp column. Postgres
+ * returns a Date, SQLite the string it was given, and either can return an
+ * epoch in milliseconds depending on how the value was written. The UI turns
+ * this into "checked 4 minutes ago", so it has to be an ISO stamp whichever
+ * database is behind it.
+ */
+export function toIsoStamp(value: unknown): string {
+  if (value instanceof Date) return value.toISOString();
+  if (typeof value === 'number') return new Date(value).toISOString();
+
+  const text = String(value ?? '');
+  if (/^\d+$/.test(text)) return new Date(Number(text)).toISOString();
+
+  return text;
+}
+
+/**
  * Durable record of what each upstream repository last reported.
  *
  * The lookup itself is cached in memory, which is enough to avoid refetching but
@@ -80,10 +97,7 @@ export class UpstreamVersionStore {
    */
   async lastCheckedAt(): Promise<string | null> {
     const row = await this.db(TABLE_NAME).max('checked_at as latest').first();
-    const latest = row?.latest;
-    if (!latest) return null;
-
-    return latest instanceof Date ? latest.toISOString() : String(latest);
+    return row?.latest ? toIsoStamp(row.latest) : null;
   }
 
   async listAll(): Promise<UpstreamChart[]> {
@@ -92,8 +106,6 @@ export class UpstreamVersionStore {
   }
 
   private rowToChart(row: Record<string, unknown>): UpstreamChart {
-    const checkedAt = row.checked_at;
-
     return {
       repository: row.repository as string,
       chart: row.chart as string,
@@ -102,11 +114,7 @@ export class UpstreamVersionStore {
       versionCount: Number(row.version_count ?? 0),
       source: row.source as UpstreamChart['source'],
       unavailableReason: (row.unavailable_reason as string) ?? null,
-      // Postgres hands back a Date, SQLite a string.
-      checkedAt:
-        checkedAt instanceof Date
-          ? checkedAt.toISOString()
-          : String(checkedAt ?? ''),
+      checkedAt: toIsoStamp(row.checked_at),
     };
   }
 }

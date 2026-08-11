@@ -78,10 +78,57 @@ describe('resolveGitLabApi', () => {
       'https://gitlab.example.com/devops/k8s.git',
     );
 
-    expect(result).toEqual({
+    expect(result).toMatchObject({
       apiBaseUrl: 'https://gitlab.example.com/api/v4',
       token: 'secret',
       encodedPath: 'devops%2Fk8s',
+    });
+  });
+
+  /*
+   * Requests are built through this rather than by concatenation, so the host
+   * reached is the configured one whatever the path is asked to be.
+   */
+  describe('url', () => {
+    const api = () =>
+      resolveGitLabApi(withIntegration(), 'https://gitlab.example.com/devops/k8s.git');
+
+    it('builds a path under the API base', () => {
+      expect(String(api().url('projects/devops%2Fk8s/repository/branches'))).toBe(
+        'https://gitlab.example.com/api/v4/projects/devops%2Fk8s/repository/branches',
+      );
+    });
+
+    it('encodes query values', () => {
+      const url = api().url('projects/x/repository/files/y/raw', {
+        ref: 'feature/thing',
+      });
+
+      expect(url.searchParams.get('ref')).toBe('feature/thing');
+      expect(String(url)).toContain('ref=feature%2Fthing');
+    });
+
+    it('tolerates a leading slash on the path', () => {
+      expect(String(api().url('/projects/x'))).toBe(
+        'https://gitlab.example.com/api/v4/projects/x',
+      );
+    });
+
+    // An absolute URL is the one form that would leave the configured host.
+    it('refuses an absolute URL', () => {
+      expect(() => api().url('https://attacker.example.com/steal')).toThrow(
+        /outside the configured host/,
+      );
+    });
+
+    /*
+     * A protocol-relative path is not refused, it is defused: the leading
+     * slashes go, so it resolves under the configured host as an ordinary path.
+     */
+    it('reads a protocol-relative path as a path', () => {
+      expect(String(api().url('//attacker.example.com/steal'))).toBe(
+        'https://gitlab.example.com/api/v4/attacker.example.com/steal',
+      );
     });
   });
 

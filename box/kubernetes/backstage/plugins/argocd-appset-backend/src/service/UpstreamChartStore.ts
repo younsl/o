@@ -46,6 +46,10 @@ export function isBlockedHost(hostname: string): boolean {
 
 /** Only public HTTPS endpoints are read. Plain HTTP is refused outright. */
 export function assertFetchableUrl(url: string): URL {
+  if (typeof url !== 'string') {
+    throw new Error('not a URL');
+  }
+
   let parsed: URL;
   try {
     parsed = new URL(url);
@@ -72,7 +76,9 @@ async function fetchChecked(
   url: string,
   init?: { headers?: Record<string, string> },
 ): Promise<Response> {
-  let target = assertFetchableUrl(url).toString();
+  // Fetched as the parsed URL the check returned, never as the caller's string:
+  // whatever reaches fetch has been through assertFetchableUrl.
+  let target = assertFetchableUrl(url);
 
   for (let hop = 0; hop <= MAX_REDIRECTS; hop += 1) {
     const response = await fetch(target, { ...init, redirect: 'manual' });
@@ -82,7 +88,7 @@ async function fetchChecked(
 
     const location = response.headers.get('location');
     if (!location) return response;
-    target = assertFetchableUrl(new URL(location, target).toString()).toString();
+    target = assertFetchableUrl(new URL(location, target).toString());
   }
 
   throw new Error('too many redirects');
@@ -240,6 +246,9 @@ export function parseOciRef(
   repository: string,
   chart: string,
 ): { host: string; repositoryPath: string } | null {
+  // Guarded rather than assumed: a repeated query parameter arrives as an array,
+  // and calling a string method on one throws where a null return would do.
+  if (typeof repository !== 'string' || typeof chart !== 'string') return null;
   if (!repository.startsWith('oci://')) return null;
 
   const withoutScheme = repository.slice('oci://'.length).replace(/\/$/, '');
@@ -301,7 +310,8 @@ export class UpstreamChartStore {
   }
 
   async getLatest(repository: string, chart: string): Promise<UpstreamChart> {
-    const isOci = repository.startsWith('oci://');
+    const isOci =
+      typeof repository === 'string' && repository.startsWith('oci://');
 
     try {
       return isOci

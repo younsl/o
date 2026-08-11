@@ -272,7 +272,7 @@ describe('UpstreamChartStore', () => {
       source: 'helm-index',
       unavailableReason: null,
     });
-    expect((global.fetch as jest.Mock).mock.calls[0][0]).toBe(
+    expect(String((global.fetch as jest.Mock).mock.calls[0][0])).toBe(
       'https://grafana.github.io/helm-charts/index.yaml',
     );
   });
@@ -339,7 +339,7 @@ describe('UpstreamChartStore', () => {
     const result = await createStore().getLatest(HELM_REPO, 'alloy-operator');
 
     expect(result.latestVersion).toBe('0.7.0');
-    expect((global.fetch as jest.Mock).mock.calls[1][0]).toBe(
+    expect(String((global.fetch as jest.Mock).mock.calls[1][0])).toBe(
       'https://cdn.example.com/charts/index.yaml',
     );
   });
@@ -502,7 +502,7 @@ describe('UpstreamChartStore', () => {
         versionCount: 3,
         source: 'oci-tags',
       });
-      expect((global.fetch as jest.Mock).mock.calls[0][0]).toBe(
+      expect(String((global.fetch as jest.Mock).mock.calls[0][0])).toBe(
         'https://ghcr.io/v2/org/charts/thing/tags/list?n=1000',
       );
     });
@@ -525,7 +525,7 @@ describe('UpstreamChartStore', () => {
       const result = await createStore().getLatest('oci://ghcr.io/org/charts', 'thing');
 
       expect(result.latestVersion).toBe('2.0.0');
-      const tokenUrl = (global.fetch as jest.Mock).mock.calls[1][0];
+      const tokenUrl = String((global.fetch as jest.Mock).mock.calls[1][0]);
       expect(tokenUrl).toContain('https://ghcr.io/token?');
       expect(tokenUrl).toContain('service=ghcr.io');
       expect((global.fetch as jest.Mock).mock.calls[2][1].headers.Authorization).toBe(

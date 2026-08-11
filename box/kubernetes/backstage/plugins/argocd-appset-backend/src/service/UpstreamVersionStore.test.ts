@@ -1,6 +1,6 @@
 import knex, { Knex } from 'knex';
 import { UpstreamChart } from './UpstreamChartStore';
-import { UpstreamVersionStore } from './UpstreamVersionStore';
+import { toIsoStamp, UpstreamVersionStore } from './UpstreamVersionStore';
 
 const REPO = 'https://grafana.github.io/helm-charts';
 
@@ -17,6 +17,28 @@ function chartOf(overrides: Partial<UpstreamChart> = {}): UpstreamChart {
     ...overrides,
   };
 }
+
+/*
+ * Production runs Postgres, where `timestamp` is `timestamptz` and reads back as
+ * a Date, while SQLite returns what it was given. Either can also yield an epoch
+ * in milliseconds, so the mapping must not depend on which database is behind it.
+ */
+describe('toIsoStamp', () => {
+  const stamp = '2026-08-12T01:02:03.000Z';
+
+  it.each([
+    ['a Date, as Postgres returns', new Date(stamp)],
+    ['an ISO string, as SQLite returns', stamp],
+    ['an epoch in milliseconds', Date.parse(stamp)],
+    ['an epoch as a string', String(Date.parse(stamp))],
+  ])('reads %s', (_label, value) => {
+    expect(toIsoStamp(value)).toBe(stamp);
+  });
+
+  it.each([null, undefined, ''])('returns empty for %s', value => {
+    expect(toIsoStamp(value)).toBe('');
+  });
+});
 
 describe('UpstreamVersionStore', () => {
   let db: Knex;
@@ -105,5 +127,37 @@ describe('UpstreamVersionStore', () => {
 
   it('builds the key from the repository and chart', () => {
     expect(UpstreamVersionStore.keyOf(REPO, 'grafana')).toBe(`${REPO}|grafana`);
+  });
+
+  /*
+   * Production runs Postgres, where `timestamp` is `timestamptz` and comes back
+   * as a Date rather than the string SQLite returns. Both have to read out as
+   * the same ISO stamp, since the UI turns it into "checked 4 minutes ago".
+   */
+  describe('timestamp handling', () => {
+    const stamp = '2026-08-12T01:02:03.000Z';
+
+    it('reads a stored string back as an ISO stamp', async () => {
+      await store.save(chartOf({ checkedAt: stamp }));
+
+      const [stored] = await store.listAll();
+      expect(stored.checkedAt).toBe(stamp);
+      expect(await store.lastCheckedAt()).toBe(stamp);
+    });
+
+    it('reads a Date column back as an ISO stamp', async () => {
+      await db('appset_upstream_versions').insert({
+        id: `${REPO}|from-date`,
+        repository: REPO,
+        chart: 'from-date',
+        latest_version: '1.0.0',
+        version_count: 1,
+        source: 'helm-index',
+        checked_at: new Date(stamp),
+      });
+
+      const [stored] = await store.listAll();
+      expect(stored.checkedAt).toBe(stamp);
+    });
   });
 });

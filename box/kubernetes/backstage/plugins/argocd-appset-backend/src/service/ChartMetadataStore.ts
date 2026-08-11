@@ -203,8 +203,9 @@ export class ChartMetadataStore {
 
     const filePath = encodeURIComponent(`${path}/Chart.yaml`);
     const response = await fetch(
-      `${api.apiBaseUrl}/projects/${api.encodedPath}/repository/files/${filePath}/raw` +
-        `?ref=${encodeURIComponent(resolvedRef)}`,
+      api.url(`projects/${api.encodedPath}/repository/files/${filePath}/raw`, {
+        ref: resolvedRef,
+      }),
       { headers: { 'PRIVATE-TOKEN': api.token } },
     );
 
@@ -224,10 +225,9 @@ export class ChartMetadataStore {
     if (cached) return cached;
 
     const api = resolveGitLabApi(this.config, repoUrl);
-    const response = await fetch(
-      `${api.apiBaseUrl}/projects/${api.encodedPath}`,
-      { headers: { 'PRIVATE-TOKEN': api.token } },
-    );
+    const response = await fetch(api.url(`projects/${api.encodedPath}`), {
+      headers: { 'PRIVATE-TOKEN': api.token },
+    });
 
     if (!response.ok) {
       throw new Error(

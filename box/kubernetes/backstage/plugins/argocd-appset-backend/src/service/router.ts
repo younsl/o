@@ -25,6 +25,31 @@ export interface RouterOptions {
 }
 
 /**
+ * A query parameter repeated in the URL arrives as an array, so a value that
+ * should be a single string is only accepted when it actually is one. Without
+ * this a repeated parameter reaches code expecting a string and fails there
+ * instead of being rejected here.
+ */
+export function singleQueryValue(value: unknown): string | null {
+  return typeof value === 'string' && value !== '' ? value : null;
+}
+
+/**
+ * Repository URLs the ApplicationSets point at, keyed by themselves. Looking a
+ * caller's value up in here and using what comes back means the URL that is
+ * fetched came from the cluster, not from the request.
+ */
+export function knownRepoUrls(cache: AppSetCache): Map<string, string> {
+  const urls = new Map<string, string>();
+
+  for (const appSet of cache.getAppSets()) {
+    if (appSet.repoUrl) urls.set(appSet.repoUrl, appSet.repoUrl);
+  }
+
+  return urls;
+}
+
+/**
  * The (repository, chart) pairs the cluster actually pulls charts from, taken
  * from the ApplicationSets already fetched. The upstream lookup makes the
  * backend issue an outbound request on a caller's behalf, so the target must
@@ -105,13 +130,22 @@ export async function createRouter(options: RouterOptions): Promise<Router> {
   });
 
   router.get('/branches', async (req, res) => {
-    const repoUrl = req.query.repoUrl as string | undefined;
-    if (!repoUrl || typeof repoUrl !== 'string') {
+    const repoUrl = singleQueryValue(req.query.repoUrl);
+    if (!repoUrl) {
       res.status(400).json({ error: 'repoUrl query parameter is required' });
       return;
     }
+
+    // Only repositories an ApplicationSet actually points at, so this cannot be
+    // used to make the backend reach an address of the caller's choosing.
+    const knownRepoUrl = knownRepoUrls(cache).get(repoUrl);
+    if (!knownRepoUrl) {
+      res.status(400).json({ error: 'No ApplicationSet points at that repository' });
+      return;
+    }
+
     try {
-      const result = await service.listBranches(repoUrl);
+      const result = await service.listBranches(knownRepoUrl);
       res.json(result);
     } catch (error) {
       logger.error(`Failed to list branches for ${repoUrl}: ${error}`);
@@ -235,17 +269,21 @@ export async function createRouter(options: RouterOptions): Promise<Router> {
    * read when someone opens the chart version detail.
    */
   router.get('/upstream-chart', async (req, res) => {
-    const repository = req.query.repository as string | undefined;
-    const chart = req.query.chart as string | undefined;
+    const repository = singleQueryValue(req.query.repository);
+    const chart = singleQueryValue(req.query.chart);
 
     if (!repository || !chart) {
       res.status(400).json({ error: 'repository and chart query parameters are required' });
       return;
     }
 
-    // Only repositories the cluster already depends on, so this endpoint cannot
-    // be used to make the backend reach an arbitrary address.
-    if (!knownUpstreamPairs(cache).has(`${repository}|${chart}`)) {
+    /*
+     * Only repositories the cluster already depends on, and the lookup's own
+     * values are used from here on rather than the caller's, so what gets
+     * fetched came from the cluster.
+     */
+    const pair = knownUpstreamPairs(cache).get(`${repository}|${chart}`);
+    if (!pair) {
       res.status(400).json({
         error: 'No ApplicationSet depends on that chart and repository',
       });
@@ -253,7 +291,7 @@ export async function createRouter(options: RouterOptions): Promise<Router> {
     }
 
     try {
-      const result = await upstreamCharts.getLatest(repository, chart);
+      const result = await upstreamCharts.getLatest(pair.repository, pair.chart);
 
       // Write-through, so one person running a scan fills the record for
       // everyone. A failure to persist must not fail the lookup itself.

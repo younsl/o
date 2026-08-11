@@ -53,6 +53,12 @@ export interface GitLabApiTarget {
   token: string;
   /** Project path, URL-encoded for use as a `/projects/:id` path segment */
   encodedPath: string;
+  /**
+   * Builds a URL under the configured API base. Requests go through this rather
+   * than through a concatenated string, so the host being reached is always the
+   * one the integration configured and never anything a caller supplied.
+   */
+  url(path: string, query?: Record<string, string>): URL;
 }
 
 /**
@@ -85,11 +91,28 @@ export function resolveGitLabApi(config: Config, repoUrl: string): GitLabApiTarg
     throw new Error(`Invalid GitLab project path in repoUrl: ${repoUrl}`);
   }
 
+  const apiBaseUrl =
+    gitlabConfig.getOptionalString('apiBaseUrl') ??
+    `https://${parsedUrl.hostname}/api/v4`;
+  const base = new URL(`${apiBaseUrl.replace(/\/$/, '')}/`);
+
   return {
-    apiBaseUrl:
-      gitlabConfig.getOptionalString('apiBaseUrl') ??
-      `https://${parsedUrl.hostname}/api/v4`,
+    apiBaseUrl,
     token: gitlabConfig.getString('token'),
     encodedPath: encodeURIComponent(projectPath),
+    url(path, query) {
+      // Every leading slash goes, so `//host/x` cannot be read as
+      // protocol-relative and resolves under the configured host as a path.
+      const target = new URL(path.replace(/^\/+/, ''), base);
+      // A relative path cannot leave the configured host, but a path that
+      // resolved elsewhere would, so the origin is confirmed rather than assumed.
+      if (target.origin !== base.origin) {
+        throw new Error('Refusing to build a URL outside the configured host');
+      }
+      for (const [key, value] of Object.entries(query ?? {})) {
+        target.searchParams.set(key, value);
+      }
+      return target;
+    },
   };
 }
