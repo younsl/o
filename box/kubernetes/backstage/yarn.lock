@@ -9057,6 +9057,7 @@ __metadata:
     "@types/express": "npm:^5.0.0"
     "@types/js-yaml": "npm:^4.0.9"
     "@types/node-fetch": "npm:^2.6.12"
+    better-sqlite3: "npm:^11.0.0"
     cron-parser: "npm:^4.9.0"
     express: "npm:^4.21.2"
     jest: "npm:^29.7.0"
