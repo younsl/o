@@ -20,6 +20,21 @@ adopted across GitLab projects that have CI.
 - Repository owners can opt out with a GitLab topic, without a change to this repository
 - Setup wizard for the Forklift host, the Slack webhook, and the scan schedule, with the host verified before it is saved
 
+## Shareable URLs
+
+Every view has its own path, so a link pasted into a chat opens the same view for the next reader instead of the default one. The list view also keeps its status filter and search text in the query string.
+
+| URL | Opens |
+| --- | --- |
+| `/forklift-coverage/list` | Project table |
+| `/forklift-coverage/groups` | Group breakdown |
+| `/forklift-coverage/trend` | 90 day trend chart |
+| `/forklift-coverage/list?status=no` | Table filtered to not applied |
+| `/forklift-coverage/list?status=partial&q=payments` | Partial projects matching a search |
+| `/forklift-coverage/projects/<url-encoded path>` | One project detail page |
+
+`status` accepts `yes`, `partial`, `no`, `error`, and `excluded`. An omitted or unknown value means all projects. `/forklift-coverage` and any unknown suffix redirect to the list view, so older bookmarks keep working.
+
 ## Access
 
 Any signed-in Backstage user can read the coverage page, the group breakdown,

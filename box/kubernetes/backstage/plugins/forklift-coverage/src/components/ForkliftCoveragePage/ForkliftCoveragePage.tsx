@@ -1,5 +1,11 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import { Route, Routes, useNavigate } from 'react-router-dom';
+import {
+  Navigate,
+  Route,
+  Routes,
+  useNavigate,
+  useSearchParams,
+} from 'react-router-dom';
 import {
   Alert,
   Box,
@@ -24,7 +30,7 @@ import {
   RiSettings3Line,
   RiStackLine,
 } from '@remixicon/react';
-import { useApi } from '@backstage/core-plugin-api';
+import { useApi, useRouteRef } from '@backstage/core-plugin-api';
 import { useAsyncRetry } from 'react-use';
 import { forkliftCoveragePlugin } from '../../plugin';
 import { forkliftCoverageApiRef } from '../../api';
@@ -39,10 +45,34 @@ import { CoverageTrendChart } from '../CoverageTrendChart';
 import { HighlightText } from '../HighlightText';
 import { ConfigurationWizard } from '../ConfigurationWizard';
 import { ProjectDetailPage } from '../ProjectDetailPage';
+import { rootRouteRef } from '../../routes';
 import './ForkliftCoveragePage.css';
 
 type ViewMode = 'list' | 'groups' | 'trend';
 type StatusFilter = 'all' | 'yes' | 'partial' | 'no' | 'error' | 'excluded';
+
+/**
+ * Each view is its own path, so a pasted URL lands a teammate on the same view
+ * rather than the default one. The list view carries its filter and query in
+ * the search string for the same reason.
+ */
+const VIEW_LABELS: Record<ViewMode, string> = {
+  list: 'List',
+  groups: 'Groups',
+  trend: 'Trend',
+};
+
+const STATUS_FILTERS: StatusFilter[] = [
+  'all',
+  'yes',
+  'partial',
+  'no',
+  'error',
+  'excluded',
+];
+
+const parseStatusFilter = (raw: string | null): StatusFilter =>
+  STATUS_FILTERS.includes(raw as StatusFilter) ? (raw as StatusFilter) : 'all';
 
 
 const STATUS_LABELS: Record<AppliedState, string> = {
@@ -309,9 +339,10 @@ const GroupBreakdown = ({
   );
 };
 
-const CoverageListPage = () => {
+const CoverageListPage = ({ view }: { view: ViewMode }) => {
   const api = useApi(forkliftCoverageApiRef);
   const navigate = useNavigate();
+  const rootPath = useRouteRef(rootRouteRef)();
 
   // Everyone signed in can read coverage. Admin only gates the write actions
   // and the pipeline viewer on the detail page.
@@ -338,9 +369,52 @@ const CoverageListPage = () => {
     [],
   );
 
-  const [search, setSearch] = useState('');
-  const [statusFilter, setStatusFilter] = useState<StatusFilter>('all');
-  const [viewMode, setViewMode] = useState<ViewMode>('list');
+  // Filter and query live in the URL, so both are part of a shared link and
+  // survive a reload.
+  const [searchParams, setSearchParams] = useSearchParams();
+  const search = searchParams.get('q') ?? '';
+  const statusFilter = parseStatusFilter(searchParams.get('status'));
+
+  const setParam = useCallback(
+    (key: string, value: string | null) => {
+      setSearchParams(
+        prev => {
+          const next = new URLSearchParams(prev);
+          if (value) next.set(key, value);
+          else next.delete(key);
+          return next;
+        },
+        // Typing filters on every keystroke, so each change replaces the entry
+        // instead of stacking one history step per character.
+        { replace: true },
+      );
+    },
+    [setSearchParams],
+  );
+
+  const setSearch = useCallback(
+    (next: string) => setParam('q', next || null),
+    [setParam],
+  );
+
+  // Re-selecting the active chip clears it, which is the 'all' filter and needs
+  // no parameter of its own.
+  const selectStatus = useCallback(
+    (next: StatusFilter) =>
+      setParam('status', next === statusFilter || next === 'all' ? null : next),
+    [setParam, statusFilter],
+  );
+
+  const selectView = useCallback(
+    (next: ViewMode) => {
+      // Only the list view reads status and q, so they are dropped on the way
+      // out rather than lingering in a Groups or Trend link.
+      const query = next === 'list' ? searchParams.toString() : '';
+      navigate(`${rootPath}/${next}${query ? `?${query}` : ''}`);
+    },
+    [navigate, rootPath, searchParams],
+  );
+
   const [actionError, setActionError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [showWizard, setShowWizard] = useState(false);
@@ -660,89 +734,77 @@ const CoverageListPage = () => {
             {/* Status filters act on the table, so they only exist in the list
                 view. Groups and Trend have nothing to filter. A spacer keeps
                 the view toggle pinned right when they are gone. */}
-            {viewMode !== 'list' && <span />}
-            {viewMode === 'list' && (
+            {view !== 'list' && <span />}
+            {view === 'list' && (
             <Flex gap="1" align="center" style={{ flexWrap: 'wrap' }}>
               <FilterChip
                 label="All"
                 count={coverage?.target ?? 0}
                 selected={statusFilter === 'all'}
-                onSelect={() => setStatusFilter('all')}
+                onSelect={() => selectStatus('all')}
               />
               <FilterChip
                 label="Applied"
                 count={coverage?.applied ?? 0}
                 tone="success"
                 selected={statusFilter === 'yes'}
-                onSelect={() =>
-                  setStatusFilter(prev => (prev === 'yes' ? 'all' : 'yes'))
-                }
+                onSelect={() => selectStatus('yes')}
               />
               <FilterChip
                 label="Partial"
                 count={coverage?.partial ?? 0}
                 tone="warning"
                 selected={statusFilter === 'partial'}
-                onSelect={() =>
-                  setStatusFilter(prev => (prev === 'partial' ? 'all' : 'partial'))
-                }
+                onSelect={() => selectStatus('partial')}
               />
               <FilterChip
                 label="Not applied"
                 count={coverage?.notApplied ?? 0}
                 tone="danger"
                 selected={statusFilter === 'no'}
-                onSelect={() =>
-                  setStatusFilter(prev => (prev === 'no' ? 'all' : 'no'))
-                }
+                onSelect={() => selectStatus('no')}
               />
               {(coverage?.errored ?? 0) > 0 && (
                 <FilterChip
                   label="Errors"
                   count={coverage?.errored ?? 0}
                   selected={statusFilter === 'error'}
-                  onSelect={() =>
-                    setStatusFilter(prev => (prev === 'error' ? 'all' : 'error'))
-                  }
+                  onSelect={() => selectStatus('error')}
                 />
               )}
               <FilterChip
                 label="Excluded"
                 count={coverage?.excluded ?? 0}
                 selected={statusFilter === 'excluded'}
-                onSelect={() =>
-                  setStatusFilter(prev =>
-                    prev === 'excluded' ? 'all' : 'excluded',
-                  )
-                }
+                onSelect={() => selectStatus('excluded')}
               />
             </Flex>
             )}
 
             <Flex gap="2" align="center">
-              {viewMode === 'list' && (
+              {view === 'list' && (
                 <SearchToggle value={search} onChange={setSearch} />
               )}
               <ToggleButtonGroup
                 aria-label="View mode"
                 selectionMode="single"
                 disallowEmptySelection
-                selectedKeys={new Set([viewMode])}
+                selectedKeys={new Set([view])}
                 onSelectionChange={keys => {
                   const first = Array.from(keys as Set<string>)[0];
                   if (first === 'list' || first === 'groups' || first === 'trend') {
-                    setViewMode(first);
+                    selectView(first);
                   }
                 }}
               >
                 <ToggleButton id="list" size="small" className="fc-view-toggle-btn">
-                  List
+                  {VIEW_LABELS.list}
                 </ToggleButton>
                 <ToggleButton id="groups" size="small" className="fc-view-toggle-btn">
-                  Groups
+                  {VIEW_LABELS.groups}
                 </ToggleButton>
                 <ToggleButton id="trend" size="small" className="fc-view-toggle-btn">
-                  Trend
+                  {VIEW_LABELS.trend}
                 </ToggleButton>
               </ToggleButtonGroup>
             </Flex>
@@ -750,7 +812,7 @@ const CoverageListPage = () => {
         </Box>
 
         <Box mt="3">
-          {viewMode === 'list' && (
+          {view === 'list' && (
             <Box
               style={{ overflowX: 'auto', width: '100%' }}
               className="fc-table-wrapper"
@@ -766,7 +828,9 @@ const CoverageListPage = () => {
                 }}
                 rowConfig={{
                   onClick: row =>
-                    navigate(`projects/${encodeURIComponent(row.rowKey)}`),
+                    navigate(
+                      `${rootPath}/projects/${encodeURIComponent(row.rowKey)}`,
+                    ),
                 }}
                 pagination={{ type: 'none' }}
                 emptyState={
@@ -778,14 +842,14 @@ const CoverageListPage = () => {
             </Box>
           )}
 
-          {viewMode === 'groups' && (
+          {view === 'groups' && (
             <GroupBreakdown
               groups={groups ?? []}
               gitlabWebUrl={coverage?.gitlabWebUrl ?? null}
             />
           )}
 
-          {viewMode === 'trend' && (
+          {view === 'trend' && (
             <CoverageTrendChart snapshots={history ?? []} />
           )}
         </Box>
@@ -803,9 +867,22 @@ const CoverageListPage = () => {
   );
 };
 
+/** Absolute so it lands on the list view from any depth, splat matches included. */
+const RedirectToList = () => {
+  const rootPath = useRouteRef(rootRouteRef)();
+  return <Navigate to={`${rootPath}/list`} replace />;
+};
+
 export const ForkliftCoveragePage = () => (
   <Routes>
-    <Route path="/" element={<CoverageListPage />} />
+    {/* The bare plugin path is what the sidebar and older bookmarks point at.
+        It redirects so every view on screen has one canonical URL to copy. */}
+    <Route path="/" element={<RedirectToList />} />
+    <Route path="/list" element={<CoverageListPage view="list" />} />
+    <Route path="/groups" element={<CoverageListPage view="groups" />} />
+    <Route path="/trend" element={<CoverageListPage view="trend" />} />
     <Route path="/projects/:projectPath" element={<ProjectDetailPage />} />
+    {/* An unknown suffix is a stale link, not a dead end. */}
+    <Route path="*" element={<RedirectToList />} />
   </Routes>
 );

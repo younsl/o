@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   Alert,
   Box,
@@ -6,6 +6,7 @@ import {
   Container,
   Flex,
   PluginHeader,
+  Select,
   Switch,
   Tag,
   TagGroup,
@@ -43,6 +44,41 @@ const formatNextRun = (iso: string): string =>
 
 /** Long enough to not fire mid-word, short enough that nobody waits on it. */
 const PROBE_DEBOUNCE_MS = 1000;
+
+/**
+ * The IANA zone list the browser already carries, so no table has to be
+ * shipped or kept current. Empty on a browser without the API, which the
+ * timezone field falls back to free text for.
+ */
+const TIMEZONES: string[] = (() => {
+  const supported = (
+    Intl as unknown as { supportedValuesOf?: (key: string) => string[] }
+  ).supportedValuesOf;
+  try {
+    return supported ? supported('timeZone') : [];
+  } catch {
+    return [];
+  }
+})();
+
+const TIMEZONE_SET = new Set(TIMEZONES);
+
+/**
+ * A zone name alone does not say whether it is the right one, so the current
+ * offset rides along in the label. It follows DST, being read off today.
+ */
+const offsetLabel = (zone: string): string => {
+  try {
+    const parts = new Intl.DateTimeFormat('en-US', {
+      timeZone: zone,
+      timeZoneName: 'shortOffset',
+    }).formatToParts(new Date());
+    const offset = parts.find(part => part.type === 'timeZoneName')?.value;
+    return offset ? `${zone} (${offset})` : zone;
+  } catch {
+    return zone;
+  }
+};
 
 /**
  * Mirrors the backend host rule so an obviously wrong value is reported
@@ -149,6 +185,16 @@ export const ConfigurationWizard = ({
     return api.getCoverage();
   }, [isAdmin]);
 
+  const scanning = coverage?.scanning ?? false;
+
+  // A scan started elsewhere still blocks Send now here, so poll until it ends
+  // rather than leaving the button stuck on a stale state.
+  useEffect(() => {
+    if (!scanning) return undefined;
+    const id = setInterval(() => refetchCoverage(), 2_000);
+    return () => clearInterval(id);
+  }, [scanning, refetchCoverage]);
+
   useEffect(() => {
     if (!settings) return;
     setHost(settings.forkliftHost ?? '');
@@ -158,6 +204,20 @@ export const ConfigurationWizard = ({
     setScanCron(settings.schedule.cron);
     setTimezone(settings.schedule.timezone);
   }, [settings]);
+
+  // 400-odd formatters, so build the labels once rather than per keystroke.
+  const zoneOptions = useMemo(
+    () => TIMEZONES.map(zone => ({ id: zone, label: offsetLabel(zone) })),
+    [],
+  );
+
+  // A stored value can be a retired alias such as Asia/Calcutta, which the
+  // browser list no longer carries. Keep it as an option, otherwise opening
+  // the form would silently drop the saved zone.
+  const timezoneOptions = useMemo(() => {
+    if (!timezone || TIMEZONE_SET.has(timezone)) return zoneOptions;
+    return [{ id: timezone, label: offsetLabel(timezone) }, ...zoneOptions];
+  }, [zoneOptions, timezone]);
 
   const handleSendNow = useCallback(async () => {
     setSending(true);
@@ -290,8 +350,10 @@ export const ConfigurationWizard = ({
   const managed = settings?.managedByConfig ?? false;
 
   // Send now posts the stored webhook. Anything unsaved in the form would make
-  // the button lie about what it is going to send.
+  // the button lie about what it is going to send, and a scan in flight would
+  // report half-counted projects, so that blocks first.
   const sendBlockedReason = (() => {
+    if (scanning) return 'A scan is running, sending is paused until it ends';
     if (!settings?.webhookUrlMasked) return 'Save a webhook URL to send';
     if (!coverage?.webhookConfigured) {
       return 'Turn the Slack toggle on and save to send';
@@ -302,6 +364,18 @@ export const ConfigurationWizard = ({
     if (!coverage?.lastScannedAt) return 'Run a scan before sending a report';
     return null;
   })();
+
+  // Live counts, refreshed by the poll above, so the wait has a visible end.
+  // Listing has no total yet, so it carries no percentage.
+  const progress = coverage?.scanProgress;
+  const scanCaption = `${
+    !progress || progress.phase === 'listing' || progress.total === 0
+      ? 'Listing projects'
+      : `Scanning ${progress.done} of ${progress.total} (${Math.min(
+          100,
+          Math.round((progress.done / progress.total) * 100),
+        )}%)`
+  }, sending is paused until it ends`;
 
   return (
     <>
@@ -458,13 +532,26 @@ export const ConfigurationWizard = ({
                 />
               </Box>
               <Box style={{ flex: '1 1 200px', minWidth: 160 }}>
-                <TextField
-                  label="Timezone"
-                  placeholder="Asia/Seoul"
-                  value={timezone}
-                  onChange={setTimezone}
-                  isDisabled={!autoScanEnabled}
-                />
+                {/* Picked, not typed: the zone set is closed, and a typo here
+                    only surfaces later as a scan running at the wrong hour. */}
+                {timezoneOptions.length > 0 ? (
+                  <Select
+                    label="Timezone"
+                    options={timezoneOptions}
+                    selectedKey={timezone}
+                    onSelectionChange={key => setTimezone(key as string)}
+                    search={{ placeholder: 'Search zones' }}
+                    isDisabled={!autoScanEnabled}
+                  />
+                ) : (
+                  <TextField
+                    label="Timezone"
+                    placeholder="Asia/Seoul"
+                    value={timezone}
+                    onChange={setTimezone}
+                    isDisabled={!autoScanEnabled}
+                  />
+                )}
               </Box>
             </Flex>
 
@@ -492,12 +579,23 @@ export const ConfigurationWizard = ({
               >
                 {sending ? 'Sending…' : 'Send now'}
               </Button>
+              {/* A running scan is the one blocked state that resolves on its
+                  own, so it gets live counts instead of a static reason. */}
+              {scanning && (
+                <Flex align="center" gap="1" aria-live="polite">
+                  <span className="fc-probe-spinner" aria-hidden />
+                  <Text variant="body-x-small" color="secondary">
+                    {scanCaption}
+                  </Text>
+                </Flex>
+              )}
               {preview?.sample && (
                 <Text variant="body-x-small" color="secondary">
                   No scan has run yet, so the preview uses example numbers
                 </Text>
               )}
-              {sendBlockedReason && (
+              {/* The scanning case is already covered by the caption above. */}
+              {sendBlockedReason && !scanning && (
                 <Text variant="body-x-small" color="secondary">
                   {sendBlockedReason}
                 </Text>
