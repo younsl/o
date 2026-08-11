@@ -1,0 +1,159 @@
+/* Anchors the copy button over the top-right corner of the block */
+.yaml-block-wrapper {
+  position: relative;
+}
+
+.yaml-copy-btn {
+  position: absolute;
+  top: 4px;
+  right: 4px;
+  z-index: 1;
+  width: 24px;
+  height: 24px;
+  min-width: 24px;
+  min-height: 24px;
+  opacity: 0.55;
+  background-color: var(--bui-bg-neutral-2, rgba(30, 30, 30, 0.9)) !important;
+}
+
+.yaml-block-wrapper:hover .yaml-copy-btn,
+.yaml-copy-btn:focus-visible {
+  opacity: 1;
+}
+
+.yaml-block {
+  margin: 0;
+  padding: var(--bui-space-2) 0;
+  border-radius: var(--bui-radius-2);
+  border: 1px solid var(--bui-color-border-default, #444);
+  background-color: rgba(0, 0, 0, 0.28);
+  font-family: var(--bui-font-monospace, monospace);
+  font-size: 12px;
+  line-height: 1.6;
+  overflow-x: auto;
+  max-height: 420px;
+  overflow-y: auto;
+}
+
+/*
+ * Shrink-to-fit against the widest line, never narrower than the viewport, so
+ * every row is as wide as the scrollable area. Without this a row's background
+ * ends at the visible edge and the highlight looks clipped when scrolled right.
+ */
+.yaml-lines {
+  display: inline-block;
+  min-width: 100%;
+  box-sizing: border-box;
+}
+
+.yaml-line {
+  display: flex;
+  align-items: center;
+  white-space: pre;
+  padding: 0 var(--bui-space-2);
+}
+
+/* The line the reported version was actually taken from */
+.yaml-line-read {
+  background-color: rgba(59, 130, 246, 0.16);
+  box-shadow: inset 2px 0 0 var(--bui-color-border-primary, #3b82f6);
+}
+
+.yaml-gutter {
+  flex-shrink: 0;
+  margin-right: var(--bui-space-3);
+  text-align: right;
+  opacity: 0.4;
+  user-select: none;
+}
+
+.yaml-code {
+  flex: 1;
+}
+
+/*
+ * A note about the line, not part of it. `user-select: none` keeps it out of a
+ * dragged selection, as the copy button already keeps it out of the clipboard.
+ */
+.yaml-annotation {
+  /* inline-flex with vertical-align centres the badge on the code line, which a
+     padded inline box would otherwise sit below */
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  vertical-align: middle;
+  margin-left: 1.5ch;
+  padding: 1px 7px;
+  border-radius: 9px;
+  background-color: rgba(245, 158, 11, 0.14);
+  color: #f59e0b;
+  font-family: var(--bui-font-family, sans-serif);
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 1.4;
+  white-space: nowrap;
+  user-select: none;
+}
+
+.yaml-key {
+  color: #7dd3fc;
+}
+
+.yaml-string {
+  color: #a5e887;
+}
+
+.yaml-number {
+  color: #fbbf24;
+}
+
+.yaml-literal {
+  color: #c4b5fd;
+}
+
+.yaml-value {
+  color: #e5e7eb;
+}
+
+.yaml-punct {
+  opacity: 0.55;
+}
+
+.yaml-comment {
+  color: #94a3b8;
+  font-style: italic;
+}
+
+/*
+ * The palette above is tuned for the dark theme the app ships with. Under a
+ * light theme the same hues need darkening to stay readable on a pale panel.
+ */
+@media (prefers-color-scheme: light) {
+  .yaml-block {
+    background-color: rgba(0, 0, 0, 0.04);
+  }
+
+  .yaml-key {
+    color: #0369a1;
+  }
+
+  .yaml-string {
+    color: #15803d;
+  }
+
+  .yaml-number {
+    color: #b45309;
+  }
+
+  .yaml-literal {
+    color: #6d28d9;
+  }
+
+  .yaml-value {
+    color: #1f2937;
+  }
+
+  .yaml-comment {
+    color: #64748b;
+  }
+}

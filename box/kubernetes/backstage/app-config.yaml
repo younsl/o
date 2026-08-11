@@ -167,8 +167,29 @@ argocdApplicationSet:
   kubernetes:
     # -- (string) Optional in-cluster SA token; in-cluster mode uses pod SA automatically
     # serviceAccountToken: ${K8S_SA_TOKEN}
-    # -- (string) Namespace where ApplicationSets are deployed
+    # -- (string) Namespace where ApplicationSets are deployed. The service account needs
+    # get/list/watch on argoproj.io applicationsets plus list on applications, which supply
+    # the chart and app version detail. Without the latter the plugin still lists
+    # ApplicationSets, only with no version detail
     namespace: argocd
+  chartMetadata:
+    # -- (bool) Read Chart.yaml from the git repository to resolve the upstream chart
+    # version. An Application sourced from a git path records only the git revision, so
+    # without this the Chart Version column is empty for every such Application. Reuses
+    # the integrations.gitlab token
+    enabled: true
+    # -- (int) Cache lifetime for a Chart.yaml read, keyed by repository, path and branch.
+    # Keyed on the branch rather than the synced commit, so a push does not invalidate
+    # every entry at once
+    ttlMinutes: 60
+  upstreamChart:
+    # -- (int) Cache lifetime for an upstream version lookup. Queried only when a reader
+    # asks, never on the refresh schedule, since a Helm repository index is far too large
+    # to pull every minute
+    ttlMinutes: 360
+    # -- (int) Seconds after a scan finishes before another may start. Enforced on the
+    # backend, so the wait applies to every reader rather than to one browser
+    scanCooldownSeconds: 60
   slack:
     # -- (string) Slack webhook URL for ApplicationSet notifications
     webhookUrl: ${SLACK_WEBHOOK_URL}

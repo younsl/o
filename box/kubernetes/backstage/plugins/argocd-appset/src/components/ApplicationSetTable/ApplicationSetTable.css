@@ -72,7 +72,13 @@
   min-width: 150px;
 }
 
-/* Subgrid: align card fields across columns */
+/*
+ * Subgrid: align card fields across columns. The spans must equal the number
+ * of children, so adding a card field means bumping all three counts and
+ * rendering that field unconditionally (a placeholder when it has no value).
+ * A conditional field would leave cards with different row counts, which both
+ * breaks the alignment and overflows the card.
+ */
 .appset-grid-item {
   grid-row: span 6;
   display: grid;
@@ -88,7 +94,7 @@
   border: 1px solid var(--bui-border-1);
 }
 
-/* CardBody inner spacing between field rows */
+/* CardBody inner spacing between field rows: 5 field rows + 1 footer row */
 .appset-card-body {
   grid-row: span 5;
   display: grid;
@@ -148,11 +154,241 @@
   margin-bottom: var(--bui-space-1);
 }
 
+/* Chart and app version share one field row to keep the card compact */
+.appset-version-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: var(--bui-space-2);
+  align-items: start;
+}
+
+/*
+ * Version value with its icon button alongside. The card column is narrow, so
+ * the buttons are sized to the glyph with no padding of their own and sit
+ * directly against the value.
+ */
+.appset-version-value-row {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+}
+
+.appset-detail-btn,
+.appset-warn-btn {
+  width: 16px;
+  height: 16px;
+  min-width: 16px;
+  min-height: 16px;
+  padding: 0 !important;
+  flex-shrink: 0;
+}
+
+.appset-detail-btn {
+  opacity: 0.6;
+}
+
+/* Applications of one ApplicationSet running different app versions */
+.appset-warn-btn {
+  color: #f59e0b !important;
+}
+
+/* A newer chart version exists upstream, found by the scan */
+.appset-upgrade-btn {
+  width: 16px;
+  height: 16px;
+  min-width: 16px;
+  min-height: 16px;
+  padding: 0 !important;
+  flex-shrink: 0;
+  color: #f59e0b !important;
+}
+
+/*
+ * A Chart.yaml with long dependency repository URLs needs room, so the detail
+ * dialog is far wider than the form dialogs BUI sizes by default, capped so it
+ * still leaves a margin on a narrow window.
+ */
+.appset-detail-dialog {
+  width: min(900px, 92vw) !important;
+  max-width: min(900px, 92vw) !important;
+}
+
+/*
+ * Version summary at the top of the detail dialog. Aligned columns rather than
+ * badges: with several charts the versions have to line up to be comparable at
+ * a glance, which pills actively prevent.
+ */
+/* Names never wrap, so a very long one scrolls rather than widening the dialog */
+.appset-chart-summary-scroll {
+  overflow-x: auto;
+  margin-bottom: var(--bui-space-4);
+}
+
+.appset-chart-summary {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.appset-chart-summary th {
+  padding: 0 var(--bui-space-3) var(--bui-space-1) 0;
+  border-bottom: 1px solid var(--bui-border-1);
+  text-align: left;
+  font-size: var(--bui-font-size-1);
+  font-weight: var(--bui-font-weight-bold);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  color: var(--bui-color-text-secondary);
+  white-space: nowrap;
+}
+
+.appset-chart-summary td {
+  padding: var(--bui-space-2) var(--bui-space-3) var(--bui-space-2) 0;
+  font-size: var(--bui-font-size-3);
+  vertical-align: baseline;
+}
+
+/*
+ * A chart name is a single token and must stay on one line: wrapping it splits
+ * one name into what reads as two rows. The table scrolls sideways instead.
+ */
+.appset-chart-summary-name {
+  white-space: nowrap;
+  font-weight: var(--bui-font-weight-bold);
+}
+
+/* Digits align across rows so a version difference is visible by shape */
+.appset-chart-summary-version {
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+/* Last column takes the slack, keeping the version columns tight together */
+.appset-chart-summary th:last-child,
+.appset-chart-summary td:last-child {
+  width: 100%;
+  padding-right: 0;
+}
+
+.appset-chart-summary-status {
+  white-space: nowrap;
+}
+
+/* When the repository was last read, so a cached answer is not read as fresh */
+.appset-chart-summary-checked {
+  margin-top: 1px;
+  font-size: var(--bui-font-size-2);
+  color: var(--bui-color-text-secondary);
+}
+
+/*
+ * The one row that asks for action gets the only accent in the table, so the
+ * accent keeps meaning something. Every other state reads from its wording.
+ */
+.appset-chart-summary-status-upgrade {
+  color: #f59e0b;
+}
+
+.appset-chart-summary-status-checking,
+.appset-chart-summary-status-unknown {
+  color: var(--bui-color-text-secondary);
+}
+
+.appset-chart-summary-muted {
+  color: var(--bui-color-text-secondary);
+}
+
+.appset-origin-location,
+.appset-origin-apps {
+  font-size: var(--bui-font-size-2);
+  color: var(--bui-color-text-secondary);
+}
+
+.appset-origin-location {
+  font-family: monospace;
+  margin-bottom: 2px;
+}
+
+.appset-origin-apps {
+  margin-top: 2px;
+}
+
 /* Revision row with inline edit button */
 .appset-revision-row {
   display: flex;
   align-items: center;
   gap: var(--bui-space-1);
+}
+
+/*
+ * Tip commit of the branch selected in the target revision dialog. One row with
+ * a full-height divider: the message and its author hold the left, the SHA and
+ * its copy button the right. `stretch` is what carries the divider across both
+ * lines instead of stopping at the height of the SHA.
+ */
+.appset-commit-box {
+  display: flex;
+  align-items: stretch;
+  border-radius: var(--bui-radius-2);
+  border: 1px solid var(--bui-border-1);
+  background-color: var(--bui-bg-neutral-2);
+  overflow: hidden;
+}
+
+.appset-commit-main {
+  flex: 1;
+  min-width: 0;
+  padding: var(--bui-space-2) var(--bui-space-3);
+}
+
+.appset-commit-title {
+  overflow-wrap: anywhere;
+}
+
+.appset-commit-ref {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  flex-shrink: 0;
+  padding: var(--bui-space-2) var(--bui-space-3);
+  border-left: 1px solid var(--bui-border-1);
+}
+
+/*
+ * The SHA is rendered with the same Text variant as the commit message, so only
+ * the link's own colour and underline need neutralising here. Setting a size
+ * would put it back out of step with the message.
+ */
+.appset-commit-sha {
+  color: inherit;
+  text-decoration: none;
+}
+
+.appset-commit-sha:hover {
+  text-decoration: underline;
+}
+
+.appset-commit-copy-btn {
+  width: 18px;
+  height: 18px;
+  min-width: 18px;
+  min-height: 18px;
+  padding: 0 !important;
+  opacity: 0.6;
+}
+
+.appset-commit-ref:hover .appset-commit-copy-btn,
+.appset-commit-copy-btn:focus-visible {
+  opacity: 1;
+}
+
+.appset-commit-meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--bui-space-2);
+  margin-top: 4px;
+  font-size: var(--bui-font-size-2);
+  color: var(--bui-color-text-secondary);
 }
 
 .appset-edit-revision-btn {
@@ -205,6 +441,37 @@
 .appset-apps-tooltip {
   max-width: 320px;
   word-break: break-word;
+}
+
+.appset-app-tooltip-body {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  font-size: var(--bui-font-size-3);
+  line-height: 1.5;
+  text-align: left;
+}
+
+.appset-app-tooltip-title {
+  font-weight: 700;
+}
+
+.appset-app-tooltip-images {
+  margin-top: 4px;
+  padding-top: 4px;
+  border-top: 1px solid var(--bui-color-border-default, #444);
+  font-size: var(--bui-font-size-2);
+  color: var(--bui-color-text-secondary);
+}
+
+/* Where a value was read from, set back from the value itself */
+.appset-app-tooltip-source {
+  display: block;
+  margin: 1px 0 2px;
+  font-family: var(--bui-font-family, inherit);
+  font-size: var(--bui-font-size-2);
+  color: var(--bui-color-text-secondary);
+  opacity: 0.9;
 }
 
 /* Integration badge — uses BUI Button as TooltipTrigger child */
@@ -268,8 +535,110 @@
   background-color: rgba(59, 130, 246, 0.08);
 }
 
+/*
+ * Application detail: short labels and one image per line, so the dialog is
+ * sized to that content rather than to the chart file the other one shows.
+ */
+.appset-app-dialog {
+  width: min(520px, 92vw) !important;
+  max-width: min(520px, 92vw) !important;
+}
+
+.appset-app-detail {
+  border-collapse: collapse;
+}
+
+.appset-app-detail th {
+  padding: 2px var(--bui-space-4) 2px 0;
+  text-align: left;
+  vertical-align: baseline;
+  white-space: nowrap;
+  font-size: var(--bui-font-size-2);
+  font-weight: var(--bui-font-weight-bold);
+  color: var(--bui-color-text-secondary);
+}
+
+.appset-app-detail td {
+  padding: 2px 0;
+  vertical-align: baseline;
+  font-size: var(--bui-font-size-3);
+}
+
+.appset-app-detail-mono {
+  font-family: var(--bui-font-monospace, monospace);
+}
+
+/* Sits on the text line rather than below its baseline */
+.appset-inline-icon {
+  vertical-align: -2px;
+  margin-right: 3px;
+}
+
+/* Plain lines of text, no panel: the images are read, not operated on as a set */
+.appset-image-list {
+  display: flex;
+  flex-direction: column;
+}
+
+/* Button sits against the value, not out at the edge of the row */
+.appset-image-row {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+}
+
+.appset-image-name {
+  font-size: var(--bui-font-size-3);
+  overflow-wrap: anywhere;
+}
+
+.appset-image-copy-btn {
+  width: 18px;
+  height: 18px;
+  min-width: 18px;
+  min-height: 18px;
+  padding: 0 !important;
+  flex-shrink: 0;
+  opacity: 0.6;
+}
+
+.appset-image-row:hover .appset-image-copy-btn,
+.appset-image-copy-btn:focus-visible {
+  opacity: 1;
+}
+
+/* Charts whose upstream could not be read; the reasons are on hover */
+.appset-unreadable {
+  cursor: help;
+}
+
 /* Empty state */
 .appset-empty-state {
   text-align: center;
   padding: var(--bui-space-8);
+}
+
+/*
+ * Waiting for the backend's first fetch. The placeholders are the card grid's
+ * own layout, so nothing shifts when the data lands. Pulsing the whole block is
+ * the only signal that this is a wait rather than a result.
+ */
+.appset-pending {
+  animation: appset-pending-blink 1.6s ease-in-out infinite;
+}
+
+@keyframes appset-pending-blink {
+  0%,
+  100% {
+    opacity: 0.45;
+  }
+  50% {
+    opacity: 1;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .appset-pending {
+    animation-duration: 4s;
+  }
 }

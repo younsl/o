@@ -15,8 +15,14 @@ import { RiArrowLeftLine } from '@remixicon/react';
 import { useApi } from '@backstage/core-plugin-api';
 import { useParams } from 'react-router-dom';
 import { useAsyncRetry } from 'react-use';
-import { argocdAppsetApiRef } from '../../api';
+import { argocdAppsetApiRef, AuditLogEntry } from '../../api';
 import './AuditLogPage.css';
+
+const ACTION_LABELS: Record<AuditLogEntry['action'], string> = {
+  mute: 'mute',
+  unmute: 'unmute',
+  set_target_revision: 'set target revision',
+};
 
 export const AuditLogPage = () => {
   const { namespace, name } = useParams<{ namespace: string; name: string }>();
@@ -101,14 +107,6 @@ export const AuditLogPage = () => {
                 </TagGroup>
               </div>
               <div className="audit-page-info-item">
-                <Text variant="body-x-small" color="secondary" className="audit-page-info-label">Generators</Text>
-                <TagGroup>
-                  {appSet.generators.map((gen, i) => (
-                    <Tag key={i} id={`gen-${i}`} size="small">{gen}</Tag>
-                  ))}
-                </TagGroup>
-              </div>
-              <div className="audit-page-info-item">
                 <Text variant="body-x-small" color="secondary" className="audit-page-info-label">Applications</Text>
                 <Text variant="body-small">{appSet.syncedCount} / {appSet.applicationCount} Synced</Text>
               </div>
@@ -175,7 +173,7 @@ export const AuditLogPage = () => {
                     <td>{log.userRef.replace(/^user:default\//, '')}</td>
                     <td>
                       <span className={`audit-page-action audit-page-action-${log.action}`}>
-                        {log.action === 'set_target_revision' ? 'set target revision' : log.action}
+                        {ACTION_LABELS[log.action] ?? log.action}
                       </span>
                     </td>
                     <td>

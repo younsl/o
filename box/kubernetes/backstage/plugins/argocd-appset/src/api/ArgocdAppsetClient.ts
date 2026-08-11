@@ -1,7 +1,14 @@
 import { DiscoveryApi, FetchApi } from '@backstage/core-plugin-api';
 import { ResponseError } from '@backstage/errors';
 import { ArgocdAppsetApi } from './ArgocdAppsetApi';
-import { ApplicationSetResponse, AuditLogEntry, PluginStatus } from './types';
+import {
+  ApplicationSetResponse,
+  AuditLogEntry,
+  BranchListResponse,
+  PluginStatus,
+  ScanStatus,
+  UpstreamChart,
+} from './types';
 
 export class ArgocdAppsetClient implements ArgocdAppsetApi {
   private readonly discoveryApi: DiscoveryApi;
@@ -80,7 +87,7 @@ export class ArgocdAppsetClient implements ArgocdAppsetApi {
     }
   }
 
-  async listBranches(repoUrl: string): Promise<{ branches: string[]; defaultBranch: string | null }> {
+  async listBranches(repoUrl: string): Promise<BranchListResponse> {
     const baseUrl = await this.getBaseUrl();
     const response = await this.fetchApi.fetch(
       `${baseUrl}/branches?repoUrl=${encodeURIComponent(repoUrl)}`,
@@ -91,6 +98,63 @@ export class ArgocdAppsetClient implements ArgocdAppsetApi {
     }
 
     return response.json();
+  }
+
+  async getUpstreamChart(repository: string, chart: string): Promise<UpstreamChart> {
+    const baseUrl = await this.getBaseUrl();
+    const response = await this.fetchApi.fetch(
+      `${baseUrl}/upstream-chart?repository=${encodeURIComponent(repository)}` +
+        `&chart=${encodeURIComponent(chart)}`,
+    );
+
+    if (!response.ok) {
+      throw await ResponseError.fromResponse(response as any);
+    }
+
+    return response.json();
+  }
+
+  async listUpstreamCharts(): Promise<UpstreamChart[]> {
+    const baseUrl = await this.getBaseUrl();
+    const response = await this.fetchApi.fetch(`${baseUrl}/upstream-charts`);
+
+    if (!response.ok) {
+      throw await ResponseError.fromResponse(response as any);
+    }
+
+    return response.json();
+  }
+
+  async getScanStatus(): Promise<ScanStatus> {
+    const baseUrl = await this.getBaseUrl();
+    const response = await this.fetchApi.fetch(`${baseUrl}/upstream-scan`);
+
+    if (!response.ok) {
+      throw await ResponseError.fromResponse(response as any);
+    }
+
+    return response.json();
+  }
+
+  /**
+   * A refusal is an expected answer, not a failure: another reader may have a
+   * scan running or have just finished one, so 409 and 429 come back as
+   * `started: false` rather than as a thrown error.
+   */
+  async startScan(): Promise<{ started: boolean; status: ScanStatus | null }> {
+    const baseUrl = await this.getBaseUrl();
+    const response = await this.fetchApi.fetch(`${baseUrl}/upstream-scan`, {
+      method: 'POST',
+    });
+
+    if (response.status === 409 || response.status === 429) {
+      return { started: false, status: null };
+    }
+    if (!response.ok) {
+      throw await ResponseError.fromResponse(response as any);
+    }
+
+    return { started: true, status: await response.json() };
   }
 
   async getAdminStatus(): Promise<{ isAdmin: boolean }> {

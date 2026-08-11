@@ -7,6 +7,10 @@ import { ApplicationSetService } from './service/ApplicationSetService';
 import { SlackNotifier } from './service/SlackNotifier';
 import { AppSetCache } from './service/AppSetCache';
 import { AuditStore } from './service/AuditStore';
+import { ChartMetadataStore } from './service/ChartMetadataStore';
+import { UpstreamChartStore } from './service/UpstreamChartStore';
+import { UpstreamScanner } from './service/UpstreamScanner';
+import { UpstreamVersionStore } from './service/UpstreamVersionStore';
 import { parseExpression } from 'cron-parser';
 
 export const argocdAppsetPlugin = createBackendPlugin({
@@ -30,13 +34,38 @@ export const argocdAppsetPlugin = createBackendPlugin({
 
         logger.info('Initializing ArgoCD AppSet backend plugin');
 
-        const appsetService = new ApplicationSetService({ config, logger });
+        const chartMetadataEnabled =
+          config.getOptionalBoolean('argocdApplicationSet.chartMetadata.enabled') ?? true;
+        const chartMetadata = chartMetadataEnabled
+          ? new ChartMetadataStore({ config, logger })
+          : null;
+
+        const appsetService = new ApplicationSetService({ config, logger, chartMetadata });
         const slackNotifier = new SlackNotifier({ config, logger });
         const cache = new AppSetCache();
         const knex = await database.getClient();
         const auditStore = await AuditStore.create({ database: knex });
 
-        const router = await createRouter({ service: appsetService, cache, logger, config, httpAuth, auditStore });
+        const upstreamCharts = new UpstreamChartStore({ config, logger });
+        const upstreamVersions = await UpstreamVersionStore.create({ database: knex });
+        const upstreamScanner = new UpstreamScanner({
+          charts: upstreamCharts,
+          versions: upstreamVersions,
+          logger,
+          config,
+        });
+
+        const router = await createRouter({
+          service: appsetService,
+          cache,
+          logger,
+          config,
+          httpAuth,
+          auditStore,
+          upstreamCharts,
+          upstreamVersions,
+          upstreamScanner,
+        });
 
         httpRouter.use(router as any);
         httpRouter.addAuthPolicy({
@@ -61,6 +90,14 @@ export const argocdAppsetPlugin = createBackendPlugin({
         });
         httpRouter.addAuthPolicy({
           path: '/audit-logs',
+          allow: 'unauthenticated',
+        });
+        httpRouter.addAuthPolicy({
+          path: '/upstream-chart',
+          allow: 'unauthenticated',
+        });
+        httpRouter.addAuthPolicy({
+          path: '/upstream-charts',
           allow: 'unauthenticated',
         });
 

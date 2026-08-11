@@ -1,30 +1,139 @@
 import * as k8s from '@kubernetes/client-node';
 import { Config } from '@backstage/config';
 import { LoggerService } from '@backstage/backend-plugin-api';
-import { ApplicationSetResponse, MUTE_ANNOTATION } from './types';
+import {
+  ApplicationInfo,
+  ApplicationSetResponse,
+  BranchCommit,
+  BranchListResponse,
+  MUTE_ANNOTATION,
+  VersionOrigin,
+} from './types';
+import { ChartMetadataStore, findVersionLines } from './ChartMetadataStore';
+import { gitLabFileUrl, resolveGitLabApi } from './gitlab';
 
-// One bounded quantifier, anchored: no polynomial backtracking.
-const PROJECT_PATH_SEGMENT_RE = /^[a-z0-9_][a-z0-9_.-]{0,254}$/i;
+/** Parallel GitLab reads per refresh. Bounded to stay a polite API client. */
+const CHART_FETCH_CONCURRENCY = 8;
+
+/** The chart directory an Application renders, when it renders one at all. */
+interface ChartRef {
+  repoUrl: string;
+  path: string;
+  /** The Application's targetRevision, not its synced commit */
+  ref: string | null;
+}
 
 /**
- * A GitLab project path is `group/subgroup/.../project`. Each segment must
- * start with an alphanumeric, which also rules out `.` and `..` segments:
- * those survive encodeURIComponent unchanged and would let a caller-supplied
- * repoUrl escape `/projects/<path>/` into arbitrary GitLab API endpoints.
+ * Normalizes the commit a GitLab branch listing embeds. `title` is already the
+ * first line of the message, so the full body is not carried.
  */
-export function isValidProjectPath(path: string): boolean {
-  const segments = path.split('/');
-  if (segments.length < 2) return false;
-  return segments.every(segment => PROJECT_PATH_SEGMENT_RE.test(segment));
+export function mapBranchCommit(commit: any): BranchCommit | null {
+  if (!commit?.id) return null;
+
+  return {
+    id: String(commit.id),
+    shortId: commit.short_id ?? String(commit.id).slice(0, 8),
+    title: commit.title ?? '',
+    authorName: commit.author_name ?? 'unknown',
+    committedDate: commit.committed_date ?? commit.created_at ?? '',
+    webUrl: commit.web_url ?? null,
+  };
+}
+
+export async function mapWithConcurrency<T>(
+  items: T[],
+  limit: number,
+  fn: (item: T) => Promise<void>,
+): Promise<void> {
+  for (let i = 0; i < items.length; i += limit) {
+    await Promise.all(items.slice(i, i + limit).map(fn));
+  }
+}
+
+/**
+ * Split an image reference into its repository path and tag.
+ *
+ * Handles registry ports (`registry:5000/app:1.0`) by only treating a colon in
+ * the last path segment as the tag separator, and digest pins
+ * (`app@sha256:...`), which carry no tag at all.
+ */
+export function parseImageRef(ref: string): { repo: string; tag: string | null } {
+  const withoutDigest = ref.split('@')[0];
+  const lastSlash = withoutDigest.lastIndexOf('/');
+  const lastSegment = withoutDigest.slice(lastSlash + 1);
+  const colon = lastSegment.lastIndexOf(':');
+  if (colon === -1) {
+    return { repo: withoutDigest, tag: null };
+  }
+  return {
+    repo: withoutDigest.slice(0, lastSlash + 1) + lastSegment.slice(0, colon),
+    tag: lastSegment.slice(colon + 1),
+  };
+}
+
+/**
+ * Last segment of a source path, which for a chart source is the chart's own
+ * directory name. `.` and an empty path address the repository root and name
+ * nothing.
+ */
+export function lastPathSegment(path: string | undefined | null): string | null {
+  if (!path) return null;
+  const segments = path.split('/').filter(segment => segment && segment !== '.');
+  return segments.length > 0 ? segments[segments.length - 1] : null;
+}
+
+/**
+ * Pick the image that represents the app itself. A chart often deploys
+ * sidecars (exporters, config reloaders, init images), so prefer the image
+ * whose repository basename matches one of the hints and only fall back to the
+ * sole image when there is exactly one. Hints are tried in order, so pass the
+ * most specific name first.
+ */
+export function deriveAppVersion(
+  images: string[],
+  hints: (string | null)[],
+): string | null {
+  const parsed = images.map(parseImageRef).filter(p => p.tag !== null);
+  if (parsed.length === 0) return null;
+
+  for (const hint of hints) {
+    if (!hint) continue;
+    const match = parsed.find(p => {
+      const basename = p.repo.slice(p.repo.lastIndexOf('/') + 1);
+      return basename === hint;
+    });
+    if (match) return match.tag;
+  }
+
+  return parsed.length === 1 ? parsed[0].tag : null;
 }
 
 export class ApplicationSetService {
   private readonly config: Config;
   private readonly logger: LoggerService;
+  private readonly chartMetadata: ChartMetadataStore | null;
+  /**
+   * Whether the last attempt to list Applications succeeded. Null until one has
+   * been made. Reading Applications needs a permission that listing
+   * ApplicationSets does not, and without it every version field is empty for a
+   * reason no reader could guess, so the outcome is reported rather than logged
+   * and forgotten.
+   */
+  private applicationsReadable: boolean | null = null;
 
-  constructor(options: { config: Config; logger: LoggerService }) {
+  constructor(options: {
+    config: Config;
+    logger: LoggerService;
+    chartMetadata?: ChartMetadataStore | null;
+  }) {
     this.config = options.config;
     this.logger = options.logger;
+    this.chartMetadata = options.chartMetadata ?? null;
+  }
+
+  /** Null before the first fetch, false when the permission is missing. */
+  isApplicationsReadable(): boolean | null {
+    return this.applicationsReadable;
   }
 
   private getKubeConfig(): k8s.KubeConfig {
@@ -77,11 +186,234 @@ export class ApplicationSetService {
       const body = response as any;
       const items: any[] = body?.items ?? [];
 
-      return items.map(item => this.mapApplicationSet(item));
+      const appsByOwner = await this.listApplicationsByOwner(customApi);
+
+      return items.map(item => {
+        const key = `${item.metadata?.namespace ?? ''}/${item.metadata?.name ?? ''}`;
+        return this.mapApplicationSet(item, appsByOwner.get(key) ?? []);
+      });
     } catch (error) {
       this.logger.error(`Failed to list ApplicationSets: ${error}`);
       throw error;
     }
+  }
+
+  /**
+   * Applications are read separately because ApplicationSet `status.resources`
+   * has no chart or image data. A failure here must not hide the
+   * ApplicationSets themselves, so the error is logged and an empty map
+   * returned: the UI then simply shows no version detail.
+   */
+  private async listApplicationsByOwner(
+    customApi: k8s.CustomObjectsApi,
+  ): Promise<Map<string, ApplicationInfo[]>> {
+    const byOwner = new Map<string, ApplicationInfo[]>();
+
+    let items: any[];
+    try {
+      const response = await customApi.listNamespacedCustomObject({
+        group: 'argoproj.io',
+        version: 'v1alpha1',
+        namespace: this.getNamespace(),
+        plural: 'applications',
+      });
+      items = (response as any)?.items ?? [];
+      this.applicationsReadable = true;
+    } catch (error) {
+      this.applicationsReadable = false;
+      this.logger.warn(
+        `Failed to list Applications, version detail unavailable: ${error}`,
+      );
+      return byOwner;
+    }
+
+    const chartRefs: { info: ApplicationInfo; chartRef: ChartRef }[] = [];
+
+    for (const item of items) {
+      const metadata = item.metadata ?? {};
+      const owner = (metadata.ownerReferences ?? []).find(
+        (ref: any) => ref.kind === 'ApplicationSet',
+      );
+      if (!owner?.name) continue;
+
+      // ownerReferences are always same-namespace, so the owning
+      // ApplicationSet shares the Application's namespace.
+      const key = `${metadata.namespace ?? ''}/${owner.name}`;
+      const list = byOwner.get(key) ?? [];
+      const { info, chartRef } = this.mapApplication(item);
+      list.push(info);
+      byOwner.set(key, list);
+      if (chartRef) {
+        chartRefs.push({ info, chartRef });
+      }
+    }
+
+    await this.enrichFromChartYaml(chartRefs);
+
+    return byOwner;
+  }
+
+  /**
+   * Fills in what the Application CR cannot carry: for a chart living in a git
+   * path, the upstream chart version and the declared app version exist only in
+   * the repository's Chart.yaml. Enrichment mutates the already-returned infos
+   * in place, and a repository the store cannot reach simply leaves them as the
+   * cluster reported them.
+   */
+  private async enrichFromChartYaml(
+    entries: { info: ApplicationInfo; chartRef: ChartRef }[],
+  ): Promise<void> {
+    const store = this.chartMetadata;
+    if (!store || entries.length === 0) return;
+
+    const supported = entries.filter(entry => store.isSupported(entry.chartRef.repoUrl));
+    if (supported.length === 0) return;
+
+    await mapWithConcurrency(supported, CHART_FETCH_CONCURRENCY, async ({ info, chartRef }) => {
+      const metadata = await store.get(chartRef.repoUrl, chartRef.path, chartRef.ref);
+      if (!metadata) return;
+
+      info.chart = metadata.name ?? info.chart;
+
+      if (!info.chartVersion && metadata.upstreamVersion) {
+        // With no dependencies the version is the chart's own, at column zero.
+        const highlightLines = findVersionLines(
+          metadata.raw,
+          metadata.upstreamVersion,
+          metadata.dependencies.length === 0,
+        );
+        const filePath = `${chartRef.path}/Chart.yaml`;
+
+        info.chartVersion = metadata.upstreamVersion;
+        info.chartVersionOrigin = {
+          kind: 'chart-yaml',
+          location: `${filePath} @ ${chartRef.ref ?? 'default branch'}`,
+          url: gitLabFileUrl(
+            chartRef.repoUrl,
+            chartRef.ref ?? 'HEAD',
+            filePath,
+            highlightLines[0],
+          ),
+          content: metadata.raw,
+          highlightLines,
+        };
+      }
+
+      // The dependency name is the upstream chart's own name, which the
+      // Application never records. It is the best hint available for matching
+      // an image, since a wrapper is often named differently from what it wraps.
+      const dependencyNames = metadata.dependencies.map(dep => dep.name);
+      const soleDependency =
+        metadata.dependencies.length === 1 ? metadata.dependencies[0] : null;
+      info.upstreamChart = soleDependency?.name ?? null;
+      info.upstreamRepository = soleDependency?.repository ?? null;
+
+      if (!info.appVersion) {
+        // The dependency name is a hint the Application never carries, so an
+        // image can still match here. Only if none does is the declared
+        // appVersion used, which is a claim rather than an observation.
+        const fromImage = deriveAppVersion(info.images, dependencyNames);
+        info.appVersion = fromImage ?? metadata.appVersion;
+        info.appVersionSource = fromImage
+          ? 'image-tag'
+          : metadata.appVersion
+            ? 'chart-yaml'
+            : null;
+      }
+    });
+  }
+
+  private mapApplication(item: any): { info: ApplicationInfo; chartRef: ChartRef | null } {
+    const metadata = item.metadata ?? {};
+    const spec = item.spec ?? {};
+    const status = item.status ?? {};
+
+    const name: string = metadata.name ?? '';
+    const source = this.findChartSource(spec);
+    const pathName = lastPathSegment(source?.path);
+    const releaseName: string | null = source?.helm?.releaseName ?? null;
+
+    // A chart pulled from a Helm repository names itself in `chart` and pins
+    // its version in `targetRevision`. A wrapper chart in a git path has
+    // neither: `targetRevision` is the git revision, and the upstream version
+    // lives in the wrapper's Chart.yaml, which enrichment reads separately.
+    const chart: string | null = source?.chart ?? pathName ?? releaseName;
+    const chartVersion: string | null = source?.chart
+      ? source.targetRevision ?? null
+      : null;
+    const sourceLines: string[] = chartVersion
+      ? [
+          'source:',
+          ...(source.repoURL ? [`  repoURL: ${source.repoURL}`] : []),
+          `  chart: ${source.chart}`,
+          `  targetRevision: ${chartVersion}`,
+        ]
+      : [];
+    const chartVersionOrigin: VersionOrigin | null = chartVersion
+      ? {
+          kind: 'helm-repository',
+          location: `${name} spec.source`,
+          // The source block is a field of a cluster resource, not a file.
+          url: null,
+          content: sourceLines.join('\n'),
+          // targetRevision is rendered last, and is the version itself.
+          highlightLines: [sourceLines.length],
+        }
+      : null;
+
+    // ArgoCD fills status.summary.images from the live resources the
+    // Application owns, so these are the tags actually running.
+    const images: string[] = status.summary?.images ?? [];
+    const appVersion = deriveAppVersion(images, [
+      source?.chart ?? null,
+      pathName,
+      releaseName,
+      name,
+    ]);
+
+    const info: ApplicationInfo = {
+      name,
+      chart,
+      chartVersion,
+      chartVersionOrigin,
+      upstreamChart: null,
+      upstreamRepository: null,
+      appVersion,
+      appVersionSource: appVersion ? 'image-tag' : null,
+      images,
+      syncStatus: status.sync?.status ?? 'Unknown',
+      healthStatus: status.health?.status ?? 'Unknown',
+      revision: status.sync?.revision ?? null,
+    };
+
+    // Only a git path can hold a Chart.yaml. A chart named in `chart` already
+    // comes from a Helm repository with its version pinned in targetRevision.
+    const chartRef: ChartRef | null =
+      !source?.chart && source?.path && source?.repoURL
+        ? {
+            repoUrl: source.repoURL,
+            path: source.path,
+            ref: source.targetRevision ?? null,
+          }
+        : null;
+
+    return { info, chartRef };
+  }
+
+  /**
+   * The source that renders a chart: either one naming a `chart` in a Helm
+   * repository, or one with a `helm` block, which means the path holds a chart.
+   * A plain manifest or kustomize source has neither, and its path is not a
+   * chart name.
+   */
+  private findChartSource(spec: any): any | null {
+    const candidates = [spec.source, ...(spec.sources ?? [])].filter(Boolean);
+
+    return (
+      candidates.find(source => source.chart) ??
+      candidates.find(source => source.helm) ??
+      null
+    );
   }
 
   async setMuted(namespace: string, name: string, muted: boolean): Promise<void> {
@@ -115,48 +447,29 @@ export class ApplicationSetService {
     }
   }
 
-  async listBranches(repoUrl: string): Promise<{ branches: string[]; defaultBranch: string | null }> {
-    const gitlabConfigs = this.config.getOptionalConfigArray('integrations.gitlab') ?? [];
-    if (gitlabConfigs.length === 0) {
-      throw new Error('No GitLab integration configured');
-    }
-
-    let parsedUrl: URL;
-    try {
-      parsedUrl = new URL(repoUrl);
-    } catch {
-      throw new Error(`Invalid repoUrl: ${repoUrl}`);
-    }
-
-    const gitlabConfig = gitlabConfigs.find(cfg => cfg.getString('host') === parsedUrl.hostname);
-    if (!gitlabConfig) {
-      throw new Error(`No GitLab integration found for host: ${parsedUrl.hostname}`);
-    }
-
-    const token = gitlabConfig.getString('token');
-    const apiBaseUrl = gitlabConfig.getOptionalString('apiBaseUrl')
-      ?? `https://${parsedUrl.hostname}/api/v4`;
-
-    const projectPath = parsedUrl.pathname.replace(/^\//, '').replace(/\.git$/, '');
-    if (!isValidProjectPath(projectPath)) {
-      throw new Error(`Invalid GitLab project path in repoUrl: ${repoUrl}`);
-    }
-    const encodedPath = encodeURIComponent(projectPath);
+  async listBranches(repoUrl: string): Promise<BranchListResponse> {
+    const api = resolveGitLabApi(this.config, repoUrl);
 
     const response = await fetch(
-      `${apiBaseUrl}/projects/${encodedPath}/repository/branches?per_page=100`,
-      { headers: { 'PRIVATE-TOKEN': token } },
+      `${api.apiBaseUrl}/projects/${api.encodedPath}/repository/branches?per_page=100`,
+      { headers: { 'PRIVATE-TOKEN': api.token } },
     );
 
     if (!response.ok) {
       throw new Error(`GitLab API error: ${response.status} ${response.statusText}`);
     }
 
-    const branches: { name: string; default: boolean }[] = await response.json();
-    const defaultBranch = branches.find(b => b.default)?.name ?? null;
+    // The branches endpoint already embeds each branch's tip commit, so the
+    // commit detail costs no extra request.
+    const branches: any[] = await response.json();
+
     return {
-      branches: branches.map(b => b.name),
-      defaultBranch,
+      branches: branches.map(branch => ({
+        name: branch.name,
+        isDefault: !!branch.default,
+        commit: mapBranchCommit(branch.commit),
+      })),
+      defaultBranch: branches.find(branch => branch.default)?.name ?? null,
     };
   }
 
@@ -192,7 +505,10 @@ export class ApplicationSetService {
     }
   }
 
-  private mapApplicationSet(item: any): ApplicationSetResponse {
+  private mapApplicationSet(
+    item: any,
+    apps: ApplicationInfo[],
+  ): ApplicationSetResponse {
     const metadata = item.metadata ?? {};
     const spec = item.spec ?? {};
     const status = item.status ?? {};
@@ -234,6 +550,17 @@ export class ApplicationSetService {
     const repoUrl = this.extractRepoUrl(spec);
     const repoName = this.deriveRepoName(repoUrl);
 
+    const applicationInfos: Record<string, ApplicationInfo> = {};
+    for (const app of apps) {
+      if (app.name) {
+        applicationInfos[app.name] = app;
+      }
+    }
+    const charts = [...new Set(apps.map(a => a.chart).filter((c): c is string => !!c))].sort();
+    const chartVersions = [
+      ...new Set(apps.map(a => a.chartVersion).filter((v): v is string => !!v)),
+    ].sort();
+
     return {
       name: metadata.name ?? '',
       namespace: metadata.namespace ?? '',
@@ -243,6 +570,9 @@ export class ApplicationSetService {
       applications,
       syncedApplications,
       applicationStatuses,
+      applicationInfos,
+      charts,
+      chartVersions,
       repoUrl,
       repoName,
       targetRevisions: targetRevisions.length > 0 ? targetRevisions : ['HEAD'],
