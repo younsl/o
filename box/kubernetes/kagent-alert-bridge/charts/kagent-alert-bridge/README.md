@@ -1,6 +1,6 @@
 # kagent-alert-bridge
 
-![Version: 0.2.0](https://img.shields.io/badge/Version-0.2.0-informational?style=flat-square) ![Type: application](https://img.shields.io/badge/Type-application-informational?style=flat-square) ![AppVersion: 0.2.0](https://img.shields.io/badge/AppVersion-0.2.0-informational?style=flat-square)
+![Version: 0.3.0](https://img.shields.io/badge/Version-0.3.0-informational?style=flat-square) ![Type: application](https://img.shields.io/badge/Type-application-informational?style=flat-square) ![AppVersion: 0.3.0](https://img.shields.io/badge/AppVersion-0.3.0-informational?style=flat-square)
 
 Posts Alertmanager alerts to Slack and replies in-thread with an analysis from a kagent agent over A2A
 
@@ -39,7 +39,7 @@ helm install kagent-alert-bridge oci://ghcr.io/younsl/charts/kagent-alert-bridge
 Install a specific version:
 
 ```console
-helm install kagent-alert-bridge oci://ghcr.io/younsl/charts/kagent-alert-bridge --version 0.2.0
+helm install kagent-alert-bridge oci://ghcr.io/younsl/charts/kagent-alert-bridge --version 0.3.0
 ```
 
 ### Install from local chart
@@ -47,7 +47,7 @@ helm install kagent-alert-bridge oci://ghcr.io/younsl/charts/kagent-alert-bridge
 Download kagent-alert-bridge chart and install from local directory:
 
 ```console
-helm pull oci://ghcr.io/younsl/charts/kagent-alert-bridge --untar --version 0.2.0
+helm pull oci://ghcr.io/younsl/charts/kagent-alert-bridge --untar --version 0.3.0
 helm install kagent-alert-bridge ./kagent-alert-bridge
 ```
 
@@ -98,6 +98,21 @@ The following table lists the configurable parameters and their default values.
 | slack.existingSecret | string | `""` | Name of an existing Secret holding the bot token. Leave empty to create one from `slack.token`. |
 | slack.existingSecretKey | string | `"SLACK_BOT_TOKEN"` | Key inside the Secret holding the bot token |
 | slack.token | string | `""` | Bot token (xoxb-...). Only used when `slack.existingSecret` is empty; prefer an externally managed Secret. |
+| slack.existingSecretAppTokenKey | string | `"SLACK_APP_TOKEN"` | Key inside `slack.existingSecret` holding the app-level token. Only read when `chat.enabled` is true. |
+| slack.appToken | string | `""` | App-level token (xapp-...) that opens the Socket Mode connection carrying mentions. Created under Basic Information with the `connections:write` scope, which is not an OAuth scope. Only used when `slack.existingSecret` is empty. |
+| chat.enabled | bool | `false` | Answer `@bot` mentions posted inside a Slack thread by running a kagent agent and replying in that thread. Needs an app-level token and the `app_mentions:read` bot scope, with Socket Mode and the `app_mention` event subscription enabled on the Slack app. Leaving this off keeps the binary behaving exactly as the alert-only build does. |
+| chat.agent | string | `""` | Agent that answers mentions. Empty falls back to `kagent.agent`. |
+| chat.agentMap | object | `{}` | Routing table from channel (name or ID) to the Agent resource answering there. A channel the table does not carry falls back to `chat.agent`. |
+| chat.channels | list | `[]` | Channel names or IDs allowed to invoke the bot. Empty allows every channel the bot is a member of. |
+| chat.allowedUsers | list | `[]` | Slack member IDs allowed to invoke the bot. Empty allows everyone in the allowed channels. |
+| chat.instructions | string | `""` | Instructions appended to every mention prompt. Empty uses the built-in English instructions, which are separate from `analysis.instructions` because a question has no alert sections to fill. |
+| chat.timeout | string | `"180s"` | Deadline for one whole turn including queueing, as a Go duration. The kagent controller caps a turn at 3 minutes in the v0.9.x line, so raising this above `180s` buys nothing; lowering it makes the bridge's own expiry fire first and cancel the task. |
+| chat.sessionTTL | string | `"2h"` | How long a thread keeps its A2A `contextId` after its last turn, as a Go duration. Within it a follow-up mention continues the same agent session. `0s` makes every mention a cold turn. |
+| chat.statusInterval | string | `"10s"` | How often the in-thread status message is rewritten while the agent works, as a Go duration. Each rewrite is one `chat.update` call, so a short interval buys a livelier status line at the cost of Slack rate limit budget. |
+| chat.workingReaction | string | `"eyes"` | Emoji (without colons) placed on the mention while the agent works and removed when the answer lands. Needs `reactions:write`. Empty string disables it. |
+| chat.threadHint | string | `nil` | Ephemeral hint sent when the bot is mentioned at channel level instead of in a thread. `null` keeps the built-in text; an empty string drops the mention silently. |
+| chat.deniedHint | string | `nil` | Ephemeral hint sent when the bot is mentioned in a channel outside `chat.channels`. `null` keeps the built-in text; an empty string drops the mention silently. |
+| chat.maxConcurrent | int | `2` | Maximum mention turns running at once. Separate from `analysis.maxConcurrent` so a burst of questions cannot starve alert analysis of model concurrency. |
 | kagent.url | string | `"http://kagent-controller.kagent:8083"` | Base URL of the kagent controller; the A2A path is appended to it |
 | kagent.namespace | string | `"kagent"` | Namespace holding the Agent resource |
 | kagent.agent | string | `"alert-triage-agent"` | Name of the Agent resource used when the routing label is absent or names no mapped agent |
@@ -141,7 +156,7 @@ The following table lists the configurable parameters and their default values.
 | serviceMonitor.metricRelabelings | list | `[]` | Prometheus [MetricRelabelConfigs] to apply to samples before ingestion |
 | resources | object | `{"limits":{"memory":"128Mi"},"requests":{"cpu":"25m","memory":"64Mi"}}` | Pod resource requests and limits |
 | resizePolicy | list | `[{"resourceName":"cpu","restartPolicy":"NotRequired"},{"resourceName":"memory","restartPolicy":"RestartContainer"}]` | Container resize policy for in-place vertical scaling (requires Kubernetes 1.27+); empty omits the field. CPU resizes in place without a restart; memory resizes restart the container. |
-| terminationGracePeriodSeconds | int | `180` | Grace period for shutdown. Must exceed `kagent.timeout` plus the 30s drain margin so an analysis already running still posts its thread reply. |
+| terminationGracePeriodSeconds | int | `240` | Grace period for shutdown. Must exceed the longer of `kagent.timeout` and `chat.timeout`, plus the 30s drain margin, so a run already in flight still posts its thread reply. |
 | podAnnotations | object | `{}` | Extra annotations for the pod |
 | podLabels | object | `{}` | Extra labels for the pod |
 | podSecurityContext | object | `{"fsGroup":65532,"runAsGroup":65532,"runAsNonRoot":true,"runAsUser":65532,"seccompProfile":{"type":"RuntimeDefault"}}` | Pod-level security context |

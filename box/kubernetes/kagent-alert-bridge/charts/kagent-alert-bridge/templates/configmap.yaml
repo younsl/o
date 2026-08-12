@@ -33,6 +33,31 @@ data:
   {{- with .Values.analysis.instructions }}
   ANALYSIS_INSTRUCTIONS: {{ . | quote }}
   {{- end }}
+  {{- if .Values.chat.enabled }}
+  CHAT_AGENT: {{ default .Values.kagent.agent .Values.chat.agent | quote }}
+  CHAT_AGENT_MAP: {{ include "kagent-alert-bridge.chatAgentMap" . | quote }}
+  CHAT_CHANNELS: {{ join "," .Values.chat.channels | quote }}
+  CHAT_ALLOWED_USERS: {{ join "," .Values.chat.allowedUsers | quote }}
+  CHAT_TIMEOUT: {{ .Values.chat.timeout | quote }}
+  CHAT_SESSION_TTL: {{ .Values.chat.sessionTTL | quote }}
+  CHAT_STATUS_INTERVAL: {{ .Values.chat.statusInterval | quote }}
+  CHAT_WORKING_REACTION: {{ .Values.chat.workingReaction | quote }}
+  MAX_CONCURRENT_CHATS: {{ .Values.chat.maxConcurrent | quote }}
+  {{- with .Values.chat.instructions }}
+  CHAT_INSTRUCTIONS: {{ . | quote }}
+  {{- end }}
+  {{- /*
+  The hints are three-valued: unset keeps the built-in text, and an explicitly
+  empty value turns that one hint off. Emitting the key unconditionally would
+  collapse the first case into the second.
+  */}}
+  {{- if not (kindIs "invalid" .Values.chat.threadHint) }}
+  CHAT_THREAD_HINT: {{ .Values.chat.threadHint | quote }}
+  {{- end }}
+  {{- if not (kindIs "invalid" .Values.chat.deniedHint) }}
+  CHAT_DENIED_HINT: {{ .Values.chat.deniedHint | quote }}
+  {{- end }}
+  {{- end }}
   WEBHOOK_PATH: {{ .Values.webhook.path | quote }}
   LISTEN_PORT: {{ .Values.ports.http | quote }}
   METRICS_PORT: {{ .Values.ports.metrics | quote }}
@@ -56,6 +81,14 @@ config format to the container.
 {{- $pairs := list -}}
 {{- range $key := keys .Values.kagent.agentRoutingMap | sortAlpha -}}
 {{- $pairs = append $pairs (printf "%s=%s" $key (index $.Values.kagent.agentRoutingMap $key)) -}}
+{{- end -}}
+{{- join "," $pairs -}}
+{{- end -}}
+
+{{- define "kagent-alert-bridge.chatAgentMap" -}}
+{{- $pairs := list -}}
+{{- range $key := keys .Values.chat.agentMap | sortAlpha -}}
+{{- $pairs = append $pairs (printf "%s=%s" $key (index $.Values.chat.agentMap $key)) -}}
 {{- end -}}
 {{- join "," $pairs -}}
 {{- end -}}

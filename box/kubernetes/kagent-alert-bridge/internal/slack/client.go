@@ -1,9 +1,11 @@
 // Package slack talks to the Web API with a bot token.
 //
-// Three calls are implemented: chat.postMessage to publish, and
-// conversations.list plus conversations.history to locate a message somebody
-// else posted. The lookup exists because an Alertmanager incoming webhook does
-// not return the message timestamp that thread_ts requires, so the only way to
+// The write calls are chat.postMessage to publish, chat.update to rewrite a
+// message the bot already posted, and chat.postEphemeral for a note only one
+// reader sees. The read calls are conversations.list plus conversations.history
+// to locate a message somebody else posted, and auth.test for the bot's own
+// user ID. The lookup exists because an Alertmanager incoming webhook does not
+// return the message timestamp that thread_ts requires, so the only way to
 // reply under an alert Alertmanager posted is to find it again.
 package slack
 
@@ -172,10 +174,74 @@ func (c *Client) Post(ctx context.Context, msg Message) (string, error) {
 	if err != nil {
 		return "", fmt.Errorf("encode message: %w", err)
 	}
+	return c.write(ctx, "chat.postMessage", raw)
+}
 
+// Update rewrites a message the bot posted earlier and keeps its position in
+// the thread. It is what turns one thread reply into a live status line: the
+// mention path posts a placeholder and rewrites it as the turn progresses,
+// instead of filling the thread with one message per state change.
+//
+// channel must be a conversation ID, which every Socket Mode event carries.
+func (c *Client) Update(ctx context.Context, channel, ts, text string) error {
+	raw, err := json.Marshal(map[string]string{
+		"channel": channel,
+		"ts":      ts,
+		"text":    text,
+	})
+	if err != nil {
+		return fmt.Errorf("encode update: %w", err)
+	}
+	_, err = c.write(ctx, "chat.update", raw)
+	return err
+}
+
+// PostEphemeral sends a message only user can see, leaving nothing in channel
+// history. It carries the hints that explain a dropped mention, so a rule the
+// asker cannot otherwise distinguish from an outage stays discoverable without
+// the channel paying for it.
+func (c *Client) PostEphemeral(ctx context.Context, channel, threadTS, user, text string) error {
+	body := map[string]string{"channel": channel, "user": user, "text": text}
+	if threadTS != "" {
+		body["thread_ts"] = threadTS
+	}
+	raw, err := json.Marshal(body)
+	if err != nil {
+		return fmt.Errorf("encode ephemeral: %w", err)
+	}
+	_, err = c.write(ctx, "chat.postEphemeral", raw)
+	return err
+}
+
+// AuthTest returns the bot's own user ID, which the mention path needs as its
+// loop guard: the bridge posts into the channels it listens to. It needs no
+// scope of its own.
+func (c *Client) AuthTest(ctx context.Context) (string, error) {
+	var out struct {
+		UserID string `json:"user_id"`
+	}
+	if err := c.get(ctx, "auth.test", url.Values{}, &out); err != nil {
+		return "", err
+	}
+	if out.UserID == "" {
+		return "", fmt.Errorf("auth.test returned no user id")
+	}
+	return out.UserID, nil
+}
+
+// ResolveChannelID maps a channel name to its conversation ID, returning an ID
+// unchanged. The mention path compares a configured allow list against the ID
+// the event carries, which is the only form Slack sends.
+func (c *Client) ResolveChannelID(ctx context.Context, channel string) (string, error) {
+	return c.resolveChannelID(ctx, channel)
+}
+
+// write posts a JSON body to a write method and retries the transient
+// failures, returning the message timestamp when the method reports one.
+func (c *Client) write(ctx context.Context, method string, raw []byte) (string, error) {
 	var lastErr error
 	for attempt := 1; attempt <= maxAttempts; attempt++ {
-		ts, retryAfter, err := c.post(ctx, raw)
+		ts, retryAfter, err := c.post(ctx, method, raw)
 		if err == nil {
 			return ts, nil
 		}
@@ -186,7 +252,7 @@ func (c *Client) Post(ctx context.Context, msg Message) (string, error) {
 		if retryAfter == 0 {
 			retryAfter = c.backoff * time.Duration(attempt)
 		}
-		c.logger.Warn("retrying slack post", "attempt", attempt, "wait", retryAfter.String(), "error", err)
+		c.logger.Warn("retrying slack write", "method", method, "attempt", attempt, "wait", retryAfter.String(), "error", err)
 		select {
 		case <-ctx.Done():
 			return "", ctx.Err()
@@ -198,15 +264,15 @@ func (c *Client) Post(ctx context.Context, msg Message) (string, error) {
 
 // post performs one attempt and records it. A non-negative retryAfter marks the
 // error as retryable; -1 marks it as permanent.
-func (c *Client) post(ctx context.Context, raw []byte) (string, time.Duration, error) {
+func (c *Client) post(ctx context.Context, method string, raw []byte) (string, time.Duration, error) {
 	started := c.now()
-	ts, retryAfter, err := c.postOnce(ctx, raw)
-	c.metrics.ObserveSlackRequest("chat.postMessage", attemptResult(err), c.now().Sub(started))
+	ts, retryAfter, err := c.postOnce(ctx, method, raw)
+	c.metrics.ObserveSlackRequest(method, attemptResult(err), c.now().Sub(started))
 	return ts, retryAfter, err
 }
 
-func (c *Client) postOnce(ctx context.Context, raw []byte) (string, time.Duration, error) {
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, c.apiURL+"/chat.postMessage", bytes.NewReader(raw))
+func (c *Client) postOnce(ctx context.Context, method string, raw []byte) (string, time.Duration, error) {
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, c.apiURL+"/"+method, bytes.NewReader(raw))
 	if err != nil {
 		return "", -1, fmt.Errorf("build request: %w", err)
 	}

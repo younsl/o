@@ -49,6 +49,15 @@ type Metrics struct {
 	AgentDuration     *prometheus.HistogramVec
 	AgentTaskDuration *prometheus.HistogramVec
 	AgentTaskPolls    prometheus.Histogram
+
+	SocketConnected   prometheus.Gauge
+	SocketConnections *prometheus.CounterVec
+	ChatEvents        *prometheus.CounterVec
+	ChatTurns         *prometheus.CounterVec
+	ChatTurnDuration  prometheus.Histogram
+	ChatInflight      prometheus.Gauge
+	ChatSlots         prometheus.Gauge
+	ChatSessions      prometheus.Gauge
 }
 
 // NewMetrics builds and registers the metric set.
@@ -168,6 +177,47 @@ func NewMetrics() *Metrics {
 			Help:      "tasks/get reads spent on one task before it reached a terminal state.",
 			Buckets:   []float64{1, 2, 4, 8, 16, 32, 64},
 		}),
+		SocketConnected: prometheus.NewGauge(prometheus.GaugeOpts{
+			Namespace: namespace,
+			Name:      "socket_connected",
+			Help:      "1 while a Socket Mode connection is established. Readiness stays tied to the HTTP listener, so this gauge is what tells a dropped mention path from a healthy pod.",
+		}),
+		SocketConnections: prometheus.NewCounterVec(prometheus.CounterOpts{
+			Namespace: namespace,
+			Name:      "socket_connections_total",
+			Help:      "Socket Mode connection attempts, by outcome: ok, error, or disconnect_requested when Slack asked for a reconnect.",
+		}, []string{"result"}),
+		ChatEvents: prometheus.NewCounterVec(prometheus.CounterOpts{
+			Namespace: namespace,
+			Name:      "chat_events_total",
+			Help:      "Mention events received over Socket Mode, by outcome: accepted, or the reason the event was dropped.",
+		}, []string{"result"}),
+		ChatTurns: prometheus.NewCounterVec(prometheus.CounterOpts{
+			Namespace: namespace,
+			Name:      "chat_turns_total",
+			Help:      "Agent turns answering a mention, by the agent that handled it and the outcome.",
+		}, []string{"agent", "result"}),
+		ChatTurnDuration: prometheus.NewHistogram(prometheus.HistogramOpts{
+			Namespace: namespace,
+			Name:      "chat_turn_duration_seconds",
+			Help:      "Wall-clock duration of one mention turn, from the accepted event to the posted reply.",
+			Buckets:   []float64{1, 5, 10, 20, 30, 60, 90, 120, 180, 300},
+		}),
+		ChatInflight: prometheus.NewGauge(prometheus.GaugeOpts{
+			Namespace: namespace,
+			Name:      "chat_inflight",
+			Help:      "Mention turns currently executing.",
+		}),
+		ChatSlots: prometheus.NewGauge(prometheus.GaugeOpts{
+			Namespace: namespace,
+			Name:      "chat_slots",
+			Help:      "Configured MAX_CONCURRENT_CHATS, so saturation can be read as a ratio the same way analysis_slots allows.",
+		}),
+		ChatSessions: prometheus.NewGauge(prometheus.GaugeOpts{
+			Namespace: namespace,
+			Name:      "chat_sessions",
+			Help:      "Slack threads currently holding an A2A contextId.",
+		}),
 	}
 	m.registry.MustRegister(
 		collectors.NewGoCollector(),
@@ -178,6 +228,8 @@ func NewMetrics() *Metrics {
 		m.AnalysisDuration, m.AnalysisQueueWait, m.AnalysesInflight,
 		m.AnalysesQueued, m.AnalysisSlots, m.DedupeEntries,
 		m.AgentRequests, m.AgentDuration, m.AgentTaskDuration, m.AgentTaskPolls,
+		m.SocketConnected, m.SocketConnections, m.ChatEvents, m.ChatTurns,
+		m.ChatTurnDuration, m.ChatInflight, m.ChatSlots, m.ChatSessions,
 	)
 	return m
 }
@@ -214,6 +266,27 @@ func (m *Metrics) ObserveAgentTask(agent, state string, polls int, d time.Durati
 	}
 	m.AgentTaskDuration.WithLabelValues(agent, state).Observe(d.Seconds())
 	m.AgentTaskPolls.Observe(float64(polls))
+}
+
+// ObserveSocketConnection records one Socket Mode connection attempt and moves
+// the connected gauge with it. result is ok, error, or disconnect_requested.
+func (m *Metrics) ObserveSocketConnection(result string) {
+	if m == nil {
+		return
+	}
+	m.SocketConnections.WithLabelValues(result).Inc()
+}
+
+// SetSocketConnected publishes whether a Socket Mode connection is up.
+func (m *Metrics) SetSocketConnected(up bool) {
+	if m == nil {
+		return
+	}
+	value := 0.0
+	if up {
+		value = 1
+	}
+	m.SocketConnected.Set(value)
 }
 
 // Registry returns the registry backing the metric set.

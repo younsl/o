@@ -7,8 +7,9 @@
 
 Receives Alertmanager webhooks, posts each alert to Slack, asks a
 [kagent](https://kagent.dev) agent to investigate it over A2A, and replies with
-the analysis in the alert's own thread. Built with Go 1.26 and shipped as a
-statically linked binary on a scratch image.
+the analysis in the alert's own thread. Mentioning the bot inside a thread runs
+the agent again and answers there, so a follow-up question never leaves Slack.
+Built with Go 1.26 and shipped as a statically linked binary on a scratch image.
 
 ## How it works
 
@@ -48,21 +49,71 @@ Only the alert group's first analysis is paid for: a group stays deduplicated
 for `DEDUPE_TTL`, which should cover the Alertmanager `repeat_interval`. A run
 that fails is not suppressed, so the next resend retries it.
 
+## Mention invocation
+
+Setting `SLACK_APP_TOKEN` opens a Socket Mode connection and lets an engineer
+talk to the agent by mentioning the bot inside a thread. Everything else about
+the feature is optional, and leaving the token unset keeps the binary behaving
+exactly as the alert-only build does. The design is written up in
+[docs/designs/slack-mention-invocation.md](docs/designs/slack-mention-invocation.md).
+
+One turn works like this:
+
+1. The mention arrives as a Socket Mode envelope, which is acknowledged
+   immediately: Slack redelivers anything not acknowledged within 3 seconds, so
+   the acknowledgement never waits on the agent.
+2. A status message goes up in the thread before a concurrency slot is even
+   held, so the asker sees the question was taken.
+3. That one message is then rewritten in place every `CHAT_STATUS_INTERVAL`,
+   carrying the elapsed time and the task state the controller reports, and it
+   ends as the answer itself. The thread gets one message per turn rather than
+   one per state change.
+4. The thread keeps the A2A `contextId` for `CHAT_SESSION_TTL`, so a follow-up
+   mention continues the same agent session instead of starting cold.
+
+Only thread replies invoke the agent. A mention at channel level is answered
+with an ephemeral hint rather than a run, which keeps the bot attached to a
+thread that already has context. Mention traffic has its own concurrency limit
+and deadline, so a burst of questions cannot starve alert analysis of model
+concurrency.
+
+Socket Mode is an outbound WebSocket, so no inbound network path, request URL,
+or signing secret is involved. Sessions live in memory at one replica: a restart
+drops them and the next mention starts a fresh session.
+
+The kagent controller caps a turn at 3 minutes in the v0.9.x line
+([issue](https://github.com/kagent-dev/kagent/issues/2112)), so `CHAT_TIMEOUT`
+above `180s` has no effect until the deployment moves to a release carrying
+`KAGENT_A2A_CLIENT_TIMEOUT`.
+
 ## Slack app
 
-The bridge needs a bot token (`xoxb-...`). App-level tokens (`xapp-...`), a
-signing secret, and event subscriptions are not used: Slack never calls the
-bridge.
+The bridge needs a bot token (`xoxb-...`). Mention invocation adds an app-level
+token (`xapp-...`), which is created under Basic Information with the
+`connections:write` scope and is not an OAuth scope. A signing secret and a
+request URL are never used: Slack never calls the bridge.
 
 Bot token scopes:
 
 | Scope | Needed when |
 |-------|-------------|
-| `chat:write` | Always. |
+| `chat:write` | Always. Also covers `chat.update` for the live status message and `chat.postEphemeral` for the mention hints. |
 | `channels:history` | `lookup` mode, public channels. |
-| `channels:read` | `lookup` mode, when channels are configured by name. Configuring conversation IDs instead skips the name lookup and this scope. Public channels are resolved with this scope alone; private channels are only listed when the name is not public. |
+| `channels:read` | `lookup` mode, when channels are configured by name. Configuring conversation IDs instead skips the name lookup and this scope. Public channels are resolved with this scope alone; private channels are only listed when the name is not public. Mention invocation needs it too when `CHAT_CHANNELS` or `CHAT_AGENT_MAP` name channels rather than IDs. |
 | `groups:history`, `groups:read` | `lookup` mode, private channels. |
-| `reactions:write` | The investigating/completed reactions on the alert notification. Set `SLACK_INVESTIGATING_REACTION` and `SLACK_COMPLETED_REACTION` to empty to disable them and drop this scope. |
+| `reactions:write` | The investigating/completed reactions on the alert notification, and the working reaction on a mention. Set `SLACK_INVESTIGATING_REACTION`, `SLACK_COMPLETED_REACTION`, and `CHAT_WORKING_REACTION` to empty to disable them and drop this scope. |
+| `app_mentions:read` | Mention invocation. The only scope the feature adds. |
+
+Mention invocation also needs Socket Mode switched on and the `app_mention`
+event subscribed, neither of which is a permission. Adding the scope means
+reinstalling the app; the existing bot token survives a reinstall, so the alert
+path keeps working through it.
+
+The handle people type is the bot user's display name, which the binary does not
+control. Reaching a mention that reads `@kagent` means renaming the app under
+Basic Information and the bot display name under App Home. The rename is
+retroactive: Slack renders every message the app already posted under the
+current name.
 
 The bot must be a member of every channel it reads or posts in.
 
@@ -84,7 +135,27 @@ All settings come from environment variables.
 | `SLACK_CHANNEL_LABEL` | `slack_channel` | Alert label that selects the destination channel. |
 | `SLACK_CHANNEL_MAP` | empty | `label-value=channel` pairs, comma separated, for labels whose value is not the channel name. |
 | `SLACK_MAX_TEXT` | `8000` | Maximum characters per message; longer text is truncated. |
-| `SLACK_API_URL` | `https://slack.com/api` | Web API base URL. Override to route through an egress proxy. |
+| `SLACK_API_URL` | `https://slack.com/api` | Web API base URL. Override to route through an egress proxy. Socket Mode dials the URL Slack hands out, honouring the standard proxy environment variables. |
+
+### Mention invocation
+
+All optional except the app-level token, which is what enables the feature.
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `SLACK_APP_TOKEN` | empty | App-level token (`xapp-...`). Empty leaves Socket Mode off and the whole mention path inert. |
+| `CHAT_AGENT` | value of `KAGENT_AGENT` | Agent that answers mentions. |
+| `CHAT_AGENT_MAP` | empty | `channel=agent` pairs, comma separated, routing a channel to a specialised agent. A channel the table does not carry falls back to `CHAT_AGENT`. |
+| `CHAT_CHANNELS` | empty | Channel names or IDs allowed to invoke the bot. Empty allows every channel the bot is a member of. |
+| `CHAT_ALLOWED_USERS` | empty | Slack member IDs allowed to invoke the bot. Empty allows everyone in the allowed channels. |
+| `CHAT_INSTRUCTIONS` | built-in English text | Instructions appended to every mention prompt. Separate from `ANALYSIS_INSTRUCTIONS`, because a question has no alert sections to fill. |
+| `CHAT_TIMEOUT` | `180s` | Deadline for one whole turn including queueing. Matches the controller's 3 minute cap; lower it to make the bridge's own expiry fire first and cancel the task. |
+| `CHAT_SESSION_TTL` | `2h` | How long a thread keeps its `contextId` after its last turn. `0s` makes every mention a cold turn. |
+| `CHAT_STATUS_INTERVAL` | `10s` | How often the in-thread status message is rewritten while the agent works. Each rewrite is one `chat.update` call. |
+| `CHAT_WORKING_REACTION` | `eyes` | Emoji placed on the mention while the agent works and removed when the answer lands. Empty disables it. |
+| `CHAT_THREAD_HINT` | built-in text | Ephemeral hint sent when the bot is mentioned at channel level. Empty drops the mention silently. |
+| `CHAT_DENIED_HINT` | built-in text | Ephemeral hint sent when the bot is mentioned in a channel outside `CHAT_CHANNELS`. Empty drops the mention silently. |
+| `MAX_CONCURRENT_CHATS` | `2` | Maximum mention turns running at once. |
 
 ### kagent
 
@@ -129,7 +200,9 @@ Metrics are served on `/metrics` (default port `8081`) and share the prefix
 `kagent_alert_bridge_`. They cover the whole path an alert takes: webhook
 ingest and per-alert volume, the analysis queue and its concurrency limit, the
 kagent controller's own processing time per task state, and every Slack Web API
-call including throttling and truncation. See
+call including throttling and truncation. Mention invocation adds the Socket
+Mode connection state, the reason every dropped mention was dropped, and the
+turn counters. See
 [docs/metrics.md](docs/metrics.md) for the full reference and example queries.
 
 ## Alertmanager
@@ -183,6 +256,11 @@ automatically triggered analysis is able to touch.
 
 Reply text is posted as Slack mrkdwn, so the agent should use `*bold*` rather
 than markdown headings and stay inside `SLACK_MAX_TEXT`.
+
+A mention gets `CHAT_INSTRUCTIONS` instead, which ask for a direct answer rather
+than the analysis sections. The same agent can serve both paths: an alert run
+and a mention turn never share a session, and `CHAT_AGENT` points them at
+different agents when they should not share a tool list either.
 
 ### Routing to several agents
 

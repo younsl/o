@@ -52,21 +52,25 @@ func koreanDuration(d time.Duration) string {
 	}
 }
 
-// AgentClient runs one analysis on the named agent and returns its reply.
+// AgentClient runs one request on an agent and returns its reply.
 type AgentClient interface {
-	Send(ctx context.Context, agent, text string) (a2a.Result, error)
+	Send(ctx context.Context, req a2a.Request) (a2a.Result, error)
 }
 
-// SlackClient posts messages, locates an existing one to thread under, and
-// manages the investigating reaction on the alert notification.
+// SlackClient posts messages, locates an existing one to thread under, manages
+// the investigating reaction on the alert notification, and rewrites the
+// mention path's status message in place.
 type SlackClient interface {
 	Post(ctx context.Context, msg slack.Message) (string, error)
+	Update(ctx context.Context, channel, ts, text string) error
+	PostEphemeral(ctx context.Context, channel, threadTS, user, text string) error
 	FindThreadParent(ctx context.Context, channel, marker string, since time.Time) (string, error)
 	AddReaction(ctx context.Context, channel, ts, name string) error
 	RemoveReaction(ctx context.Context, channel, ts, name string) error
+	ResolveChannelID(ctx context.Context, channel string) (string, error)
 }
 
-// Bridge holds the wiring shared by every webhook request.
+// Bridge holds the wiring shared by every webhook request and every mention.
 type Bridge struct {
 	cfg     config.Config
 	slack   SlackClient
@@ -80,14 +84,25 @@ type Bridge struct {
 	// lookupBackoff is the base wait between parent lookups, scaled by the
 	// attempt number.
 	lookupBackoff time.Duration
+
+	// Mention invocation. chatSem is deliberately separate from sem: sharing
+	// one would let a question queue behind an alert analysis, or worse, delay
+	// an analysis behind questions.
+	chatSem   chan struct{}
+	sessions  *sessionStore
+	envelopes *store
+	// botUserID is the bot's own user id, resolved once at startup. It is the
+	// loop guard: the bridge posts into the channels it listens to.
+	botUserID string
 }
 
 // New wires a Bridge. The caller owns the lifecycle of slackClient and agent.
 func New(cfg config.Config, slackClient SlackClient, agent AgentClient, metrics *observability.Metrics, logger *slog.Logger) *Bridge {
-	// Publishing the limit as a series lets a dashboard express saturation as
+	// Publishing the limits as series lets a dashboard express saturation as
 	// inflight over slots, without the query repeating a value that lives in the
 	// deployment's environment.
 	metrics.AnalysisSlots.Set(float64(cfg.MaxConcurrent))
+	metrics.ChatSlots.Set(float64(cfg.MaxConcurrentChats))
 	return &Bridge{
 		cfg:           cfg,
 		slack:         slackClient,
@@ -98,8 +113,17 @@ func New(cfg config.Config, slackClient SlackClient, agent AgentClient, metrics 
 		sem:           make(chan struct{}, cfg.MaxConcurrent),
 		now:           time.Now,
 		lookupBackoff: 2 * time.Second,
+		chatSem:       make(chan struct{}, max(cfg.MaxConcurrentChats, 1)),
+		sessions:      newSessionStore(cfg.ChatSessionTTL),
+		envelopes:     newStore(envelopeTTL),
 	}
 }
+
+// SetBotUserID records the bot's own user id for the mention loop guard.
+// Resolution needs a Slack call, so it is done by the caller at startup rather
+// than inside New, and a failure there only weakens the guard: a message the
+// app posted still carries a bot id.
+func (b *Bridge) SetBotUserID(id string) { b.botUserID = id }
 
 // Handler returns the mux serving the webhook and the health endpoints.
 func (b *Bridge) Handler() http.Handler {
@@ -283,7 +307,12 @@ func (b *Bridge) analyze(payload alert.Payload, agent, channel, threadTS string,
 
 	started := b.now()
 	logger.Info("requesting analysis")
-	result, err := b.agent.Send(ctx, agent, payload.Prompt(b.cfg.Instructions, b.cfg.MaxAlertsInPrompt))
+	// No ContextID: an alert is not a conversation, so every analysis starts a
+	// session of its own, unlike a mention continuing a thread.
+	result, err := b.agent.Send(ctx, a2a.Request{
+		Agent: agent,
+		Text:  payload.Prompt(b.cfg.Instructions, b.cfg.MaxAlertsInPrompt),
+	})
 	elapsed := b.now().Sub(started)
 	b.metrics.AnalysisDuration.Observe(elapsed.Seconds())
 

@@ -24,6 +24,23 @@ Keep the whole reply under 3000 characters and use exactly these sections:
 *Next actions* - concrete steps for the on-call engineer.
 *Confidence* - high, medium, or low, with the reason.`
 
+// DefaultChatInstructions is appended to every mention prompt. A question has
+// no alert sections to fill, so it asks for a direct answer rather than the
+// analysis layout ANALYSIS_INSTRUCTIONS prescribes.
+const DefaultChatInstructions = `Answer the question above with the tools available to you.
+Inspect only; never create, modify, or delete any resource.
+Reply in Slack mrkdwn: *bold* uses single asterisks, no markdown headings, no tables.
+Keep the reply under 2000 characters and answer directly, without restating the question.
+Say so plainly when the tools cannot answer, instead of guessing.`
+
+// Built-in ephemeral hints. Both are sent to the asker alone, so the rule is
+// discoverable without the channel paying for it. The denied hint never names
+// the channels that are served.
+const (
+	DefaultThreadHint = "스레드 안에서만 답변합니다. 질문할 스레드에서 다시 멘션해 주세요."
+	DefaultDeniedHint = "이 채널에서는 답변하지 않습니다."
+)
+
 // Parent message strategies.
 const (
 	// ParentModeLookup leaves the alert notification to Alertmanager and finds
@@ -89,6 +106,40 @@ type Config struct {
 	MaxConcurrent     int
 	Instructions      string
 
+	// Slack mention invocation
+	//
+	// SlackAppToken is the app-level token (xapp-...) that opens the Socket
+	// Mode connection. Empty leaves the whole mention path off, so the binary
+	// behaves exactly as it did before the feature existed.
+	SlackAppToken string
+	// ChatAgent answers mentions that ChatAgentMap does not route elsewhere.
+	ChatAgent string
+	// ChatAgentMap routes a channel (name or ID) to a specialised agent.
+	ChatAgentMap map[string]string
+	// ChatChannels is the channel allow list, holding names or IDs. Empty
+	// allows every channel the bot is a member of.
+	ChatChannels []string
+	// ChatAllowedUsers is the Slack member ID allow list. Empty allows everyone
+	// in the allowed channels.
+	ChatAllowedUsers map[string]bool
+	ChatInstructions string
+	// ChatTimeout is the deadline for one whole turn, including queueing.
+	ChatTimeout time.Duration
+	// ChatSessionTTL is how long a thread keeps its A2A contextId after its
+	// last turn.
+	ChatSessionTTL time.Duration
+	// ChatStatusInterval is how often the in-thread status message is rewritten
+	// while the agent works.
+	ChatStatusInterval time.Duration
+	// ChatWorkingReaction is the emoji placed on the mention while the agent
+	// works. Empty disables it.
+	ChatWorkingReaction string
+	// ChatThreadHint and ChatDeniedHint are the ephemeral hints for the two
+	// drops a person cannot tell from an outage. Empty restores a silent drop.
+	ChatThreadHint     string
+	ChatDeniedHint     string
+	MaxConcurrentChats int
+
 	// Serving
 	WebhookPath  string
 	WebhookToken string
@@ -126,6 +177,15 @@ func Load() (Config, error) {
 		MaxAlertsInPrompt:     5,
 		MaxConcurrent:         2,
 		Instructions:          getEnv("ANALYSIS_INSTRUCTIONS", DefaultInstructions),
+		SlackAppToken:         os.Getenv("SLACK_APP_TOKEN"),
+		ChatInstructions:      getEnv("CHAT_INSTRUCTIONS", DefaultChatInstructions),
+		ChatTimeout:           180 * time.Second,
+		ChatSessionTTL:        2 * time.Hour,
+		ChatStatusInterval:    10 * time.Second,
+		ChatWorkingReaction:   "eyes",
+		ChatThreadHint:        DefaultThreadHint,
+		ChatDeniedHint:        DefaultDeniedHint,
+		MaxConcurrentChats:    2,
 		WebhookPath:           getEnv("WEBHOOK_PATH", "/alert"),
 		WebhookToken:          os.Getenv("WEBHOOK_BEARER_TOKEN"),
 		ListenPort:            8080,
@@ -157,6 +217,21 @@ func Load() (Config, error) {
 	if v, ok := os.LookupEnv("SLACK_COMPLETED_REACTION"); ok {
 		cfg.CompletedReaction = strings.Trim(strings.TrimSpace(v), ":")
 	}
+	if v, ok := os.LookupEnv("CHAT_WORKING_REACTION"); ok {
+		cfg.ChatWorkingReaction = strings.Trim(strings.TrimSpace(v), ":")
+	}
+	// An explicitly empty hint is meaningful too: it turns that hint off and
+	// restores the silent drop for that case alone.
+	if v, ok := os.LookupEnv("CHAT_THREAD_HINT"); ok {
+		cfg.ChatThreadHint = strings.TrimSpace(v)
+	}
+	if v, ok := os.LookupEnv("CHAT_DENIED_HINT"); ok {
+		cfg.ChatDeniedHint = strings.TrimSpace(v)
+	}
+	// The chat agent defaults to the alert agent, so enabling mentions needs no
+	// second agent name in the common deployment.
+	cfg.ChatAgent = getEnv("CHAT_AGENT", cfg.KagentAgent)
+	cfg.ChatChannels = listEnv("CHAT_CHANNELS")
 
 	var err error
 	if cfg.SlackChannelMap, err = pairsEnv("SLACK_CHANNEL_MAP"); err != nil {
@@ -189,6 +264,26 @@ func Load() (Config, error) {
 	if cfg.MaxConcurrent, err = intEnv("MAX_CONCURRENT_ANALYSES", cfg.MaxConcurrent, 1, 64); err != nil {
 		return Config{}, err
 	}
+	if cfg.ChatAgentMap, err = pairsEnv("CHAT_AGENT_MAP"); err != nil {
+		return Config{}, err
+	}
+	if cfg.ChatAllowedUsers, err = setEnv("CHAT_ALLOWED_USERS", ""); err != nil {
+		return Config{}, err
+	}
+	if cfg.ChatTimeout, err = durationEnv("CHAT_TIMEOUT", cfg.ChatTimeout, time.Second); err != nil {
+		return Config{}, err
+	}
+	if cfg.ChatSessionTTL, err = durationEnv("CHAT_SESSION_TTL", cfg.ChatSessionTTL, 0); err != nil {
+		return Config{}, err
+	}
+	// Slack rate limits chat.update, and a status line that is rewritten more
+	// often than every second buys the reader nothing.
+	if cfg.ChatStatusInterval, err = durationEnv("CHAT_STATUS_INTERVAL", cfg.ChatStatusInterval, time.Second); err != nil {
+		return Config{}, err
+	}
+	if cfg.MaxConcurrentChats, err = intEnv("MAX_CONCURRENT_CHATS", cfg.MaxConcurrentChats, 1, 64); err != nil {
+		return Config{}, err
+	}
 	if cfg.SlackMaxTextRune, err = intEnv("SLACK_MAX_TEXT", cfg.SlackMaxTextRune, 500, 39000); err != nil {
 		return Config{}, err
 	}
@@ -210,16 +305,31 @@ func Load() (Config, error) {
 	return cfg, nil
 }
 
+// ChatEnabled reports whether mention invocation is configured. Without an
+// app-level token there is no Socket Mode connection to receive a mention on,
+// so every other chat setting is inert.
+func (c Config) ChatEnabled() bool { return c.SlackAppToken != "" }
+
 // Agents returns every agent the bridge may route to, the default first and
 // the mapped ones sorted after it. It exists for startup logging: the agent a
 // given alert reaches is otherwise only visible once one fires.
 func (c Config) Agents() []string {
 	agents := []string{c.KagentAgent}
 	seen := map[string]bool{c.KagentAgent: true}
-	for _, agent := range c.KagentAgentRoutingMap {
-		if !seen[agent] {
-			seen[agent] = true
-			agents = append(agents, agent)
+	maps := []map[string]string{c.KagentAgentRoutingMap}
+	if c.ChatEnabled() {
+		if !seen[c.ChatAgent] {
+			seen[c.ChatAgent] = true
+			agents = append(agents, c.ChatAgent)
+		}
+		maps = append(maps, c.ChatAgentMap)
+	}
+	for _, table := range maps {
+		for _, agent := range table {
+			if !seen[agent] {
+				seen[agent] = true
+				agents = append(agents, agent)
+			}
 		}
 	}
 	sort.Strings(agents[1:])
@@ -286,6 +396,20 @@ func setEnv(key, fallback string) (map[string]bool, error) {
 		}
 	}
 	return set, nil
+}
+
+// listEnv parses a comma-separated list into a slice, keeping the order and
+// the original spelling. Unlike setEnv it is used where the entries are not
+// compared literally, the channel allow list above all: an entry may be a name
+// or an ID and has to be resolved before it can be matched.
+func listEnv(key string) []string {
+	var items []string
+	for item := range strings.SplitSeq(os.Getenv(key), ",") {
+		if item = strings.TrimSpace(item); item != "" {
+			items = append(items, item)
+		}
+	}
+	return items
 }
 
 // pairsEnv parses a "key=value,key=value" list into a map.

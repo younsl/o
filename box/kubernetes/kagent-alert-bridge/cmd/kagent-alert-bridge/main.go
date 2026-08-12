@@ -18,6 +18,7 @@ import (
 	"github.com/younsl/o/box/kubernetes/kagent-alert-bridge/internal/config"
 	"github.com/younsl/o/box/kubernetes/kagent-alert-bridge/internal/observability"
 	"github.com/younsl/o/box/kubernetes/kagent-alert-bridge/internal/slack"
+	"github.com/younsl/o/box/kubernetes/kagent-alert-bridge/internal/socket"
 	"github.com/younsl/o/box/kubernetes/kagent-alert-bridge/internal/version"
 )
 
@@ -76,6 +77,10 @@ func run(ctx context.Context, cfg config.Config, logger *slog.Logger) error {
 	agent := a2a.New(cfg.KagentURL, cfg.KagentNamespace, cfg.KagentUserID, cfg.KagentRequestTimeout, cfg.KagentPollInterval, metrics, logger)
 	b := bridge.New(cfg, slackClient, agent, metrics, logger)
 
+	if cfg.ChatEnabled() {
+		startChat(ctx, cfg, slackClient, b, metrics, logger)
+	}
+
 	go func() {
 		if err := observability.ServeMetrics(ctx, cfg.MetricsPort, metrics.Registry(), logger); err != nil {
 			logger.Error("metrics server failed", "error", err)
@@ -87,16 +92,57 @@ func run(ctx context.Context, cfg config.Config, logger *slog.Logger) error {
 	}
 
 	// The listener is closed, so no new analysis can start. Anything already
-	// running still owes a Slack reply, so wait for it before exiting. The
-	// pod's terminationGracePeriodSeconds must exceed this drain window.
+	// running still owes a Slack reply, so wait for it before exiting. A
+	// mention turn has its own deadline, so the drain covers whichever is
+	// longer. The pod's terminationGracePeriodSeconds must exceed this window.
 	drainTimeout := cfg.KagentTimeout + drainMargin
-	logger.Info("draining in-flight analyses", "timeout", drainTimeout.String())
+	if cfg.ChatEnabled() {
+		drainTimeout = max(cfg.KagentTimeout, cfg.ChatTimeout) + drainMargin
+	}
+	logger.Info("draining in-flight runs", "timeout", drainTimeout.String())
 	if !b.Wait(drainTimeout) {
-		logger.Warn("shutdown timed out with analyses still running", "timeout", drainTimeout.String())
+		logger.Warn("shutdown timed out with runs still in flight", "timeout", drainTimeout.String())
 		return nil
 	}
 	logger.Info("shutdown complete")
 	return nil
+}
+
+// startChat resolves the bot identity and opens the Socket Mode connection that
+// carries mentions. Neither failure is fatal: the alert path must keep working
+// when Slack cannot be reached, so the connection retries in the background and
+// an unresolved bot id only leaves the loop guard resting on bot_id alone.
+func startChat(ctx context.Context, cfg config.Config, slackClient *slack.Client, b *bridge.Bridge, metrics *observability.Metrics, logger *slog.Logger) {
+	logger.Info("mention invocation enabled",
+		"chat_agent", cfg.ChatAgent, "chat_timeout", cfg.ChatTimeout.String(),
+		"session_ttl", cfg.ChatSessionTTL.String(), "status_interval", cfg.ChatStatusInterval.String(),
+		"max_concurrent_chats", cfg.MaxConcurrentChats,
+		"channels", channelList(cfg), "required_scopes", "app_mentions:read, chat:write, reactions:write")
+
+	authCtx, cancel := context.WithTimeout(ctx, 30*time.Second)
+	defer cancel()
+	if id, err := slackClient.AuthTest(authCtx); err != nil {
+		logger.Warn("failed to resolve the bot user id; the mention loop guard falls back to bot_id alone", "error", err)
+	} else {
+		b.SetBotUserID(id)
+		logger.Info("resolved bot identity", "bot_user_id", id)
+	}
+
+	sock := socket.New(cfg.SlackAPIURL, cfg.SlackAppToken, metrics, logger)
+	go func() {
+		if err := sock.Run(ctx, b); err != nil {
+			logger.Error("socket mode listener failed", "error", err)
+		}
+	}()
+}
+
+// channelList renders the chat channel allow list for the startup log, where an
+// empty list is worth spelling out: it means every channel the bot is in.
+func channelList(cfg config.Config) string {
+	if len(cfg.ChatChannels) == 0 {
+		return "all"
+	}
+	return strings.Join(cfg.ChatChannels, ",")
 }
 
 func severityList(cfg config.Config) string {

@@ -32,8 +32,9 @@ spec:
       {{- end }}
       securityContext:
         {{- toYaml .Values.podSecurityContext | nindent 8 }}
-      # Shutdown waits for analyses that are already running so their Slack
-      # thread replies still land, which takes longer than the default 30s.
+      # Shutdown waits for the analyses and mention turns already running so
+      # their Slack thread replies still land, which takes longer than the
+      # default 30s.
       terminationGracePeriodSeconds: {{ .Values.terminationGracePeriodSeconds }}
       containers:
         - name: {{ .Chart.Name }}
@@ -51,6 +52,15 @@ spec:
                 secretKeyRef:
                   name: {{ include "kagent-alert-bridge.slackSecretName" . }}
                   key: {{ include "kagent-alert-bridge.slackSecretKey" . }}
+            {{- if .Values.chat.enabled }}
+            # The app-level token is what turns the mention path on: without it
+            # the binary never opens a Socket Mode connection.
+            - name: SLACK_APP_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "kagent-alert-bridge.slackSecretName" . }}
+                  key: {{ include "kagent-alert-bridge.slackAppTokenKey" . }}
+            {{- end }}
             {{- if include "kagent-alert-bridge.webhookAuthEnabled" . }}
             - name: WEBHOOK_BEARER_TOKEN
               valueFrom:

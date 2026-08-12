@@ -89,3 +89,64 @@ func TestStoreIsConcurrencySafe(t *testing.T) {
 		t.Errorf("%d callers were allowed, want exactly 1", count)
 	}
 }
+
+func TestSessionStoreReusesAndExpires(t *testing.T) {
+	base := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
+	s := newSessionStore(time.Hour)
+
+	if got := s.get("C1/ts", base); got != "" {
+		t.Fatalf("empty store returned %q", got)
+	}
+	s.put("C1/ts", "ctx-1", base)
+	if got := s.get("C1/ts", base.Add(59*time.Minute)); got != "ctx-1" {
+		t.Fatalf("session within the TTL returned %q, want ctx-1", got)
+	}
+	// A used session keeps living: the idle timer restarts on every turn.
+	s.put("C1/ts", "ctx-1", base.Add(59*time.Minute))
+	if got := s.get("C1/ts", base.Add(90*time.Minute)); got != "ctx-1" {
+		t.Fatalf("refreshed session returned %q, want ctx-1", got)
+	}
+	if got := s.get("C1/ts", base.Add(3*time.Hour)); got != "" {
+		t.Fatalf("idle session returned %q, want it dropped", got)
+	}
+}
+
+func TestSessionStoreEvictsExpiredEntries(t *testing.T) {
+	base := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
+	s := newSessionStore(time.Minute)
+
+	s.put("C1/ts", "ctx-1", base)
+	s.put("C2/ts", "ctx-2", base)
+	if got := s.size(); got != 2 {
+		t.Fatalf("size = %d, want 2", got)
+	}
+	// A later write sweeps what has gone idle, so the gauge does not drift up
+	// forever in a workspace full of one-off questions.
+	s.put("C3/ts", "ctx-3", base.Add(2*time.Minute))
+	if got := s.size(); got != 1 {
+		t.Fatalf("size = %d after the sweep, want 1", got)
+	}
+}
+
+// A zero TTL turns sessions off entirely, which makes every mention a cold turn.
+func TestSessionStoreDisabled(t *testing.T) {
+	now := time.Now()
+	s := newSessionStore(0)
+	s.put("C1/ts", "ctx-1", now)
+	if got := s.get("C1/ts", now); got != "" {
+		t.Fatalf("disabled store returned %q", got)
+	}
+	if got := s.size(); got != 0 {
+		t.Fatalf("disabled store holds %d entries", got)
+	}
+}
+
+// An empty contextId is not a session, so it must not take a slot in the store.
+func TestSessionStoreIgnoresEmptyContext(t *testing.T) {
+	now := time.Now()
+	s := newSessionStore(time.Hour)
+	s.put("C1/ts", "", now)
+	if got := s.size(); got != 0 {
+		t.Fatalf("stored an empty context id, size = %d", got)
+	}
+}

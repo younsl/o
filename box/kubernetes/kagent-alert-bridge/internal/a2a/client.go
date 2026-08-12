@@ -5,8 +5,9 @@
 // every HTTP request short, which no load balancer idle timeout can kill, and
 // it leaves a task ID behind that a deadline can cancel with tasks/cancel
 // instead of abandoning the run to keep burning tokens. Streaming would let
-// the bridge post partial results, but a Slack thread reply is a single
-// message, so there is nothing to stream into.
+// the bridge post partial output, but the reply is one Slack message, so the
+// poll loop reports task state through Request.OnProgress instead, which is
+// enough to keep a status line current without a second transport.
 package a2a
 
 import (
@@ -92,6 +93,7 @@ type message struct {
 	Kind      string `json:"kind"`
 	Role      string `json:"role"`
 	MessageID string `json:"messageId"`
+	ContextID string `json:"contextId,omitempty"`
 	Parts     []part `json:"parts"`
 }
 
@@ -138,16 +140,42 @@ type Result struct {
 	ContextID string
 }
 
-// Send submits text to the named agent and polls the resulting task until it
+// Request is one call to an agent.
+type Request struct {
+	Agent string
+	Text  string
+	// ContextID continues an existing session. Empty starts a new one, which
+	// is what the alert path always does: an alert is not a conversation.
+	ContextID string
+	// OnProgress is called as the task moves, so a caller can report the run
+	// while it is still running. It runs on the polling goroutine, so an
+	// implementation must not block: the mention path only records the state
+	// and lets its own ticker do the Slack call.
+	OnProgress func(Progress)
+}
+
+// Progress is one observation of a running task.
+type Progress struct {
+	TaskID string
+	// State is the task state the controller last reported, e.g. submitted,
+	// working, or completed.
+	State string
+	// Polls is how many tasks/get reads have been spent so far.
+	Polls int
+}
+
+// Send submits a request to an agent and polls the resulting task until it
 // completes, fails, or ctx expires. On ctx expiry the task is cancelled so an
 // abandoned run stops consuming model tokens.
-func (c *Client) Send(ctx context.Context, agent, text string) (Result, error) {
+func (c *Client) Send(ctx context.Context, req Request) (Result, error) {
+	agent := req.Agent
 	out, err := c.call(ctx, agent, "message/send", sendParams{
 		Message: message{
 			Kind:      "message",
 			Role:      "user",
 			MessageID: randomID(),
-			Parts:     []part{{Kind: "text", Text: text}},
+			ContextID: req.ContextID,
+			Parts:     []part{{Kind: "text", Text: req.Text}},
 		},
 		Configuration: reqConf{Blocking: false},
 	})
@@ -176,18 +204,26 @@ func (c *Client) Send(ctx context.Context, agent, text string) (Result, error) {
 	// own processing time from the queueing and Slack work around it.
 	submitted := c.now()
 	c.logger.Info("analysis task submitted", "agent", agent, "task_id", taskID, "state", out.Result.Status.State)
+	report(req.OnProgress, Progress{TaskID: taskID, State: out.Result.Status.State})
 
 	if terminal(out.Result.Status.State) {
 		c.metrics.ObserveAgentTask(agent, out.Result.Status.State, 0, c.now().Sub(submitted))
 		return c.finalize(out)
 	}
-	return c.poll(ctx, agent, taskID, submitted)
+	return c.poll(ctx, agent, taskID, submitted, req.OnProgress)
+}
+
+// report calls a progress hook when the caller supplied one.
+func report(hook func(Progress), p Progress) {
+	if hook != nil {
+		hook(p)
+	}
 }
 
 // poll reads the task state every pollInterval until it turns terminal or ctx
 // expires. Transient read failures are tolerated up to
 // maxConsecutivePollFailures so one dropped poll does not abandon a paid run.
-func (c *Client) poll(ctx context.Context, agent, taskID string, submitted time.Time) (Result, error) {
+func (c *Client) poll(ctx context.Context, agent, taskID string, submitted time.Time, onProgress func(Progress)) (Result, error) {
 	ticker := time.NewTicker(c.pollInterval)
 	defer ticker.Stop()
 
@@ -220,6 +256,7 @@ func (c *Client) poll(ctx context.Context, agent, taskID string, submitted time.
 			continue
 		}
 		failures = 0
+		report(onProgress, Progress{TaskID: taskID, State: out.Result.Status.State, Polls: polls})
 
 		if terminal(out.Result.Status.State) {
 			c.metrics.ObserveAgentTask(agent, out.Result.Status.State, polls, c.now().Sub(submitted))

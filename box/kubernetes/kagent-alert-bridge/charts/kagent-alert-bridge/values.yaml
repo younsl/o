@@ -58,6 +58,41 @@ slack:
   existingSecretKey: "SLACK_BOT_TOKEN"
   # -- (string) Bot token (xoxb-...). Only used when `slack.existingSecret` is empty; prefer an externally managed Secret.
   token: ""
+  # -- (string) Key inside `slack.existingSecret` holding the app-level token. Only read when `chat.enabled` is true.
+  existingSecretAppTokenKey: "SLACK_APP_TOKEN"
+  # -- (string) App-level token (xapp-...) that opens the Socket Mode connection carrying mentions. Created under Basic Information with the `connections:write` scope, which is not an OAuth scope. Only used when `slack.existingSecret` is empty.
+  appToken: ""
+
+chat:
+  # -- (bool) Answer `@bot` mentions posted inside a Slack thread by running a kagent agent and replying in that thread. Needs an app-level token and the `app_mentions:read` bot scope, with Socket Mode and the `app_mention` event subscription enabled on the Slack app. Leaving this off keeps the binary behaving exactly as the alert-only build does.
+  enabled: false
+  # -- (string) Agent that answers mentions. Empty falls back to `kagent.agent`.
+  agent: ""
+  # -- (object) Routing table from channel (name or ID) to the Agent resource answering there. A channel the table does not carry falls back to `chat.agent`.
+  agentMap: {}
+    # security-alerts: security-alert-triage-agent
+  # -- (list) Channel names or IDs allowed to invoke the bot. Empty allows every channel the bot is a member of.
+  channels: []
+    # - alerts-test
+  # -- (list) Slack member IDs allowed to invoke the bot. Empty allows everyone in the allowed channels.
+  allowedUsers: []
+    # - U01234567
+  # -- (string) Instructions appended to every mention prompt. Empty uses the built-in English instructions, which are separate from `analysis.instructions` because a question has no alert sections to fill.
+  instructions: ""
+  # -- (string) Deadline for one whole turn including queueing, as a Go duration. The kagent controller caps a turn at 3 minutes in the v0.9.x line, so raising this above `180s` buys nothing; lowering it makes the bridge's own expiry fire first and cancel the task.
+  timeout: "180s"
+  # -- (string) How long a thread keeps its A2A `contextId` after its last turn, as a Go duration. Within it a follow-up mention continues the same agent session. `0s` makes every mention a cold turn.
+  sessionTTL: "2h"
+  # -- (string) How often the in-thread status message is rewritten while the agent works, as a Go duration. Each rewrite is one `chat.update` call, so a short interval buys a livelier status line at the cost of Slack rate limit budget.
+  statusInterval: "10s"
+  # -- (string) Emoji (without colons) placed on the mention while the agent works and removed when the answer lands. Needs `reactions:write`. Empty string disables it.
+  workingReaction: "eyes"
+  # -- (string) Ephemeral hint sent when the bot is mentioned at channel level instead of in a thread. `null` keeps the built-in text; an empty string drops the mention silently.
+  threadHint: null
+  # -- (string) Ephemeral hint sent when the bot is mentioned in a channel outside `chat.channels`. `null` keeps the built-in text; an empty string drops the mention silently.
+  deniedHint: null
+  # -- (int) Maximum mention turns running at once. Separate from `analysis.maxConcurrent` so a burst of questions cannot starve alert analysis of model concurrency.
+  maxConcurrent: 2
 
 kagent:
   # -- (string) Base URL of the kagent controller; the A2A path is appended to it
@@ -180,8 +215,8 @@ resizePolicy:
   - resourceName: memory
     restartPolicy: RestartContainer
 
-# -- (int) Grace period for shutdown. Must exceed `kagent.timeout` plus the 30s drain margin so an analysis already running still posts its thread reply.
-terminationGracePeriodSeconds: 180
+# -- (int) Grace period for shutdown. Must exceed the longer of `kagent.timeout` and `chat.timeout`, plus the 30s drain margin, so a run already in flight still posts its thread reply.
+terminationGracePeriodSeconds: 240
 
 # -- (object) Extra annotations for the pod
 podAnnotations: {}

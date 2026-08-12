@@ -52,6 +52,14 @@ SLACK_BOT_TOKEN
 {{- end -}}
 {{- end -}}
 
+{{- define "kagent-alert-bridge.slackAppTokenKey" -}}
+{{- if .Values.slack.existingSecret -}}
+{{- .Values.slack.existingSecretAppTokenKey -}}
+{{- else -}}
+SLACK_APP_TOKEN
+{{- end -}}
+{{- end -}}
+
 {{/*
 Name of the Secret holding the webhook bearer token, on the same rules.
 */}}

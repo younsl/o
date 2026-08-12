@@ -236,3 +236,122 @@ func TestLoadRejectsMalformedAgentRoutingMap(t *testing.T) {
 		t.Fatal("expected a malformed KAGENT_AGENT_ROUTING_MAP entry to fail")
 	}
 }
+
+func TestChatDisabledWithoutAnAppToken(t *testing.T) {
+	requiredEnv(t)
+
+	cfg, err := Load()
+	if err != nil {
+		t.Fatalf("Load() error = %v", err)
+	}
+	if cfg.ChatEnabled() {
+		t.Error("mention invocation is on without SLACK_APP_TOKEN")
+	}
+	// The chat settings still carry their defaults, so enabling the feature
+	// later needs one variable rather than a block of them.
+	if cfg.ChatAgent != cfg.KagentAgent {
+		t.Errorf("ChatAgent = %q, want the alert agent", cfg.ChatAgent)
+	}
+	if cfg.ChatTimeout != 180*time.Second || cfg.ChatSessionTTL != 2*time.Hour {
+		t.Errorf("chat deadlines = %s / %s", cfg.ChatTimeout, cfg.ChatSessionTTL)
+	}
+	if cfg.ChatStatusInterval != 10*time.Second {
+		t.Errorf("ChatStatusInterval = %s", cfg.ChatStatusInterval)
+	}
+	if cfg.ChatWorkingReaction != "eyes" || cfg.MaxConcurrentChats != 2 {
+		t.Errorf("reaction %q, slots %d", cfg.ChatWorkingReaction, cfg.MaxConcurrentChats)
+	}
+	if cfg.ChatInstructions != DefaultChatInstructions {
+		t.Error("ChatInstructions should default to DefaultChatInstructions")
+	}
+	if cfg.ChatThreadHint != DefaultThreadHint || cfg.ChatDeniedHint != DefaultDeniedHint {
+		t.Errorf("hints = %q / %q", cfg.ChatThreadHint, cfg.ChatDeniedHint)
+	}
+}
+
+func TestChatOverrides(t *testing.T) {
+	requiredEnv(t)
+	t.Setenv("SLACK_APP_TOKEN", "xapp-test")
+	t.Setenv("CHAT_AGENT", "chat-agent")
+	t.Setenv("CHAT_AGENT_MAP", "security-alerts=security-agent")
+	t.Setenv("CHAT_CHANNELS", " alerts-test , C01234567 ")
+	t.Setenv("CHAT_ALLOWED_USERS", "U111,U222")
+	t.Setenv("CHAT_TIMEOUT", "90s")
+	t.Setenv("CHAT_SESSION_TTL", "30m")
+	t.Setenv("CHAT_STATUS_INTERVAL", "5s")
+	t.Setenv("CHAT_WORKING_REACTION", ":hourglass:")
+	t.Setenv("MAX_CONCURRENT_CHATS", "4")
+
+	cfg, err := Load()
+	if err != nil {
+		t.Fatalf("Load() error = %v", err)
+	}
+	if !cfg.ChatEnabled() {
+		t.Fatal("SLACK_APP_TOKEN did not enable mention invocation")
+	}
+	if cfg.ChatAgent != "chat-agent" || cfg.ChatAgentMap["security-alerts"] != "security-agent" {
+		t.Errorf("agent = %q, map = %v", cfg.ChatAgent, cfg.ChatAgentMap)
+	}
+	if !slices.Equal(cfg.ChatChannels, []string{"alerts-test", "C01234567"}) {
+		t.Errorf("ChatChannels = %v, want the trimmed entries in order", cfg.ChatChannels)
+	}
+	if !cfg.ChatAllowedUsers["U111"] || !cfg.ChatAllowedUsers["U222"] {
+		t.Errorf("ChatAllowedUsers = %v", cfg.ChatAllowedUsers)
+	}
+	if cfg.ChatTimeout != 90*time.Second || cfg.ChatSessionTTL != 30*time.Minute {
+		t.Errorf("deadlines = %s / %s", cfg.ChatTimeout, cfg.ChatSessionTTL)
+	}
+	if cfg.ChatStatusInterval != 5*time.Second {
+		t.Errorf("ChatStatusInterval = %s", cfg.ChatStatusInterval)
+	}
+	// The colons a person types around an emoji name are stripped, as they are
+	// on the alert reactions.
+	if cfg.ChatWorkingReaction != "hourglass" {
+		t.Errorf("ChatWorkingReaction = %q", cfg.ChatWorkingReaction)
+	}
+	if cfg.MaxConcurrentChats != 4 {
+		t.Errorf("MaxConcurrentChats = %d", cfg.MaxConcurrentChats)
+	}
+	// The chat agent and its routing table join the startup agent list.
+	if agents := cfg.Agents(); !slices.Contains(agents, "chat-agent") || !slices.Contains(agents, "security-agent") {
+		t.Errorf("Agents() = %v, want the chat agents listed", agents)
+	}
+}
+
+// An explicitly empty hint or reaction turns that one off, while an unset
+// variable keeps the default.
+func TestChatEmptyValuesDisableTheirFeature(t *testing.T) {
+	requiredEnv(t)
+	t.Setenv("SLACK_APP_TOKEN", "xapp-test")
+	t.Setenv("CHAT_THREAD_HINT", "")
+	t.Setenv("CHAT_DENIED_HINT", "")
+	t.Setenv("CHAT_WORKING_REACTION", "")
+
+	cfg, err := Load()
+	if err != nil {
+		t.Fatalf("Load() error = %v", err)
+	}
+	if cfg.ChatThreadHint != "" || cfg.ChatDeniedHint != "" || cfg.ChatWorkingReaction != "" {
+		t.Errorf("empty values did not disable: %q %q %q",
+			cfg.ChatThreadHint, cfg.ChatDeniedHint, cfg.ChatWorkingReaction)
+	}
+}
+
+func TestChatRejectsInvalidValues(t *testing.T) {
+	tests := map[string]string{
+		"CHAT_TIMEOUT":         "nope",
+		"CHAT_STATUS_INTERVAL": "10ms",
+		"MAX_CONCURRENT_CHATS": "0",
+		"CHAT_AGENT_MAP":       "no-equals-sign",
+	}
+	for key, value := range tests {
+		t.Run(key, func(t *testing.T) {
+			requiredEnv(t)
+			t.Setenv("SLACK_APP_TOKEN", "xapp-test")
+			t.Setenv(key, value)
+			if _, err := Load(); err == nil {
+				t.Fatalf("Load() accepted %s=%q", key, value)
+			}
+		})
+	}
+}

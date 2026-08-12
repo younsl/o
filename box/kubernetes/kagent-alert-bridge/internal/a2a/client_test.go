@@ -56,7 +56,7 @@ func TestSendSubmitsNonBlockingAndReturnsImmediateResult(t *testing.T) {
 			"artifacts":[{"parts":[{"kind":"text","text":"*Summary* pod is crashlooping"}]}]}}`)
 	})
 
-	res, err := client.Send(context.Background(), testAgent, "analyse this")
+	res, err := client.Send(context.Background(), Request{Agent: testAgent, Text: "analyse this"})
 	if err != nil {
 		t.Fatalf("Send() error = %v", err)
 	}
@@ -120,7 +120,7 @@ func TestSendPollsUntilCompleted(t *testing.T) {
 		}
 	})
 
-	res, err := client.Send(context.Background(), testAgent, "prompt")
+	res, err := client.Send(context.Background(), Request{Agent: testAgent, Text: "prompt"})
 	if err != nil {
 		t.Fatalf("Send() error = %v", err)
 	}
@@ -155,7 +155,7 @@ func TestSendToleratesTransientPollFailures(t *testing.T) {
 		}
 	})
 
-	res, err := client.Send(context.Background(), testAgent, "prompt")
+	res, err := client.Send(context.Background(), Request{Agent: testAgent, Text: "prompt"})
 	if err != nil {
 		t.Fatalf("Send() error = %v", err)
 	}
@@ -176,7 +176,7 @@ func TestSendGivesUpAfterConsecutivePollFailures(t *testing.T) {
 		w.WriteHeader(http.StatusBadGateway)
 	})
 
-	_, err := client.Send(context.Background(), testAgent, "prompt")
+	_, err := client.Send(context.Background(), Request{Agent: testAgent, Text: "prompt"})
 	if err == nil || !strings.Contains(err.Error(), "gave up polling") {
 		t.Fatalf("error = %v", err)
 	}
@@ -209,7 +209,7 @@ func TestSendCancelsTaskOnContextExpiry(t *testing.T) {
 
 	ctx, cancel := context.WithTimeout(context.Background(), 100*time.Millisecond)
 	defer cancel()
-	res, err := client.Send(ctx, testAgent, "prompt")
+	res, err := client.Send(ctx, Request{Agent: testAgent, Text: "prompt"})
 	if err == nil || !strings.Contains(err.Error(), "deadline exceeded") {
 		t.Fatalf("error = %v", err)
 	}
@@ -238,7 +238,7 @@ func TestSendAcceptsDirectMessageResult(t *testing.T) {
 			"parts":[{"kind":"text","text":"instant answer"}]}}`)
 	})
 
-	res, err := client.Send(context.Background(), testAgent, "prompt")
+	res, err := client.Send(context.Background(), Request{Agent: testAgent, Text: "prompt"})
 	if err != nil {
 		t.Fatalf("Send() error = %v", err)
 	}
@@ -254,7 +254,7 @@ func TestSendJoinsMultipleParts(t *testing.T) {
 			{"parts":[{"kind":"text","text":"second"}]}]}}`)
 	})
 
-	res, err := client.Send(context.Background(), testAgent, "prompt")
+	res, err := client.Send(context.Background(), Request{Agent: testAgent, Text: "prompt"})
 	if err != nil {
 		t.Fatalf("Send() error = %v", err)
 	}
@@ -271,7 +271,7 @@ func TestSendFallsBackToStatusAndHistory(t *testing.T) {
 			io.WriteString(w, `{"result":{"kind":"task","id":"t1","status":{"state":"input-required",
 				"message":{"parts":[{"kind":"text","text":"which namespace?"}]}}}}`)
 		})
-		res, err := client.Send(context.Background(), testAgent, "prompt")
+		res, err := client.Send(context.Background(), Request{Agent: testAgent, Text: "prompt"})
 		if err != nil {
 			t.Fatalf("Send() error = %v", err)
 		}
@@ -287,7 +287,7 @@ func TestSendFallsBackToStatusAndHistory(t *testing.T) {
 				{"role":"agent","parts":[{"kind":"text","text":"older"}]},
 				{"role":"agent","parts":[{"kind":"text","text":"newest"}]}]}}`)
 		})
-		res, err := client.Send(context.Background(), testAgent, "prompt")
+		res, err := client.Send(context.Background(), Request{Agent: testAgent, Text: "prompt"})
 		if err != nil {
 			t.Fatalf("Send() error = %v", err)
 		}
@@ -349,7 +349,7 @@ func TestSendErrors(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			client := newTestClient(t, tt.handler)
-			_, err := client.Send(context.Background(), testAgent, "prompt")
+			_, err := client.Send(context.Background(), Request{Agent: testAgent, Text: "prompt"})
 			if err == nil {
 				t.Fatal("expected an error")
 			}
@@ -367,7 +367,7 @@ func TestSendFailedTaskIncludesStatusMessage(t *testing.T) {
 		io.WriteString(w, `{"result":{"kind":"task","id":"t1","status":{"state":"failed",
 			"message":{"parts":[{"kind":"text","text":"tool exploded"}]}}}}`)
 	})
-	_, err := client.Send(context.Background(), testAgent, "prompt")
+	_, err := client.Send(context.Background(), Request{Agent: testAgent, Text: "prompt"})
 	if err == nil || !strings.Contains(err.Error(), "tool exploded") {
 		t.Fatalf("error = %v, want the status message included", err)
 	}
@@ -385,7 +385,7 @@ func TestSendRespectsContextDuringSubmit(t *testing.T) {
 
 	ctx, cancel := context.WithTimeout(context.Background(), 50*time.Millisecond)
 	defer cancel()
-	if _, err := client.Send(ctx, testAgent, "prompt"); err == nil {
+	if _, err := client.Send(ctx, Request{Agent: testAgent, Text: "prompt"}); err == nil {
 		t.Fatal("expected an error when the context expires")
 	}
 }
@@ -439,7 +439,7 @@ func TestSendRecordsTaskMetrics(t *testing.T) {
 	t.Cleanup(srv.Close)
 
 	client := New(srv.URL, "kagent", "bridge@kagent.dev", 5*time.Second, time.Millisecond, metrics, testLogger())
-	if _, err := client.Send(context.Background(), testAgent, "prompt"); err != nil {
+	if _, err := client.Send(context.Background(), Request{Agent: testAgent, Text: "prompt"}); err != nil {
 		t.Fatalf("Send() error = %v", err)
 	}
 
@@ -471,7 +471,7 @@ func TestSendRecordsTimeoutAsATaskState(t *testing.T) {
 	client := New(srv.URL, "kagent", "bridge@kagent.dev", 5*time.Second, 5*time.Millisecond, metrics, testLogger())
 	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Millisecond)
 	defer cancel()
-	if _, err := client.Send(ctx, testAgent, "prompt"); err == nil {
+	if _, err := client.Send(ctx, Request{Agent: testAgent, Text: "prompt"}); err == nil {
 		t.Fatal("expected the deadline to end the run")
 	}
 
@@ -549,12 +549,102 @@ func TestEndpointIsBuiltPerAgent(t *testing.T) {
 	if got := client.Endpoint("security-alert-triage-agent"); got != srv.URL+"/api/a2a/kagent/security-alert-triage-agent" {
 		t.Errorf("Endpoint() = %q", got)
 	}
-	if _, err := client.Send(context.Background(), "security-alert-triage-agent", "prompt"); err != nil {
+	if _, err := client.Send(context.Background(), Request{Agent: "security-alert-triage-agent", Text: "prompt"}); err != nil {
 		t.Fatalf("Send() error = %v", err)
 	}
 	for _, path := range paths {
 		if path != "/api/a2a/kagent/security-alert-triage-agent" {
 			t.Errorf("call went to %q, want the agent's own path", path)
 		}
+	}
+}
+
+// A mention continuing a thread sends the contextId its previous turn returned,
+// which is what keeps the agent's session alive across follow-ups.
+func TestSendCarriesContextIDWhenContinuingASession(t *testing.T) {
+	var gotBody map[string]any
+	client := newTestClient(t, func(w http.ResponseWriter, r *http.Request) {
+		_, gotBody = rpcMethod(t, r)
+		w.Header().Set("Content-Type", "application/json")
+		io.WriteString(w, `{"jsonrpc":"2.0","id":"1","result":{
+			"kind":"task","id":"task-1","contextId":"ctx-1",
+			"status":{"state":"completed"},
+			"artifacts":[{"parts":[{"kind":"text","text":"answer"}]}]}}`)
+	})
+
+	if _, err := client.Send(context.Background(), Request{Agent: testAgent, Text: "follow up", ContextID: "ctx-1"}); err != nil {
+		t.Fatalf("Send() error = %v", err)
+	}
+	params, _ := gotBody["params"].(map[string]any)
+	message, _ := params["message"].(map[string]any)
+	if got := message["contextId"]; got != "ctx-1" {
+		t.Fatalf("contextId = %v, want the session the caller passed", got)
+	}
+}
+
+// The alert path passes no contextId, and the field must stay off the wire so
+// the controller starts a session of its own.
+func TestSendOmitsContextIDOnAFreshSession(t *testing.T) {
+	var gotBody map[string]any
+	client := newTestClient(t, func(w http.ResponseWriter, r *http.Request) {
+		_, gotBody = rpcMethod(t, r)
+		w.Header().Set("Content-Type", "application/json")
+		io.WriteString(w, `{"jsonrpc":"2.0","id":"1","result":{
+			"kind":"task","id":"task-1","status":{"state":"completed"},
+			"artifacts":[{"parts":[{"kind":"text","text":"answer"}]}]}}`)
+	})
+
+	if _, err := client.Send(context.Background(), Request{Agent: testAgent, Text: "analyse this"}); err != nil {
+		t.Fatalf("Send() error = %v", err)
+	}
+	params, _ := gotBody["params"].(map[string]any)
+	message, _ := params["message"].(map[string]any)
+	if _, ok := message["contextId"]; ok {
+		t.Fatalf("contextId sent on a fresh session: %v", message)
+	}
+}
+
+// The progress hook is what a live status line reads, so it has to fire on the
+// submission and on every poll.
+func TestSendReportsProgress(t *testing.T) {
+	var calls atomic.Int32
+	client := newTestClient(t, func(w http.ResponseWriter, r *http.Request) {
+		method, _ := rpcMethod(t, r)
+		w.Header().Set("Content-Type", "application/json")
+		if method == "message/send" {
+			io.WriteString(w, `{"jsonrpc":"2.0","id":"1","result":{
+				"kind":"task","id":"task-1","status":{"state":"submitted"}}}`)
+			return
+		}
+		if calls.Load() < 2 {
+			io.WriteString(w, `{"jsonrpc":"2.0","id":"1","result":{
+				"kind":"task","id":"task-1","status":{"state":"working"}}}`)
+			return
+		}
+		io.WriteString(w, `{"jsonrpc":"2.0","id":"1","result":{
+			"kind":"task","id":"task-1","status":{"state":"completed"},
+			"artifacts":[{"parts":[{"kind":"text","text":"answer"}]}]}}`)
+	})
+
+	var seen []Progress
+	_, err := client.Send(context.Background(), Request{
+		Agent: testAgent,
+		Text:  "prompt",
+		OnProgress: func(p Progress) {
+			seen = append(seen, p)
+			calls.Add(1)
+		},
+	})
+	if err != nil {
+		t.Fatalf("Send() error = %v", err)
+	}
+	if len(seen) < 2 {
+		t.Fatalf("progress reported %d times, want the submission and at least one poll: %+v", len(seen), seen)
+	}
+	if seen[0].State != "submitted" || seen[0].TaskID != "task-1" {
+		t.Fatalf("first progress is %+v, want the accepted submission", seen[0])
+	}
+	if seen[1].State != "working" || seen[1].Polls != 1 {
+		t.Fatalf("second progress is %+v, want the first poll", seen[1])
 	}
 }

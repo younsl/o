@@ -50,10 +50,114 @@ type fakeSlack struct {
 	// reaction behaviour
 	reactionErr error
 	reactions   []string
+
+	// mention path behaviour
+	updates    []slackUpdate
+	updateErr  error
+	updated    chan struct{}
+	ephemerals []slackEphemeral
+	ephemErr   error
+	// resolved maps a configured channel name to the ID an event carries. A
+	// name the map does not hold resolves to itself, which covers the tests
+	// that configure IDs directly.
+	resolved   map[string]string
+	resolveErr error
+}
+
+// slackUpdate is one chat.update call, which the mention path uses to keep its
+// status line current.
+type slackUpdate struct {
+	channel string
+	ts      string
+	text    string
+}
+
+// slackEphemeral is one chat.postEphemeral call, which carries a hint.
+type slackEphemeral struct {
+	channel  string
+	threadTS string
+	user     string
+	text     string
 }
 
 func newFakeSlack() *fakeSlack {
-	return &fakeSlack{posted: make(chan struct{}, 8), found: "ts-parent"}
+	return &fakeSlack{
+		posted:  make(chan struct{}, 8),
+		updated: make(chan struct{}, 32),
+		found:   "ts-parent",
+	}
+}
+
+func (f *fakeSlack) Update(_ context.Context, channel, ts, text string) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if f.updateErr != nil {
+		return f.updateErr
+	}
+	f.updates = append(f.updates, slackUpdate{channel: channel, ts: ts, text: text})
+	select {
+	case f.updated <- struct{}{}:
+	default:
+	}
+	return nil
+}
+
+func (f *fakeSlack) PostEphemeral(_ context.Context, channel, threadTS, user, text string) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if f.ephemErr != nil {
+		return f.ephemErr
+	}
+	f.ephemerals = append(f.ephemerals, slackEphemeral{channel: channel, threadTS: threadTS, user: user, text: text})
+	return nil
+}
+
+func (f *fakeSlack) ResolveChannelID(_ context.Context, channel string) (string, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if f.resolveErr != nil {
+		return "", f.resolveErr
+	}
+	if id, ok := f.resolved[channel]; ok {
+		return id, nil
+	}
+	return channel, nil
+}
+
+func (f *fakeSlack) allUpdates() []slackUpdate {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return append([]slackUpdate(nil), f.updates...)
+}
+
+// lastUpdate returns the text the status message currently shows.
+func (f *fakeSlack) lastUpdate() string {
+	updates := f.allUpdates()
+	if len(updates) == 0 {
+		return ""
+	}
+	return updates[len(updates)-1].text
+}
+
+func (f *fakeSlack) allEphemerals() []slackEphemeral {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return append([]slackEphemeral(nil), f.ephemerals...)
+}
+
+// waitForUpdate blocks until n status rewrites have landed, so a test never
+// sleeps on the status ticker.
+func (f *fakeSlack) waitForUpdate(t *testing.T, n int) []slackUpdate {
+	t.Helper()
+	deadline := time.After(2 * time.Second)
+	for len(f.allUpdates()) < n {
+		select {
+		case <-f.updated:
+		case <-deadline:
+			t.Fatalf("timed out waiting for %d slack updates, got %d", n, len(f.allUpdates()))
+		}
+	}
+	return f.allUpdates()
 }
 
 func (f *fakeSlack) Post(_ context.Context, msg slack.Message) (string, error) {
@@ -133,26 +237,39 @@ func (f *fakeSlack) waitFor(t *testing.T, n int) []slack.Message {
 }
 
 type fakeAgent struct {
-	mu      sync.Mutex
-	prompts []string
-	agents  []string
-	reply   string
-	err     error
-	delay   time.Duration
-	release chan struct{}
+	mu         sync.Mutex
+	prompts    []string
+	agents     []string
+	contextIDs []string
+	reply      string
+	replyCtxID string
+	err        error
+	delay      time.Duration
+	release    chan struct{}
 	// holdPastDeadline makes Send ignore the context while waiting on release,
 	// so a test can pin an analysis slot for a known duration instead of
 	// racing the caller's timeout.
 	holdPastDeadline bool
+	// progress is reported through the request's hook before the reply, which
+	// is what drives the mention path's status line.
+	progress []a2a.Progress
 }
 
-func (f *fakeAgent) Send(ctx context.Context, agent, prompt string) (a2a.Result, error) {
+func (f *fakeAgent) Send(ctx context.Context, req a2a.Request) (a2a.Result, error) {
 	f.mu.Lock()
-	f.agents = append(f.agents, agent)
-	f.prompts = append(f.prompts, prompt)
+	f.agents = append(f.agents, req.Agent)
+	f.prompts = append(f.prompts, req.Text)
+	f.contextIDs = append(f.contextIDs, req.ContextID)
 	release, delay, reply, err := f.release, f.delay, f.reply, f.err
 	hold := f.holdPastDeadline
+	progress, ctxID := f.progress, f.replyCtxID
 	f.mu.Unlock()
+
+	for _, p := range progress {
+		if req.OnProgress != nil {
+			req.OnProgress(p)
+		}
+	}
 
 	if release != nil {
 		if hold {
@@ -175,7 +292,18 @@ func (f *fakeAgent) Send(ctx context.Context, agent, prompt string) (a2a.Result,
 	if err != nil {
 		return a2a.Result{}, err
 	}
-	return a2a.Result{Text: reply, TaskID: "task-1"}, nil
+	return a2a.Result{Text: reply, TaskID: "task-1", ContextID: ctxID}, nil
+}
+
+// lastContextID reports the session the most recent call continued, empty when
+// it started a fresh one.
+func (f *fakeAgent) lastContextID() string {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if len(f.contextIDs) == 0 {
+		return ""
+	}
+	return f.contextIDs[len(f.contextIDs)-1]
 }
 
 func (f *fakeAgent) promptCount() int {

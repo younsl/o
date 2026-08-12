@@ -730,3 +730,132 @@ func counterValue(t *testing.T, m *observability.Metrics, name string, labels ma
 	}
 	return 0
 }
+
+func TestUpdateRewritesAMessageInPlace(t *testing.T) {
+	var got map[string]string
+	var path string
+	client := newTestClient(t, func(w http.ResponseWriter, r *http.Request) {
+		path = r.URL.Path
+		if err := json.NewDecoder(r.Body).Decode(&got); err != nil {
+			t.Errorf("decode request: %v", err)
+		}
+		io.WriteString(w, `{"ok":true,"ts":"1700000000.000100","channel":"C123"}`)
+	})
+
+	if err := client.Update(context.Background(), "C123", "1700000000.000100", "the pod is OOMKilled"); err != nil {
+		t.Fatalf("Update() error = %v", err)
+	}
+	if path != "/chat.update" {
+		t.Errorf("path = %q, want /chat.update", path)
+	}
+	want := map[string]string{"channel": "C123", "ts": "1700000000.000100", "text": "the pod is OOMKilled"}
+	if !reflect.DeepEqual(got, want) {
+		t.Errorf("body = %v, want %v", got, want)
+	}
+}
+
+func TestUpdateReportsSlackErrors(t *testing.T) {
+	client := newTestClient(t, func(w http.ResponseWriter, _ *http.Request) {
+		io.WriteString(w, `{"ok":false,"error":"message_not_found"}`)
+	})
+	err := client.Update(context.Background(), "C123", "1700000000.000100", "text")
+	if err == nil || !strings.Contains(err.Error(), "message_not_found") {
+		t.Fatalf("Update() error = %v, want message_not_found", err)
+	}
+}
+
+func TestPostEphemeralTargetsOneReaderInTheThread(t *testing.T) {
+	var got map[string]string
+	var path string
+	client := newTestClient(t, func(w http.ResponseWriter, r *http.Request) {
+		path = r.URL.Path
+		if err := json.NewDecoder(r.Body).Decode(&got); err != nil {
+			t.Errorf("decode request: %v", err)
+		}
+		io.WriteString(w, `{"ok":true}`)
+	})
+
+	if err := client.PostEphemeral(context.Background(), "C123", "1700000000.000100", "U777", "threads only"); err != nil {
+		t.Fatalf("PostEphemeral() error = %v", err)
+	}
+	if path != "/chat.postEphemeral" {
+		t.Errorf("path = %q, want /chat.postEphemeral", path)
+	}
+	want := map[string]string{
+		"channel": "C123", "user": "U777",
+		"thread_ts": "1700000000.000100", "text": "threads only",
+	}
+	if !reflect.DeepEqual(got, want) {
+		t.Errorf("body = %v, want %v", got, want)
+	}
+}
+
+// A mention at channel level has no thread to answer in, so the hint must go
+// out without a thread_ts rather than carrying an empty one.
+func TestPostEphemeralOmitsAnEmptyThread(t *testing.T) {
+	var got map[string]string
+	client := newTestClient(t, func(w http.ResponseWriter, r *http.Request) {
+		if err := json.NewDecoder(r.Body).Decode(&got); err != nil {
+			t.Errorf("decode request: %v", err)
+		}
+		io.WriteString(w, `{"ok":true}`)
+	})
+
+	if err := client.PostEphemeral(context.Background(), "C123", "", "U777", "threads only"); err != nil {
+		t.Fatalf("PostEphemeral() error = %v", err)
+	}
+	if _, ok := got["thread_ts"]; ok {
+		t.Errorf("body = %v, want no thread_ts", got)
+	}
+}
+
+func TestAuthTestResolvesTheBotUserID(t *testing.T) {
+	var path string
+	client := newTestClient(t, func(w http.ResponseWriter, r *http.Request) {
+		path = r.URL.Path
+		io.WriteString(w, `{"ok":true,"user_id":"U000BOT","bot_id":"B000"}`)
+	})
+
+	id, err := client.AuthTest(context.Background())
+	if err != nil {
+		t.Fatalf("AuthTest() error = %v", err)
+	}
+	if id != "U000BOT" {
+		t.Errorf("user id = %q, want U000BOT", id)
+	}
+	if path != "/auth.test" {
+		t.Errorf("path = %q, want /auth.test", path)
+	}
+}
+
+func TestAuthTestRejectsAnEmptyIdentity(t *testing.T) {
+	client := newTestClient(t, func(w http.ResponseWriter, _ *http.Request) {
+		io.WriteString(w, `{"ok":true}`)
+	})
+	if _, err := client.AuthTest(context.Background()); err == nil {
+		t.Fatal("AuthTest() accepted a response carrying no user id")
+	}
+}
+
+func TestResolveChannelIDPassesAnIDThrough(t *testing.T) {
+	var calls atomic.Int32
+	client := newTestClient(t, func(w http.ResponseWriter, _ *http.Request) {
+		calls.Add(1)
+		io.WriteString(w, `{"ok":true,"channels":[{"id":"C01234567","name":"alerts"}]}`)
+	})
+
+	id, err := client.ResolveChannelID(context.Background(), "C01234567")
+	if err != nil {
+		t.Fatalf("ResolveChannelID() error = %v", err)
+	}
+	if id != "C01234567" || calls.Load() != 0 {
+		t.Fatalf("id = %q after %d calls, want the ID passed through without a lookup", id, calls.Load())
+	}
+
+	if id, err = client.ResolveChannelID(context.Background(), "alerts"); err != nil {
+		t.Fatalf("ResolveChannelID() error = %v", err)
+	}
+	if id != "C01234567" {
+		t.Fatalf("id = %q, want the resolved conversation ID", id)
+	}
+}
