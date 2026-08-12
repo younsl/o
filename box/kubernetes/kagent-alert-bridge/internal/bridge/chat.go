@@ -190,22 +190,30 @@ func (b *Bridge) handleMention(ev socket.Event, text, agent string, logger *slog
 	}()
 
 	sessionKey := ev.ChannelID + "/" + ev.ThreadTS
-	contextID := b.sessions.get(sessionKey, b.now())
-	if contextID != "" {
-		logger = logger.With("context_id", contextID)
+	sess := b.sessions.get(sessionKey, b.now())
+	if sess.contextID != "" {
+		logger = logger.With("context_id", sess.contextID)
+	}
+
+	// The alert is sent on every turn, not just the first: it is a few hundred
+	// characters, and a session that has it already loses nothing by seeing it
+	// again, while a session that lost it would answer about nothing.
+	prompt, withAlert := b.chatPrompt(text), false
+	if block, ok := b.alertContext(ctx, ev, logger); ok {
+		prompt, withAlert = b.chatPrompt(block+"\n\n"+questionHeading+"\n"+text), true
 	}
 
 	// The agent's own state drives the status line, and a ticker does the Slack
 	// call: the progress hook runs on the polling goroutine, where a blocking
 	// write would stall the poll it is reporting on.
 	var state progressState
-	stop := status.track(&state, agent)
+	stop := status.track(&state, agent, withAlert)
 
 	logger.Info("requesting chat turn", "chars", len(text))
 	result, err := b.agent.Send(ctx, a2a.Request{
 		Agent:      agent,
-		Text:       b.chatPrompt(text),
-		ContextID:  contextID,
+		Text:       prompt,
+		ContextID:  sess.contextID,
 		OnProgress: state.record,
 	})
 	stop()
@@ -218,13 +226,57 @@ func (b *Bridge) handleMention(ev socket.Event, text, agent string, logger *slog
 		return
 	}
 
-	b.sessions.put(sessionKey, result.ContextID, b.now())
+	b.sessions.put(sessionKey, session{contextID: result.ContextID}, b.now())
 	b.metrics.ChatSessions.Set(float64(b.sessions.size()))
 	b.metrics.ChatTurns.WithLabelValues(agent, "ok").Inc()
 	logger.Info("chat turn completed",
 		"duration", elapsed.String(), "task_id", result.TaskID,
 		"context_id", result.ContextID, "chars", len(result.Text))
 	status.finish(b.truncate("chat", result.Text))
+}
+
+// Headings that shape a mention prompt. They are deliberately plain: the alert
+// is quoted material somebody else wrote, not an instruction, and the heading
+// is what tells the agent so.
+const (
+	alertHeading    = "[Alert this question was asked under]"
+	contextHeading  = "[Slack context]"
+	questionHeading = "[Question]"
+)
+
+// parentMax caps the quoted alert. An Alertmanager notification is a few
+// hundred characters; anything past this is a template that got away, and
+// truncating it is better than letting it crowd out the question. It is not
+// configurable because there is nothing an operator would tune it to.
+const parentMax = 2000
+
+// alertContext renders what a mention carries besides the question: the alert
+// the thread hangs from, and the identifiers an agent needs to read the rest of
+// the thread through its own Slack tools.
+//
+// Only the parent is sent. Everything else in the thread is the agent's to
+// fetch, which keeps the bridge out of the business of guessing how much of a
+// conversation a question needs. The parent is the one exception because a
+// question about an alert is unanswerable without it, and an agent that has to
+// discover it through a tool call may simply not make one.
+//
+// A failure is not fatal: the turn continues with the question alone.
+func (b *Bridge) alertContext(ctx context.Context, ev socket.Event, logger *slog.Logger) (string, bool) {
+	parent, err := b.slack.ThreadParent(ctx, ev.ChannelID, ev.ThreadTS)
+	if err != nil {
+		logger.Warn("failed to read the thread parent, answering the question alone", "error", err)
+		return "", false
+	}
+	if parent.Text == "" {
+		return "", false
+	}
+
+	block := alertHeading + "\n" + slack.Truncate(parent.Text, parentMax) +
+		"\n\n" + contextHeading +
+		"\nchannel_id: " + ev.ChannelID +
+		"\nthread_ts: " + ev.ThreadTS
+	logger.Info("read the thread parent", "chars", len(parent.Text))
+	return block, true
 }
 
 // chatPrompt appends the chat instructions to the question. They are separate
@@ -346,6 +398,14 @@ func (s *statusMessage) post(ctx context.Context, text string) {
 	s.mu.Unlock()
 }
 
+// timestamp reports the status message's own ts, empty when the post failed.
+// The thread reader uses it to skip the placeholder this turn just posted.
+func (s *statusMessage) timestamp() string {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.ts
+}
+
 // set rewrites the status line in place. Nothing is posted when the initial
 // status message never landed, because a status without a message to replace
 // would turn every refresh into a new thread reply.
@@ -393,7 +453,7 @@ func (s *statusMessage) finish(text string) {
 // track refreshes the status line on a ticker until the returned function is
 // called. The ticker owns the Slack call so the agent's polling goroutine never
 // waits on one.
-func (s *statusMessage) track(state *progressState, agent string) func() {
+func (s *statusMessage) track(state *progressState, agent string, withAlert bool) func() {
 	interval := s.interval
 	if interval <= 0 {
 		return func() {}
@@ -410,7 +470,7 @@ func (s *statusMessage) track(state *progressState, agent string) func() {
 				return
 			case <-ticker.C:
 				ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
-				s.set(ctx, workingStatus(agent, s.now().Sub(s.started), state.read()))
+				s.set(ctx, workingStatus(agent, s.now().Sub(s.started), state.read(), withAlert))
 				cancel()
 			}
 		}
@@ -435,19 +495,34 @@ func queuedStatus() string {
 // the elapsed time divided by KAGENT_POLL_INTERVAL, so it repeats a number the
 // line already shows, and the one case where it diverges, a controller that
 // stopped answering, is what agent_requests_total reports.
-func workingStatus(agent string, elapsed time.Duration, state string) string {
-	return fmt.Sprintf(":mag: kagent의 %s 에이전트가 %s (경과 %s)", agent, statePhrase(state), koreanDuration(elapsed))
+// withAlert says whether the alert the thread hangs from went along with the
+// question. It changes the sentence rather than adding one, because a second
+// sentence would read as something the agent did, and reading the alert is the
+// bridge's own doing.
+func workingStatus(agent string, elapsed time.Duration, state string, withAlert bool) string {
+	return fmt.Sprintf(":mag: kagent의 %s 에이전트가 %s (경과 %s)",
+		agent, statePhrase(state, withAlert), koreanDuration(elapsed))
 }
 
 // statePhrase turns an A2A task state into the sentence it belongs in. The raw
 // state is a protocol token, not something a reader in Slack can act on, so
 // only an unrecognised one is shown verbatim, where it is a debugging aid
 // rather than noise.
-func statePhrase(state string) string {
+//
+// withAlert changes the sentence rather than adding one after it. A second
+// sentence would read as something the agent did, and reading the alert is the
+// bridge's own doing.
+func statePhrase(state string, withAlert bool) string {
 	switch state {
 	case "", "submitted":
+		if withAlert {
+			return "이 스레드의 알람으로 작업을 시작했습니다."
+		}
 		return "작업을 시작했습니다."
 	case "working":
+		if withAlert {
+			return "이 스레드의 알람을 확인 중입니다."
+		}
 		return "확인 중입니다."
 	default:
 		return fmt.Sprintf("확인 중입니다. (상태 %s)", state)

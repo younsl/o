@@ -415,6 +415,84 @@ func (c *Client) FindThreadParent(ctx context.Context, channel, marker string, s
 	return "", ErrMessageNotFound
 }
 
+// ThreadMessage is one message in a thread, flattened to the text a prompt
+// needs.
+type ThreadMessage struct {
+	TS   string
+	User string
+	// BotID is set when an app posted the message, which is how an alert
+	// notification and a bridge reply are told from a person's own words.
+	BotID string
+	Text  string
+}
+
+// ThreadParent returns the message a thread hangs from, which for an alert
+// thread is the alert itself. It is the one piece of a thread the bridge sends
+// on every mention: without it the agent is asked to analyse an event it has
+// never seen, and everything else in the thread the agent can fetch for itself
+// through its Slack tools.
+//
+// channel must be a conversation ID, which every Socket Mode event carries.
+// The call needs the same history scope the parent lookup already uses.
+func (c *Client) ThreadParent(ctx context.Context, channel, threadTS string) (ThreadMessage, error) {
+	if threadTS == "" {
+		return ThreadMessage{}, fmt.Errorf("thread timestamp is empty")
+	}
+
+	query := url.Values{}
+	query.Set("channel", channel)
+	query.Set("ts", threadTS)
+	// conversations.replies returns the parent first, so one message is all
+	// this needs to ask for.
+	query.Set("limit", "1")
+
+	var out struct {
+		Messages []struct {
+			TS          string `json:"ts"`
+			User        string `json:"user"`
+			BotID       string `json:"bot_id"`
+			Text        string `json:"text"`
+			Attachments []struct {
+				Title    string `json:"title"`
+				Text     string `json:"text"`
+				Footer   string `json:"footer"`
+				Fallback string `json:"fallback"`
+			} `json:"attachments"`
+		} `json:"messages"`
+	}
+	if err := c.get(ctx, "conversations.replies", query, &out); err != nil {
+		return ThreadMessage{}, fmt.Errorf("read thread parent: %w", err)
+	}
+	if len(out.Messages) == 0 {
+		return ThreadMessage{}, ErrMessageNotFound
+	}
+
+	msg := out.Messages[0]
+	var b strings.Builder
+	b.WriteString(strings.TrimSpace(msg.Text))
+	for _, att := range msg.Attachments {
+		// An Alertmanager notification carries the whole alert in its
+		// attachment rather than in the message body. Fallback repeats the
+		// title and text, so it is only used when those are empty.
+		parts := []string{att.Title, att.Text, att.Footer}
+		if att.Title == "" && att.Text == "" {
+			parts = []string{att.Fallback, att.Footer}
+		}
+		for _, part := range parts {
+			if part = strings.TrimSpace(part); part != "" {
+				if b.Len() > 0 {
+					b.WriteString("\n")
+				}
+				b.WriteString(part)
+			}
+		}
+	}
+	return ThreadMessage{
+		TS: msg.TS, User: msg.User, BotID: msg.BotID,
+		Text: strings.TrimSpace(b.String()),
+	}, nil
+}
+
 // resolveChannelID maps a channel name to its ID, which conversations.history
 // requires. chat.postMessage accepts a name, this call does not.
 //

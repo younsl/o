@@ -79,36 +79,41 @@ type sessionEntry struct {
 	usedAt    time.Time
 }
 
+// session is what a thread carries between turns.
+type session struct {
+	contextID string
+}
+
 func newSessionStore(ttl time.Duration) *sessionStore {
 	return &sessionStore{entries: map[string]sessionEntry{}, ttl: ttl}
 }
 
-// get returns the contextId held for key, or an empty string when the thread
-// has none or has been idle for longer than the TTL.
-func (s *sessionStore) get(key string, now time.Time) string {
+// get returns what the thread carries between turns, zero when it has nothing
+// or has been idle for longer than the TTL.
+func (s *sessionStore) get(key string, now time.Time) session {
 	if s.ttl <= 0 {
-		return ""
+		return session{}
 	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.gc(now)
 	entry, ok := s.entries[key]
 	if !ok || now.Sub(entry.usedAt) >= s.ttl {
-		return ""
+		return session{}
 	}
-	return entry.contextID
+	return session{contextID: entry.contextID}
 }
 
-// put records the contextId a turn returned and refreshes the idle timer, so a
-// thread that keeps being used keeps its session.
-func (s *sessionStore) put(key, contextID string, now time.Time) {
-	if s.ttl <= 0 || contextID == "" {
+// put records what a turn produced and refreshes the idle timer, so a thread
+// that keeps being used keeps its session.
+func (s *sessionStore) put(key string, sess session, now time.Time) {
+	if s.ttl <= 0 || sess.contextID == "" {
 		return
 	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.gc(now)
-	s.entries[key] = sessionEntry{contextID: contextID, usedAt: now}
+	s.entries[key] = sessionEntry{contextID: sess.contextID, usedAt: now}
 }
 
 // size reports how many threads currently hold a session, which is what the

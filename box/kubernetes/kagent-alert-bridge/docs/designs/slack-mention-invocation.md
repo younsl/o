@@ -268,6 +268,56 @@ Replies reuse `SLACK_MAX_TEXT` and the existing truncation counter, under a
 `chat` message kind, so an answer cut short is as visible as a truncated
 analysis.
 
+## Thread context
+
+A question asked under an alert is unanswerable on its own: "analyse this event"
+names an event the agent has never seen. The bridge therefore quotes the message
+the thread hangs from, and gives the agent the identifiers to read the rest.
+
+```
+[Alert this question was asked under]
+🚨 [FIRING] KubePodCrashLooping
+*Severity:* critical
+
+[Slack context]
+channel_id: C0123456789
+thread_ts: 1700000000.000100
+
+[Question]
+이 이벤트를 분석해줘
+```
+
+The split is deliberate, and it took three attempts to land on. Reading the
+whole thread in the bridge was tried first: pagination, a rune budget, keeping
+the head and the newest replies while eliding the middle, labelling speakers,
+and a per-thread watermark so a follow-up only sent what was new. All of it
+worked, and all of it was the bridge guessing how much of a conversation a
+question needs. That guess belongs to the agent, which can page, search, and
+stop when it has enough.
+
+What does not belong to the agent is the alert itself. Discovering it would take
+a tool call the agent may not make, and the failure mode is silent: an answer
+that reads as if the question had no context, which is what the first version of
+this feature actually produced. So the parent is pushed, and everything else is
+pulled.
+
+The parent is sent on every turn rather than only the first. It is a few hundred
+characters, a session that already has it loses nothing by seeing it again, and
+a session that lost it would answer about nothing. That removes the watermark,
+the budget, and the incremental read the earlier design needed.
+
+`conversations.replies` with `limit=1` returns the parent, so this costs one
+Slack call on the history scope the alert path already holds. The quoted text is
+capped at 2000 runes, which is not configurable because there is nothing an
+operator would tune it to: an Alertmanager notification is a few hundred
+characters, and anything past the cap is a template that got away.
+
+Reading the rest needs a Slack MCP server bound to the agent, with read tools
+only. `slack_get_thread_replies` and `slack_get_channel_history` answer
+questions. `slack_post_message`, `slack_reply_to_thread`, and
+`slack_add_reaction` would let an automatically triggered agent speak in the
+channel as the app, and the bridge already owns everything the bot says.
+
 ## Live status
 
 A turn can run for minutes, and a Slack thread offers no other sign that one is

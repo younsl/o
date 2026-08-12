@@ -68,7 +68,11 @@ One turn works like this:
    carrying the elapsed time and the task state the controller reports, and it
    ends as the answer itself. The thread gets one message per turn rather than
    one per state change.
-4. The thread keeps the A2A `contextId` for `CHAT_SESSION_TTL`, so a follow-up
+4. The alert the thread hangs from is quoted in front of the question, together
+   with the `channel_id` and `thread_ts` the mention arrived on. A question
+   asked under an alert is unanswerable without the alert, so the bridge always
+   sends it rather than leaving the agent to discover it.
+5. The thread keeps the A2A `contextId` for `CHAT_SESSION_TTL`, so a follow-up
    mention continues the same agent session instead of starting cold.
 
 Only thread replies invoke the agent. A mention at channel level is answered
@@ -98,7 +102,7 @@ Bot token scopes:
 | Scope | Needed when |
 |-------|-------------|
 | `chat:write` | Always. Also covers `chat.update` for the live status message and `chat.postEphemeral` for the mention hints. |
-| `channels:history` | `lookup` mode, public channels. |
+| `channels:history` | `lookup` mode, public channels, and reading the alert a mention was asked under. |
 | `channels:read` | `lookup` mode, when channels are configured by name. Configuring conversation IDs instead skips the name lookup and this scope. Public channels are resolved with this scope alone; private channels are only listed when the name is not public. Mention invocation needs it too when `CHAT_CHANNELS` or `CHAT_AGENT_MAP` name channels rather than IDs. |
 | `groups:history`, `groups:read` | `lookup` mode, private channels. |
 | `reactions:write` | The investigating/completed reactions on the alert notification, and the `:eyes:` a mention carries while it is being answered. The alert reactions can be turned off by setting `SLACK_INVESTIGATING_REACTION` and `SLACK_COMPLETED_REACTION` to empty; the mention one is fixed, so enabling mentions requires this scope. |
@@ -260,6 +264,20 @@ A mention gets `CHAT_INSTRUCTIONS` instead, which ask for a direct answer rather
 than the analysis sections. The same agent can serve both paths: an alert run
 and a mention turn never share a session, and `CHAT_AGENT` points them at
 different agents when they should not share a tool list either.
+
+### Reading the rest of a thread
+
+The bridge sends the alert and the thread's identifiers, and stops there. An
+agent that needs the discussion under the alert reads it itself through a Slack
+MCP server bound as a tool, which is what keeps the bridge out of guessing how
+much of a conversation a question needs, and what makes a longer thread, another
+channel, or a search reachable without a bridge release.
+
+Bind read tools only. `slack_get_thread_replies` and `slack_get_channel_history`
+answer questions; `slack_post_message`, `slack_reply_to_thread`, and
+`slack_add_reaction` let an agent speak in the channel as the app, which is a
+capability an automatically triggered agent has no business holding. The bridge
+owns everything the bot says.
 
 ### Routing to several agents
 

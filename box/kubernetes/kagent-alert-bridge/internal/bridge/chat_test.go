@@ -9,6 +9,7 @@ import (
 
 	"github.com/younsl/o/box/kubernetes/kagent-alert-bridge/internal/a2a"
 	"github.com/younsl/o/box/kubernetes/kagent-alert-bridge/internal/config"
+	"github.com/younsl/o/box/kubernetes/kagent-alert-bridge/internal/slack"
 	"github.com/younsl/o/box/kubernetes/kagent-alert-bridge/internal/socket"
 )
 
@@ -102,6 +103,81 @@ func TestMentionAnswersInThread(t *testing.T) {
 	if reactions := sc.allReactions(); len(reactions) != 2 ||
 		reactions[0] != "add eyes 1700000001.000100" || reactions[1] != "remove eyes 1700000001.000100" {
 		t.Fatalf("working reaction not placed on the mention: %v", reactions)
+	}
+}
+
+// A question asked under an alert has to reach the agent together with the
+// alert, or the agent is answering about an incident it has never seen.
+func TestMentionCarriesTheAlertAndTheThreadIdentifiers(t *testing.T) {
+	sc := newFakeSlack()
+	sc.parent = slack.ThreadMessage{
+		TS: testThread, BotID: "B_ALERT",
+		Text: "🚨 [FIRING] KubePodCrashLooping\n*Severity:* critical",
+	}
+	agent := &fakeAgent{reply: "answered", replyCtxID: "ctx-1"}
+	b := newChatBridge(t, chatConfig(), sc, agent)
+
+	b.HandleEvent(context.Background(), mention(nil))
+	b.Wait(3 * time.Second)
+
+	prompt := agent.prompts[0]
+	if !strings.Contains(prompt, "KubePodCrashLooping") {
+		t.Fatalf("prompt does not carry the alert:\n%s", prompt)
+	}
+	// The identifiers are what let the agent read the rest of the thread for
+	// itself, which is the whole reason the bridge sends only the parent.
+	if !strings.Contains(prompt, "channel_id: "+testChannel) || !strings.Contains(prompt, "thread_ts: "+testThread) {
+		t.Fatalf("prompt does not carry the thread identifiers:\n%s", prompt)
+	}
+	if !strings.Contains(prompt, alertHeading) || !strings.Contains(prompt, questionHeading) {
+		t.Fatalf("the alert and the question are not separated:\n%s", prompt)
+	}
+	// The question comes last, which keeps it the most recent thing read.
+	if strings.Index(prompt, alertHeading) > strings.Index(prompt, questionHeading) {
+		t.Fatalf("the question is buried above the alert:\n%s", prompt)
+	}
+}
+
+// The alert goes on every turn, not only the first: it costs a few hundred
+// characters and a session that lost it would answer about nothing.
+func TestMentionCarriesTheAlertOnEveryTurn(t *testing.T) {
+	sc := newFakeSlack()
+	sc.parent = slack.ThreadMessage{TS: testThread, BotID: "B_ALERT", Text: "🚨 [FIRING] KubePodCrashLooping"}
+	agent := &fakeAgent{reply: "answered", replyCtxID: "ctx-1"}
+	b := newChatBridge(t, chatConfig(), sc, agent)
+
+	b.HandleEvent(context.Background(), mention(nil))
+	b.Wait(3 * time.Second)
+	b.HandleEvent(context.Background(), mention(func(ev *socket.Event) { ev.EnvelopeID = "env-2" }))
+	b.Wait(3 * time.Second)
+
+	if got := sc.threadReads(); got != 2 {
+		t.Fatalf("the parent was read %d times, want once per turn", got)
+	}
+	if !strings.Contains(agent.prompts[1], "KubePodCrashLooping") {
+		t.Fatalf("the follow-up lost the alert:\n%s", agent.prompts[1])
+	}
+}
+
+// Reading the thread is a convenience, not a precondition: a failure leaves the
+// turn behaving exactly as it did before the thread was read at all.
+func TestMentionAnswersWhenTheThreadCannotBeRead(t *testing.T) {
+	sc := newFakeSlack()
+	sc.threadErr = errors.New("channel_not_found")
+	agent := &fakeAgent{reply: "answered"}
+	b := newChatBridge(t, chatConfig(), sc, agent)
+
+	b.HandleEvent(context.Background(), mention(nil))
+	b.Wait(3 * time.Second)
+
+	if got := agent.promptCount(); got != 1 {
+		t.Fatalf("a failed thread read cost the turn, %d runs", got)
+	}
+	if !strings.HasPrefix(agent.prompts[0], "why is the pod restarting?") {
+		t.Fatalf("prompt is %q, want the bare question", agent.prompts[0])
+	}
+	if got := sc.lastUpdate(); got != "answered" {
+		t.Fatalf("answer is %q", got)
 	}
 }
 
@@ -521,7 +597,7 @@ func TestMentionTruncatesLongReplies(t *testing.T) {
 }
 
 func TestWorkingStatusReadsAsASentence(t *testing.T) {
-	got := workingStatus("alert-triage-agent", 90*time.Second, "working")
+	got := workingStatus("alert-triage-agent", 90*time.Second, "working", true)
 	for _, want := range []string{"alert-triage-agent", "확인 중입니다", "1분 30초"} {
 		if !strings.Contains(got, want) {
 			t.Fatalf("status %q is missing %q", got, want)
@@ -530,12 +606,12 @@ func TestWorkingStatusReadsAsASentence(t *testing.T) {
 
 	// A task that has been accepted but not started yet says so, rather than
 	// claiming work that is not happening.
-	if got := workingStatus("agent", time.Second, "submitted"); !strings.Contains(got, "시작했습니다") {
+	if got := workingStatus("agent", time.Second, "submitted", false); !strings.Contains(got, "시작했습니다") {
 		t.Fatalf("submitted status is %q", got)
 	}
 	// An unrecognised state is worth showing verbatim: there it is a debugging
 	// aid rather than noise.
-	if got := workingStatus("agent", time.Second, "auth-required"); !strings.Contains(got, "auth-required") {
+	if got := workingStatus("agent", time.Second, "auth-required", false); !strings.Contains(got, "auth-required") {
 		t.Fatalf("unknown state dropped from %q", got)
 	}
 }

@@ -28,6 +28,9 @@ Keep the whole reply under 3000 characters and use exactly these sections:
 // no alert sections to fill, so it asks for a direct answer rather than the
 // analysis layout ANALYSIS_INSTRUCTIONS prescribes.
 const DefaultChatInstructions = `Answer the question above with the tools available to you.
+The alert the question was asked under is quoted above it. When the rest of that
+conversation matters and you have a Slack tool, read the thread with the channel
+and thread identifiers given above; otherwise answer from the alert alone.
 Inspect only; never create, modify, or delete any resource.
 Reply in Slack mrkdwn: *bold* uses single asterisks, no markdown headings, no tables.
 Keep the reply under 2000 characters and answer directly, without restating the question.

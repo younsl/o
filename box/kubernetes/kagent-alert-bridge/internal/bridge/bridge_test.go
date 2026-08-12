@@ -62,6 +62,11 @@ type fakeSlack struct {
 	// that configure IDs directly.
 	resolved   map[string]string
 	resolveErr error
+
+	// parent is the message a mention's thread hangs from.
+	parent      slack.ThreadMessage
+	threadErr   error
+	threadCalls []string
 }
 
 // slackUpdate is one chat.update call, which the mention path uses to keep its
@@ -110,6 +115,22 @@ func (f *fakeSlack) PostEphemeral(_ context.Context, channel, threadTS, user, te
 	}
 	f.ephemerals = append(f.ephemerals, slackEphemeral{channel: channel, threadTS: threadTS, user: user, text: text})
 	return nil
+}
+
+func (f *fakeSlack) ThreadParent(_ context.Context, _, threadTS string) (slack.ThreadMessage, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.threadCalls = append(f.threadCalls, threadTS)
+	if f.threadErr != nil {
+		return slack.ThreadMessage{}, f.threadErr
+	}
+	return f.parent, nil
+}
+
+func (f *fakeSlack) threadReads() int {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return len(f.threadCalls)
 }
 
 func (f *fakeSlack) ResolveChannelID(_ context.Context, channel string) (string, error) {

@@ -65,6 +65,7 @@ type SlackClient interface {
 	Update(ctx context.Context, channel, ts, text string) error
 	PostEphemeral(ctx context.Context, channel, threadTS, user, text string) error
 	FindThreadParent(ctx context.Context, channel, marker string, since time.Time) (string, error)
+	ThreadParent(ctx context.Context, channel, threadTS string) (slack.ThreadMessage, error)
 	AddReaction(ctx context.Context, channel, ts, name string) error
 	RemoveReaction(ctx context.Context, channel, ts, name string) error
 	ResolveChannelID(ctx context.Context, channel string) (string, error)
