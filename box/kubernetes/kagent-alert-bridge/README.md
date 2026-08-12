@@ -101,7 +101,7 @@ Bot token scopes:
 | `channels:history` | `lookup` mode, public channels. |
 | `channels:read` | `lookup` mode, when channels are configured by name. Configuring conversation IDs instead skips the name lookup and this scope. Public channels are resolved with this scope alone; private channels are only listed when the name is not public. Mention invocation needs it too when `CHAT_CHANNELS` or `CHAT_AGENT_MAP` name channels rather than IDs. |
 | `groups:history`, `groups:read` | `lookup` mode, private channels. |
-| `reactions:write` | The investigating/completed reactions on the alert notification, and the working reaction on a mention. Set `SLACK_INVESTIGATING_REACTION`, `SLACK_COMPLETED_REACTION`, and `CHAT_WORKING_REACTION` to empty to disable them and drop this scope. |
+| `reactions:write` | The investigating/completed reactions on the alert notification, and the `:eyes:` a mention carries while it is being answered. The alert reactions can be turned off by setting `SLACK_INVESTIGATING_REACTION` and `SLACK_COMPLETED_REACTION` to empty; the mention one is fixed, so enabling mentions requires this scope. |
 | `app_mentions:read` | Mention invocation. The only scope the feature adds. |
 
 Mention invocation also needs Socket Mode switched on and the `app_mention`
@@ -152,7 +152,6 @@ All optional except the app-level token, which is what enables the feature.
 | `CHAT_TIMEOUT` | `180s` | Deadline for one whole turn including queueing. Matches the controller's 3 minute cap; lower it to make the bridge's own expiry fire first and cancel the task. |
 | `CHAT_SESSION_TTL` | `2h` | How long a thread keeps its `contextId` after its last turn. `0s` makes every mention a cold turn. |
 | `CHAT_STATUS_INTERVAL` | `10s` | How often the in-thread status message is rewritten while the agent works. Each rewrite is one `chat.update` call. |
-| `CHAT_WORKING_REACTION` | `eyes` | Emoji placed on the mention while the agent works and removed when the answer lands. Empty disables it. |
 | `CHAT_THREAD_HINT` | built-in text | Ephemeral hint sent when the bot is mentioned at channel level. Empty drops the mention silently. |
 | `CHAT_DENIED_HINT` | built-in text | Ephemeral hint sent when the bot is mentioned in a channel outside `CHAT_CHANNELS`. Empty drops the mention silently. |
 | `MAX_CONCURRENT_CHATS` | `2` | Maximum mention turns running at once. |

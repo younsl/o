@@ -1,6 +1,6 @@
 # kagent-alert-bridge
 
-![Version: 0.3.0](https://img.shields.io/badge/Version-0.3.0-informational?style=flat-square) ![Type: application](https://img.shields.io/badge/Type-application-informational?style=flat-square) ![AppVersion: 0.3.0](https://img.shields.io/badge/AppVersion-0.3.0-informational?style=flat-square)
+![Version: 0.3.1](https://img.shields.io/badge/Version-0.3.1-informational?style=flat-square) ![Type: application](https://img.shields.io/badge/Type-application-informational?style=flat-square) ![AppVersion: 0.3.1](https://img.shields.io/badge/AppVersion-0.3.1-informational?style=flat-square)
 
 Posts Alertmanager alerts to Slack and replies in-thread with an analysis from a kagent agent over A2A
 
@@ -39,7 +39,7 @@ helm install kagent-alert-bridge oci://ghcr.io/younsl/charts/kagent-alert-bridge
 Install a specific version:
 
 ```console
-helm install kagent-alert-bridge oci://ghcr.io/younsl/charts/kagent-alert-bridge --version 0.3.0
+helm install kagent-alert-bridge oci://ghcr.io/younsl/charts/kagent-alert-bridge --version 0.3.1
 ```
 
 ### Install from local chart
@@ -47,7 +47,7 @@ helm install kagent-alert-bridge oci://ghcr.io/younsl/charts/kagent-alert-bridge
 Download kagent-alert-bridge chart and install from local directory:
 
 ```console
-helm pull oci://ghcr.io/younsl/charts/kagent-alert-bridge --untar --version 0.3.0
+helm pull oci://ghcr.io/younsl/charts/kagent-alert-bridge --untar --version 0.3.1
 helm install kagent-alert-bridge ./kagent-alert-bridge
 ```
 
@@ -109,7 +109,6 @@ The following table lists the configurable parameters and their default values.
 | chat.timeout | string | `"180s"` | Deadline for one whole turn including queueing, as a Go duration. The kagent controller caps a turn at 3 minutes in the v0.9.x line, so raising this above `180s` buys nothing; lowering it makes the bridge's own expiry fire first and cancel the task. |
 | chat.sessionTTL | string | `"2h"` | How long a thread keeps its A2A `contextId` after its last turn, as a Go duration. Within it a follow-up mention continues the same agent session. `0s` makes every mention a cold turn. |
 | chat.statusInterval | string | `"10s"` | How often the in-thread status message is rewritten while the agent works, as a Go duration. Each rewrite is one `chat.update` call, so a short interval buys a livelier status line at the cost of Slack rate limit budget. |
-| chat.workingReaction | string | `"eyes"` | Emoji (without colons) placed on the mention while the agent works and removed when the answer lands. Needs `reactions:write`. Empty string disables it. |
 | chat.threadHint | string | `nil` | Ephemeral hint sent when the bot is mentioned at channel level instead of in a thread. `null` keeps the built-in text; an empty string drops the mention silently. |
 | chat.deniedHint | string | `nil` | Ephemeral hint sent when the bot is mentioned in a channel outside `chat.channels`. `null` keeps the built-in text; an empty string drops the mention silently. |
 | chat.maxConcurrent | int | `2` | Maximum mention turns running at once. Separate from `analysis.maxConcurrent` so a burst of questions cannot starve alert analysis of model concurrency. |

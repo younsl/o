@@ -41,7 +41,6 @@ data:
   CHAT_TIMEOUT: {{ .Values.chat.timeout | quote }}
   CHAT_SESSION_TTL: {{ .Values.chat.sessionTTL | quote }}
   CHAT_STATUS_INTERVAL: {{ .Values.chat.statusInterval | quote }}
-  CHAT_WORKING_REACTION: {{ .Values.chat.workingReaction | quote }}
   MAX_CONCURRENT_CHATS: {{ .Values.chat.maxConcurrent | quote }}
   {{- with .Values.chat.instructions }}
   CHAT_INSTRUCTIONS: {{ . | quote }}

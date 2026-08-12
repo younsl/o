@@ -85,8 +85,6 @@ chat:
   sessionTTL: "2h"
   # -- (string) How often the in-thread status message is rewritten while the agent works, as a Go duration. Each rewrite is one `chat.update` call, so a short interval buys a livelier status line at the cost of Slack rate limit budget.
   statusInterval: "10s"
-  # -- (string) Emoji (without colons) placed on the mention while the agent works and removed when the answer lands. Needs `reactions:write`. Empty string disables it.
-  workingReaction: "eyes"
   # -- (string) Ephemeral hint sent when the bot is mentioned at channel level instead of in a thread. `null` keeps the built-in text; an empty string drops the mention silently.
   threadHint: null
   # -- (string) Ephemeral hint sent when the bot is mentioned in a channel outside `chat.channels`. `null` keeps the built-in text; an empty string drops the mention silently.

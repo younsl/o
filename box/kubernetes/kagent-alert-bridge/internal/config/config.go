@@ -131,9 +131,6 @@ type Config struct {
 	// ChatStatusInterval is how often the in-thread status message is rewritten
 	// while the agent works.
 	ChatStatusInterval time.Duration
-	// ChatWorkingReaction is the emoji placed on the mention while the agent
-	// works. Empty disables it.
-	ChatWorkingReaction string
 	// ChatThreadHint and ChatDeniedHint are the ephemeral hints for the two
 	// drops a person cannot tell from an outage. Empty restores a silent drop.
 	ChatThreadHint     string
@@ -182,7 +179,6 @@ func Load() (Config, error) {
 		ChatTimeout:           180 * time.Second,
 		ChatSessionTTL:        2 * time.Hour,
 		ChatStatusInterval:    10 * time.Second,
-		ChatWorkingReaction:   "eyes",
 		ChatThreadHint:        DefaultThreadHint,
 		ChatDeniedHint:        DefaultDeniedHint,
 		MaxConcurrentChats:    2,
@@ -216,9 +212,6 @@ func Load() (Config, error) {
 	}
 	if v, ok := os.LookupEnv("SLACK_COMPLETED_REACTION"); ok {
 		cfg.CompletedReaction = strings.Trim(strings.TrimSpace(v), ":")
-	}
-	if v, ok := os.LookupEnv("CHAT_WORKING_REACTION"); ok {
-		cfg.ChatWorkingReaction = strings.Trim(strings.TrimSpace(v), ":")
 	}
 	// An explicitly empty hint is meaningful too: it turns that hint off and
 	// restores the silent drop for that case alone.

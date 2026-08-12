@@ -258,8 +258,8 @@ func TestChatDisabledWithoutAnAppToken(t *testing.T) {
 	if cfg.ChatStatusInterval != 10*time.Second {
 		t.Errorf("ChatStatusInterval = %s", cfg.ChatStatusInterval)
 	}
-	if cfg.ChatWorkingReaction != "eyes" || cfg.MaxConcurrentChats != 2 {
-		t.Errorf("reaction %q, slots %d", cfg.ChatWorkingReaction, cfg.MaxConcurrentChats)
+	if cfg.MaxConcurrentChats != 2 {
+		t.Errorf("MaxConcurrentChats = %d", cfg.MaxConcurrentChats)
 	}
 	if cfg.ChatInstructions != DefaultChatInstructions {
 		t.Error("ChatInstructions should default to DefaultChatInstructions")
@@ -279,7 +279,6 @@ func TestChatOverrides(t *testing.T) {
 	t.Setenv("CHAT_TIMEOUT", "90s")
 	t.Setenv("CHAT_SESSION_TTL", "30m")
 	t.Setenv("CHAT_STATUS_INTERVAL", "5s")
-	t.Setenv("CHAT_WORKING_REACTION", ":hourglass:")
 	t.Setenv("MAX_CONCURRENT_CHATS", "4")
 
 	cfg, err := Load()
@@ -304,11 +303,6 @@ func TestChatOverrides(t *testing.T) {
 	if cfg.ChatStatusInterval != 5*time.Second {
 		t.Errorf("ChatStatusInterval = %s", cfg.ChatStatusInterval)
 	}
-	// The colons a person types around an emoji name are stripped, as they are
-	// on the alert reactions.
-	if cfg.ChatWorkingReaction != "hourglass" {
-		t.Errorf("ChatWorkingReaction = %q", cfg.ChatWorkingReaction)
-	}
 	if cfg.MaxConcurrentChats != 4 {
 		t.Errorf("MaxConcurrentChats = %d", cfg.MaxConcurrentChats)
 	}
@@ -325,15 +319,13 @@ func TestChatEmptyValuesDisableTheirFeature(t *testing.T) {
 	t.Setenv("SLACK_APP_TOKEN", "xapp-test")
 	t.Setenv("CHAT_THREAD_HINT", "")
 	t.Setenv("CHAT_DENIED_HINT", "")
-	t.Setenv("CHAT_WORKING_REACTION", "")
 
 	cfg, err := Load()
 	if err != nil {
 		t.Fatalf("Load() error = %v", err)
 	}
-	if cfg.ChatThreadHint != "" || cfg.ChatDeniedHint != "" || cfg.ChatWorkingReaction != "" {
-		t.Errorf("empty values did not disable: %q %q %q",
-			cfg.ChatThreadHint, cfg.ChatDeniedHint, cfg.ChatWorkingReaction)
+	if cfg.ChatThreadHint != "" || cfg.ChatDeniedHint != "" {
+		t.Errorf("empty values did not disable: %q %q", cfg.ChatThreadHint, cfg.ChatDeniedHint)
 	}
 }
 

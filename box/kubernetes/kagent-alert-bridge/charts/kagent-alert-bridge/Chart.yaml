@@ -2,8 +2,8 @@ apiVersion: v2
 name: kagent-alert-bridge
 description: Posts Alertmanager alerts to Slack and replies in-thread with an analysis from a kagent agent over A2A
 type: application
-version: 0.3.0
-appVersion: "0.3.0"
+version: 0.3.1
+appVersion: "0.3.1"
 keywords:
   - alertmanager
   - slack

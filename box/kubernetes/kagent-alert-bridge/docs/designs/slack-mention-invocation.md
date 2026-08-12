@@ -357,7 +357,6 @@ feature:
 | `CHAT_TIMEOUT` | `180s` | Deadline for one whole turn, including queueing. Same as the controller's 3 minute cap. Lower it to make the bridge's own expiry fire first and cancel the task. |
 | `CHAT_SESSION_TTL` | `2h` | How long a thread keeps its `contextId` after its last turn. |
 | `CHAT_STATUS_INTERVAL` | `10s` | How often the in-thread status message is rewritten while the agent works. One `chat.update` call per interval per running turn. |
-| `CHAT_WORKING_REACTION` | `eyes` | Emoji placed on the mention while the agent works and removed when the reply lands. Empty disables it. |
 | `CHAT_THREAD_HINT` | built-in text | Ephemeral hint sent when the bot is mentioned at channel level. Empty drops the mention silently. |
 | `CHAT_DENIED_HINT` | built-in text | Ephemeral hint sent when the bot is mentioned in a channel outside `CHAT_CHANNELS`. Empty drops the mention silently. |
 | `MAX_CONCURRENT_CHATS` | `2` | Maximum mention turns running at once. |
@@ -387,7 +386,7 @@ Everything else the feature needs is already granted for the alert path:
 | Scope | Covers here |
 |-------|-------------|
 | `chat:write` | The thread reply and the ephemeral hint. `chat.postEphemeral` needs no scope of its own. |
-| `reactions:write` | The working reaction on the mention. Already granted when the alert reactions are on. |
+| `reactions:write` | The `:eyes:` a mention carries while it is being answered. Already granted when the alert reactions are on. It is fixed rather than configurable, so unlike the alert reactions it cannot be turned off to drop the scope: the status message carries the state in words, and the emoji only marks a message somebody has scrolled past. |
 | `channels:history`, `channels:read` | Not used by this path. A mention arrives with its text and `thread_ts` in the event payload, so no history read is involved. They stay for the alert parent lookup. |
 
 `auth.test`, which resolves the bot's own user id for the loop guard, needs no

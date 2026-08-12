@@ -21,6 +21,14 @@ import (
 // only has to outlive Slack's own retry.
 const envelopeTTL = 5 * time.Minute
 
+// workingReaction marks the mention while the agent works and is removed when
+// the answer lands. Unlike the alert reactions it is not configurable: the
+// status message already carries the state in words, so the emoji is only
+// there to mark the message somebody has scrolled past, and one fixed choice
+// is one less thing to keep consistent across deployments. It makes
+// reactions:write a requirement wherever mentions are enabled.
+const workingReaction = "eyes"
+
 // mentionPattern matches the leading user mention, which Slack renders as a
 // link rather than as the handle people typed. The anchor is what keeps this
 // to the leading one: a mention further in the text names somebody the question
@@ -168,20 +176,18 @@ func (b *Bridge) handleMention(ev socket.Event, text, agent string, logger *slog
 	b.metrics.ChatInflight.Inc()
 	defer b.metrics.ChatInflight.Dec()
 
-	if b.cfg.ChatWorkingReaction != "" {
-		if err := b.slack.AddReaction(ctx, ev.ChannelID, ev.TS, b.cfg.ChatWorkingReaction); err != nil {
-			logger.Warn("failed to add working reaction", "error", err)
-		}
-		// The removal gets its own context: by the time it runs, ctx has often
-		// been consumed by the agent call the reaction was covering.
-		defer func() {
-			rctx, rcancel := context.WithTimeout(context.Background(), 30*time.Second)
-			defer rcancel()
-			if err := b.slack.RemoveReaction(rctx, ev.ChannelID, ev.TS, b.cfg.ChatWorkingReaction); err != nil {
-				logger.Warn("failed to remove working reaction", "error", err)
-			}
-		}()
+	if err := b.slack.AddReaction(ctx, ev.ChannelID, ev.TS, workingReaction); err != nil {
+		logger.Warn("failed to add working reaction", "error", err)
 	}
+	// The removal gets its own context: by the time it runs, ctx has often
+	// been consumed by the agent call the reaction was covering.
+	defer func() {
+		rctx, rcancel := context.WithTimeout(context.Background(), 30*time.Second)
+		defer rcancel()
+		if err := b.slack.RemoveReaction(rctx, ev.ChannelID, ev.TS, workingReaction); err != nil {
+			logger.Warn("failed to remove working reaction", "error", err)
+		}
+	}()
 
 	sessionKey := ev.ChannelID + "/" + ev.ThreadTS
 	contextID := b.sessions.get(sessionKey, b.now())

@@ -26,7 +26,6 @@ func chatConfig() config.Config {
 	cfg.ChatTimeout = 2 * time.Second
 	cfg.ChatSessionTTL = time.Hour
 	cfg.ChatStatusInterval = 10 * time.Millisecond
-	cfg.ChatWorkingReaction = "eyes"
 	cfg.ChatThreadHint = config.DefaultThreadHint
 	cfg.ChatDeniedHint = config.DefaultDeniedHint
 	cfg.ChatInstructions = "answer directly"
@@ -98,6 +97,12 @@ func TestMentionAnswersInThread(t *testing.T) {
 	if !strings.Contains(prompt, "answer directly") {
 		t.Fatalf("prompt is %q, want the chat instructions appended", prompt)
 	}
+	// The reaction marks the mention itself, not the thread parent, and it is
+	// gone once the answer has landed.
+	if reactions := sc.allReactions(); len(reactions) != 2 ||
+		reactions[0] != "add eyes 1700000001.000100" || reactions[1] != "remove eyes 1700000001.000100" {
+		t.Fatalf("working reaction not placed on the mention: %v", reactions)
+	}
 }
 
 // Only the mention that addressed the bot is stripped. One further in the text
@@ -134,10 +139,6 @@ func TestMentionStripsATrailingHandle(t *testing.T) {
 	prompt := agent.prompts[0]
 	if !strings.HasPrefix(prompt, "이 알림 원인이 뭐야\n") {
 		t.Fatalf("prompt is %q, want the trailing handle stripped", prompt)
-	}
-	if reactions := sc.allReactions(); len(reactions) != 2 ||
-		reactions[0] != "add eyes 1700000001.000100" || reactions[1] != "remove eyes 1700000001.000100" {
-		t.Fatalf("working reaction not placed on the mention: %v", reactions)
 	}
 }
 
