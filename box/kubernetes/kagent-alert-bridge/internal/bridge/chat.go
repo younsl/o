@@ -21,10 +21,15 @@ import (
 // only has to outlive Slack's own retry.
 const envelopeTTL = 5 * time.Minute
 
-// mentionPattern matches a leading user mention, which Slack renders as a link
-// rather than as the handle people typed. Only the leading one is stripped: a
-// mention further in the text is part of the question.
-var mentionPattern = regexp.MustCompile(`<@[A-Z0-9]+(\|[^>]*)?>`)
+// mentionPattern matches the leading user mention, which Slack renders as a
+// link rather than as the handle people typed. The anchor is what keeps this
+// to the leading one: a mention further in the text names somebody the question
+// is about, and stripping it would turn "did @younsl deploy this?" into a
+// question about nobody.
+//
+// It matches on the link form rather than on a handle, so the bot's display
+// name is Slack's business alone and renaming the app changes nothing here.
+var mentionPattern = regexp.MustCompile(`^\s*<@[A-Z0-9]+(\|[^>]*)?>`)
 
 // HandleEvent routes one Socket Mode event. It runs on the read loop, so
 // everything past the gating happens on a goroutine of its own.
@@ -84,11 +89,26 @@ func (b *Bridge) mentionText(ev socket.Event) (string, string) {
 	if !b.chatChannelAllowed(context.Background(), ev.ChannelID) {
 		return "", "channel_denied"
 	}
-	text := strings.TrimSpace(mentionPattern.ReplaceAllString(ev.Text, " "))
+	text := b.question(ev.Text)
 	if text == "" {
 		return "", "empty"
 	}
 	return text, ""
+}
+
+// question turns the mention text into the prompt: the handle that addressed
+// the bot is dropped, and every other mention is kept because it names
+// somebody the question is about.
+//
+// A trailing "look at this @bot" is stripped too, which the leading pattern
+// alone cannot do. That one needs the bot's own id, so it only applies when
+// auth.test resolved it.
+func (b *Bridge) question(text string) string {
+	text = mentionPattern.ReplaceAllString(text, " ")
+	if b.botUserID != "" {
+		text = strings.ReplaceAll(text, "<@"+b.botUserID+">", " ")
+	}
+	return strings.TrimSpace(text)
 }
 
 // hint answers the two drops a person has no way to tell from an outage. The

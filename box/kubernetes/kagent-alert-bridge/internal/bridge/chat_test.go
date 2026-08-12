@@ -98,6 +98,43 @@ func TestMentionAnswersInThread(t *testing.T) {
 	if !strings.Contains(prompt, "answer directly") {
 		t.Fatalf("prompt is %q, want the chat instructions appended", prompt)
 	}
+}
+
+// Only the mention that addressed the bot is stripped. One further in the text
+// names somebody the question is about, and losing it would leave the agent
+// answering about nobody.
+func TestMentionKeepsMentionsInsideTheQuestion(t *testing.T) {
+	sc := newFakeSlack()
+	agent := &fakeAgent{reply: "answered"}
+	b := newChatBridge(t, chatConfig(), sc, agent)
+
+	b.HandleEvent(context.Background(), mention(func(ev *socket.Event) {
+		ev.Text = "<@" + botUser + "> <@U999>가 배포한 게 맞아?"
+	}))
+	b.Wait(3 * time.Second)
+
+	prompt := agent.prompts[0]
+	if !strings.HasPrefix(prompt, "<@U999>가 배포한 게 맞아?") {
+		t.Fatalf("prompt is %q, want only the leading mention stripped", prompt)
+	}
+}
+
+// A handle typed at the end addresses the bot just as much as one at the start,
+// and it is the one case the leading pattern cannot catch on its own.
+func TestMentionStripsATrailingHandle(t *testing.T) {
+	sc := newFakeSlack()
+	agent := &fakeAgent{reply: "answered"}
+	b := newChatBridge(t, chatConfig(), sc, agent)
+
+	b.HandleEvent(context.Background(), mention(func(ev *socket.Event) {
+		ev.Text = "이 알림 원인이 뭐야 <@" + botUser + ">"
+	}))
+	b.Wait(3 * time.Second)
+
+	prompt := agent.prompts[0]
+	if !strings.HasPrefix(prompt, "이 알림 원인이 뭐야\n") {
+		t.Fatalf("prompt is %q, want the trailing handle stripped", prompt)
+	}
 	if reactions := sc.allReactions(); len(reactions) != 2 ||
 		reactions[0] != "add eyes 1700000001.000100" || reactions[1] != "remove eyes 1700000001.000100" {
 		t.Fatalf("working reaction not placed on the mention: %v", reactions)
