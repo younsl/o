@@ -29,7 +29,7 @@
   <!-- boxes -->
   <rect x="30" y="116" width="200" height="80" rx="6" fill="#0d1b2a" stroke="#58a6ff" stroke-width="1.6"/>
   <text x="130" y="142" text-anchor="middle" fill="#cfe6ff" font-size="13">CapacityBuffer</text>
-  <text x="130" y="162" text-anchor="middle" fill="#6e8ba6" font-size="10">autoscaling.x-k8s.io/v1alpha1</text>
+  <text x="130" y="162" text-anchor="middle" fill="#6e8ba6" font-size="10">autoscaling.x-k8s.io/v1beta1</text>
   <text x="130" y="178" text-anchor="middle" fill="#6e8ba6" font-size="10">replicas or percentage</text>
 
   <rect x="280" y="116" width="200" height="80" rx="6" fill="#141414" stroke="#3a3a3a"/>
@@ -45,7 +45,7 @@
   <rect x="780" y="116" width="200" height="80" rx="6" fill="#141414" stroke="#3a3a3a"/>
   <text x="880" y="142" text-anchor="middle" fill="#e8e8e8" font-size="13">warm Node</text>
   <text x="880" y="162" text-anchor="middle" fill="#7a7a7a" font-size="10">allocatable kept free</text>
-  <text x="880" y="178" text-anchor="middle" fill="#7a7a7a" font-size="10">consolidation blocked</text>
+  <text x="880" y="178" text-anchor="middle" fill="#7a7a7a" font-size="10">consolidation keeps headroom</text>
 
   <rect x="780" y="244" width="200" height="64" rx="6" fill="#141414" stroke="#3a3a3a"/>
   <text x="880" y="270" text-anchor="middle" fill="#e8e8e8" font-size="13">real pod binds</text>
