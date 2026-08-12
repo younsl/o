@@ -258,19 +258,18 @@ func (b *Bridge) chatChannelID(ctx context.Context, entry string) string {
 type progressState struct {
 	mu    sync.Mutex
 	state string
-	polls int
 }
 
 func (p *progressState) record(pr a2a.Progress) {
 	p.mu.Lock()
 	defer p.mu.Unlock()
-	p.state, p.polls = pr.State, pr.Polls
+	p.state = pr.State
 }
 
-func (p *progressState) read() (string, int) {
+func (p *progressState) read() string {
 	p.mu.Lock()
 	defer p.mu.Unlock()
-	return p.state, p.polls
+	return p.state
 }
 
 // statusMessage is the single thread reply a turn owns. It starts as a "queued"
@@ -385,8 +384,7 @@ func (s *statusMessage) track(state *progressState, agent string) func() {
 				return
 			case <-ticker.C:
 				ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
-				taskState, polls := state.read()
-				s.set(ctx, workingStatus(agent, s.now().Sub(s.started), taskState, polls))
+				s.set(ctx, workingStatus(agent, s.now().Sub(s.started), state.read()))
 				cancel()
 			}
 		}
@@ -403,16 +401,29 @@ func queuedStatus() string {
 	return ":hourglass_flowing_sand: 질문을 받았습니다. 실행 슬롯이 비는 대로 확인을 시작합니다."
 }
 
-// workingStatus renders the live status line. It names the agent, how long the
-// turn has been running, and the task state the controller reports, so a turn
-// that takes minutes never looks like a bot that stopped answering.
-func workingStatus(agent string, elapsed time.Duration, state string, polls int) string {
-	line := fmt.Sprintf(":mag: kagent의 %s 에이전트가 확인 중입니다. (경과 %s", agent, koreanDuration(elapsed))
-	if state != "" {
-		line += ", 상태 " + state
+// workingStatus renders the live status line: what the agent is doing and how
+// long it has been at it, so a turn that takes minutes never looks like a bot
+// that stopped answering.
+//
+// The poll count the progress hook also carries is deliberately absent. It is
+// the elapsed time divided by KAGENT_POLL_INTERVAL, so it repeats a number the
+// line already shows, and the one case where it diverges, a controller that
+// stopped answering, is what agent_requests_total reports.
+func workingStatus(agent string, elapsed time.Duration, state string) string {
+	return fmt.Sprintf(":mag: kagent의 %s 에이전트가 %s (경과 %s)", agent, statePhrase(state), koreanDuration(elapsed))
+}
+
+// statePhrase turns an A2A task state into the sentence it belongs in. The raw
+// state is a protocol token, not something a reader in Slack can act on, so
+// only an unrecognised one is shown verbatim, where it is a debugging aid
+// rather than noise.
+func statePhrase(state string) string {
+	switch state {
+	case "", "submitted":
+		return "작업을 시작했습니다."
+	case "working":
+		return "확인 중입니다."
+	default:
+		return fmt.Sprintf("확인 중입니다. (상태 %s)", state)
 	}
-	if polls > 0 {
-		line += fmt.Sprintf(", 조회 %d회", polls)
-	}
-	return line + ")"
 }

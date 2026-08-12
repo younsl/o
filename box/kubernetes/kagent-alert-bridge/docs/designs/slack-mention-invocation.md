@@ -279,8 +279,13 @@ So the turn owns exactly one thread message from beginning to end:
 
 1. It is posted the moment the mention is accepted, before a slot is even held,
    which is what tells the asker the question was taken rather than dropped.
-2. It is rewritten every `CHAT_STATUS_INTERVAL` with the agent, the elapsed
-   time, the task state the controller last reported, and the poll count.
+2. It is rewritten every `CHAT_STATUS_INTERVAL` with the agent, what it is
+   doing, and how long it has been at it. The task state the controller
+   reports picks the sentence rather than being printed: `submitted` and
+   `working` are protocol tokens, not something a reader in Slack can act on,
+   so only an unrecognised state is shown verbatim. The poll count the
+   progress hook also carries is left out entirely, being the elapsed time
+   divided by `KAGENT_POLL_INTERVAL`.
 3. It is rewritten one last time with the answer, or with the reason there is
    none.
 

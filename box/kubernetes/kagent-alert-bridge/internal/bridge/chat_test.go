@@ -124,8 +124,12 @@ func TestMentionReportsProgressWhileTheAgentWorks(t *testing.T) {
 	if !strings.Contains(updates[0].text, "확인 중입니다") {
 		t.Fatalf("status while working is %q, want the working note", updates[0].text)
 	}
-	if !strings.Contains(updates[0].text, "working") || !strings.Contains(updates[0].text, "조회 2회") {
-		t.Fatalf("status %q does not carry the task state the agent reported", updates[0].text)
+	if !strings.Contains(updates[0].text, "경과") || !strings.Contains(updates[0].text, "alert-triage-agent") {
+		t.Fatalf("status %q is missing the agent or the elapsed time", updates[0].text)
+	}
+	// The raw A2A state is a protocol token, not something a reader can act on.
+	if strings.Contains(updates[0].text, "working") || strings.Contains(updates[0].text, "조회") {
+		t.Fatalf("status %q leaks polling internals into the thread", updates[0].text)
 	}
 	if updates[0].ts != "ts-parent" || updates[0].channel != testChannel {
 		t.Fatalf("status rewritten on %s/%s, want the status message itself", updates[0].channel, updates[0].ts)
@@ -478,16 +482,23 @@ func TestMentionTruncatesLongReplies(t *testing.T) {
 	}
 }
 
-func TestWorkingStatusCarriesAgentElapsedAndState(t *testing.T) {
-	got := workingStatus("alert-triage-agent", 90*time.Second, "working", 3)
-	for _, want := range []string{"alert-triage-agent", "1분 30초", "working", "조회 3회"} {
+func TestWorkingStatusReadsAsASentence(t *testing.T) {
+	got := workingStatus("alert-triage-agent", 90*time.Second, "working")
+	for _, want := range []string{"alert-triage-agent", "확인 중입니다", "1분 30초"} {
 		if !strings.Contains(got, want) {
 			t.Fatalf("status %q is missing %q", got, want)
 		}
 	}
-	// A submission that has not been polled yet has nothing to count.
-	if got := workingStatus("agent", time.Second, "", 0); strings.Contains(got, "조회") {
-		t.Fatalf("status %q counts polls that have not happened", got)
+
+	// A task that has been accepted but not started yet says so, rather than
+	// claiming work that is not happening.
+	if got := workingStatus("agent", time.Second, "submitted"); !strings.Contains(got, "시작했습니다") {
+		t.Fatalf("submitted status is %q", got)
+	}
+	// An unrecognised state is worth showing verbatim: there it is a debugging
+	// aid rather than noise.
+	if got := workingStatus("agent", time.Second, "auth-required"); !strings.Contains(got, "auth-required") {
+		t.Fatalf("unknown state dropped from %q", got)
 	}
 }
 
