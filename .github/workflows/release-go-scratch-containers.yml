@@ -9,6 +9,7 @@ on:
       - 'box/kubernetes/ec2-metadata-exporter/Dockerfile'
       - 'box/kubernetes/aws-vpn-maintenance-handler/Dockerfile'
       - 'box/kubernetes/kagent-alert-bridge/Dockerfile'
+      - 'box/kubernetes/filesystem-cleaner/Dockerfile'
   workflow_dispatch:
     inputs:
       project:
@@ -20,6 +21,7 @@ on:
           - ec2-metadata-exporter
           - aws-vpn-maintenance-handler
           - kagent-alert-bridge
+          - filesystem-cleaner
       force:
         description: "Rebuild even if the version already exists on GHCR (overwrites the tag)"
         required: false
@@ -79,6 +81,7 @@ jobs:
             "ec2-metadata-exporter:ec2-metadata-exporter"
             "aws-vpn-maintenance-handler:aws-vpn-maintenance-handler"
             "kagent-alert-bridge:kagent-alert-bridge"
+            "filesystem-cleaner:filesystem-cleaner"
           )
 
           TEST_JSON="[]"

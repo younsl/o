@@ -1,0 +1,47 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 860 540" font-family="-apple-system, 'Segoe UI', Helvetica, Arial, sans-serif">
+  <defs>
+    <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M 0 0 L 10 5 L 0 10 z" fill="#111111"/>
+    </marker>
+  </defs>
+
+  <!-- background -->
+  <rect x="0" y="0" width="860" height="540" fill="#ffffff"/>
+
+  <!-- cluster boundary -->
+  <rect x="20" y="24" width="820" height="492" rx="12" fill="none" stroke="#111111" stroke-width="1.5" stroke-dasharray="7 5"/>
+  <text x="44" y="54" font-size="15" font-weight="600" fill="#111111">Kubernetes Cluster</text>
+
+  <!-- pod -->
+  <rect x="80" y="84" width="700" height="192" rx="10" fill="#f4f4f4" stroke="#111111" stroke-width="1.5"/>
+  <text x="104" y="114" font-size="14" font-weight="600" fill="#111111">Pod</text>
+  <text x="144" y="114" font-size="13" fill="#6b6b6b">actions-runner</text>
+
+  <!-- main container -->
+  <rect x="116" y="136" width="280" height="112" rx="6" fill="#ffffff" stroke="#111111" stroke-width="1.5"/>
+  <text x="256" y="184" font-size="15" font-weight="600" fill="#111111" text-anchor="middle">actions-runner</text>
+  <text x="256" y="208" font-size="12.5" fill="#6b6b6b" text-anchor="middle">main container</text>
+
+  <!-- sidecar container -->
+  <rect x="464" y="136" width="280" height="112" rx="6" fill="#111111" stroke="#111111" stroke-width="1.5"/>
+  <text x="604" y="184" font-size="15" font-weight="600" fill="#ffffff" text-anchor="middle">filesystem-cleaner</text>
+  <text x="604" y="208" font-size="12.5" fill="#bdbdbd" text-anchor="middle">sidecar &#183; interval mode</text>
+
+  <!-- volume mount arrows -->
+  <path d="M 256 248 L 256 330 L 384 396" fill="none" stroke="#111111" stroke-width="1.5" marker-end="url(#arrow)"/>
+  <path d="M 604 248 L 604 330 L 476 396" fill="none" stroke="#111111" stroke-width="1.5" marker-end="url(#arrow)"/>
+
+  <text x="248" y="306" font-size="12.5" fill="#6b6b6b" text-anchor="end">writes build artifacts</text>
+  <text x="248" y="324" font-size="12.5" fill="#6b6b6b" text-anchor="end">and caches</text>
+  <text x="612" y="306" font-size="12.5" fill="#6b6b6b" text-anchor="start">monitors disk usage,</text>
+  <text x="612" y="324" font-size="12.5" fill="#6b6b6b" text-anchor="start">deletes files over threshold</text>
+
+  <!-- persistent volume (cylinder) -->
+  <path d="M 320 416 L 320 476 A 110 20 0 0 0 540 476 L 540 416" fill="#e8e8e8" stroke="#111111" stroke-width="1.5"/>
+  <ellipse cx="430" cy="416" rx="110" ry="20" fill="#f4f4f4" stroke="#111111" stroke-width="1.5"/>
+  <text x="430" y="458" font-size="14" font-weight="600" fill="#111111" text-anchor="middle">PersistentVolume</text>
+  <text x="430" y="478" font-size="12.5" fill="#6b6b6b" text-anchor="middle" font-family="SFMono-Regular, Menlo, Consolas, monospace">/home/runner/_work</text>
+
+  <!-- shared mount note -->
+  <text x="430" y="374" font-size="12" fill="#6b6b6b" text-anchor="middle">shared volumeMount</text>
+</svg>

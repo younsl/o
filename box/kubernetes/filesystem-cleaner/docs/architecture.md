@@ -2,7 +2,7 @@
 
 This document explains how filesystem-cleaner is built and organized. You'll learn:
 
-- **What each component does** - Clear responsibilities for every module
+- **What each component does** - Clear responsibilities for every package
 - **How they work together** - Data flow from CLI input to file deletion
 - **Why this design** - Single responsibility principle in action
 
@@ -10,110 +10,87 @@ If you're contributing code, debugging, or just curious about the internals, sta
 
 ## Design Philosophy
 
-filesystem-cleaner follows the Unix philosophy: **"Do one thing and do it well"**. Each component has a single, well-defined responsibility.
+filesystem-cleaner follows the Unix philosophy: **"Do one thing and do it well"**. Each package has a single, well-defined responsibility.
 
 ## Component Overview
 
 ```
-┌─────────────┐
-│   main.rs   │  Entry point - CLI initialization & signal handling
-└──────┬──────┘
-       │
-       ▼
-┌─────────────┐
-│  cleaner.rs │  Orchestrator - Schedules cleanup & monitors disk usage
-└──────┬──────┘
-       │
-       ├──────────────┐
-       │              │
-       ▼              ▼
-┌─────────────┐  ┌─────────────┐
-│ matcher.rs  │  │ scanner.rs  │
-│ Pattern     │  │ File system │
-│ matching    │  │ traversal   │
-└─────────────┘  └─────────────┘
+┌──────────────────────────┐
+│ cmd/filesystem-cleaner   │  Entry point - CLI initialization & signal handling
+└────────────┬─────────────┘
+             │
+             ▼
+┌──────────────────────────┐
+│ internal/cleaner         │  Orchestrator - Schedules cleanup & monitors disk usage
+└────────────┬─────────────┘
+             │
+      ┌──────┴──────┬──────────────┐
+      ▼             ▼              ▼
+┌───────────┐ ┌───────────┐ ┌───────────┐
+│ internal/ │ │ internal/ │ │ internal/ │
+│ matcher   │ │ scanner   │ │ disk      │
+│ Pattern   │ │ Directory │ │ Filesystem│
+│ matching  │ │ traversal │ │ usage     │
+└───────────┘ └───────────┘ └───────────┘
 ```
 
 ## Components
 
-### main.rs (91 lines)
+### cmd/filesystem-cleaner
 **Responsibility**: Application entry point
 
-- Parse CLI arguments
-- Setup logging
-- Handle shutdown signals (SIGTERM, SIGINT)
+- Parse CLI arguments via `internal/config`
+- Set up structured logging with `log/slog`
+- Handle shutdown signals (SIGTERM, SIGINT) via `signal.NotifyContext`
 - Start the cleaner
 
-**Dependencies**: `config`, `cleaner`
-
-### config.rs (156 lines)
+### internal/config
 **Responsibility**: Configuration management
 
-- Define CLI arguments with Clap
-- Parse environment variables
-- Validate configuration values
-- Define `CleanupMode` enum (Once/Interval)
+- Define CLI flags with the standard `flag` package
+- Resolve environment variable fallbacks (flag > env > default)
+- Validate configuration values (threshold range, mode, log level)
+- Define `CleanupMode` (`once`/`interval`)
 
-**Dependencies**: None
-
-### matcher.rs (97 lines)
+### internal/matcher
 **Responsibility**: Pattern matching logic
 
-Answers one question: *"Does this file path match the configured patterns?"*
+Answers one question: *"Does this relative path match the configured glob patterns?"*
+
+Glob patterns are translated into anchored regular expressions at startup. The semantics mirror the Rust globset crate (default settings) used before the Go port: `*` and `?` match across `/`, and `**` as a full component matches zero or more path components.
 
 **Key Methods**:
-- `should_exclude(path) -> bool` - Check if path matches exclude patterns
-- `should_include(path) -> bool` - Check if path matches include patterns
+- `ShouldExclude(path) bool` - Check if path matches exclude patterns
+- `ShouldInclude(path) bool` - Check if path matches include patterns
 
-**Example**:
-```rust
-let matcher = PatternMatcher::new(
-    &["*".to_string()],
-    &["**/.git/**".to_string()]
-)?;
-
-matcher.should_exclude("project/.git/config")  // true
-matcher.should_exclude("project/src/main.rs")  // false
-```
-
-**Dependencies**: `globset`
-
-### scanner.rs (193 lines)
+### internal/scanner
 **Responsibility**: File system traversal
 
 Walks directory trees and collects files based on pattern rules.
 
-**Key Methods**:
-- `scan(base_path) -> Vec<FileInfo>` - Collect all matching files
-- `walk_directory()` - Recursively traverse directories
-
 **How it works**:
-1. Start from `base_path`
-2. For each file/directory:
-   - Calculate relative path
-   - Ask `matcher` if it should be excluded
-   - If directory and not excluded → recurse
-   - If file and passes filters → collect
-3. Return list of files to delete
+1. Start from the target path
+2. For each entry:
+   - Calculate the relative path (forward slashes)
+   - Skip symbolic links (prevents infinite loops and deletions outside target paths)
+   - If directory and not excluded, recurse
+   - If file, keep it when it passes exclude then include filters
+3. Return the list of files to delete with their sizes
 
-**Example**:
-```rust
-let scanner = FileScanner::new(&matcher);
-let files = scanner.scan("/home/runner/_work");
-// Returns: Vec<FileInfo> with paths and sizes
-```
+### internal/disk
+**Responsibility**: Filesystem usage
 
-**Dependencies**: `matcher`
+Reports the used-space percentage of the filesystem containing a path via `statfs(2)`. Usage is `(total - available) / total`, where available is the space usable by unprivileged processes.
 
-### cleaner.rs (251 lines)
+### internal/cleaner
 **Responsibility**: Cleanup orchestration
 
 Coordinates all components to perform the actual cleanup operation.
 
 **Key Responsibilities**:
 - **Scheduling**: Run once or periodically based on `CleanupMode`
-- **Disk monitoring**: Check if usage exceeds threshold
-- **Coordination**: Use `scanner` to find files, then delete them
+- **Disk monitoring**: Check if usage exceeds the threshold
+- **Coordination**: Use the scanner to find files, then delete them
 - **Logging**: Report cleanup progress and results
 
 **Workflow**:
@@ -121,21 +98,18 @@ Coordinates all components to perform the actual cleanup operation.
 1. Check disk usage
    ↓
 2. If > threshold:
-   ├─> Create scanner with matcher
-   ├─> Collect files to delete
+   ├─> Scan target path for matching files
    ├─> Delete files (or dry-run)
    └─> Log results (freed space, file count)
 3. If interval mode:
-   └─> Sleep and repeat
+   └─> Wait for the next tick and repeat
 ```
 
-**Example**:
-```rust
-let cleaner = Cleaner::new(args)?;
-cleaner.run().await?;  // Runs cleanup cycle(s)
-```
+### internal/bytesize
+**Responsibility**: Human-readable byte formatting for log output (e.g. `1.5 MiB`).
 
-**Dependencies**: `config`, `matcher`, `scanner`, `sysinfo`, `tokio`
+### internal/version
+**Responsibility**: Build-time version information injected via `-ldflags -X`.
 
 ## Data Flow
 
@@ -158,78 +132,47 @@ User → CLI Args → Config → Cleaner
 ## Design Principles
 
 ### 1. Single Responsibility Principle
-Each component does **one thing only**:
-- `matcher` → Pattern matching
-- `scanner` → File traversal
-- `cleaner` → Orchestration
+Each package does **one thing only**:
+- `matcher` - Pattern matching
+- `scanner` - File traversal
+- `disk` - Filesystem usage
+- `cleaner` - Orchestration
 
 ### 2. Dependency Direction
 ```
 cleaner → scanner → matcher
    ↓
-config
+config, disk
 ```
 
-Dependencies flow in one direction. Lower-level components (`matcher`, `scanner`) don't know about higher-level ones (`cleaner`).
+Dependencies flow in one direction. Lower-level packages (`matcher`, `scanner`, `disk`) don't know about higher-level ones (`cleaner`).
 
 ### 3. Testability
-Each component has its own unit tests:
-- `matcher`: 5 tests for pattern matching edge cases
-- `scanner`: 2 tests for file collection scenarios
-- All tests run independently
+Each package has its own unit tests using `t.TempDir()` for real filesystem operations, and the test suite runs with the race detector in CI.
 
 ### 4. Unix Philosophy
 > "Write programs that do one thing and do it well. Write programs to work together."
 
-- Small, focused modules (< 200 lines each)
+- Small, focused packages
 - Clear interfaces between components
 - Easy to understand, test, and modify
 
 ## Adding New Features
 
 **Want to add a new pattern type?**
-→ Modify `matcher.rs` only
+→ Modify `internal/matcher` only
 
 **Want to change directory traversal logic?**
-→ Modify `scanner.rs` only
+→ Modify `internal/scanner` only
 
 **Want to add a new scheduling mode?**
-→ Modify `cleaner.rs` only
+→ Modify `internal/cleaner` only
 
-Each change is **isolated to one component**, making the codebase easy to maintain and extend.
-
-## Testing Strategy
-
-**Unit Tests**: Each module (`matcher`, `scanner`) tests its own logic independently.
-
-**Integration**: `cleaner` tests that components work together correctly.
-
-**Example**: Testing glob patterns
-```rust
-// matcher_tests.rs
-#[test]
-fn test_nested_glob_patterns() {
-    let matcher = PatternMatcher::new(
-        &["*".to_string()],
-        &["**/groovy-dsl/**".to_string()]
-    ).unwrap();
-
-    assert!(matcher.should_exclude("build/groovy-dsl/cache.jar"));
-}
-```
+Each change is **isolated to one package**, making the codebase easy to maintain and extend.
 
 ## Performance Considerations
 
 - **Scanner**: Traverses directories only once per cleanup cycle
-- **Matcher**: Pre-compiled glob patterns (via `GlobSet`) for fast matching
-- **Memory**: Files collected in memory before deletion (acceptable for typical workspace sizes)
-
-## Future Improvements
-
-Potential enhancements that maintain single responsibility:
-
-1. **Add `disk.rs`** - Extract disk monitoring logic from `cleaner.rs`
-2. **Add `reporter.rs`** - Separate logging/metrics from cleanup logic
-3. **Add `filter.rs`** - Advanced file filtering (size, age, etc.)
-
-Each improvement would be a **new, focused component** rather than adding complexity to existing ones.
+- **Matcher**: Glob patterns are compiled to regular expressions once at startup
+- **Memory**: Files are collected in memory before deletion (acceptable for typical workspace sizes)
+- **Binary**: Statically linked with CGO disabled, packaged on `scratch`

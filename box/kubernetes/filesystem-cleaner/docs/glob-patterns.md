@@ -20,7 +20,7 @@ Glob patterns are applied **only to files and directories within `--target-paths
 
 | Pattern | Description | Example |
 |---------|-------------|---------|
-| `*` | Match any characters except `/` | `*.jar` matches all JAR files |
+| `*` | Match any characters, including `/` | `*.jar` matches all JAR files at any depth |
 | `**` | Match zero or more directories | `**/build/**` matches at any depth |
 | `?` | Match exactly one character | `file?.txt` matches `file1.txt` |
 | `[abc]` | Match one character from set | `test[123].log` matches `test1.log` |

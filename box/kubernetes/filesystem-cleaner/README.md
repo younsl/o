@@ -1,36 +1,17 @@
 # filesystem-cleaner
 
 [![GitHub Container Registry](https://img.shields.io/badge/ghcr.io-younsl%2Ffilesystem--cleaner-000000?style=flat-square&logo=github&logoColor=white)](https://github.com/younsl/o/pkgs/container/filesystem-cleaner)
-[![Rust](https://img.shields.io/badge/rust-1.96.0-000000?style=flat-square&logo=rust&logoColor=white)](./Cargo.toml)
+[![Go](https://img.shields.io/badge/go-1.26.5-000000?style=flat-square&logo=go&logoColor=white)](./go.mod)
 
-A lightweight [Rust](https://github.com/rust-lang/rust)-based container image for automatic filesystem cleanup in [Kubernetes](https://kubernetes.io/docs/concepts/overview/) environments. Designed as a [sidecar container](https://kubernetes.io/docs/concepts/workloads/pods/sidecar-containers/) or [init container](https://kubernetes.io/docs/concepts/workloads/pods/init-containers/), it monitors disk usage and intelligently removes files to prevent storage exhaustion. Particularly useful for GitHub Actions self-hosted runners, CI/CD pipelines, and any workloads that generate temporary files requiring periodic cleanup.
+A lightweight [Go](https://go.dev)-based container image for automatic filesystem cleanup in [Kubernetes](https://kubernetes.io/docs/concepts/overview/) environments. Designed as a [sidecar container](https://kubernetes.io/docs/concepts/workloads/pods/sidecar-containers/) or [init container](https://kubernetes.io/docs/concepts/workloads/pods/init-containers/), it monitors disk usage and intelligently removes files to prevent storage exhaustion. Particularly useful for GitHub Actions self-hosted runners, CI/CD pipelines, and any workloads that generate temporary files requiring periodic cleanup.
 
 ## Architecture
 
 > **Want to understand the internals?** See [Architecture Guide](docs/architecture.md) for component design and Unix philosophy implementation.
 
-```mermaid
----
-title: filesystem-cleaner Architecture
----
-flowchart LR
-    subgraph k8s ["Kubernetes Cluster"]
-        subgraph pod ["Actions Runner Pod"]
-            initContainer["filesystem-cleaner<br/>(initContainer)"]
-            container["actions-runner<br/>(main container)"]
-            volume["`**workspace volume (shared)**
-            /home/runner/_work`"]
-        end
-    end
-    
-    initContainer -->|"cleans filesystem<br/>before runner starts"| container
-    initContainer -.->|mount| volume
-    container -.->|mount| volume
+![filesystem-cleaner architecture](docs/assets/architecture.svg)
 
-    style initContainer fill:darkorange, color:white
-```
-
-The filesystem-cleaner runs as an [init container](https://kubernetes.io/docs/concepts/workloads/pods/init-containers/) before the GitHub Actions runner starts. Both containers share the same workspace [volume](https://kubernetes.io/docs/concepts/storage/volumes/), allowing the cleaner to remove build artifacts and cache data to prevent disk space issues.
+The filesystem-cleaner runs as a [sidecar container](https://kubernetes.io/docs/concepts/workloads/pods/sidecar-containers/) alongside the GitHub Actions runner (or as an [init container](https://kubernetes.io/docs/concepts/workloads/pods/init-containers/) before it starts). Both containers mount the same workspace [volume](https://kubernetes.io/docs/concepts/storage/volumes/), allowing the cleaner to remove build artifacts and cache data to prevent disk space issues.
 
 ## Features
 
@@ -41,6 +22,7 @@ The filesystem-cleaner runs as an [init container](https://kubernetes.io/docs/co
 - **Configurable cleanup patterns** - Include/exclude file patterns
 - **Dry-run mode** - Preview what would be deleted
 - **Non-root execution** - Runs as unprivileged user
+- **Minimal footprint** - Statically linked binary on a `scratch` image, structured logging via `log/slog`
 
 ## Installation
 
@@ -50,7 +32,7 @@ filesystem-cleaner supports multiple deployment methods: standalone binary execu
 
 ```bash
 make build
-make install
+./bin/filesystem-cleaner --help
 ```
 
 ### Docker
@@ -92,7 +74,7 @@ spec:
     - name: workspace
       mountPath: /home/runner/_work
   - name: filesystem-cleaner
-    image: ghcr.io/younsl/filesystem-cleaner:0.1.0
+    image: ghcr.io/younsl/filesystem-cleaner:0.4.0
     args:
     - "--target-paths=/home/runner/_work"
     - "--usage-threshold-percent=80"
@@ -110,8 +92,6 @@ spec:
     emptyDir: {}
 ```
 
-### Kubernetes
-
 #### [Init Container](https://kubernetes.io/docs/concepts/workloads/pods/init-containers/) (Once Mode)
 
 ```yaml
@@ -120,7 +100,7 @@ kind: Pod
 spec:
   initContainers:
   - name: filesystem-cleaner
-    image: ghcr.io/younsl/filesystem-cleaner:0.1.0
+    image: ghcr.io/younsl/filesystem-cleaner:0.4.0
     args:
     - "--target-paths=/home/runner/_work"
     - "--usage-threshold-percent=70"
@@ -157,7 +137,7 @@ spec:
 
 ## Configuration
 
-Configure filesystem-cleaner using command-line flags or environment variables:
+Configure filesystem-cleaner using command-line flags or environment variables. Flags take precedence over environment variables.
 
 | Flag | Environment Variable | Default | Description |
 |------|---------------------|---------|-------------|
@@ -178,28 +158,25 @@ Configure filesystem-cleaner using command-line flags or environment variables:
 # Local build
 make build
 
-# Multi-platform build
-make build-all
-
-# Docker image
+# Docker image (multi-arch, requires buildx)
 make docker-build
 
-# Push to ECR
+# Push to registry
 make docker-push
 ```
 
 ## Development
 
 ```bash
-# Run with debug logging
+# Run with debug logging (dry-run against /tmp)
 make dev
 
-# Run tests
+# Run tests with race detector
 make test
+
+# Coverage gate (70% minimum)
+make coverage
 
 # Format and lint
 make fmt lint
-
-# Check without building
-make check
 ```
