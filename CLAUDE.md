@@ -10,7 +10,8 @@ target lists, or per-tool feature summaries here; read the code or the tool's ow
 
 Monorepo of Kubernetes addons, operators, CLI tools, runtime container images, and a Zola blog.
 Most applications are Rust. Exceptions: `backstage` (Node.js/React), `logstash-with-opensearch-plugin`
-(JVM), `external-ebs-autoresizer` and `ec2-metadata-exporter` (Go).
+(JVM), and the Go applications: `external-ebs-autoresizer`, `ec2-metadata-exporter`,
+`aws-vpn-maintenance-handler`, `kagent-alert-bridge`, `filesystem-cleaner`.
 
 Each addon follows the Unix philosophy of doing one thing well. Prefer a new small component over
 extending an existing one past its purpose.
