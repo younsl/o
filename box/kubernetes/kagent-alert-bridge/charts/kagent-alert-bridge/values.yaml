@@ -198,6 +198,18 @@ serviceMonitor:
   # -- Prometheus [MetricRelabelConfigs] to apply to samples before ingestion
   metricRelabelings: []
 
+prometheusRule:
+  # -- (bool) Create a Prometheus Operator PrometheusRule. Requires the monitoring.coreos.com/v1 CRD.
+  enabled: false
+  # -- (string) Namespace for the PrometheusRule; empty uses the release namespace
+  namespace: ""
+  # -- (object) Extra labels for the PrometheusRule. Set whatever label the Prometheus instance selects rules by.
+  labels: {}
+  # -- (object) Annotations for the PrometheusRule
+  annotations: {}
+  # -- (list) Rule groups, passed through as written. Empty creates no rule, so enabling this alone alerts on nothing.
+  groups: []
+
 # -- (object) Pod resource requests and limits
 resources:
   requests:

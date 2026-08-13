@@ -1,6 +1,6 @@
 # kagent-alert-bridge
 
-![Version: 0.3.1](https://img.shields.io/badge/Version-0.3.1-informational?style=flat-square) ![Type: application](https://img.shields.io/badge/Type-application-informational?style=flat-square) ![AppVersion: 0.3.1](https://img.shields.io/badge/AppVersion-0.3.1-informational?style=flat-square)
+![Version: 0.4.0](https://img.shields.io/badge/Version-0.4.0-informational?style=flat-square) ![Type: application](https://img.shields.io/badge/Type-application-informational?style=flat-square) ![AppVersion: 0.3.1](https://img.shields.io/badge/AppVersion-0.3.1-informational?style=flat-square)
 
 Posts Alertmanager alerts to Slack and replies in-thread with an analysis from a kagent agent over A2A
 
@@ -39,7 +39,7 @@ helm install kagent-alert-bridge oci://ghcr.io/younsl/charts/kagent-alert-bridge
 Install a specific version:
 
 ```console
-helm install kagent-alert-bridge oci://ghcr.io/younsl/charts/kagent-alert-bridge --version 0.3.1
+helm install kagent-alert-bridge oci://ghcr.io/younsl/charts/kagent-alert-bridge --version 0.4.0
 ```
 
 ### Install from local chart
@@ -47,7 +47,7 @@ helm install kagent-alert-bridge oci://ghcr.io/younsl/charts/kagent-alert-bridge
 Download kagent-alert-bridge chart and install from local directory:
 
 ```console
-helm pull oci://ghcr.io/younsl/charts/kagent-alert-bridge --untar --version 0.3.1
+helm pull oci://ghcr.io/younsl/charts/kagent-alert-bridge --untar --version 0.4.0
 helm install kagent-alert-bridge ./kagent-alert-bridge
 ```
 
@@ -153,6 +153,11 @@ The following table lists the configurable parameters and their default values.
 | serviceMonitor.honorLabels | bool | `false` | When true, honorLabels preserves the metric's labels when they collide with the target's labels. |
 | serviceMonitor.relabelings | list | `[]` | Prometheus [RelabelConfigs] to apply to samples before scraping |
 | serviceMonitor.metricRelabelings | list | `[]` | Prometheus [MetricRelabelConfigs] to apply to samples before ingestion |
+| prometheusRule.enabled | bool | `false` | Create a Prometheus Operator PrometheusRule. Requires the monitoring.coreos.com/v1 CRD. |
+| prometheusRule.namespace | string | `""` | Namespace for the PrometheusRule; empty uses the release namespace |
+| prometheusRule.labels | object | `{}` | Extra labels for the PrometheusRule. Set whatever label the Prometheus instance selects rules by. |
+| prometheusRule.annotations | object | `{}` | Annotations for the PrometheusRule |
+| prometheusRule.groups | list | `[]` | Rule groups, passed through as written. Empty creates no rule, so enabling this alone alerts on nothing. |
 | resources | object | `{"limits":{"memory":"128Mi"},"requests":{"cpu":"25m","memory":"64Mi"}}` | Pod resource requests and limits |
 | resizePolicy | list | `[{"resourceName":"cpu","restartPolicy":"NotRequired"},{"resourceName":"memory","restartPolicy":"RestartContainer"}]` | Container resize policy for in-place vertical scaling (requires Kubernetes 1.27+); empty omits the field. CPU resizes in place without a restart; memory resizes restart the container. |
 | terminationGracePeriodSeconds | int | `240` | Grace period for shutdown. Must exceed the longer of `kagent.timeout` and `chat.timeout`, plus the 30s drain margin, so a run already in flight still posts its thread reply. |
