@@ -20,6 +20,7 @@ import { forkliftCoveragePlugin } from '../../plugin';
 import { forkliftCoverageApiRef } from '../../api';
 import { AppliedState, PipelineFile } from '../../api/types';
 import { highlightGitlabCiLine } from '../../utils/gitlabCiHighlight';
+import { formatRelative } from '../../utils/relativeTime';
 import './ProjectDetailPage.css';
 
 const APPLIED_STYLE: Record<
@@ -379,8 +380,15 @@ export const ProjectDetailPage = () => {
               {project.onDefault === null ? '—' : project.onDefault ? 'yes' : 'no'}
             </Field>
             <Field label="Default branch">{project.defaultBranch ?? '—'}</Field>
+            {/* The age leads because it is the part anybody acts on, and the
+                exact timestamp follows because GitLab folds repository pushes
+                and project record edits into this one field, which an age
+                rounded to months would hide. */}
             <Field label="Last activity">
-              {new Date(project.lastActivityAt).toLocaleString()}
+              {formatRelative(project.lastActivityAt)}{' '}
+              <Text variant="body-x-small" color="secondary" weight="regular">
+                ({new Date(project.lastActivityAt).toLocaleString()})
+              </Text>
             </Field>
             <Field label="Last commit by">
               {lastCommitLoading ? '…' : lastCommit?.authorName ?? '—'}

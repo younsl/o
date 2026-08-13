@@ -66,6 +66,12 @@ export interface CoverageResponse {
   excludedProjects: ExcludedProject[];
   lastScannedAt: string | null;
   lastScanDurationMs: number | null;
+  /**
+   * Who started the last scan: a user entity reference for a manual run, or
+   * `schedule` / `startup` for the two automatic ones. Null for a result stored
+   * before this was recorded.
+   */
+  lastScanTriggeredBy: string | null;
   lastScanError: string | null;
   scanning: boolean;
   scanProgress: ScanProgress | null;

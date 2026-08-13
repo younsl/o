@@ -296,7 +296,7 @@ export async function createRouter(options: RouterOptions): Promise<Router> {
     }
   });
 
-  router.post('/scan', adminGuard(), async (_, res) => {
+  router.post('/scan', adminGuard(), async (req, res) => {
     if (service.isScanning()) {
       res.status(409).json({ error: 'Scan already in progress' });
       return;
@@ -304,7 +304,7 @@ export async function createRouter(options: RouterOptions): Promise<Router> {
     // Scans take minutes, so return immediately and let the UI poll
     // /coverage for scanProgress.
     service
-      .scan()
+      .scan((req as any).userRef)
       .catch(err => logger.error(`[forklift-coverage] manual scan failed: ${err}`));
     res.json({ started: true });
   });

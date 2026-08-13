@@ -181,6 +181,7 @@ export class ForkliftCoverageService {
   private excludedProjects: ExcludedProject[] = [];
   private lastScannedAt: string | null = null;
   private lastScanDurationMs: number | null = null;
+  private lastScanTriggeredBy: string | null = null;
   private lastScanError: string | null = null;
   private scanning = false;
   private scanProgress: ScanProgress | null = null;
@@ -273,6 +274,7 @@ export class ForkliftCoverageService {
     this.excludedProjects = stored.excludedProjects;
     this.lastScannedAt = stored.scannedAt;
     this.lastScanDurationMs = stored.durationMs;
+    this.lastScanTriggeredBy = stored.triggeredBy ?? null;
     this.logger.info(
       `[forklift-coverage] restored ${stored.projects.length} projects from the scan at ${stored.scannedAt}`,
     );
@@ -390,6 +392,7 @@ export class ForkliftCoverageService {
       excludedProjects: this.excludedProjects,
       scannedAt: this.lastScannedAt,
       durationMs: this.lastScanDurationMs,
+      triggeredBy: this.lastScanTriggeredBy,
       forkliftHost: this.forkliftHost,
     });
   }
@@ -412,7 +415,13 @@ export class ForkliftCoverageService {
     return null;
   }
 
-  async scan(): Promise<void> {
+  /**
+   * `triggeredBy` names whoever asked for this scan: a user entity reference
+   * from the manual endpoint, or `schedule` / `startup` for the automatic runs.
+   * It is recorded only once the scan succeeds, so a failed run cannot rewrite
+   * the attribution of the result still on the page.
+   */
+  async scan(triggeredBy: string = 'schedule'): Promise<void> {
     if (this.scanning) {
       this.logger.info('[forklift-coverage] scan already in progress, skipping');
       return;
@@ -490,6 +499,7 @@ export class ForkliftCoverageService {
 
       this.lastScannedAt = new Date().toISOString();
       this.lastScanDurationMs = Date.now() - startedAt;
+      this.lastScanTriggeredBy = triggeredBy;
       this.lastScanError = null;
 
       await this.persistResult();
@@ -854,6 +864,7 @@ export class ForkliftCoverageService {
       excludedProjects: this.excludedProjects,
       lastScannedAt: this.lastScannedAt,
       lastScanDurationMs: this.lastScanDurationMs,
+      lastScanTriggeredBy: this.lastScanTriggeredBy,
       lastScanError: this.lastScanError,
       scanning: this.scanning,
       scanProgress: this.scanProgress,

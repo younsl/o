@@ -26,9 +26,11 @@ import {
 import type { ColumnConfig, SortDescriptor } from '@backstage/ui';
 import {
   RiCheckboxCircleFill,
+  RiHistoryLine,
   RiSearchLine,
   RiSettings3Line,
   RiStackLine,
+  RiTimerLine,
 } from '@remixicon/react';
 import { useApi, useRouteRef } from '@backstage/core-plugin-api';
 import { useAsyncRetry } from 'react-use';
@@ -45,6 +47,7 @@ import { CoverageTrendChart } from '../CoverageTrendChart';
 import { HighlightText } from '../HighlightText';
 import { ConfigurationWizard } from '../ConfigurationWizard';
 import { ProjectDetailPage } from '../ProjectDetailPage';
+import { formatRelative } from '../../utils/relativeTime';
 import { rootRouteRef } from '../../routes';
 import './ForkliftCoveragePage.css';
 
@@ -82,15 +85,19 @@ const STATUS_LABELS: Record<AppliedState, string> = {
   error: 'Error',
 };
 
-const formatRelative = (iso: string | null): string => {
-  if (!iso) return 'never';
-  const minutes = Math.floor((Date.now() - new Date(iso).getTime()) / 60_000);
-  if (!Number.isFinite(minutes)) return 'never';
-  if (minutes < 1) return 'just now';
-  if (minutes < 60) return `${minutes}m ago`;
-  const hours = Math.floor(minutes / 60);
-  if (hours < 24) return `${hours}h ago`;
-  return `${Math.floor(hours / 24)}d ago`;
+/**
+ * The backend records a user entity reference for a manual scan and a plain
+ * keyword for the two automatic ones, so both are turned into something a
+ * reader recognises: the bare username, or what set the scan off.
+ */
+const formatScanActor = (triggeredBy: string | null): string | null => {
+  if (!triggeredBy) return null;
+  if (triggeredBy === 'schedule') return 'on schedule';
+  if (triggeredBy === 'startup') return 'on startup';
+  // `user:default/younsung.lee` is the shape, and only the last segment is a
+  // name anybody uses out loud.
+  const name = triggeredBy.split('/').pop() || triggeredBy;
+  return `by ${name}`;
 };
 
 /** Matching files first, original order otherwise. */
@@ -417,7 +424,6 @@ const CoverageListPage = ({ view }: { view: ViewMode }) => {
 
   const [actionError, setActionError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
-  const [showWizard, setShowWizard] = useState(false);
   const [sortDescriptor, setSortDescriptor] = useState<SortDescriptor>({
     column: 'status',
     direction: 'ascending',
@@ -453,11 +459,6 @@ const CoverageListPage = ({ view }: { view: ViewMode }) => {
       setBusy(false);
     }
   }, [api, refetchCoverage]);
-
-  const handleWizardSaved = useCallback(() => {
-    setShowWizard(false);
-    refetchCoverage();
-  }, [refetchCoverage]);
 
   const rows: ProjectRow[] = useMemo(() => {
     const lower = search.toLowerCase();
@@ -507,6 +508,15 @@ const CoverageListPage = ({ view }: { view: ViewMode }) => {
       switch (col) {
         case 'project':
           return a.path.localeCompare(b.path);
+        case 'lastActivity':
+          // Compared as instants rather than as strings, because the ordering
+          // must not depend on every timestamp carrying the same UTC offset.
+          // Ascending puts the most dormant projects first, matching the
+          // worst-first default.
+          return (
+            new Date(a.lastActivityAt).getTime() -
+            new Date(b.lastActivityAt).getTime()
+          );
         case 'branch':
           return (a.branch ?? '').localeCompare(b.branch ?? '');
         case 'format':
@@ -572,6 +582,34 @@ const CoverageListPage = ({ view }: { view: ViewMode }) => {
             </Cell>
           );
         },
+      },
+      {
+        /**
+         * Sits next to the verdict because the pair is what a decision is made
+         * on: a project that is not wired and was pushed to this morning is
+         * work to schedule, while the same verdict on a repository nobody has
+         * touched in half a year is a candidate for the exclude list.
+         */
+        id: 'lastActivity',
+        label: 'Last Activity',
+        isSortable: true,
+        // A sortable header spends part of its width on the sort arrow, so the
+        // column is wide enough that the label never competes with the icon.
+        defaultWidth: 150,
+        minWidth: 140,
+        cell: row => (
+          <Cell>
+            <Text
+              variant="body-small"
+              // GitLab reports repository pushes and project record edits under
+              // the same field, so the exact timestamp stays within reach of a
+              // label that rounds to days.
+              title={new Date(row.lastActivityAt).toLocaleString()}
+            >
+              {formatRelative(row.lastActivityAt)}
+            </Text>
+          </Cell>
+        ),
       },
       {
         id: 'branch',
@@ -643,10 +681,11 @@ const CoverageListPage = ({ view }: { view: ViewMode }) => {
   const percentTone =
     percent >= 80 ? 'success' : percent >= 50 ? 'warning' : 'danger';
 
-  // Until a Forklift host exists there is nothing to show. The wizard itself
-  // decides what a non-admin sees, which is a wait for an administrator.
-  if (showWizard || (coverage && !coverage.configured)) {
-    return <ConfigurationWizard onSaved={handleWizardSaved} />;
+  // Until a Forklift host exists there is nothing to show. Sending the browser
+  // to the settings path rather than swapping the body keeps one URL per screen,
+  // so what a teammate is looking at is what a pasted link opens.
+  if (coverage && !coverage.configured) {
+    return <Navigate to={`${rootPath}/settings`} replace />;
   }
 
   return (
@@ -685,12 +724,41 @@ const CoverageListPage = ({ view }: { view: ViewMode }) => {
                   {coverage?.forkliftHost ?? 'Forklift'}
                 </Link>
               </Text>
-              <Text as="div" variant="body-x-small" color="secondary">
-                Last scan {formatRelative(coverage?.lastScannedAt ?? null)}
-                {coverage?.lastScanDurationMs
-                  ? ` · took ${formatSeconds(Math.round(coverage.lastScanDurationMs / 1000))}`
-                  : ''}
-              </Text>
+              {/* Two facts, each behind its own icon, so the words that only
+                  told the reader which fact was which are gone. The icons are
+                  decorative and the group carries the label, since an icon
+                  alone would leave a screen reader with a bare duration. */}
+              <div className="fc-meta-row">
+                <span className="fc-meta" aria-label="Last scan">
+                  <RiHistoryLine
+                    size={12}
+                    className="fc-meta-icon"
+                    aria-hidden
+                  />
+                  <Text variant="body-x-small" color="secondary">
+                    {formatRelative(coverage?.lastScannedAt ?? null)}
+                    {/* Absent on results stored before the trigger was
+                        recorded, and then only the age is shown. */}
+                    {formatScanActor(coverage?.lastScanTriggeredBy ?? null)
+                      ? ` ${formatScanActor(coverage?.lastScanTriggeredBy ?? null)}`
+                      : ''}
+                  </Text>
+                </span>
+                {!!coverage?.lastScanDurationMs && (
+                  <span className="fc-meta" aria-label="Scan duration">
+                    <RiTimerLine
+                      size={12}
+                      className="fc-meta-icon"
+                      aria-hidden
+                    />
+                    <Text variant="body-x-small" color="secondary">
+                      {formatSeconds(
+                        Math.round(coverage.lastScanDurationMs / 1000),
+                      )}
+                    </Text>
+                  </span>
+                )}
+              </div>
             </Flex>
           </Flex>
 
@@ -707,7 +775,7 @@ const CoverageListPage = ({ view }: { view: ViewMode }) => {
                 type="button"
                 className="fc-search-toggle"
                 aria-label="Open settings"
-                onClick={() => setShowWizard(true)}
+                onClick={() => navigate(`${rootPath}/settings`)}
               >
                 <RiSettings3Line size={16} />
               </button>
@@ -873,6 +941,19 @@ const RedirectToList = () => {
   return <Navigate to={`${rootPath}/list`} replace />;
 };
 
+/**
+ * Settings is its own path so the gear is linkable and survives a reload. The
+ * wizard decides for itself what a non-admin sees, which is a wait for an
+ * administrator, so the route needs no guard of its own.
+ */
+const SettingsPage = () => {
+  const navigate = useNavigate();
+  const rootPath = useRouteRef(rootRouteRef)();
+  // Leaving unmounts the list, so the coverage it refetches on the way back is
+  // already the saved configuration.
+  return <ConfigurationWizard onSaved={() => navigate(`${rootPath}/list`)} />;
+};
+
 export const ForkliftCoveragePage = () => (
   <Routes>
     {/* The bare plugin path is what the sidebar and older bookmarks point at.
@@ -881,6 +962,7 @@ export const ForkliftCoveragePage = () => (
     <Route path="/list" element={<CoverageListPage view="list" />} />
     <Route path="/groups" element={<CoverageListPage view="groups" />} />
     <Route path="/trend" element={<CoverageListPage view="trend" />} />
+    <Route path="/settings" element={<SettingsPage />} />
     <Route path="/projects/:projectPath" element={<ProjectDetailPage />} />
     {/* An unknown suffix is a stale link, not a dead end. */}
     <Route path="*" element={<RedirectToList />} />

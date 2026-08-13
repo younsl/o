@@ -75,11 +75,34 @@
   color: var(--bui-color-text-secondary, #9ca3af);
 }
 
-/* Status cell: the LED carries the colour so the label can stay plain text. */
+/* Scan metadata under the percentage: one icon per fact, wrapping on a narrow
+   viewport rather than pushing the header wider. */
+.fc-meta-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.fc-meta {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  min-width: 0;
+}
+
+.fc-meta-icon {
+  flex-shrink: 0;
+  color: var(--bui-color-text-secondary, #9ca3af);
+}
+
+/* Status cell: the LED carries the colour so the label can stay plain text.
+   The gap is tight because the dot and its label read as one unit anyway, and
+   the width saved goes to the columns that hold real text. */
 .fc-status {
   display: inline-flex;
   align-items: center;
-  gap: 8px;
+  gap: 5px;
   min-width: 0;
 }
 

@@ -71,7 +71,7 @@ export const forkliftCoveragePlugin = createBackendPlugin({
         httpRouter.addAuthPolicy({ path: '/health', allow: 'unauthenticated' });
 
         const runScanAndNotify = async () => {
-          await service.scan();
+          await service.scan('schedule');
           const webhook = await service.getEffectiveWebhook();
           if (!webhook.url || !webhook.enabled) return;
           try {
@@ -129,7 +129,7 @@ export const forkliftCoveragePlugin = createBackendPlugin({
         if (scanOnStart && service.isConfigured() && !hasStoredResult) {
           setTimeout(() => {
             service
-              .scan()
+              .scan('startup')
               .catch(err =>
                 logger.warn(`[forklift-coverage] initial scan failed: ${err}`),
               );

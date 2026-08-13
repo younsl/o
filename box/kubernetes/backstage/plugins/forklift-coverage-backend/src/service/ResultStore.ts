@@ -11,6 +11,8 @@ export interface StoredResult {
   excludedProjects: ExcludedProject[];
   scannedAt: string;
   durationMs: number | null;
+  /** Lives in the JSON payload, so an older row simply reads back as null. */
+  triggeredBy?: string | null;
   forkliftHost: string | null;
 }
 
@@ -57,6 +59,7 @@ export class ResultStore {
         excludedProjects: payload.excludedProjects ?? [],
         scannedAt: (row.scanned_at as string) ?? payload.scannedAt,
         durationMs: (row.duration_ms as number | null) ?? null,
+        triggeredBy: payload.triggeredBy ?? null,
         forkliftHost: payload.forkliftHost ?? null,
       };
     } catch {
