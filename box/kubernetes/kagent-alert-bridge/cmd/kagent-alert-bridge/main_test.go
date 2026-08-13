@@ -159,6 +159,14 @@ func TestChannelList(t *testing.T) {
 	}
 }
 
+func TestAllowedUserList(t *testing.T) {
+	// Map iteration is random, so the helper must sort to keep the log stable.
+	got := allowedUserList(config.Config{ChatAllowedUsers: map[string]bool{"U02": true, "U01": true}})
+	if got != "U01,U02" {
+		t.Errorf("allowedUserList() = %q", got)
+	}
+}
+
 // Enabling mentions must not change how the process starts or stops: the
 // Socket Mode listener runs beside the webhook listener rather than gating it,
 // and a Slack that cannot be reached is retried in the background.

@@ -9,6 +9,7 @@ import (
 	"os"
 	"os/signal"
 	"runtime"
+	"sort"
 	"strings"
 	"syscall"
 	"time"
@@ -118,6 +119,19 @@ func startChat(ctx context.Context, cfg config.Config, slackClient *slack.Client
 		"session_ttl", cfg.ChatSessionTTL.String(), "status_interval", cfg.ChatStatusInterval.String(),
 		"max_concurrent_chats", cfg.MaxConcurrentChats,
 		"channels", channelList(cfg), "required_scopes", "app_mentions:read, chat:write, reactions:write")
+	// The two allow list states differ in who can spend agent tokens, so each
+	// gets its own line rather than a value a reader has to interpret.
+	if len(cfg.ChatAllowedUsers) == 0 {
+		logger.Warn("mention user allow list disabled; every member of the allowed channels can invoke the agent",
+			"allowed_user_count", 0,
+			"hint", "set CHAT_ALLOWED_USERS to a comma-separated list of Slack member IDs")
+	} else {
+		// Unlike a channel drop, a denied user gets no ephemeral hint, so a
+		// mention that never comes back looks the same as an outage. Saying so
+		// here is what turns such a report into a config answer.
+		logger.Info("mention user allow list enforced; a Slack user outside the list gets no reply and no hint",
+			"allowed_user_count", len(cfg.ChatAllowedUsers), "allowed_users", allowedUserList(cfg))
+	}
 
 	authCtx, cancel := context.WithTimeout(ctx, 30*time.Second)
 	defer cancel()
@@ -143,6 +157,18 @@ func channelList(cfg config.Config) string {
 		return "all"
 	}
 	return strings.Join(cfg.ChatChannels, ",")
+}
+
+// allowedUserList renders the chat member ID allow list for the startup log.
+// The IDs are sorted so the line is stable across restarts. An empty list has
+// no rendering because its caller logs a different message entirely.
+func allowedUserList(cfg config.Config) string {
+	items := make([]string, 0, len(cfg.ChatAllowedUsers))
+	for user := range cfg.ChatAllowedUsers {
+		items = append(items, user)
+	}
+	sort.Strings(items)
+	return strings.Join(items, ",")
 }
 
 func severityList(cfg config.Config) string {
