@@ -7,7 +7,7 @@ fullnameOverride: ""
 image:
   # -- (string) Container image registry host
   registry: ghcr.io
-  # -- (string) Container image repository path (without the registry prefix)
+  # -- (string) Container image repository path without registry prefix
   repository: younsl/gss
   # -- (string) Image pull policy (Available values: Always, IfNotPresent, Never)
   pullPolicy: IfNotPresent
