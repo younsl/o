@@ -4,7 +4,7 @@ Guidance for Claude Code working in this directory. Only non-derivable conventio
 
 ## Overview
 
-Go 1.26.5 filesystem cleaner for Kubernetes, run as an init container (`once` mode) or sidecar (`interval` mode). Ported from Rust. Standard library only — do not add third-party dependencies without a strong reason.
+Go 1.26.6 filesystem cleaner for Kubernetes, run as an init container (`once` mode) or sidecar (`interval` mode). Ported from Rust. Standard library only — do not add third-party dependencies without a strong reason.
 
 ## Traps
 

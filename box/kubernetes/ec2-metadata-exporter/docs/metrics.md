@@ -28,7 +28,7 @@ Example output:
 ec2_metadata_instance_info{instance_id="i-0abc123",name="web-1",private_ip="10.0.1.10",instance_type="m5.large",availability_zone="ap-northeast-2a",state="running",lifecycle="on-demand",architecture="x86_64"} 1
 ec2_metadata_instance_launch_time_seconds{instance_id="i-0abc123",name="web-1"} 1.752994800e+09
 ec2_metadata_instances{state="running"} 1
-ec2_metadata_build_info{version="0.1.1",commit="0e44eb2",go_version="go1.26.5"} 1
+ec2_metadata_build_info{version="0.1.1",commit="0e44eb2",go_version="go1.26.6"} 1
 ```
 
 Instance metrics are served from an in-memory snapshot that is swapped

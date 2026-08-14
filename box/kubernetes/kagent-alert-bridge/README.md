@@ -2,7 +2,7 @@
 
 [![GitHub Container Registry](https://img.shields.io/badge/ghcr.io-kagent--alert--bridge-black?style=flat-square&logo=docker&logoColor=white)](https://github.com/younsl/o/pkgs/container/kagent-alert-bridge)
 [![Helm Chart](https://img.shields.io/badge/ghcr.io-charts%2Fkagent--alert--bridge-black?style=flat-square&logo=helm&logoColor=white)](https://github.com/younsl/o/pkgs/container/charts%2Fkagent-alert-bridge)
-[![Go](https://img.shields.io/badge/go-1.26.5-black?style=flat-square&logo=go&logoColor=white)](https://go.dev/)
+[![Go](https://img.shields.io/badge/go-1.26.6-black?style=flat-square&logo=go&logoColor=white)](https://go.dev/)
 [![GitHub license](https://img.shields.io/github/license/younsl/o?style=flat-square&color=black)](https://github.com/younsl/o/blob/main/LICENSE)
 
 Receives Alertmanager webhooks, posts each alert to Slack, asks a

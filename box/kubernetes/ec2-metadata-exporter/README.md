@@ -2,7 +2,7 @@
 
 [![GitHub Container Registry](https://img.shields.io/badge/ghcr.io-ec2--metadata--exporter-black?style=flat-square&logo=docker&logoColor=white)](https://github.com/younsl/o/pkgs/container/ec2-metadata-exporter)
 [![Helm Chart](https://img.shields.io/badge/ghcr.io-charts%2Fec2--metadata--exporter-black?style=flat-square&logo=helm&logoColor=white)](https://github.com/younsl/o/pkgs/container/charts%2Fec2-metadata-exporter)
-[![Go](https://img.shields.io/badge/go-1.26.5-black?style=flat-square&logo=go&logoColor=white)](https://go.dev/)
+[![Go](https://img.shields.io/badge/go-1.26.6-black?style=flat-square&logo=go&logoColor=white)](https://go.dev/)
 [![GitHub license](https://img.shields.io/github/license/younsl/o?style=flat-square&color=black)](https://github.com/younsl/o/blob/main/LICENSE)
 
 Prometheus exporter that polls the EC2 DescribeInstances API and publishes

@@ -1,7 +1,7 @@
 # filesystem-cleaner
 
 [![GitHub Container Registry](https://img.shields.io/badge/ghcr.io-younsl%2Ffilesystem--cleaner-000000?style=flat-square&logo=github&logoColor=white)](https://github.com/younsl/o/pkgs/container/filesystem-cleaner)
-[![Go](https://img.shields.io/badge/go-1.26.5-000000?style=flat-square&logo=go&logoColor=white)](./go.mod)
+[![Go](https://img.shields.io/badge/go-1.26.6-000000?style=flat-square&logo=go&logoColor=white)](./go.mod)
 
 A lightweight [Go](https://go.dev)-based container image for automatic filesystem cleanup in [Kubernetes](https://kubernetes.io/docs/concepts/overview/) environments. Designed as a [sidecar container](https://kubernetes.io/docs/concepts/workloads/pods/sidecar-containers/) or [init container](https://kubernetes.io/docs/concepts/workloads/pods/init-containers/), it monitors disk usage and intelligently removes files to prevent storage exhaustion. Particularly useful for GitHub Actions self-hosted runners, CI/CD pipelines, and any workloads that generate temporary files requiring periodic cleanup.
 
