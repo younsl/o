@@ -41,7 +41,7 @@ spec:
           {{- end }}
           containers:
           - name: {{ .Chart.Name }}
-            image: "{{ .Values.image.repository }}:{{ include "gss.imageTag" . }}"
+            image: "{{ .Values.image.registry }}/{{ .Values.image.repository }}:{{ include "gss.imageTag" . }}"
             imagePullPolicy: {{ .Values.image.pullPolicy }}
             {{- with .Values.securityContext }}
             securityContext:

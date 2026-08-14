@@ -35,5 +35,5 @@ annotations:
   artifacthub.io/license: Apache-2.0
   artifacthub.io/operator: "false"
   artifacthub.io/changes: |
-    - kind: added
-      description: "Add extraObjects for deploying extra Kubernetes objects with the release"
+    - kind: changed
+      description: "Split image.repository into image.registry and image.repository"
