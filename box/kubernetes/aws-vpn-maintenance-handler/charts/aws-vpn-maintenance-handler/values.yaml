@@ -4,10 +4,10 @@ nameOverride: ""
 fullnameOverride: ""
 
 image:
-  # -- (string) Container image registry
-  registry: ghcr.io/younsl
-  # -- (string) Container image repository
-  repository: aws-vpn-maintenance-handler
+  # -- (string) Container image registry host
+  registry: ghcr.io
+  # -- (string) Container image repository path without registry prefix
+  repository: younsl/aws-vpn-maintenance-handler
   # -- (string) Image tag; defaults to the chart appVersion
   tag: ""
   # -- (string) Image pull policy

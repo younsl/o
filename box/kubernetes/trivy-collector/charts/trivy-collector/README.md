@@ -77,8 +77,9 @@ The following table lists the configurable parameters and their default values.
 | fullnameOverride | string | `""` | Override the full name of the chart |
 | replicaCount | int | `1` | Default replica count (deprecated — use server.replicaCount for UI pods; scraper always runs as a single replica to avoid split-brain writes). |
 | revisionHistoryLimit | int | `10` | Number of old ReplicaSets to retain for rollback |
-| image | object | `{"pullPolicy":"IfNotPresent","repository":"ghcr.io/younsl/trivy-collector","tag":""}` | Container image configuration |
-| image.repository | string | `"ghcr.io/younsl/trivy-collector"` | Image repository |
+| image | object | `{"pullPolicy":"IfNotPresent","registry":"ghcr.io","repository":"younsl/trivy-collector","tag":""}` | Container image configuration |
+| image.registry | string | `"ghcr.io"` | Container image registry host |
+| image.repository | string | `"younsl/trivy-collector"` | Container image repository path without registry prefix |
 | image.pullPolicy | string | `"IfNotPresent"` | Image pull policy |
 | image.tag | string | `""` | Image tag (defaults to chart appVersion) |
 | imagePullSecrets | list | `[]` | Image pull secrets for private registries |

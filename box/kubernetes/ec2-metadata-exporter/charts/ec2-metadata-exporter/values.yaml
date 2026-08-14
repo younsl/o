@@ -1,8 +1,8 @@
 image:
-  # -- (string) Container image registry
-  registry: ghcr.io/younsl
-  # -- (string) Container image repository
-  repository: ec2-metadata-exporter
+  # -- (string) Container image registry host
+  registry: ghcr.io
+  # -- (string) Container image repository path without registry prefix
+  repository: younsl/ec2-metadata-exporter
   # -- (string) Image tag; defaults to the chart appVersion when empty
   tag: ""
   # -- (string) Image pull policy

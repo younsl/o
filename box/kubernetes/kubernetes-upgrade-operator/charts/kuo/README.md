@@ -77,7 +77,8 @@ The following table lists the configurable parameters and their default values.
 | crds.annotations | object | `{}` | Annotations to add to the CRD resources. |
 | replicaCount | int | `1` | Number of operator replicas to run. |
 | revisionHistoryLimit | int | `5` | Number of old ReplicaSets to retain for rollback. |
-| image.repository | string | `"ghcr.io/younsl/kuo"` | Container image repository. |
+| image.registry | string | `"ghcr.io"` | Container image registry host. |
+| image.repository | string | `"younsl/kuo"` | Container image repository path without registry prefix. |
 | image.pullPolicy | string | `"IfNotPresent"` | Image pull policy. |
 | image.tag | string | `""` | Image tag. Defaults to `.Chart.AppVersion` if empty. |
 | imagePullSecrets | list | `[]` | Image pull secrets for private registries. |

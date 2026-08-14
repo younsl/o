@@ -8,8 +8,10 @@ revisionHistoryLimit: 3
 podAnnotations: {}
 
 image:
-  # -- (string) Container image repository
-  repository: ghcr.io/younsl/aurora-database-insights-exporter
+  # -- (string) Container image registry host
+  registry: ghcr.io
+  # -- (string) Container image repository path without registry prefix
+  repository: younsl/aurora-database-insights-exporter
   # -- (string) Image tag (defaults to chart appVersion)
   tag: ""
   # -- (string) Image pull policy

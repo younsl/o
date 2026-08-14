@@ -1,8 +1,8 @@
 image:
-  # -- (string) Container image registry
-  registry: ghcr.io/younsl
-  # -- (string) Container image repository
-  repository: kagent-alert-bridge
+  # -- (string) Container image registry host
+  registry: ghcr.io
+  # -- (string) Container image repository path without registry prefix
+  repository: younsl/kagent-alert-bridge
   # -- (string) Image tag; defaults to the chart appVersion when empty
   tag: ""
   # -- (string) Image pull policy

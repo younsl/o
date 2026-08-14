@@ -75,8 +75,8 @@ The following table lists the configurable parameters and their default values.
 |-----|------|---------|-------------|
 | nameOverride | string | `""` | Override the chart name |
 | fullnameOverride | string | `""` | Override the fully qualified release name |
-| image.registry | string | `"ghcr.io/younsl"` | Container image registry |
-| image.repository | string | `"aws-vpn-maintenance-handler"` | Container image repository |
+| image.registry | string | `"ghcr.io"` | Container image registry host |
+| image.repository | string | `"younsl/aws-vpn-maintenance-handler"` | Container image repository path without registry prefix |
 | image.tag | string | `""` | Image tag; defaults to the chart appVersion |
 | image.pullPolicy | string | `"IfNotPresent"` | Image pull policy |
 | imagePullSecrets | list | `[]` | Image pull secrets for private registries |

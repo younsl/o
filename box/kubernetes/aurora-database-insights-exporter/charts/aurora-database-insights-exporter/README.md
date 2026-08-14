@@ -76,7 +76,8 @@ The following table lists the configurable parameters and their default values.
 | replicaCount | int | `1` | Number of replicas |
 | revisionHistoryLimit | int | `3` | Number of old ReplicaSets to retain |
 | podAnnotations | object | `{}` | Additional pod annotations |
-| image.repository | string | `"ghcr.io/younsl/aurora-database-insights-exporter"` | Container image repository |
+| image.registry | string | `"ghcr.io"` | Container image registry host |
+| image.repository | string | `"younsl/aurora-database-insights-exporter"` | Container image repository path without registry prefix |
 | image.tag | string | `""` | Image tag (defaults to chart appVersion) |
 | image.pullPolicy | string | `"IfNotPresent"` | Image pull policy |
 | imagePullSecrets | list | `[]` | Image pull secrets for private registries |
