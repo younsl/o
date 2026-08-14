@@ -5,10 +5,10 @@ fullnameOverride: ""
 
 # -- (object) Container image configuration
 image:
-  # -- (string) Container image registry
-  registry: ghcr.io/younsl
-  # -- (string) Container image repository
-  repository: gss
+  # -- (string) Container image registry host
+  registry: ghcr.io
+  # -- (string) Container image repository path (without the registry prefix)
+  repository: younsl/gss
   # -- (string) Image pull policy (Available values: Always, IfNotPresent, Never)
   pullPolicy: IfNotPresent
   # -- (string) Container image tag (If not set, will use Chart's appVersion by default.)

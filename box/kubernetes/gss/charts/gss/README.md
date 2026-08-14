@@ -75,9 +75,9 @@ The following table lists the configurable parameters and their default values.
 |-----|------|---------|-------------|
 | nameOverride | string | `""` | Override the chart name |
 | fullnameOverride | string | `""` | Override the full name template |
-| image | object | `{"pullPolicy":"IfNotPresent","registry":"ghcr.io/younsl","repository":"gss","tag":null}` | Container image configuration |
-| image.registry | string | `"ghcr.io/younsl"` | Container image registry |
-| image.repository | string | `"gss"` | Container image repository |
+| image | object | `{"pullPolicy":"IfNotPresent","registry":"ghcr.io","repository":"younsl/gss","tag":null}` | Container image configuration |
+| image.registry | string | `"ghcr.io"` | Container image registry host |
+| image.repository | string | `"younsl/gss"` | Container image repository path (without the registry prefix) |
 | image.pullPolicy | string | `"IfNotPresent"` | Image pull policy (Available values: Always, IfNotPresent, Never) |
 | image.tag | string | `nil` | Container image tag (If not set, will use Chart's appVersion by default.) |
 | imagePullSecrets | list | `[]` | Image pull secrets for private container registries |
