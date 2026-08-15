@@ -499,7 +499,10 @@ func TestReactionFailureDoesNotBlockAnalysis(t *testing.T) {
 // failure is reported in the thread instead of silently dropped.
 func TestWebhookReportsAgentFailureInThread(t *testing.T) {
 	sc := newFakeSlack()
-	b := newTestBridge(t, testConfig(), sc, &fakeAgent{err: errors.New("bedrock throttled")})
+	b := newTestBridge(t, testConfig(), sc, &fakeAgent{err: summaryError{
+		summary: "bedrock throttled",
+		detail:  "submit analysis: agent error -32603: bedrock throttled",
+	}})
 
 	post(t, b, criticalAlert, nil)
 
@@ -949,7 +952,10 @@ func TestLookupModeDoesNotRetryPermanentError(t *testing.T) {
 
 // A failed analysis still deserves a note in the alert's thread.
 func TestLookupModeThreadsFailureNotices(t *testing.T) {
-	sc, agent := newFakeSlack(), &fakeAgent{err: errors.New("bedrock throttled")}
+	sc, agent := newFakeSlack(), &fakeAgent{err: summaryError{
+		summary: "bedrock throttled",
+		detail:  "submit analysis: agent error -32603: bedrock throttled",
+	}}
 	sc.found = "ts-from-history"
 	b := newTestBridge(t, lookupConfig(), sc, agent)
 

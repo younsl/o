@@ -509,7 +509,10 @@ func TestMentionAllowsChannelByName(t *testing.T) {
 
 func TestMentionReportsAgentFailureInThread(t *testing.T) {
 	sc := newFakeSlack()
-	agent := &fakeAgent{err: errors.New("controller unreachable")}
+	agent := &fakeAgent{err: summaryError{
+		summary: "controller unreachable",
+		detail:  "submit analysis: call agent: dial tcp 10.0.0.1:8083: connect: connection refused",
+	}}
 	b := newChatBridge(t, chatConfig(), sc, agent)
 
 	b.HandleEvent(context.Background(), mention(nil))

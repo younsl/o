@@ -324,7 +324,7 @@ func (b *Bridge) analyze(payload alert.Payload, agent, channel, threadTS string,
 		b.metrics.DedupeEntries.Set(float64(b.store.size()))
 		b.metrics.Analyses.WithLabelValues(agent, "error").Inc()
 		logger.Error("analysis failed", "error", err, "duration", elapsed.String())
-		b.reply(payload, channel, threadTS, fmt.Sprintf(":warning: Automated analysis failed: %s", err), logger)
+		b.reply(payload, channel, threadTS, fmt.Sprintf(":warning: Automated analysis failed. %s", userMessage(err)), logger)
 		return
 	}
 

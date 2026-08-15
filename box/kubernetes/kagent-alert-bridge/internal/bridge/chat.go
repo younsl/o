@@ -222,7 +222,7 @@ func (b *Bridge) handleMention(ev socket.Event, text, agent string, logger *slog
 	if err != nil {
 		b.metrics.ChatTurns.WithLabelValues(agent, "error").Inc()
 		logger.Error("chat turn failed", "error", err, "duration", elapsed.String())
-		status.finish(fmt.Sprintf(":warning: 답변을 만들지 못했습니다: %s", err))
+		status.finish(fmt.Sprintf(":warning: 답변을 만들지 못했습니다. %s", userMessage(err)))
 		return
 	}
 

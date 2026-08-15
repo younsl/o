@@ -3,6 +3,7 @@ package a2a
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"io"
 	"log/slog"
 	"net/http"
@@ -298,10 +299,14 @@ func TestSendFallsBackToStatusAndHistory(t *testing.T) {
 }
 
 func TestSendErrors(t *testing.T) {
+	// wantErr is what the log gets, wantSummary what Slack gets. They differ on
+	// purpose: the chain names the stage and the controller's own words, and the
+	// summary is the single line a responder reads.
 	tests := []struct {
-		name    string
-		handler http.HandlerFunc
-		wantErr string
+		name        string
+		handler     http.HandlerFunc
+		wantErr     string
+		wantSummary string
 	}{
 		{
 			"rpc error",
@@ -309,6 +314,7 @@ func TestSendErrors(t *testing.T) {
 				io.WriteString(w, `{"error":{"code":-32603,"message":"agent not found"}}`)
 			},
 			"agent not found",
+			"the agent rejected the request. agent not found",
 		},
 		{
 			"http error",
@@ -317,11 +323,13 @@ func TestSendErrors(t *testing.T) {
 				io.WriteString(w, "boom")
 			},
 			"HTTP 500",
+			"the controller returned HTTP 500",
 		},
 		{
 			"malformed json",
 			func(w http.ResponseWriter, _ *http.Request) { io.WriteString(w, "{not json") },
 			"decode response",
+			"the controller reply was not valid JSON",
 		},
 		{
 			"no task id",
@@ -329,6 +337,7 @@ func TestSendErrors(t *testing.T) {
 				io.WriteString(w, `{"result":{"kind":"task","status":{"state":"submitted"}}}`)
 			},
 			"no task id",
+			"the controller did not start a task",
 		},
 		{
 			"failed task",
@@ -337,6 +346,7 @@ func TestSendErrors(t *testing.T) {
 					"message":{"parts":[{"kind":"text","text":"tool exploded"}]}}}}`)
 			},
 			`state "failed"`,
+			`the agent stopped in state "failed". tool exploded`,
 		},
 		{
 			"empty completed reply",
@@ -344,6 +354,19 @@ func TestSendErrors(t *testing.T) {
 				io.WriteString(w, `{"result":{"kind":"task","id":"t1","status":{"state":"completed"}}}`)
 			},
 			"no text",
+			"the agent finished without an answer",
+		},
+		{
+			// A reply past the read limit used to reach the decoder truncated,
+			// where it was indistinguishable from a malformed one.
+			"oversized reply",
+			func(w http.ResponseWriter, _ *http.Request) {
+				io.WriteString(w, `{"result":{"kind":"message","parts":[{"kind":"text","text":"`)
+				io.WriteString(w, strings.Repeat("a", readLimit))
+				io.WriteString(w, `"}]}}`)
+			},
+			"read limit",
+			"the controller reply was too large",
 		},
 	}
 	for _, tt := range tests {
@@ -356,7 +379,45 @@ func TestSendErrors(t *testing.T) {
 			if !strings.Contains(err.Error(), tt.wantErr) {
 				t.Errorf("error = %v, want it to mention %q", err, tt.wantErr)
 			}
+			var carrier *Error
+			if !errors.As(err, &carrier) {
+				t.Fatalf("error = %v, want one carrying a summary for Slack", err)
+			}
+			if carrier.UserMessage() != tt.wantSummary {
+				t.Errorf("UserMessage() = %q, want %q", carrier.UserMessage(), tt.wantSummary)
+			}
 		})
+	}
+}
+
+// A decode error has to point at the bytes it tripped on. The controller can
+// emit one bad escape megabytes into a reply, which leaves no trace at all in
+// a snippet taken from the reply's head.
+func TestDecodeContextWindowsOnTheOffset(t *testing.T) {
+	raw := []byte(`{"a":"` + strings.Repeat("x", 500) + `\ bad"}`)
+	var out response
+	err := json.Unmarshal(raw, &out)
+	if err == nil {
+		t.Fatal("expected a decode error")
+	}
+	got := decodeContext(raw, err)
+	if !strings.Contains(got, `\ bad`) {
+		t.Errorf("decodeContext() = %q, want the offending bytes", got)
+	}
+	if strings.Contains(got, `{"a":"`) {
+		t.Errorf("decodeContext() = %q, want a window on the offset rather than the head", got)
+	}
+}
+
+func TestDecodeContextFallsBackWithoutAnOffset(t *testing.T) {
+	raw := []byte(`{"result":"not an object"}`)
+	var out response
+	err := json.Unmarshal(raw, &out)
+	if err == nil {
+		t.Fatal("expected a decode error")
+	}
+	if got := decodeContext(raw, err); got != string(raw) {
+		t.Errorf("decodeContext() = %q, want the whole body", got)
 	}
 }
 

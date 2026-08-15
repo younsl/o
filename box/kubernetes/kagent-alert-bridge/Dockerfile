@@ -21,7 +21,7 @@ FROM scratch AS runtime
 
 LABEL org.opencontainers.image.title="kagent-alert-bridge" \
       org.opencontainers.image.description="Posts Alertmanager alerts to Slack and replies in-thread with an analysis from a kagent agent over A2A" \
-      org.opencontainers.image.version="0.3.1" \
+      org.opencontainers.image.version="0.3.2" \
       org.opencontainers.image.licenses="Apache-2.0" \
       org.opencontainers.image.base.name="scratch" \
       org.opencontainers.image.deprecated="false"

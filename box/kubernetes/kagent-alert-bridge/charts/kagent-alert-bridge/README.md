@@ -1,6 +1,6 @@
 # kagent-alert-bridge
 
-![Version: 0.4.0](https://img.shields.io/badge/Version-0.4.0-informational?style=flat-square) ![Type: application](https://img.shields.io/badge/Type-application-informational?style=flat-square) ![AppVersion: 0.3.1](https://img.shields.io/badge/AppVersion-0.3.1-informational?style=flat-square)
+![Version: 0.4.1](https://img.shields.io/badge/Version-0.4.1-informational?style=flat-square) ![Type: application](https://img.shields.io/badge/Type-application-informational?style=flat-square) ![AppVersion: 0.3.2](https://img.shields.io/badge/AppVersion-0.3.2-informational?style=flat-square)
 
 Posts Alertmanager alerts to Slack and replies in-thread with an analysis from a kagent agent over A2A
 
@@ -39,7 +39,7 @@ helm install kagent-alert-bridge oci://ghcr.io/younsl/charts/kagent-alert-bridge
 Install a specific version:
 
 ```console
-helm install kagent-alert-bridge oci://ghcr.io/younsl/charts/kagent-alert-bridge --version 0.4.0
+helm install kagent-alert-bridge oci://ghcr.io/younsl/charts/kagent-alert-bridge --version 0.4.1
 ```
 
 ### Install from local chart
@@ -47,7 +47,7 @@ helm install kagent-alert-bridge oci://ghcr.io/younsl/charts/kagent-alert-bridge
 Download kagent-alert-bridge chart and install from local directory:
 
 ```console
-helm pull oci://ghcr.io/younsl/charts/kagent-alert-bridge --untar --version 0.4.0
+helm pull oci://ghcr.io/younsl/charts/kagent-alert-bridge --untar --version 0.4.1
 helm install kagent-alert-bridge ./kagent-alert-bridge
 ```
 

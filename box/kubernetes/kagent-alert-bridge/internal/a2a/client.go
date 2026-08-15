@@ -16,6 +16,7 @@ import (
 	"crypto/rand"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"log/slog"
@@ -30,6 +31,11 @@ import (
 // before the run is abandoned. Combined with the poll interval this tolerates
 // roughly half a minute of controller unavailability, which covers a restart.
 const maxConsecutivePollFailures = 6
+
+// readLimit caps how much of one controller reply is read. A truncated body is
+// reported as its own error rather than handed to the decoder, where a cut-off
+// reply is indistinguishable from a malformed one.
+const readLimit = 4 << 20
 
 // Client talks to the kagent controller over A2A. One Client serves every
 // agent in a namespace: the controller exposes each agent under its own path,
@@ -191,14 +197,15 @@ func (c *Client) Send(ctx context.Context, req Request) (Result, error) {
 		writeParts(&b, out.Result.Parts)
 		res.Text = strings.TrimSpace(b.String())
 		if res.Text == "" {
-			return res, fmt.Errorf("agent returned an empty message")
+			return res, fail("the agent replied with nothing", fmt.Errorf("agent returned an empty message"))
 		}
 		return res, nil
 	}
 
 	taskID := out.Result.ID
 	if taskID == "" {
-		return Result{}, fmt.Errorf("agent returned no task id (state %q)", out.Result.Status.State)
+		return Result{}, fail("the controller did not start a task",
+			fmt.Errorf("agent returned no task id (state %q)", out.Result.Status.State))
 	}
 	// Timing the task from the accepted submission separates the controller's
 	// own processing time from the queueing and Slack work around it.
@@ -233,7 +240,8 @@ func (c *Client) poll(ctx context.Context, agent, taskID string, submitted time.
 		case <-ctx.Done():
 			c.metrics.ObserveAgentTask(agent, "timeout", polls, c.now().Sub(submitted))
 			c.cancelTask(agent, taskID)
-			return Result{TaskID: taskID}, fmt.Errorf("analysis deadline exceeded, task cancelled: %w", ctx.Err())
+			return Result{TaskID: taskID}, fail("the analysis ran past its deadline and was cancelled",
+				fmt.Errorf("analysis deadline exceeded, task cancelled: %w", ctx.Err()))
 		case <-ticker.C:
 		}
 
@@ -245,12 +253,16 @@ func (c *Client) poll(ctx context.Context, agent, taskID string, submitted time.
 			if ctx.Err() != nil {
 				c.metrics.ObserveAgentTask(agent, "timeout", polls, c.now().Sub(submitted))
 				c.cancelTask(agent, taskID)
-				return Result{TaskID: taskID}, fmt.Errorf("analysis deadline exceeded, task cancelled: %w", ctx.Err())
+				return Result{TaskID: taskID}, fail("the analysis ran past its deadline and was cancelled",
+					fmt.Errorf("analysis deadline exceeded, task cancelled: %w", ctx.Err()))
 			}
 			failures++
 			if failures >= maxConsecutivePollFailures {
 				c.metrics.ObserveAgentTask(agent, "unreachable", polls, c.now().Sub(submitted))
-				return Result{TaskID: taskID}, fmt.Errorf("gave up polling task after %d consecutive failures: %w", failures, err)
+				// The retry count and the poll loop itself are the bridge's own
+				// business. What reaches Slack is that the controller went quiet.
+				return Result{TaskID: taskID}, fail("the controller stopped responding",
+					fmt.Errorf("gave up polling task after %d consecutive failures: %w", failures, err))
 			}
 			c.logger.Warn("task poll failed, retrying", "agent", agent, "task_id", taskID, "failures", failures, "error", err)
 			continue
@@ -302,15 +314,20 @@ func (c *Client) finalize(out response) (Result, error) {
 		// input-required carries the agent's question as its final text, which
 		// is still worth posting: it usually names what was missing.
 		if res.Text == "" {
-			return res, fmt.Errorf("agent returned no text (task state %q)", state)
+			return res, fail("the agent finished without an answer",
+				fmt.Errorf("agent returned no text (task state %q)", state))
 		}
 		c.logger.Debug("agent replied", "task_id", res.TaskID, "context_id", res.ContextID, "state", state, "chars", len(res.Text))
 		return res, nil
 	default:
 		if res.Text != "" {
-			return res, fmt.Errorf("task ended in state %q: %s", state, snippet([]byte(res.Text)))
+			// The agent's own last words say what went wrong better than the
+			// state name does, so they are the summary.
+			return res, fail(fmt.Sprintf("the agent stopped in state %q. %s", state, snippet([]byte(res.Text))),
+				fmt.Errorf("task ended in state %q: %s", state, snippet([]byte(res.Text))))
 		}
-		return res, fmt.Errorf("task ended in state %q", state)
+		return res, fail(fmt.Sprintf("the agent stopped in state %q", state),
+			fmt.Errorf("task ended in state %q", state))
 	}
 }
 
@@ -335,12 +352,12 @@ func (c *Client) do(ctx context.Context, agent, method string, params any) (resp
 		Params:  params,
 	})
 	if err != nil {
-		return response{}, fmt.Errorf("encode request: %w", err)
+		return response{}, fail("the bridge could not build its request", fmt.Errorf("encode request: %w", err))
 	}
 
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, c.Endpoint(agent), bytes.NewReader(body))
 	if err != nil {
-		return response{}, fmt.Errorf("build request: %w", err)
+		return response{}, fail("the bridge could not build its request", fmt.Errorf("build request: %w", err))
 	}
 	req.Header.Set("Content-Type", "application/json")
 	// The controller runs with auth.mode=unsecure, where X-User-Id selects the
@@ -350,24 +367,45 @@ func (c *Client) do(ctx context.Context, agent, method string, params any) (resp
 
 	resp, err := c.http.Do(req)
 	if err != nil {
-		return response{}, fmt.Errorf("call agent: %w", err)
+		return response{}, fail("the controller could not be reached", fmt.Errorf("call agent: %w", err))
 	}
 	defer resp.Body.Close()
 
-	raw, err := io.ReadAll(io.LimitReader(resp.Body, 4<<20))
+	// One byte past the limit distinguishes a reply that fits from one that was
+	// cut short: io.LimitReader stops silently, so without this the decoder is
+	// the first to notice, and only as a confusing syntax error.
+	raw, err := io.ReadAll(io.LimitReader(resp.Body, readLimit+1))
 	if err != nil {
-		return response{}, fmt.Errorf("read response: %w", err)
+		return response{}, fail("the controller reply could not be read", fmt.Errorf("read response: %w", err))
+	}
+	if len(raw) > readLimit {
+		return response{}, fail("the controller reply was too large",
+			fmt.Errorf("response exceeds the %d byte read limit", readLimit))
 	}
 	if resp.StatusCode != http.StatusOK {
-		return response{}, fmt.Errorf("agent returned HTTP %d: %s", resp.StatusCode, snippet(raw))
+		// The body stays out of the summary. A controller that answers an error
+		// status with a page of JSON would otherwise paste all of it to Slack.
+		c.logger.Error("controller returned an error status", "agent", agent, "method", method,
+			"status", resp.StatusCode, "body", snippet(raw))
+		return response{}, fail(fmt.Sprintf("the controller returned HTTP %d", resp.StatusCode),
+			fmt.Errorf("agent returned HTTP %d: %s", resp.StatusCode, snippet(raw)))
 	}
 
 	var out response
 	if err := json.Unmarshal(raw, &out); err != nil {
-		return response{}, fmt.Errorf("decode response: %w", err)
+		// The offending bytes go to the log. Which byte broke the parse is a
+		// question for whoever fixes the controller, not for the thread waiting
+		// on an answer.
+		c.logger.Error("controller reply is not valid JSON", "agent", agent, "method", method,
+			"bytes", len(raw), "near", decodeContext(raw, err), "error", err)
+		return response{}, fail("the controller reply was not valid JSON",
+			fmt.Errorf("decode response: %w", err))
 	}
 	if out.Error != nil {
-		return response{}, fmt.Errorf("agent error %d: %s", out.Error.Code, out.Error.Message)
+		// The controller's own message names what it rejected, which is the one
+		// detail worth carrying through to Slack.
+		return response{}, fail(fmt.Sprintf("the agent rejected the request. %s", snippet([]byte(out.Error.Message))),
+			fmt.Errorf("agent error %d: %s", out.Error.Code, out.Error.Message))
 	}
 	return out, nil
 }
@@ -421,6 +459,18 @@ func randomID() string {
 	// crypto/rand.Read never returns an error on supported platforms.
 	_, _ = rand.Read(buf[:])
 	return hex.EncodeToString(buf[:])
+}
+
+// decodeContext returns the part of raw a decode error points at. A syntax
+// error carries the offset it failed on, and a single bad byte megabytes into
+// a reply leaves no trace in a snippet of the reply's head.
+func decodeContext(raw []byte, err error) string {
+	var syntax *json.SyntaxError
+	if !errors.As(err, &syntax) {
+		return snippet(raw)
+	}
+	const window = 100
+	return snippet(raw[max(0, int(syntax.Offset)-window):min(len(raw), int(syntax.Offset)+window)])
 }
 
 func snippet(raw []byte) string {
