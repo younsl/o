@@ -1,0 +1,115 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 880 660" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace">
+  <defs>
+    <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M 0 0 L 10 5 L 0 10 z" fill="#6e6e6e"/>
+    </marker>
+    <marker id="arrow-dim" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M 0 0 L 10 5 L 0 10 z" fill="#4a4a4a"/>
+    </marker>
+  </defs>
+
+  <rect width="880" height="660" fill="#0a0a0a"/>
+
+  <text x="40" y="28" fill="#8b8b8b" font-size="12">Region filtering data path</text>
+
+  <!-- notifier pod boundary -->
+  <g>
+    <rect x="40" y="150" width="380" height="478" rx="8" fill="#0e0e0e" stroke="#3a3a3a" stroke-width="1" stroke-dasharray="5 4"/>
+    <text x="56" y="172" fill="#6e6e6e" font-size="11">notifier pod</text>
+  </g>
+
+  <!-- flows -->
+  <g stroke="#6e6e6e" stroke-width="1.2" fill="none" marker-end="url(#arrow)">
+    <path d="M 140 186 V 116"/>
+    <path d="M 230 112 V 182"/>
+    <path d="M 230 246 V 282"/>
+    <path d="M 230 456 V 476"/>
+    <path d="M 230 532 V 552"/>
+    <path d="M 396 506 H 516"/>
+  </g>
+  <g stroke="#4a4a4a" stroke-width="1.2" fill="none" stroke-dasharray="4 4" marker-end="url(#arrow-dim)">
+    <path d="M 396 216 H 516"/>
+    <path d="M 396 366 H 516"/>
+  </g>
+
+  <!-- flow labels -->
+  <g fill="#8b8b8b" font-size="11">
+    <text x="312" y="124">request: services, categories, regions (+ global)</text>
+    <text x="312" y="142">response: event summaries carrying region</text>
+    <text x="240" y="268">HealthEvent</text>
+    <text x="424" y="210">received_total</text>
+    <text x="424" y="360">filtered_total</text>
+    <text x="424" y="500">webhook</text>
+  </g>
+
+  <!-- AWS Health API -->
+  <g>
+    <rect x="60" y="48" width="240" height="64" rx="6" fill="#141414" stroke="#3a3a3a"/>
+    <text x="180" y="76" text-anchor="middle" fill="#e8e8e8" font-size="14">AWS Health API</text>
+    <text x="180" y="96" text-anchor="middle" fill="#7a7a7a" font-size="11">global service, us-east-1 endpoint</text>
+  </g>
+
+  <!-- Poller -->
+  <g>
+    <rect x="64" y="186" width="332" height="60" rx="6" fill="#141414" stroke="#3a3a3a"/>
+    <text x="230" y="212" text-anchor="middle" fill="#e8e8e8" font-size="14">Poller</text>
+    <text x="230" y="232" text-anchor="middle" fill="#7a7a7a" font-size="11">60s cycle, server-side narrowing</text>
+  </g>
+
+  <!-- EventFilter -->
+  <g>
+    <rect x="64" y="286" width="332" height="170" rx="6" fill="#141414" stroke="#3a3a3a"/>
+    <text x="80" y="308" fill="#e8e8e8" font-size="14">EventFilter.evaluate</text>
+
+    <g font-size="11">
+      <rect x="80" y="318" width="300" height="18" rx="4" fill="#1a1a1a" stroke="#2e2e2e"/>
+      <text x="90" y="331" fill="#8b8b8b">1. deny category</text>
+
+      <rect x="80" y="342" width="300" height="18" rx="4" fill="#1a1a1a" stroke="#2e2e2e"/>
+      <text x="90" y="355" fill="#8b8b8b">2. deny service</text>
+
+      <rect x="80" y="366" width="300" height="18" rx="4" fill="#242424" stroke="#8b8b8b" stroke-width="1.4"/>
+      <text x="90" y="379" fill="#f0f0f0">3. deny region</text>
+      <text x="370" y="379" text-anchor="end" fill="#9e9e9e">new</text>
+
+      <rect x="80" y="390" width="300" height="18" rx="4" fill="#1a1a1a" stroke="#2e2e2e"/>
+      <text x="90" y="403" fill="#8b8b8b">4. deny event code</text>
+
+      <rect x="80" y="414" width="300" height="18" rx="4" fill="#1a1a1a" stroke="#2e2e2e"/>
+      <text x="90" y="427" fill="#8b8b8b">5. allow categories, services, regions, codes</text>
+    </g>
+
+    <text x="80" y="447" fill="#6e6e6e" font-size="10">absent region and global always pass the allow list</text>
+  </g>
+
+  <!-- Notifier -->
+  <g>
+    <rect x="64" y="480" width="332" height="52" rx="6" fill="#141414" stroke="#3a3a3a"/>
+    <text x="230" y="511" text-anchor="middle" fill="#e8e8e8" font-size="14">Notifier</text>
+  </g>
+
+  <!-- Kubernetes Event -->
+  <g>
+    <rect x="64" y="556" width="332" height="48" rx="6" fill="#141414" stroke="#3a3a3a"/>
+    <text x="230" y="578" text-anchor="middle" fill="#e8e8e8" font-size="13">Kubernetes Event</text>
+    <text x="230" y="595" text-anchor="middle" fill="#7a7a7a" font-size="10">best effort, message carries region</text>
+  </g>
+
+  <!-- Slack -->
+  <g>
+    <rect x="520" y="480" width="300" height="52" rx="6" fill="#141414" stroke="#3a3a3a"/>
+    <text x="670" y="511" text-anchor="middle" fill="#e8e8e8" font-size="14">Slack</text>
+  </g>
+
+  <!-- metrics -->
+  <g>
+    <rect x="520" y="190" width="300" height="56" rx="6" fill="#111111" stroke="#2e2e2e"/>
+    <text x="536" y="212" fill="#c8c8c8" font-size="11">aws_health_event_received_total</text>
+    <text x="536" y="232" fill="#6e6e6e" font-size="10">label region, sized before any filtering</text>
+
+    <rect x="520" y="330" width="300" height="72" rx="6" fill="#111111" stroke="#2e2e2e"/>
+    <text x="536" y="352" fill="#c8c8c8" font-size="11">aws_health_event_filtered_total</text>
+    <text x="536" y="372" fill="#6e6e6e" font-size="10">reason deny_region</text>
+    <text x="536" y="388" fill="#6e6e6e" font-size="10">reason region_not_allowed</text>
+  </g>
+</svg>
