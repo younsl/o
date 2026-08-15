@@ -274,6 +274,7 @@ export class ApplicationSetService {
       if (!metadata) return;
 
       info.chart = metadata.name ?? info.chart;
+      info.deprecated = metadata.deprecated;
 
       if (!info.chartVersion && metadata.upstreamVersion) {
         // With no dependencies the version is the chart's own, at column zero.
@@ -380,6 +381,8 @@ export class ApplicationSetService {
       upstreamRepository: null,
       appVersion,
       appVersionSource: appVersion ? 'image-tag' : null,
+      // Set by enrichment, which is the only step that sees a Chart.yaml.
+      deprecated: false,
       images,
       syncStatus: status.sync?.status ?? 'Unknown',
       healthStatus: status.health?.status ?? 'Unknown',

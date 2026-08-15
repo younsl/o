@@ -59,6 +59,12 @@
   box-shadow: inset 2px 0 0 var(--bui-color-border-primary, #3b82f6);
 }
 
+/* A line worth pointing at that is not the reported value, kept off the accent */
+.yaml-line-muted {
+  background-color: rgba(128, 128, 128, 0.14);
+  box-shadow: inset 2px 0 0 rgba(128, 128, 128, 0.55);
+}
+
 .yaml-gutter {
   flex-shrink: 0;
   margin-right: var(--bui-space-3);
@@ -93,6 +99,11 @@
   line-height: 1.4;
   white-space: nowrap;
   user-select: none;
+}
+
+.yaml-annotation-muted {
+  background-color: rgba(128, 128, 128, 0.16);
+  color: #9ca3af;
 }
 
 .yaml-key {

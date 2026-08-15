@@ -69,6 +69,62 @@ export const shortImageRef = (ref: string): string => {
 };
 
 /**
+ * Headstone. The cross is a hole in the same path, so the icon takes its colour
+ * from the badge and stays legible at badge size.
+ */
+const DeprecatedIcon = ({ size = 12 }: { size?: number }) => (
+  <svg
+    width={size}
+    height={size}
+    viewBox="0 0 24 24"
+    fill="currentColor"
+    aria-hidden="true"
+  >
+    <path
+      fillRule="evenodd"
+      d="M12 2a7 7 0 00-7 7v10h14V9a7 7 0 00-7-7zm-1 4h2v3h3v2h-3v6h-2v-6H8V9h3V6z"
+    />
+    <path d="M3 20h18v2H3z" />
+  </svg>
+);
+
+/**
+ * A chart the owner has declared retiring. Greyed and faded rather than
+ * coloured: it is a fact about the chart, not a failure of this ApplicationSet,
+ * so it must not compete with the sync and upgrade accents around it.
+ */
+const DeprecatedBadge = ({ title }: { title?: string }) => (
+  <span className="appset-deprecated-badge" title={title}>
+    <DeprecatedIcon />
+    Deprecated
+  </span>
+);
+
+/**
+ * 1-indexed lines declaring `deprecated: true`. Read from the file rather than
+ * from the flag on the Application: the dialog shows the Chart.yaml verbatim,
+ * so the line marked has to be a line that is actually there.
+ */
+const deprecatedLines = (content: string): number[] =>
+  content
+    .split('\n')
+    .map((line, index) =>
+      // A trailing comment is common on this key, since the line is often the
+      // note telling the next reader what the flag is for.
+      /^\s*deprecated\s*:\s*true\s*(#.*)?$/i.test(line) ? index + 1 : 0,
+    )
+    .filter(lineNumber => lineNumber > 0);
+
+/** Names of the deprecated charts this ApplicationSet deploys, deduplicated. */
+const deprecatedCharts = (appSet: ApplicationSetResponse): string[] => [
+  ...new Set(
+    appInfoList(appSet)
+      .filter(info => info.deprecated)
+      .map(info => info.chart ?? info.name),
+  ),
+];
+
+/**
  * Distinct chart version provenances across the generated Applications. The
  * same chart deployed to several clusters reads identical values from different
  * paths, so entries are grouped by the values themselves and the applications
@@ -117,6 +173,7 @@ interface ChartTarget {
   currentVersion: string;
   upstreamChart: string | null;
   upstreamRepository: string | null;
+  deprecated: boolean;
 }
 
 const chartTargets = (appSet: ApplicationSetResponse): ChartTarget[] => {
@@ -125,12 +182,19 @@ const chartTargets = (appSet: ApplicationSetResponse): ChartTarget[] => {
   for (const info of appInfoList(appSet)) {
     if (!info.chart || !info.chartVersion) continue;
     const key = `${info.chart}|${info.chartVersion}`;
-    if (!byKey.has(key)) {
+    const existing = byKey.get(key);
+    if (existing) {
+      // One row per chart and version, so the flag holds if any Application
+      // reading that chart saw the deprecation. Only some of them are enriched
+      // from Chart.yaml, and a row saying nothing would be the wrong default.
+      existing.deprecated = existing.deprecated || info.deprecated;
+    } else {
       byKey.set(key, {
         chart: info.chart,
         currentVersion: info.chartVersion,
         upstreamChart: info.upstreamChart,
         upstreamRepository: info.upstreamRepository,
+        deprecated: info.deprecated,
       });
     }
   }
@@ -954,12 +1018,48 @@ export const ApplicationSetTable = () => {
               const chartOrigins = chartVersionOrigins(appSet);
               const upgrades = appSetUpgrades(appSet, upstreamState);
               const versionGroups = appVersionGroups(appSet);
+              const deprecatedChartNames = deprecatedCharts(appSet);
+              const deprecated = deprecatedChartNames.length > 0;
               const appVersions = versionGroups.map(group => group.version);
 
               return (
                 <Grid.Item key={cardKey} className="appset-grid-item">
-                  <Card className={`${appSet.isHeadRevision ? 'appset-card' : 'appset-card-warning'}${appSet.muted ? ' appset-card-muted' : ''}`}>
+                  <Card className={`${appSet.isHeadRevision ? 'appset-card' : 'appset-card-warning'}${appSet.muted ? ' appset-card-muted' : ''}${deprecated ? ' appset-card-deprecated' : ''}`}>
                     <CardBody className="appset-card-body">
+                      {/*
+                        Corner marker rather than a badge beside the version:
+                        the card is narrow, and the fact belongs to the whole
+                        ApplicationSet rather than to the version line. The
+                        dialogs still name the chart and spell the word out.
+                      */}
+                      {deprecated && (
+                        <TooltipTrigger delay={200}>
+                          <Button
+                            variant="tertiary"
+                            size="small"
+                            className="appset-card-tombstone"
+                            aria-label="Deploys a deprecated chart"
+                          >
+                            <DeprecatedIcon size={20} />
+                          </Button>
+                          <Tooltip style={{ maxWidth: 280 }}>
+                            <div className="appset-app-tooltip-body">
+                              <div className="appset-app-tooltip-title">
+                                Deprecated chart
+                              </div>
+                              <div>
+                                {deprecatedChartNames.join(', ')} declares{' '}
+                                <code>deprecated: true</code> in its Chart.yaml.
+                              </div>
+                              <div style={{ opacity: 0.7 }}>
+                                The chart owner has marked it for retirement, so
+                                plan a replacement before it stops receiving
+                                updates.
+                              </div>
+                            </div>
+                          </Tooltip>
+                        </TooltipTrigger>
+                      )}
                       <div>
                         <Text variant="body-medium" className="appset-card-name">
                           <HighlightText text={appSet.name} query={searchQuery} />
@@ -1031,6 +1131,23 @@ export const ApplicationSetTable = () => {
                                 <Dialog className="appset-detail-dialog">
                                   <DialogHeader>Chart Version Detail</DialogHeader>
                                   <DialogBody>
+                                    {/*
+                                      Stated once at the top, so the reason the
+                                      rows below are greyed is on the screen
+                                      rather than only in a tooltip.
+                                    */}
+                                    {deprecated && (
+                                      <div className="appset-deprecated-notice">
+                                        <DeprecatedIcon size={14} />
+                                        <span>
+                                          {deprecatedChartNames.join(', ')} declares{' '}
+                                          <code>deprecated: true</code> in Chart.yaml.
+                                          The chart owner has marked it for
+                                          retirement, so plan a replacement before it
+                                          stops receiving updates.
+                                        </span>
+                                      </div>
+                                    )}
                                     <div className="appset-chart-summary-scroll">
                                     <table className="appset-chart-summary">
                                       <thead>
@@ -1058,9 +1175,19 @@ export const ApplicationSetTable = () => {
                                           );
 
                                           return (
-                                            <tr key={`${target.chart}-${target.currentVersion}`}>
+                                            <tr
+                                              key={`${target.chart}-${target.currentVersion}`}
+                                              className={
+                                                target.deprecated
+                                                  ? 'appset-chart-summary-deprecated'
+                                                  : undefined
+                                              }
+                                            >
                                               <td className="appset-chart-summary-name">
                                                 {target.chart}
+                                                {target.deprecated && (
+                                                  <DeprecatedBadge title="Chart.yaml declares deprecated: true" />
+                                                )}
                                               </td>
                                               <td className="appset-chart-summary-version">
                                                 {target.currentVersion}
@@ -1123,7 +1250,7 @@ export const ApplicationSetTable = () => {
                                           than one line, and marking one of them
                                           would read as the others being current.
                                         */
-                                        const annotations = upgrade
+                                        const upgradeNotes = upgrade
                                           ? Object.fromEntries(
                                               group.origin.highlightLines.map(line => [
                                                 line,
@@ -1133,6 +1260,31 @@ export const ApplicationSetTable = () => {
                                                 </>,
                                               ]),
                                             )
+                                          : {};
+                                        /*
+                                          The deprecation is the other thing in
+                                          this file a reader has to act on, so
+                                          its line is marked the same way the
+                                          version line is.
+                                        */
+                                        const retiringLines = deprecatedLines(
+                                          group.origin.content,
+                                        );
+                                        const notes = {
+                                          ...upgradeNotes,
+                                          ...Object.fromEntries(
+                                            retiringLines.map(line => [
+                                              line,
+                                              <>
+                                                <DeprecatedIcon size={12} />
+                                                Chart owner marked this chart for
+                                                retirement
+                                              </>,
+                                            ]),
+                                          ),
+                                        };
+                                        const annotations = Object.keys(notes).length
+                                          ? notes
                                           : undefined;
 
                                         return (
@@ -1161,6 +1313,7 @@ export const ApplicationSetTable = () => {
                                           <YamlBlock
                                             content={group.origin.content}
                                             highlightLines={group.origin.highlightLines}
+                                            mutedLines={retiringLines}
                                             annotations={annotations}
                                           />
                                           <div className="appset-origin-apps">
@@ -1524,6 +1677,9 @@ export const ApplicationSetTable = () => {
                                                   {info.chartVersion
                                                     ? ` ${info.chartVersion}`
                                                     : ''}
+                                                  {info.deprecated && (
+                                                    <DeprecatedBadge title="Chart.yaml declares deprecated: true" />
+                                                  )}
                                                 </td>
                                               </tr>
                                             )}

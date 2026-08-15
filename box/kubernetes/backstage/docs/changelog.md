@@ -10,6 +10,14 @@ Headings are image tags, not Backstage versions. A rebuild at the same Backstage
 
 Tags released before this file existed (`1.51.0-1` through `1.53.0-3`) are not recorded here.
 
+## 1.53.1-3
+
+Released 2026-08-15. Built on Backstage [v1.53.1](https://github.com/backstage/backstage/releases/tag/v1.53.1) as the base version, the same base as `1.53.1-1`, so this tag differs only by the changes below.
+
+- Platforms: a platform entry accepts `deprecated: true` in `app.platforms`, which marks it as heading for retirement in both the card and the grid view. The entry is still listed and still links out, so the marking greys the card out and fades it rather than colouring it: an owner retiring a service is a standing fact, not an alert competing with the production VPN notice on the same card. A headstone badge carries the word where there is room for it, the grid tile shows the icon and a Deprecated label under a desaturated logo, and hovering restores the card to near full contrast so it stays readable. Omitting the key leaves a platform supported.
+- ArgoCD AppSets: an ApplicationSet deploying a chart whose `Chart.yaml` declares `deprecated: true` is marked with a headstone in the top right corner of its card, with the card greyed and dashed to match the Platforms treatment. The flag is read during the same `Chart.yaml` fetch that resolves the chart version, so it costs no extra request and is cached with it. Only a chart sourced from a git path can report this, since a chart pulled from a Helm repository is never read as a file.
+- ArgoCD AppSets: hovering the headstone names the deprecated charts and says what the flag means, and the Chart Version Detail dialog states the same thing once at the top, marks the deprecated chart in the summary table, and marks the `deprecated: true` line in the file itself. That line is marked in grey rather than in the accent the reported version line carries, because two marks of equal weight would leave a reader unsure which value the dialog is about. A trailing comment on the line, which is where the note explaining the flag usually lives, does not stop it being found.
+
 ## 1.53.1-2
 
 Released 2026-08-13, rebuilt over the 2026-08-12 build of the same tag. Built on Backstage [v1.53.1](https://github.com/backstage/backstage/releases/tag/v1.53.1) as the base version, the same base as `1.53.1-1`, so this tag differs only by the changes below.

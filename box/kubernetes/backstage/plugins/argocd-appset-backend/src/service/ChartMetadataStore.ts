@@ -19,6 +19,11 @@ export interface ChartMetadata {
   /** Version of the chart living at the path itself */
   version: string | null;
   appVersion: string | null;
+  /**
+   * The chart's own `deprecated: true`, which Helm defines as a declaration by
+   * the chart owner that it is heading for retirement. Absent means supported.
+   */
+  deprecated: boolean;
   dependencies: ChartDependency[];
   /**
    * Version of the upstream chart being wrapped, when it can be identified
@@ -110,6 +115,9 @@ export function parseChartYaml(content: string): ChartMetadata | null {
     name,
     version,
     appVersion,
+    // Only a real boolean true marks the chart deprecated. A string, a number
+    // or an absent key all leave it supported.
+    deprecated: doc.deprecated === true,
     dependencies,
     upstreamVersion: deriveUpstreamVersion(name, version, dependencies),
   };

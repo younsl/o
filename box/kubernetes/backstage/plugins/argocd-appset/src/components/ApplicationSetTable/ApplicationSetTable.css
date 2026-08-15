@@ -92,6 +92,64 @@
   display: grid;
   grid-template-rows: subgrid;
   border: 1px solid var(--bui-border-1);
+  /* Anchors the deprecation marker to the card's own top right corner */
+  position: relative;
+}
+
+/*
+ * A chart this ApplicationSet deploys declares `deprecated: true`. Grey and
+ * faded: the warning border and the sync colours on the same card mean "act on
+ * this", while a retiring chart is a standing fact.
+ */
+.appset-card-tombstone {
+  position: absolute !important;
+  top: var(--bui-space-2);
+  right: var(--bui-space-2);
+  display: inline-flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  /* 28px square: comfortably clickable, and the icon is the card's only marker */
+  width: 28px;
+  height: 28px;
+  min-width: 28px;
+  min-height: 28px;
+  padding: 0 !important;
+  color: var(--bui-fg-secondary) !important;
+  opacity: 0.7;
+}
+
+.appset-card-tombstone:hover {
+  opacity: 1;
+}
+
+/* Keeps a long name from running under the marker */
+.appset-card-deprecated .appset-card-name {
+  padding-right: var(--bui-space-8);
+}
+
+/*
+ * Same treatment the Platforms page gives a retiring platform: dashed and
+ * greyed at rest, near full on hover so the card stays readable once a reader
+ * is on it. Deliberately not coloured, so it does not compete with the warning
+ * border a non-HEAD card carries.
+ */
+.appset-card-deprecated {
+  border-style: dashed;
+  border-color: rgba(128, 128, 128, 0.45);
+  opacity: 0.78;
+  filter: grayscale(0.85);
+  transition: opacity 0.2s ease, filter 0.2s ease;
+}
+
+.appset-card-deprecated:hover {
+  opacity: 1;
+  filter: grayscale(0.4);
+}
+
+/* A non-HEAD card keeps its warning edge, which says something else entirely */
+.appset-card-warning.appset-card-deprecated {
+  border-left-style: solid;
+  border-left-color: var(--bui-border-warning);
 }
 
 /* CardBody inner spacing between field rows: 5 field rows + 1 footer row */
@@ -254,6 +312,52 @@
 .appset-chart-summary-name {
   white-space: nowrap;
   font-weight: var(--bui-font-weight-bold);
+}
+
+/*
+ * Chart.yaml declares `deprecated: true`. Grey and faded rather than coloured:
+ * the sync and upgrade accents in the same views mean "act on this", and a
+ * retiring chart is a standing fact, not an alert.
+ */
+.appset-deprecated-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  margin-left: var(--bui-space-2);
+  padding: 0 6px;
+  height: 18px;
+  border-radius: 4px;
+  background: rgba(128, 128, 128, 0.12);
+  color: var(--bui-fg-secondary);
+  font-size: var(--bui-font-size-2);
+  font-weight: var(--bui-font-weight-regular);
+  white-space: nowrap;
+  vertical-align: middle;
+}
+
+/* The whole row recedes, so a scan down the chart column finds it by weight */
+.appset-chart-summary-deprecated {
+  opacity: 0.78;
+}
+
+/* Says once, in words, what the greyed rows and the marked YAML line mean */
+.appset-deprecated-notice {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--bui-space-2);
+  margin-bottom: var(--bui-space-3);
+  padding: var(--bui-space-2) var(--bui-space-3);
+  border: 1px dashed rgba(128, 128, 128, 0.45);
+  border-radius: var(--bui-radius-2);
+  background: rgba(128, 128, 128, 0.12);
+  color: var(--bui-fg-secondary);
+  font-size: var(--bui-font-size-2);
+  line-height: 1.5;
+}
+
+.appset-deprecated-notice svg {
+  flex-shrink: 0;
+  margin-top: 2px;
 }
 
 /* Digits align across rows so a version difference is visible by shape */

@@ -84,6 +84,19 @@ main {
   box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
 }
 
+/* Deprecated platform: greyed out and faded at rest, near-full on hover so the
+   description and stats stay readable once the pointer is on the card. */
+.platform-card-deprecated {
+  opacity: 0.78;
+  filter: grayscale(0.85);
+  transition: opacity 0.2s ease, filter 0.2s ease;
+}
+
+.platform-card-wrapper:hover .platform-card-deprecated {
+  opacity: 1;
+  filter: grayscale(0.4);
+}
+
 /* @backstage/ui and legacy layout fixes - unified width */
 [class*="bui-container"],
 [class*="bui-Container"],

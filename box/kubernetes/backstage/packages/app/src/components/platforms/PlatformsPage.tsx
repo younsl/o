@@ -62,6 +62,20 @@ const TAG_ROW_GAP = 4;
  */
 const VPN_NOTICE_HEIGHT = 22;
 
+/**
+ * A platform marked `deprecated: true` in app-config is still listed and still
+ * links out, so it recedes rather than alarms: greyed out and faded, with the
+ * logo desaturated so a grid tile reads as retiring without any text, and a
+ * badge carrying the actual wording where there is room for it.
+ */
+const DEPRECATED_FG = 'var(--bui-fg-secondary, rgba(255, 255, 255, 0.5))';
+const DEPRECATED_BG = 'rgba(128, 128, 128, 0.12)';
+const DEPRECATED_BORDER = 'rgba(128, 128, 128, 0.45)';
+const DEPRECATED_LOGO_FILTER = 'grayscale(1)';
+/** Applied to the whole card or tile, on top of the desaturated logo. */
+const DEPRECATED_OPACITY = 0.78;
+const DEPRECATED_LABEL = 'Deprecated';
+
 interface Platform {
   name: string;
   category: string;
@@ -69,6 +83,7 @@ interface Platform {
   url: string;
   logo: string;
   tags: string[];
+  deprecated: boolean;
 }
 
 interface CategoryGroup {
@@ -97,6 +112,20 @@ const ExternalLinkIcon = () => (
 const WarningIcon = () => (
   <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor">
     <path d="M1 21h22L12 2 1 21zm12-3h-2v-2h2v2zm0-4h-2v-4h2v4z" />
+  </svg>
+);
+
+/**
+ * Headstone. The cross is a hole in the same path, so the icon takes the badge
+ * colour from `currentColor` and stays legible down to 12px.
+ */
+const DeprecatedIcon = ({ size = 14 }: { size?: number }) => (
+  <svg width={size} height={size} viewBox="0 0 24 24" fill="currentColor">
+    <path
+      fillRule="evenodd"
+      d="M12 2a7 7 0 00-7 7v10h14V9a7 7 0 00-7-7zm-1 4h2v3h3v2h-3v6h-2v-6H8V9h3V6z"
+    />
+    <path d="M3 20h18v2H3z" />
   </svg>
 );
 
@@ -156,6 +185,7 @@ const GridTile = ({
 }) => {
   const [hovered, setHovered] = useState(false);
   const isPrd = platform.tags.includes('prd');
+  const isDeprecated = platform.deprecated;
   return (
     <div
       style={{ position: 'relative', display: 'inline-flex', flexDirection: 'column', alignItems: 'center' }}
@@ -167,45 +197,100 @@ const GridTile = ({
         target="_blank"
         rel="noopener noreferrer"
         onClick={() => onVisit(platform.name)}
+        title={isDeprecated ? `${platform.name} (${DEPRECATED_LABEL})` : undefined}
         style={{
+          position: 'relative',
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'center',
           width: 64,
           height: 64,
           borderRadius: 6,
-          border: isPrd
+          // Deprecation outranks the production frame: an owner retiring the
+          // service is the more useful thing to read off a 64px tile.
+          border: isDeprecated
+            ? `1px dashed ${DEPRECATED_BORDER}`
+            : isPrd
             ? '2px solid rgba(54, 186, 162, 0.7)'
             : '1px solid var(--bui-color-border-default, #333)',
           backgroundColor: hovered
             ? 'rgba(255, 255, 255, 0.18)'
+            : isDeprecated
+            ? DEPRECATED_BG
             : 'rgba(255, 255, 255, 0.08)',
-          transition: 'background-color 0.15s',
+          // Faded at rest, close to full on hover, so a deprecated platform is
+          // still readable once the pointer is on it.
+          opacity: isDeprecated ? (hovered ? 1 : DEPRECATED_OPACITY) : undefined,
+          transition: 'background-color 0.15s, opacity 0.15s',
           textDecoration: 'none',
         }}
       >
         <img
           src={platform.logo}
           alt={platform.name}
-          style={{ maxHeight: 36, maxWidth: 36, objectFit: 'contain' }}
+          style={{
+            maxHeight: 36,
+            maxWidth: 36,
+            objectFit: 'contain',
+            // Desaturate only. The tile itself already carries the fade, and
+            // stacking a second one left the logo almost invisible.
+            filter: isDeprecated ? DEPRECATED_LOGO_FILTER : undefined,
+          }}
           onError={e => {
             e.currentTarget.src = FALLBACK_LOGO;
           }}
         />
+        {isDeprecated && (
+          <span
+            style={{
+              position: 'absolute',
+              top: -7,
+              left: -7,
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              width: 18,
+              height: 18,
+              borderRadius: '50%',
+              backgroundColor: 'var(--bui-color-bg-elevated, #1e1e1e)',
+              border: `1px solid ${DEPRECATED_BORDER}`,
+              color: DEPRECATED_FG,
+            }}
+            aria-label={DEPRECATED_LABEL}
+          >
+            <DeprecatedIcon size={12} />
+          </span>
+        )}
       </a>
-      {isPrd && (
+      {isDeprecated ? (
         <span
           style={{
             marginTop: 3,
             fontSize: 9,
             fontWeight: 600,
-            color: '#36BAA2',
+            color: DEPRECATED_FG,
             letterSpacing: 0.5,
             lineHeight: 1,
+            opacity: DEPRECATED_OPACITY,
           }}
         >
-          Production
+          Deprecated
         </span>
+      ) : (
+        isPrd && (
+          <span
+            style={{
+              marginTop: 3,
+              fontSize: 9,
+              fontWeight: 600,
+              color: '#36BAA2',
+              letterSpacing: 0.5,
+              lineHeight: 1,
+            }}
+          >
+            Production
+          </span>
+        )
       )}
       {hovered && (
         <div
@@ -236,6 +321,25 @@ const GridTile = ({
               {platform.name}
             </span>
           </div>
+          {/* Same geometry as the VPN notice below, only the colours differ. */}
+          {isDeprecated && (
+            <div
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: 2,
+                marginBottom: 6,
+                padding: '3px 6px',
+                backgroundColor: DEPRECATED_BG,
+                borderRadius: 4,
+                fontSize: 11,
+                color: DEPRECATED_FG,
+              }}
+            >
+              <DeprecatedIcon />
+              {DEPRECATED_LABEL}
+            </div>
+          )}
           <div style={{ fontSize: 12, color: 'rgba(255,255,255,0.6)', lineHeight: 1.4, marginBottom: 8 }}>
             {platform.description}
           </div>
@@ -377,12 +481,20 @@ const PlatformCard = ({
       {isFavorite ? <StarFilledIcon /> : <StarOutlineIcon />}
     </button>
     <Card
+      // Faded and dashed rather than coloured, so a retiring platform sits
+      // quietly behind the ones still supported. The favourite star lives
+      // outside the Card, so it keeps its normal contrast. The fade itself is
+      // in global.css, which can lift it back on hover; inline style cannot.
+      className={platform.deprecated ? 'platform-card-deprecated' : undefined}
       style={{
         height: '100%',
         overflow: 'hidden',
         display: 'flex',
         flexDirection: 'column',
         padding: 0,
+        ...(platform.deprecated
+          ? { border: `1px dashed ${DEPRECATED_BORDER}` }
+          : {}),
       }}
     >
       {/*
@@ -417,11 +529,40 @@ const PlatformCard = ({
           <img
             src={platform.logo}
             alt={platform.name}
+            // No per-logo fade here: the whole Card is greyed and faded by
+            // .platform-card-deprecated, and stacking both left the logo almost
+            // invisible.
             style={{ maxHeight: 56, maxWidth: '80%', objectFit: 'contain' }}
             onError={e => {
               e.currentTarget.src = FALLBACK_LOGO;
             }}
           />
+          {/*
+            Shares the logo band with the VPN notice, pinned to the opposite
+            corner so both can show on the same card without either moving, and
+            built to the same geometry so the pair reads as one badge family.
+          */}
+          {platform.deprecated && (
+            <div
+              style={{
+                position: 'absolute',
+                left: 8,
+                top: 6,
+                display: 'flex',
+                alignItems: 'center',
+                gap: 2,
+                height: VPN_NOTICE_HEIGHT,
+                padding: '0 8px',
+                backgroundColor: DEPRECATED_BG,
+                borderRadius: 4,
+                fontSize: 11,
+                color: DEPRECATED_FG,
+              }}
+            >
+              <DeprecatedIcon />
+              {DEPRECATED_LABEL}
+            </div>
+          )}
           {/*
             Sits inside the fixed-height logo band rather than in the flow below
             it. The band is 96px on every card, so the notice costs no height and
@@ -456,7 +597,11 @@ const PlatformCard = ({
           }}
         >
           <Flex justify="between" align="center" mb="1">
-            <Text variant="body-medium" weight="bold">
+            <Text
+              variant="body-medium"
+              weight="bold"
+              style={platform.deprecated ? { color: DEPRECATED_FG } : undefined}
+            >
               {highlightText(platform.name, searchQuery)}
             </Text>
             <ExternalLinkIcon />
@@ -615,6 +760,9 @@ export const PlatformsPage = () => {
     tags: (item.getOptionalString('tags') ?? '')
       .split(',')
       .filter(t => t.trim()),
+    // Omitted means supported. Only an explicit `deprecated: true` marks a
+    // platform as heading for retirement.
+    deprecated: item.getOptionalBoolean('deprecated') ?? false,
   }));
 
   const allTags = useMemo(() => {

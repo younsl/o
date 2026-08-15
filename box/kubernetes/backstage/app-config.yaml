@@ -35,12 +35,24 @@ app:
       url: https://querypie-nonprd.example.com
       logo: https://backstage.io/logo_assets/svg/Icon_Teal.svg
       tags: nonprd
+      # Optional, defaults to false. true marks the platform as heading for
+      # retirement in both card and grid view.
+      deprecated: false
     - name: QueryPie (prd)
       category: Data
       description: Data access governance platform
       url: https://querypie-prd.example.com
       logo: https://backstage.io/logo_assets/svg/Icon_Teal.svg
       tags: prd
+    - name: Jenkins
+      category: CI/CD
+      description: Legacy build server, migrating to ArgoCD
+      url: https://jenkins.example.com
+      logo: https://www.jenkins.io/images/logos/jenkins/jenkins.svg
+      tags: shared
+      # Still listed and still linked, but greyed out and faded with a
+      # "Deprecated" badge in both card and grid view.
+      deprecated: true
 
 organization:
   name: DevOps Portal

@@ -52,6 +52,12 @@ export interface ApplicationInfo {
    * image could be matched, and can be stale.
    */
   appVersionSource: 'image-tag' | 'chart-yaml' | null;
+  /**
+   * The deployed chart declares `deprecated: true` in its Chart.yaml. Only a
+   * chart read from a git path can report this: a chart pulled from a Helm
+   * repository is never read as a file, so it stays false there.
+   */
+  deprecated: boolean;
   /** Full image references from `status.summary.images` */
   images: string[];
   syncStatus: string;

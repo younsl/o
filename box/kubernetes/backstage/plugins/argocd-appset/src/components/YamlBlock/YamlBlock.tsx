@@ -69,6 +69,13 @@ export const YamlBlock = (props: {
   /** 1-indexed lines to mark as the ones actually read */
   highlightLines?: number[];
   /**
+   * 1-indexed lines to mark in grey instead. For a line worth pointing at that
+   * is not the value being reported, such as a `deprecated: true` declaration:
+   * the accent belongs to the reported value, and two accents of equal weight
+   * would leave a reader unsure which one the block is about.
+   */
+  mutedLines?: number[];
+  /**
    * Notes shown after a line, keyed by 1-indexed line number. Deliberately not
    * part of `content`, so neither the copy button nor a manual selection picks
    * them up: what is copied has to be the file as the repository has it.
@@ -76,6 +83,7 @@ export const YamlBlock = (props: {
   annotations?: Record<number, React.ReactNode>;
 }) => {
   const highlighted = new Set(props.highlightLines ?? []);
+  const muted = new Set(props.mutedLines ?? []);
   const lines = props.content.replace(/\n$/, '').split('\n');
   const gutterWidth = `${String(lines.length).length}ch`;
 
@@ -94,7 +102,13 @@ export const YamlBlock = (props: {
             return (
               <div
                 key={lineNumber}
-                className={`yaml-line${highlighted.has(lineNumber) ? ' yaml-line-read' : ''}`}
+                className={`yaml-line${
+                  highlighted.has(lineNumber)
+                    ? ' yaml-line-read'
+                    : muted.has(lineNumber)
+                      ? ' yaml-line-muted'
+                      : ''
+                }`}
               >
                 <span className="yaml-gutter" style={{ width: gutterWidth }}>
                   {lineNumber}
@@ -106,7 +120,14 @@ export const YamlBlock = (props: {
                     </span>
                   ))}
                   {props.annotations?.[lineNumber] && (
-                    <span className="yaml-annotation" aria-hidden="true">
+                    <span
+                      className={`yaml-annotation${
+                        muted.has(lineNumber) && !highlighted.has(lineNumber)
+                          ? ' yaml-annotation-muted'
+                          : ''
+                      }`}
+                      aria-hidden="true"
+                    >
                       {props.annotations[lineNumber]}
                     </span>
                   )}

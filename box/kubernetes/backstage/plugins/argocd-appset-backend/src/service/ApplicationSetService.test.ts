@@ -731,6 +731,26 @@ dependencies:
 
           expect(result.applicationInfos['shared-alloy-operator'].appVersion).toBe('1.11.1');
         });
+
+        it('carries the Chart.yaml deprecation onto the application', async () => {
+          const result = await listOne(
+            appSetItem(),
+            [wrapperApp()],
+            stubChartMetadata({ ...metadata, deprecated: true }),
+          );
+
+          expect(result.applicationInfos['shared-alloy-operator'].deprecated).toBe(true);
+        });
+
+        it('leaves the application undeprecated when the chart is not', async () => {
+          const result = await listOne(
+            appSetItem(),
+            [wrapperApp()],
+            stubChartMetadata({ ...metadata, deprecated: false }),
+          );
+
+          expect(result.applicationInfos['shared-alloy-operator'].deprecated).toBe(false);
+        });
       });
     });
 

@@ -87,6 +87,13 @@ describe('parseChartYaml', () => {
     expect(result!.dependencies).toEqual([]);
   });
 
+  it('reads deprecated only from a boolean true', () => {
+    expect(parseChartYaml('name: thing\ndeprecated: true\n')!.deprecated).toBe(true);
+    expect(parseChartYaml('name: thing\ndeprecated: false\n')!.deprecated).toBe(false);
+    expect(parseChartYaml('name: thing\ndeprecated: "true"\n')!.deprecated).toBe(false);
+    expect(parseChartYaml('name: thing\n')!.deprecated).toBe(false);
+  });
+
   it('returns null for content that is not a mapping', () => {
     expect(parseChartYaml('just a string')).toBeNull();
     expect(parseChartYaml('')).toBeNull();

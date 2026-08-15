@@ -76,6 +76,11 @@ export interface Config {
        * @visibility frontend
        */
       tags?: string;
+      /**
+       * Marks the platform as heading for retirement. Defaults to false.
+       * @visibility frontend
+       */
+      deprecated?: boolean;
     }>;
   };
 }

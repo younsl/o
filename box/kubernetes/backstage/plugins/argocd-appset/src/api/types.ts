@@ -38,6 +38,8 @@ export interface ApplicationInfo {
   upstreamRepository: string | null;
   appVersion: string | null;
   appVersionSource: 'image-tag' | 'chart-yaml' | null;
+  /** The deployed chart declares `deprecated: true` in its Chart.yaml */
+  deprecated: boolean;
   images: string[];
   syncStatus: string;
   healthStatus: string;
