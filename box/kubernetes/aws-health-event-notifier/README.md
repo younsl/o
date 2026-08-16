@@ -7,6 +7,12 @@
 
 Polls the [AWS Health API](https://docs.aws.amazon.com/health/latest/ug/health-api.html) and posts events to Slack, emitting a Kubernetes Event alongside each published alarm.
 
+## Architecture
+
+![Architecture](./docs/architecture.svg)
+
+One Pod polls the AWS Health API, filters events in process, and posts them to Slack.
+
 ## Overview
 
 A pull-model daemon: the pod queries the AWS Health [DescribeEvents](https://docs.aws.amazon.com/health/latest/APIReference/API_DescribeEvents.html) API on an interval and forwards new events to a Slack Incoming Webhook — no EventBridge rule or push endpoint required. On cold start it suppresses the backlog by default, so a restart never floods the channel with already-seen events. Every published alarm also produces a Kubernetes Event on the daemon's own Pod (resolved via the Downward API), making AWS Health activity visible to kubectl get events and cluster event pipelines.
