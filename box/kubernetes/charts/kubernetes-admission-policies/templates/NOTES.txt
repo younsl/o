@@ -5,13 +5,13 @@ Your release is named {{ .Release.Name }}.
 {{- $vaps := list }}
 {{- range $key, $value := .Values.validatingAdmissionPolicies }}
 {{- if $value.enabled }}
-{{- $vaps = append $vaps (include "kubernetes-native-policies.policyName" (dict "key" $key "value" $value)) }}
+{{- $vaps = append $vaps (include "kubernetes-admission-policies.policyName" (dict "key" $key "value" $value)) }}
 {{- end }}
 {{- end }}
 {{- $maps := list }}
 {{- range $key, $value := .Values.mutatingAdmissionPolicies }}
 {{- if $value.enabled }}
-{{- $maps = append $maps (include "kubernetes-native-policies.policyName" (dict "key" $key "value" $value)) }}
+{{- $maps = append $maps (include "kubernetes-admission-policies.policyName" (dict "key" $key "value" $value)) }}
 {{- end }}
 {{- end }}
 

@@ -1,12 +1,12 @@
 apiVersion: v2
-name: kubernetes-native-policies
+name: kubernetes-admission-policies
 description: Kubernetes-native admission policies using ValidatingAdmissionPolicy and MutatingAdmissionPolicy with their policy bindings
 type: application
-version: 0.2.0
+version: 0.1.0
 kubeVersion: ">=1.30.0-0"
 home: https://github.com/younsl/charts
 sources:
-  - https://github.com/younsl/o/tree/main/box/kubernetes/charts/kubernetes-native-policies
+  - https://github.com/younsl/o/tree/main/box/kubernetes/charts/kubernetes-admission-policies
   - https://kubernetes.io/docs/reference/access-authn-authz/validating-admission-policy/
   - https://kubernetes.io/docs/reference/access-authn-authz/mutating-admission-policy/
 maintainers:

@@ -1,6 +1,6 @@
-# kubernetes-native-policies
+# kubernetes-admission-policies
 
-![Version: 0.2.0](https://img.shields.io/badge/Version-0.2.0-informational?style=flat-square) ![Type: application](https://img.shields.io/badge/Type-application-informational?style=flat-square)
+![Version: 0.1.0](https://img.shields.io/badge/Version-0.1.0-informational?style=flat-square) ![Type: application](https://img.shields.io/badge/Type-application-informational?style=flat-square)
 
 Kubernetes-native admission policies using ValidatingAdmissionPolicy and MutatingAdmissionPolicy with their policy bindings
 
@@ -17,7 +17,7 @@ Kubernetes: `>=1.30.0-0`
 This chart is distributed via OCI registry, so you need to use [crane](https://github.com/google/go-containerregistry/blob/main/cmd/crane/README.md) instead of `helm search repo` to discover available versions:
 
 ```console
-crane ls ghcr.io/younsl/charts/kubernetes-native-policies
+crane ls ghcr.io/younsl/charts/kubernetes-admission-policies
 ```
 
 If you need to install crane on macOS, you can easily install it using [Homebrew](https://brew.sh/), the package manager.
@@ -28,31 +28,31 @@ brew install crane
 
 ### Install the chart
 
-Install the chart with the release name `kubernetes-native-policies`:
+Install the chart with the release name `kubernetes-admission-policies`:
 
 ```console
-helm install kubernetes-native-policies oci://ghcr.io/younsl/charts/kubernetes-native-policies
+helm install kubernetes-admission-policies oci://ghcr.io/younsl/charts/kubernetes-admission-policies
 ```
 
 Install with custom values:
 
 ```console
-helm install kubernetes-native-policies oci://ghcr.io/younsl/charts/kubernetes-native-policies -f values.yaml
+helm install kubernetes-admission-policies oci://ghcr.io/younsl/charts/kubernetes-admission-policies -f values.yaml
 ```
 
 Install a specific version:
 
 ```console
-helm install kubernetes-native-policies oci://ghcr.io/younsl/charts/kubernetes-native-policies --version 0.2.0
+helm install kubernetes-admission-policies oci://ghcr.io/younsl/charts/kubernetes-admission-policies --version 0.1.0
 ```
 
 ### Install from local chart
 
-Download kubernetes-native-policies chart and install from local directory:
+Download kubernetes-admission-policies chart and install from local directory:
 
 ```console
-helm pull oci://ghcr.io/younsl/charts/kubernetes-native-policies --untar --version 0.2.0
-helm install kubernetes-native-policies ./kubernetes-native-policies
+helm pull oci://ghcr.io/younsl/charts/kubernetes-admission-policies --untar --version 0.1.0
+helm install kubernetes-admission-policies ./kubernetes-admission-policies
 ```
 
 The `--untar` option downloads and unpacks the chart files into a directory for easy viewing and editing.
@@ -60,13 +60,13 @@ The `--untar` option downloads and unpacks the chart files into a directory for 
 ## Upgrade
 
 ```console
-helm upgrade kubernetes-native-policies oci://ghcr.io/younsl/charts/kubernetes-native-policies
+helm upgrade kubernetes-admission-policies oci://ghcr.io/younsl/charts/kubernetes-admission-policies
 ```
 
 ## Uninstall
 
 ```console
-helm uninstall kubernetes-native-policies
+helm uninstall kubernetes-admission-policies
 ```
 
 ## Configuration
@@ -89,7 +89,7 @@ The following table lists the configurable parameters and their default values.
 
 ## Source Code
 
-* <https://github.com/younsl/o/tree/main/box/kubernetes/charts/kubernetes-native-policies>
+* <https://github.com/younsl/o/tree/main/box/kubernetes/charts/kubernetes-admission-policies>
 * <https://kubernetes.io/docs/reference/access-authn-authz/validating-admission-policy/>
 * <https://kubernetes.io/docs/reference/access-authn-authz/mutating-admission-policy/>
 

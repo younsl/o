@@ -1,12 +1,12 @@
-{{- range $key, $value := .Values.mutatingAdmissionPolicies }}
+{{- range $key, $value := .Values.validatingAdmissionPolicies }}
 {{- if $value.enabled }}
 ---
-apiVersion: {{ $.Values.apiVersions.mutatingAdmissionPolicy }}
-kind: MutatingAdmissionPolicy
+apiVersion: {{ $.Values.apiVersions.validatingAdmissionPolicy }}
+kind: ValidatingAdmissionPolicy
 metadata:
-  name: {{ include "kubernetes-native-policies.policyName" (dict "key" $key "value" $value) }}
+  name: {{ include "kubernetes-admission-policies.policyName" (dict "key" $key "value" $value) }}
   labels:
-    {{- include "kubernetes-native-policies.labels" $ | nindent 4 }}
+    {{- include "kubernetes-admission-policies.labels" $ | nindent 4 }}
   {{- if or $value.description $.Values.commonAnnotations }}
   annotations:
     {{- with $value.description }}
@@ -20,19 +20,20 @@ spec:
   {{- with $value.failurePolicy }}
   failurePolicy: {{ . }}
   {{- end }}
-  {{- with $value.reinvocationPolicy }}
-  reinvocationPolicy: {{ . }}
-  {{- end }}
   {{- with $value.matchConstraints }}
   matchConstraints:
     {{- toYaml . | nindent 4 }}
   {{- end }}
-  {{- with $value.mutations }}
-  mutations:
+  {{- with $value.validations }}
+  validations:
     {{- toYaml . | nindent 4 }}
   {{- end }}
   {{- with $value.matchConditions }}
   matchConditions:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+  {{- with $value.auditAnnotations }}
+  auditAnnotations:
     {{- toYaml . | nindent 4 }}
   {{- end }}
   {{- with $value.variables }}

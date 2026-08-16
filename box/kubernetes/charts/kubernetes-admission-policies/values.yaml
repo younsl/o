@@ -135,7 +135,7 @@ extraObjects: []
   # - apiVersion: v1
   #   kind: ConfigMap
   #   metadata:
-  #     name: '{{ include "kubernetes-native-policies.fullname" . }}-params'
+  #     name: '{{ include "kubernetes-admission-policies.fullname" . }}-params'
   #   data:
   #     key: value
   # - |

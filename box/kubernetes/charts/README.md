@@ -21,7 +21,7 @@ For these reasons this repository publishes charts only as OCI artifacts and doe
 | [grafana-dashboards](./grafana-dashboards) | Deploys Grafana dashboards as ConfigMaps, provisioned automatically by the Grafana sidecar. Supports per-dashboard folder, labels, and annotations. |
 | [istio-envoyfilters](./istio-envoyfilters) | Manages Istio EnvoyFilter resources to customize Envoy proxy configurations across namespaces. |
 | [karpenter-nodepool](./karpenter-nodepool) | Creates Karpenter NodePool and EC2NodeClass resources. |
-| [kubernetes-native-policies](./kubernetes-native-policies) | Kubernetes-native admission policies using ValidatingAdmissionPolicy and MutatingAdmissionPolicy with their policy bindings. |
+| [kubernetes-admission-policies](./kubernetes-admission-policies) | Kubernetes-native admission policies using ValidatingAdmissionPolicy and MutatingAdmissionPolicy with their policy bindings. |
 
 ## Install
 
