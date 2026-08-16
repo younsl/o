@@ -1,0 +1,20 @@
+# AWS Performance Insights API response sample. The flagged values are
+# db.sql_tokenized.id SQL statement hashes, not credentials.
+box/kubernetes/aurora-database-insights-exporter/docs/limitation.md:generic-api-key:22
+box/kubernetes/aurora-database-insights-exporter/docs/limitation.md:generic-api-key:29
+
+# Unit test literal asserting that ConfigItem::sensitive masks its value.
+box/kubernetes/trivy-collector/src/web/types.rs:generic-api-key:503
+
+# Same two findings as they appear in history. The repository is periodically
+# re-rooted by commit-history-cleaner, so each orphan root reintroduces them.
+1a8ade2:box/kubernetes/aurora-database-insights-exporter/docs/limitation.md:generic-api-key:22
+1a8ade2:box/kubernetes/aurora-database-insights-exporter/docs/limitation.md:generic-api-key:29
+1a8ade2:box/kubernetes/trivy-collector/src/web/types.rs:generic-api-key:503
+637d7bd:box/kubernetes/aurora-database-insights-exporter/docs/limitation.md:generic-api-key:22
+637d7bd:box/kubernetes/aurora-database-insights-exporter/docs/limitation.md:generic-api-key:29
+637d7bd:box/kubernetes/trivy-collector/src/web/types.rs:generic-api-key:503
+0ad5be4:box/kubernetes/aurora-database-insights-exporter/docs/limitation.md:generic-api-key:22
+0ad5be4:box/kubernetes/aurora-database-insights-exporter/docs/limitation.md:generic-api-key:29
+0ad5be4:box/kubernetes/trivy-collector/src/web/types.rs:generic-api-key:503
+43a72bf:box/kubernetes/trivy-collector/src/web/types.rs:generic-api-key:441
