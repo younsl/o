@@ -7,6 +7,7 @@
 - [Kubernetes Runtime Security: The Silence That Should Keep You Up at Night](https://blog.saintmalik.me/kubernetes-runtime-security/)
 - [Awesome Prometheus Alerts | Copy-pasteable Prometheus alerting rules](https://samber.github.io/awesome-prometheus-alerts/)
 - [Benchmarking gRPC Load Balancing on Kubernetes: Linkerd vs Istio vs Cilium](https://buoyant.io/blog/benchmarking-grpc-load-balancing-on-kubernetes-linkerd-vs-istio-vs-cilium)
+- [Kubernetes CPU limits make your apps (very) slow and costly](https://github.com/inevolin/k8s-cpu-limits-analyzed)
 
 ## Tech Culture
 
