@@ -133,6 +133,8 @@ export interface ConnectionResponse {
   configured: boolean;
   managedByConfig: boolean;
   username: string | null;
+  /** API roots app-config permits. The form may only save one of these. */
+  allowedApiBaseUrls: string[];
   updatedBy: string | null;
   updatedAt: string | null;
 }

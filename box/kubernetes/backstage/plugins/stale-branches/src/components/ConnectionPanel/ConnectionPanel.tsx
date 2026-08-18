@@ -142,7 +142,12 @@ export const ConnectionPanel = () => {
 
   useEffect(() => {
     if (!connection) return;
-    setApiBaseUrl(connection.apiBaseUrl ?? '');
+    // With one permitted API root there is nothing to choose, so the field
+    // arrives filled rather than asking for what app-config already pins.
+    const allowed = connection.allowedApiBaseUrls ?? [];
+    setApiBaseUrl(
+      connection.apiBaseUrl ?? (allowed.length === 1 ? allowed[0] : ''),
+    );
   }, [connection]);
 
   // Editing either credential invalidates the previous probe, so the result
@@ -291,6 +296,7 @@ export const ConnectionPanel = () => {
   }
 
   const urlError = localUrlError(apiBaseUrl);
+  const allowedUrls = connection?.allowedApiBaseUrls ?? [];
   const hasCredential = !!token.trim() || !!connection?.gitlabTokenMasked;
 
   const endpointState: CheckState = (() => {
@@ -349,6 +355,14 @@ export const ConnectionPanel = () => {
               value={apiBaseUrl}
               onChange={update(setApiBaseUrl, true)}
             />
+            {/* The backend calls only the API roots app-config names, so the
+                form says which ones those are rather than letting a save
+                fail on an address it was never going to accept. */}
+            <Text variant="body-x-small" color="secondary">
+              {allowedUrls.length > 0
+                ? `Allowed by app-config: ${allowedUrls.join(', ')}`
+                : 'No GitLab instance is configured yet. Add integrations.gitlab or staleBranches.allowedHosts to app-config first.'}
+            </Text>
             <PasswordField
               label="Token"
               placeholder={

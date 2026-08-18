@@ -138,6 +138,21 @@ because they need no editing to run. The database takes precedence over both,
 and a token that came from config is never copied into the database, where it
 would outlive the config it was read from.
 
+The API URL field is a choice among the instances app-config names, not a free
+address. The backend accepts a saved or probed URL only when it matches
+`staleBranches.apiBaseUrl`, an entry in `integrations.gitlab`, or a host listed
+in `staleBranches.allowedHosts`, and it then calls the matched config value
+rather than the string that arrived in the request. An admin session could
+otherwise use the reachability check to reach anything the backend pod can route
+to, cloud metadata included. `staleBranches.allowedHosts` is the way to permit a
+GitLab that has no `integrations.gitlab` entry:
+
+```yaml
+staleBranches:
+  allowedHosts:
+    - gitlab.example.com
+```
+
 ## What counts as stale
 
 GitLab exposes no branch creation time. The scan reads `commit.committed_date`

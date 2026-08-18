@@ -89,6 +89,68 @@ export function validateApiBaseUrl(raw: string): string | null {
   return null;
 }
 
+/**
+ * The GitLab API roots this backend is allowed to call.
+ *
+ * Every entry comes from app-config, never from a request body. The probe and
+ * save endpoints match what an admin typed against this list and then call the
+ * matched entry, so a request can pick a target but cannot name one. Without
+ * that, an admin session could aim these endpoints at anything the backend pod
+ * can route to, cloud metadata included.
+ */
+export function allowedApiBaseUrls(config: Config): string[] {
+  const urls = new Set<string>();
+  const add = (value: unknown) => {
+    if (typeof value !== 'string') return;
+    const trimmed = value.trim().replace(/\/$/, '');
+    if (trimmed && !validateApiBaseUrl(trimmed)) urls.add(trimmed);
+  };
+
+  add(config.getOptional('staleBranches.apiBaseUrl'));
+  const hosts =
+    config.getOptionalStringArray('staleBranches.allowedHosts') ?? [];
+  for (const host of hosts) add(`https://${host.trim()}/api/v4`);
+
+  const integrations =
+    config.getOptionalConfigArray('integrations.gitlab') ?? [];
+  for (const integration of integrations) {
+    add(integration.getOptionalString('apiBaseUrl'));
+    const host = integration.getOptionalString('host');
+    if (host) add(`https://${host.trim()}/api/v4`);
+  }
+  return [...urls];
+}
+
+/**
+ * Matches a submitted URL against the allow list and hands back the *allowed*
+ * value, so every caller fetches a config owned string rather than the one that
+ * arrived in the request.
+ */
+export function resolveApiBaseUrl(
+  raw: unknown,
+  allowed: string[],
+): { url: string } | { error: string } {
+  const value = String(raw ?? '').trim().replace(/\/$/, '');
+  const invalid = validateApiBaseUrl(value);
+  if (invalid) return { error: invalid };
+  if (allowed.length === 0) {
+    return {
+      error:
+        'No GitLab instance is configured. Set integrations.gitlab, staleBranches.apiBaseUrl or staleBranches.allowedHosts in app-config.',
+    };
+  }
+  const match = allowed.find(
+    candidate => candidate.toLowerCase() === value.toLowerCase(),
+  );
+  if (!match) {
+    const list = allowed.join(', ');
+    return {
+      error: `'${value}' is not an allowed GitLab instance. Allowed: ${list}`,
+    };
+  }
+  return { url: match };
+}
+
 const asList = (value: unknown, fallback: string[]): string[] =>
   Array.isArray(value)
     ? value.map(String).map(item => item.trim()).filter(Boolean)
@@ -555,6 +617,7 @@ export async function createRouter(options: RouterOptions): Promise<Router> {
         configured: !!credentials,
         managedByConfig: service.isManagedByConfig(),
         username: null,
+        allowedApiBaseUrls: allowedApiBaseUrls(config),
         updatedBy: stored?.updatedBy ?? null,
         updatedAt: stored?.updatedAt ?? null,
       };
@@ -569,12 +632,13 @@ export async function createRouter(options: RouterOptions): Promise<Router> {
   router.post('/connection/reachability', adminGuard(), async (req, res) => {
     try {
       const { apiBaseUrl } = (req.body ?? {}) as { apiBaseUrl?: string };
-      const invalid = validateApiBaseUrl(String(apiBaseUrl ?? ''));
-      if (invalid) {
-        res.status(400).json({ error: invalid });
+      const allowed = allowedApiBaseUrls(config);
+      const resolved = resolveApiBaseUrl(apiBaseUrl, allowed);
+      if ('error' in resolved) {
+        res.status(400).json({ error: resolved.error });
         return;
       }
-      res.json(await probeEndpoint(String(apiBaseUrl)));
+      res.json(await probeEndpoint(resolved.url));
     } catch (error) {
       fail(res, error, 'failed to reach the endpoint');
     }
@@ -588,9 +652,10 @@ export async function createRouter(options: RouterOptions): Promise<Router> {
         apiBaseUrl?: string;
         gitlabToken?: string;
       };
-      const invalid = validateApiBaseUrl(String(apiBaseUrl ?? ''));
-      if (invalid) {
-        res.status(400).json({ error: invalid });
+      const allowed = allowedApiBaseUrls(config);
+      const resolved = resolveApiBaseUrl(apiBaseUrl, allowed);
+      if ('error' in resolved) {
+        res.status(400).json({ error: resolved.error });
         return;
       }
       // An empty field means "keep what is in effect", so the probe reuses the
@@ -603,7 +668,7 @@ export async function createRouter(options: RouterOptions): Promise<Router> {
         res.status(400).json({ error: 'GitLab token is required' });
         return;
       }
-      res.json(await probeCredentials(String(apiBaseUrl), token));
+      res.json(await probeCredentials(resolved.url, token));
     } catch (error) {
       fail(res, error, 'failed to test the connection');
     }
@@ -615,9 +680,10 @@ export async function createRouter(options: RouterOptions): Promise<Router> {
         apiBaseUrl?: string;
         gitlabToken?: string;
       };
-      const invalid = validateApiBaseUrl(String(apiBaseUrl ?? ''));
-      if (invalid) {
-        res.status(400).json({ error: invalid });
+      const allowed = allowedApiBaseUrls(config);
+      const resolved = resolveApiBaseUrl(apiBaseUrl, allowed);
+      if ('error' in resolved) {
+        res.status(400).json({ error: resolved.error });
         return;
       }
 
@@ -635,7 +701,7 @@ export async function createRouter(options: RouterOptions): Promise<Router> {
 
       // Credentials that cannot read the API would make every run report zero
       // stale branches, so the save is refused rather than silently accepted.
-      const probe = await probeCredentials(String(apiBaseUrl), token);
+      const probe = await probeCredentials(resolved.url, token);
       if (!probe.reachable) {
         res.status(400).json({
           error: `Cannot reach GitLab. ${probe.error ?? ''}`.trim(),
@@ -645,7 +711,7 @@ export async function createRouter(options: RouterOptions): Promise<Router> {
       }
 
       await connectionStore.write({
-        apiBaseUrl: String(apiBaseUrl).trim(),
+        apiBaseUrl: resolved.url,
         // Only a token typed into the form is stored. A value that came from
         // app-config stays there rather than being copied into the database,
         // where it would outlive the config it was read from.

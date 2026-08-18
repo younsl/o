@@ -57,6 +57,8 @@ export interface ConnectionResponse {
   managedByConfig: boolean;
   /** Username behind the effective token, filled in by a probe on request. */
   username: string | null;
+  /** API roots app-config permits. The form may only save one of these. */
+  allowedApiBaseUrls: string[];
   updatedBy: string | null;
   updatedAt: string | null;
 }
