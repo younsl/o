@@ -49,6 +49,19 @@ Only the alert group's first analysis is paid for: a group stays deduplicated
 for `DEDUPE_TTL`, which should cover the Alertmanager `repeat_interval`. A run
 that fails is not suppressed, so the next resend retries it.
 
+## Prompt assembly
+
+The bridge owns only the user half of the prompt: the rendered alert payload
+with `ANALYSIS_INSTRUCTIONS` appended, sent over A2A as a `role: user` message.
+The system half lives on the Agent CR as `spec.declarative.systemMessage`,
+which the kagent controller translates into the agent config's `Instruction`
+and the ADK runtime sends as the model's system prompt. Editing the CR
+therefore takes effect without touching the bridge, while changing
+`ANALYSIS_INSTRUCTIONS` requires a restart: it is read from the environment
+once at boot.
+
+![Prompt assembly](docs/prompt-assembly.svg)
+
 ## Mention invocation
 
 Setting `SLACK_APP_TOKEN` opens a Socket Mode connection and lets an engineer
