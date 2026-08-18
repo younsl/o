@@ -18,6 +18,12 @@ data:
   {{- with .Values.filter.denyServices }}
   DENY_SERVICES: {{ join "," . | quote }}
   {{- end }}
+  {{- with .Values.filter.allowRegions }}
+  ALLOW_REGIONS: {{ join "," . | quote }}
+  {{- end }}
+  {{- with .Values.filter.denyRegions }}
+  DENY_REGIONS: {{ join "," . | quote }}
+  {{- end }}
   {{- with .Values.filter.allowEventCodes }}
   ALLOW_EVENT_CODES: {{ join "," . | quote }}
   {{- end }}

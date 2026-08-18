@@ -325,6 +325,7 @@ fn minimal_event(s: &EventSummary) -> crate::health::HealthEvent {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::filter::FilterLists;
 
     fn summary() -> EventSummary {
         EventSummary {
@@ -355,13 +356,30 @@ mod tests {
 
     #[test]
     fn minimal_event_is_filterable() {
-        let f = EventFilter::new(&[], &[], &["EC2".into()], &[], &[], &[]);
+        let f = EventFilter::new(&FilterLists {
+            allow_services: &["EC2".into()],
+            ..Default::default()
+        });
         assert!(f.evaluate(&minimal_event(&summary())).is_allowed());
     }
 
     #[test]
     fn minimal_event_carries_event_code_for_filtering() {
-        let f = EventFilter::new(&[], &[], &[], &[], &[], &["EC2/CODE".into()]);
+        let f = EventFilter::new(&FilterLists {
+            deny_event_codes: &["EC2/CODE".into()],
+            ..Default::default()
+        });
+        assert!(!f.evaluate(&minimal_event(&summary())).is_allowed());
+    }
+
+    #[test]
+    fn minimal_event_carries_region_for_filtering() {
+        // The reminder path filters on the summary, so a region rule must apply
+        // there too rather than only on hydrated events.
+        let f = EventFilter::new(&FilterLists {
+            allow_regions: &["ap-northeast-2".into()],
+            ..Default::default()
+        });
         assert!(!f.evaluate(&minimal_event(&summary())).is_allowed());
     }
 
@@ -374,6 +392,7 @@ mod tests {
 
         use super::super::*;
         use crate::aws::health::test_support::replay_client;
+        use crate::filter::FilterLists;
         use crate::notify::{Notifier, SlackOpts};
         use crate::slack::client::SlackClient;
 
@@ -476,7 +495,10 @@ mod tests {
                 metrics.clone(),
             );
             // Deny the EC2 service so the hydrated event is dropped before publish.
-            let filter = EventFilter::new(&[], &[], &[], &["EC2".into()], &[], &[]);
+            let filter = EventFilter::new(&FilterLists {
+                deny_services: &["EC2".into()],
+                ..Default::default()
+            });
             let p = Poller::new(
                 HealthClient::from_client(client, "en"),
                 notifier,

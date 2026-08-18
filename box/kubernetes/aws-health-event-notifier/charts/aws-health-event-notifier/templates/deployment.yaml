@@ -34,8 +34,8 @@ spec:
             - run
             - --admin-addr=0.0.0.0:8081
           envFrom:
-            # All filter settings (ALLOW_/DENY_ categories, services, event
-            # codes) are managed via this ConfigMap.
+            # All filter settings (ALLOW_/DENY_ categories, services, regions,
+            # event codes) are managed via this ConfigMap.
             - configMapRef:
                 name: {{ include "ahen.fullname" . }}-filter
           env:

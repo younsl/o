@@ -10,7 +10,7 @@ use tokio::task::JoinSet;
 use crate::aws::account::AccountIdentity;
 use crate::aws::health::HealthClient;
 use crate::config::{RunArgs, SlackArgs};
-use crate::filter::{Catalogs, EventFilter, ServiceEventCode, validate_filters};
+use crate::filter::{Catalogs, EventFilter, FilterLists, ServiceEventCode, validate_filters};
 use crate::k8s::client::{K8sEventClient, PodIdentity};
 use crate::notify::{Notifier, SlackOpts};
 use crate::observability::metrics::Metrics;
@@ -26,19 +26,16 @@ pub async fn run(slack_cfg: SlackArgs, run_cfg: RunArgs) -> anyhow::Result<()> {
     )
     .context("failed to construct Slack client")?;
 
-    let filter = EventFilter::new(
-        &run_cfg.allow_categories,
-        &run_cfg.deny_categories,
-        &run_cfg.allow_services,
-        &run_cfg.deny_services,
-        &run_cfg.allow_event_codes,
-        &run_cfg.deny_event_codes,
-    );
+    let filter = EventFilter::new(&filter_lists(&run_cfg));
     tracing::info!(
         allow_categories = ?run_cfg.allow_categories,
         deny_categories = ?run_cfg.deny_categories,
         allow_services = ?run_cfg.allow_services,
         deny_services = ?run_cfg.deny_services,
+        allow_regions = ?run_cfg.allow_regions,
+        deny_regions = ?run_cfg.deny_regions,
+        // Includes the implicit `global`, so the enforced list is never a guess.
+        allow_regions_effective = ?filter.effective_allow_regions(),
         allow_event_codes = ?run_cfg.allow_event_codes,
         deny_event_codes = ?run_cfg.deny_event_codes,
         "filter configured"
@@ -128,6 +125,21 @@ pub async fn run(slack_cfg: SlackArgs, run_cfg: RunArgs) -> anyhow::Result<()> {
     Ok(())
 }
 
+/// Borrows the configured filter lists off `RunArgs` for the filter and its
+/// startup validation, which read exactly the same values.
+fn filter_lists(run_cfg: &RunArgs) -> FilterLists<'_> {
+    FilterLists {
+        allow_categories: &run_cfg.allow_categories,
+        deny_categories: &run_cfg.deny_categories,
+        allow_services: &run_cfg.allow_services,
+        deny_services: &run_cfg.deny_services,
+        allow_regions: &run_cfg.allow_regions,
+        deny_regions: &run_cfg.deny_regions,
+        allow_event_codes: &run_cfg.allow_event_codes,
+        deny_event_codes: &run_cfg.deny_event_codes,
+    }
+}
+
 async fn validate_against_catalog(aws: &HealthClient, run_cfg: &RunArgs) -> anyhow::Result<()> {
     // Query only the service codes and event type codes the user actually
     // configured, instead of paginating the full AWS Health catalog
@@ -167,15 +179,9 @@ async fn validate_against_catalog(aws: &HealthClient, run_cfg: &RunArgs) -> anyh
             .context("failed to look up AWS Health event type codes for filter validation")?,
     };
     let elapsed_ms = started.elapsed().as_millis();
-    let report = validate_filters(
-        &run_cfg.allow_categories,
-        &run_cfg.deny_categories,
-        &run_cfg.allow_services,
-        &run_cfg.deny_services,
-        &run_cfg.allow_event_codes,
-        &run_cfg.deny_event_codes,
-        &catalogs,
-    );
+    // Regions add no catalog lookup: `DescribeEventTypes` publishes no region
+    // list, so they are shape-checked instead.
+    let report = validate_filters(&filter_lists(run_cfg), &catalogs);
 
     tracing::info!(
         elapsed_ms,
@@ -191,6 +197,14 @@ async fn validate_against_catalog(aws: &HealthClient, run_cfg: &RunArgs) -> anyh
         deny_services_valid = ?report.deny_services.valid,
         deny_services_invalid_count = report.deny_services.invalid.len(),
         deny_services_invalid = ?report.deny_services.invalid,
+        allow_regions_valid_count = report.allow_regions.valid.len(),
+        allow_regions_valid = ?report.allow_regions.valid,
+        allow_regions_invalid_count = report.allow_regions.invalid.len(),
+        allow_regions_invalid = ?report.allow_regions.invalid,
+        deny_regions_valid_count = report.deny_regions.valid.len(),
+        deny_regions_valid = ?report.deny_regions.valid,
+        deny_regions_invalid_count = report.deny_regions.invalid.len(),
+        deny_regions_invalid = ?report.deny_regions.invalid,
         allow_event_codes_valid_count = report.allow_event_codes.valid.len(),
         allow_event_codes_valid = ?report.allow_event_codes.valid,
         allow_event_codes_invalid_count = report.allow_event_codes.invalid.len(),
@@ -207,10 +221,10 @@ async fn validate_against_catalog(aws: &HealthClient, run_cfg: &RunArgs) -> anyh
         tracing::error!(
             invalid_count = invalid.len(),
             invalid = ?invalid,
-            "filter validation failed: unknown service codes or event type codes detected, please check them again; aborting startup"
+            "filter validation failed: unknown service codes or event type codes, or malformed region codes, detected; please check them again; aborting startup"
         );
         anyhow::bail!(
-            "filter validation failed: {} unknown value(s): {}; please check service codes and event type codes again",
+            "filter validation failed: {} invalid value(s): {}; please check service codes, event type codes, and region codes again",
             invalid.len(),
             invalid.join(", ")
         );

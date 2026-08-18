@@ -167,6 +167,12 @@ filter:
     # - HEALTH   # meta events from the Health service itself
     # - KAFKA    # silence MSK chatter in dev
     # - VPN      # silence VPN tunnel maintenance notifications
+  # -- (list) Allowed AWS region codes (case-insensitive). Empty = allow all. `global` is always allowed unless denied.
+  allowRegions: []
+    # - ap-northeast-2
+  # -- (list) Denied AWS region codes (wins over allow).
+  denyRegions: []
+    # - global   # drop global-scope events entirely
   # -- (list) Allowed `SERVICE/EVENT_TYPE_CODE` pairs (case-insensitive).
   # Empty = allow all.
   allowEventCodes: []

@@ -105,6 +105,18 @@ pub struct RunArgs {
     #[arg(long, env = "DENY_SERVICES", value_delimiter = ',', num_args = 0..)]
     pub deny_services: Vec<String>,
 
+    /// Comma-separated AWS region codes to allow (case-insensitive).
+    /// Empty = allow all. `global` is always allowed unless denied, so
+    /// global-scope events survive a narrow allow list.
+    #[arg(long, env = "ALLOW_REGIONS", value_delimiter = ',', num_args = 0..)]
+    pub allow_regions: Vec<String>,
+
+    /// Comma-separated AWS region codes to deny (wins over allow). Drops events
+    /// from a region the account does not run in without silencing the same
+    /// event type where it matters.
+    #[arg(long, env = "DENY_REGIONS", value_delimiter = ',', num_args = 0..)]
+    pub deny_regions: Vec<String>,
+
     /// Comma-separated `SERVICE/EVENT_TYPE_CODE` pairs to allow
     /// (case-insensitive). Empty = allow all.
     #[arg(long, env = "ALLOW_EVENT_CODES", value_delimiter = ',', num_args = 0..)]

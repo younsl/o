@@ -1,17 +1,29 @@
-//! Category / service / event-type-code filtering for AWS Health events.
+//! Category / service / region / event-type-code filtering for AWS Health events.
 //!
 //! Allow lists are inclusive: empty means "allow everything".
 //! Deny lists always win — an entry in deny is dropped even if allow lists it.
-//! Service and event-type-code matching is case-insensitive; category matching
-//! is exact since AWS uses fixed camelCase values (`issue`, `scheduledChange`, ...).
+//! Service, region, and event-type-code matching is case-insensitive; category
+//! matching is exact since AWS uses fixed camelCase values (`issue`,
+//! `scheduledChange`, ...).
 //!
 //! Event-type-code filters are written as `SERVICE/EVENT_TYPE_CODE` pairs
 //! (e.g. `VPN/AWS_VPN_REDUNDANCY_LOSS`) and sit below service filters: deny a
 //! noisy code while still receiving every other event from the same service.
+//!
+//! Region filters drop events from regions the account does not run in, without
+//! silencing the same event type where it matters. `global` is appended to a
+//! non-empty allow list so global-scope events (IAM, Route 53, and the Health
+//! service itself) survive; list it in the deny list to drop them. An event whose
+//! region is absent or empty passes both lists, since losing a real event to a
+//! missing field is worse than one extra notification.
 
 use std::collections::HashSet;
 
 use crate::health::HealthEvent;
+
+/// Region value AWS Health uses for global-scope events. Always allowed unless
+/// explicitly denied, so an allow list does not silently drop global services.
+pub const GLOBAL_REGION: &str = "global";
 
 /// Fixed set of `eventTypeCategory` values defined by AWS Health.
 /// Source: <https://docs.aws.amazon.com/health/latest/APIReference/API_EventType.html>
@@ -36,13 +48,32 @@ impl ListValidation {
     }
 }
 
-/// Full validation result for all six filter lists.
+/// The eight allow/deny lists that make up the event filter, as configured.
+///
+/// Named fields instead of eight positional `&[String]` arguments: the lists are
+/// all the same type, so ordering them by hand at the call site is a silent bug
+/// waiting to happen. `Default` is the all-empty case, which means allow all.
+#[derive(Debug, Default, Clone, Copy)]
+pub struct FilterLists<'a> {
+    pub allow_categories: &'a [String],
+    pub deny_categories: &'a [String],
+    pub allow_services: &'a [String],
+    pub deny_services: &'a [String],
+    pub allow_regions: &'a [String],
+    pub deny_regions: &'a [String],
+    pub allow_event_codes: &'a [String],
+    pub deny_event_codes: &'a [String],
+}
+
+/// Full validation result for all eight filter lists.
 #[derive(Debug, Default, Clone)]
 pub struct ValidationReport {
     pub allow_services: ListValidation,
     pub deny_services: ListValidation,
     pub allow_categories: ListValidation,
     pub deny_categories: ListValidation,
+    pub allow_regions: ListValidation,
+    pub deny_regions: ListValidation,
     pub allow_event_codes: ListValidation,
     pub deny_event_codes: ListValidation,
 }
@@ -53,6 +84,8 @@ impl ValidationReport {
             && self.deny_services.is_ok()
             && self.allow_categories.is_ok()
             && self.deny_categories.is_ok()
+            && self.allow_regions.is_ok()
+            && self.deny_regions.is_ok()
             && self.allow_event_codes.is_ok()
             && self.deny_event_codes.is_ok()
     }
@@ -71,6 +104,12 @@ impl ValidationReport {
         }
         for v in &self.deny_categories.invalid {
             out.push(format!("deny_categories '{v}'"));
+        }
+        for v in &self.allow_regions.invalid {
+            out.push(format!("allow_regions '{v}'"));
+        }
+        for v in &self.deny_regions.invalid {
+            out.push(format!("deny_regions '{v}'"));
         }
         for v in &self.allow_event_codes.invalid {
             out.push(format!("allow_event_codes '{v}'"));
@@ -129,21 +168,51 @@ impl ServiceEventCode {
     }
 }
 
+/// True for a well-formed AWS region code, or the literal `global`.
+///
+/// Shape check only: `DescribeEventTypes` publishes no region catalog, so there
+/// is nothing to validate against. A static list of known regions would reject a
+/// newly launched region and turn a correct configuration into a crash loop,
+/// while a wrong-but-well-formed region is only an over-filter, visible as
+/// `aws_health_event_filtered_total{reason="region_not_allowed"}`.
+///
+/// Matches `^[a-z]{2}(-[a-z]+)+-\d$`: `ap-northeast-2`, `us-gov-east-1`,
+/// `cn-north-1`. Rejects `ap-northeast2` and `eu_central_1`.
+fn is_region_shaped(value: &str) -> bool {
+    if value.eq_ignore_ascii_case(GLOBAL_REGION) {
+        return true;
+    }
+    let mut parts = value.split('-');
+    let Some(prefix) = parts.next() else {
+        return false;
+    };
+    if prefix.len() != 2 || !prefix.bytes().all(|b| b.is_ascii_lowercase()) {
+        return false;
+    }
+    // Everything between the prefix and the trailing digit is a lowercase word,
+    // and there is at least one of them (`ap` + `northeast` + `2`).
+    let rest: Vec<&str> = parts.collect();
+    let Some((digit, words)) = rest.split_last() else {
+        return false;
+    };
+    if words.is_empty() {
+        return false;
+    }
+    digit.len() == 1
+        && digit.bytes().all(|b| b.is_ascii_digit())
+        && words
+            .iter()
+            .all(|w| !w.is_empty() && w.bytes().all(|b| b.is_ascii_lowercase()))
+}
+
 /// Validates configured allow/deny lists against the AWS Health catalog.
 ///
 /// Services and event type codes are matched case-insensitively against
 /// `catalogs`. Event code entries must be `SERVICE/EVENT_TYPE_CODE` pairs;
 /// a malformed entry (no `/`) is reported as invalid. Categories are matched
-/// case-sensitively against `VALID_CATEGORIES`.
-pub fn validate_filters(
-    allow_categories: &[String],
-    deny_categories: &[String],
-    allow_services: &[String],
-    deny_services: &[String],
-    allow_event_codes: &[String],
-    deny_event_codes: &[String],
-    catalogs: &Catalogs,
-) -> ValidationReport {
+/// case-sensitively against `VALID_CATEGORIES`. Regions are shape-checked, see
+/// `is_region_shaped`.
+pub fn validate_filters(lists: &FilterLists, catalogs: &Catalogs) -> ValidationReport {
     let valid_cats: HashSet<&str> = VALID_CATEGORIES.iter().copied().collect();
 
     let split_against = |list: &[String], catalog: &HashSet<String>| -> ListValidation {
@@ -155,6 +224,21 @@ pub fn validate_filters(
                 continue;
             }
             if catalog_ci.contains(&trimmed.to_ascii_lowercase()) {
+                r.valid.push(trimmed.to_string());
+            } else {
+                r.invalid.push(trimmed.to_string());
+            }
+        }
+        r
+    };
+    let split_regions = |list: &[String]| -> ListValidation {
+        let mut r = ListValidation::default();
+        for v in list {
+            let trimmed = v.trim();
+            if trimmed.is_empty() {
+                continue;
+            }
+            if is_region_shaped(&trimmed.to_ascii_lowercase()) {
                 r.valid.push(trimmed.to_string());
             } else {
                 r.invalid.push(trimmed.to_string());
@@ -201,12 +285,14 @@ pub fn validate_filters(
     };
 
     ValidationReport {
-        allow_services: split_against(allow_services, &catalogs.services),
-        deny_services: split_against(deny_services, &catalogs.services),
-        allow_categories: split_categories(allow_categories),
-        deny_categories: split_categories(deny_categories),
-        allow_event_codes: split_pairs(allow_event_codes),
-        deny_event_codes: split_pairs(deny_event_codes),
+        allow_services: split_against(lists.allow_services, &catalogs.services),
+        deny_services: split_against(lists.deny_services, &catalogs.services),
+        allow_categories: split_categories(lists.allow_categories),
+        deny_categories: split_categories(lists.deny_categories),
+        allow_regions: split_regions(lists.allow_regions),
+        deny_regions: split_regions(lists.deny_regions),
+        allow_event_codes: split_pairs(lists.allow_event_codes),
+        deny_event_codes: split_pairs(lists.deny_event_codes),
     }
 }
 
@@ -216,6 +302,10 @@ pub struct EventFilter {
     deny_categories: Vec<String>,
     allow_services: Vec<String>,
     deny_services: Vec<String>,
+    /// Effective allow list: the configured regions plus `GLOBAL_REGION`.
+    /// Empty means allow all, so nothing is appended in that case.
+    allow_regions: Vec<String>,
+    deny_regions: Vec<String>,
     allow_event_codes: Vec<ServiceEventCode>,
     deny_event_codes: Vec<ServiceEventCode>,
 }
@@ -227,6 +317,8 @@ pub enum FilterDecision {
     NotInAllowedCategories,
     DenyService,
     NotInAllowedServices,
+    DenyRegion,
+    NotInAllowedRegions,
     DenyEventCode,
     NotInAllowedEventCodes,
 }
@@ -239,6 +331,8 @@ impl FilterDecision {
             Self::NotInAllowedCategories => "category_not_allowed",
             Self::DenyService => "deny_service",
             Self::NotInAllowedServices => "service_not_allowed",
+            Self::DenyRegion => "deny_region",
+            Self::NotInAllowedRegions => "region_not_allowed",
             Self::DenyEventCode => "deny_event_code",
             Self::NotInAllowedEventCodes => "event_code_not_allowed",
         }
@@ -250,36 +344,43 @@ impl FilterDecision {
 }
 
 impl EventFilter {
-    pub fn new(
-        allow_categories: &[String],
-        deny_categories: &[String],
-        allow_services: &[String],
-        deny_services: &[String],
-        allow_event_codes: &[String],
-        deny_event_codes: &[String],
-    ) -> Self {
+    pub fn new(lists: &FilterLists) -> Self {
         Self {
-            allow_categories: normalize(allow_categories),
-            deny_categories: normalize(deny_categories),
-            allow_services: normalize(allow_services),
-            deny_services: normalize(deny_services),
+            allow_categories: normalize(lists.allow_categories),
+            deny_categories: normalize(lists.deny_categories),
+            allow_services: normalize(lists.allow_services),
+            deny_services: normalize(lists.deny_services),
+            allow_regions: with_global(normalize(lists.allow_regions)),
+            deny_regions: normalize(lists.deny_regions),
             // Malformed entries are dropped here; startup validation
             // (`validate_filters`) has already aborted on them.
-            allow_event_codes: normalize_pairs(allow_event_codes),
-            deny_event_codes: normalize_pairs(deny_event_codes),
+            allow_event_codes: normalize_pairs(lists.allow_event_codes),
+            deny_event_codes: normalize_pairs(lists.deny_event_codes),
         }
+    }
+
+    /// The allow list actually enforced, including the implicit `global`.
+    /// Logged at startup so the appended entry is visible to the operator.
+    pub fn effective_allow_regions(&self) -> &[String] {
+        &self.allow_regions
     }
 
     pub fn evaluate(&self, event: &HealthEvent) -> FilterDecision {
         let category = event.detail.event_type_category.as_deref().unwrap_or("");
         let service = event.detail.service.as_deref().unwrap_or("");
         let event_code = event.detail.event_type_code.as_deref().unwrap_or("");
+        let region = event.region.as_deref().unwrap_or("");
 
         if contains_ci(&self.deny_categories, category) {
             return FilterDecision::DenyCategory;
         }
         if contains_ci(&self.deny_services, service) {
             return FilterDecision::DenyService;
+        }
+        // `contains_ci` is false for an empty needle, so an event without a
+        // region is never denied on region.
+        if contains_ci(&self.deny_regions, region) {
+            return FilterDecision::DenyRegion;
         }
         if self
             .deny_event_codes
@@ -293,6 +394,14 @@ impl EventFilter {
         }
         if !self.allow_services.is_empty() && !contains_ci(&self.allow_services, service) {
             return FilterDecision::NotInAllowedServices;
+        }
+        // A missing region skips the allow check entirely; dropping an event
+        // because AWS omitted the field would be a silent loss.
+        if !self.allow_regions.is_empty()
+            && !region.trim().is_empty()
+            && !contains_ci(&self.allow_regions, region)
+        {
+            return FilterDecision::NotInAllowedRegions;
         }
         if !self.allow_event_codes.is_empty()
             && !self
@@ -312,6 +421,15 @@ fn normalize(values: &[String]) -> Vec<String> {
         .map(|v| v.trim().to_ascii_lowercase())
         .filter(|v| !v.is_empty())
         .collect()
+}
+
+/// Appends `GLOBAL_REGION` to a non-empty allow list. An empty list already
+/// allows everything, so it is left alone.
+fn with_global(mut regions: Vec<String>) -> Vec<String> {
+    if !regions.is_empty() && !regions.iter().any(|r| r == GLOBAL_REGION) {
+        regions.push(GLOBAL_REGION.to_string());
+    }
+    regions
 }
 
 fn normalize_pairs(values: &[String]) -> Vec<ServiceEventCode> {
@@ -339,9 +457,20 @@ mod tests {
     }
 
     fn event_with_code(category: &str, service: &str, code: Option<&str>) -> HealthEvent {
+        event_in(category, service, code, None)
+    }
+
+    /// `region: None` models an event AWS returned without the field;
+    /// `Some("")` models the field present but empty.
+    fn event_in(
+        category: &str,
+        service: &str,
+        code: Option<&str>,
+        region: Option<&str>,
+    ) -> HealthEvent {
         HealthEvent {
             account: None,
-            region: None,
+            region: region.map(Into::into),
             detail: HealthDetail {
                 event_arn: None,
                 service: Some(service.into()),
@@ -365,7 +494,11 @@ mod tests {
 
     #[test]
     fn deny_wins_over_allow() {
-        let f = EventFilter::new(&["issue".into()], &["issue".into()], &[], &[], &[], &[]);
+        let f = EventFilter::new(&FilterLists {
+            allow_categories: &["issue".into()],
+            deny_categories: &["issue".into()],
+            ..Default::default()
+        });
         assert_eq!(
             f.evaluate(&event("issue", "EC2")),
             FilterDecision::DenyCategory
@@ -374,14 +507,10 @@ mod tests {
 
     #[test]
     fn allow_list_restricts_categories() {
-        let f = EventFilter::new(
-            &["issue".into(), "securityNotification".into()],
-            &[],
-            &[],
-            &[],
-            &[],
-            &[],
-        );
+        let f = EventFilter::new(&FilterLists {
+            allow_categories: &["issue".into(), "securityNotification".into()],
+            ..Default::default()
+        });
         assert!(f.evaluate(&event("issue", "EC2")).is_allowed());
         assert_eq!(
             f.evaluate(&event("accountNotification", "EC2")),
@@ -391,7 +520,10 @@ mod tests {
 
     #[test]
     fn service_match_is_case_insensitive() {
-        let f = EventFilter::new(&[], &[], &["ec2".into()], &[], &[], &[]);
+        let f = EventFilter::new(&FilterLists {
+            allow_services: &["ec2".into()],
+            ..Default::default()
+        });
         assert!(f.evaluate(&event("issue", "EC2")).is_allowed());
         assert_eq!(
             f.evaluate(&event("issue", "RDS")),
@@ -424,14 +556,10 @@ mod tests {
     #[test]
     fn deny_event_code_keeps_rest_of_service() {
         // The VPN use case: drop redundancy-loss blips, keep tunnel maintenance.
-        let f = EventFilter::new(
-            &[],
-            &[],
-            &[],
-            &[],
-            &[],
-            &["VPN/AWS_VPN_REDUNDANCY_LOSS".into()],
-        );
+        let f = EventFilter::new(&FilterLists {
+            deny_event_codes: &["VPN/AWS_VPN_REDUNDANCY_LOSS".into()],
+            ..Default::default()
+        });
         assert_eq!(
             f.evaluate(&event_with_code(
                 "accountNotification",
@@ -452,14 +580,10 @@ mod tests {
 
     #[test]
     fn deny_event_code_is_scoped_to_its_service() {
-        let f = EventFilter::new(
-            &[],
-            &[],
-            &[],
-            &[],
-            &[],
-            &["VPN/AWS_VPN_REDUNDANCY_LOSS".into()],
-        );
+        let f = EventFilter::new(&FilterLists {
+            deny_event_codes: &["VPN/AWS_VPN_REDUNDANCY_LOSS".into()],
+            ..Default::default()
+        });
         // Same code under a different service is not denied.
         assert!(
             f.evaluate(&event_with_code(
@@ -473,14 +597,10 @@ mod tests {
 
     #[test]
     fn event_code_match_is_case_insensitive() {
-        let f = EventFilter::new(
-            &[],
-            &[],
-            &[],
-            &[],
-            &[],
-            &["vpn/aws_vpn_redundancy_loss".into()],
-        );
+        let f = EventFilter::new(&FilterLists {
+            deny_event_codes: &["vpn/aws_vpn_redundancy_loss".into()],
+            ..Default::default()
+        });
         assert_eq!(
             f.evaluate(&event_with_code(
                 "accountNotification",
@@ -493,14 +613,10 @@ mod tests {
 
     #[test]
     fn allow_event_codes_restrict() {
-        let f = EventFilter::new(
-            &[],
-            &[],
-            &[],
-            &[],
-            &["EC2/AWS_EC2_INSTANCE_RETIREMENT".into()],
-            &[],
-        );
+        let f = EventFilter::new(&FilterLists {
+            allow_event_codes: &["EC2/AWS_EC2_INSTANCE_RETIREMENT".into()],
+            ..Default::default()
+        });
         assert!(
             f.evaluate(&event_with_code(
                 "scheduledChange",
@@ -517,15 +633,175 @@ mod tests {
 
     #[test]
     fn missing_event_code_passes_deny_list() {
-        let f = EventFilter::new(
-            &[],
-            &[],
-            &[],
-            &[],
-            &[],
-            &["VPN/AWS_VPN_REDUNDANCY_LOSS".into()],
-        );
+        let f = EventFilter::new(&FilterLists {
+            deny_event_codes: &["VPN/AWS_VPN_REDUNDANCY_LOSS".into()],
+            ..Default::default()
+        });
         assert!(f.evaluate(&event("issue", "VPN")).is_allowed());
+    }
+
+    #[test]
+    fn empty_region_lists_allow_every_region() {
+        let f = EventFilter::default();
+        assert!(
+            f.evaluate(&event_in("issue", "EC2", None, Some("eu-central-1")))
+                .is_allowed()
+        );
+        assert!(f.evaluate(&event("issue", "EC2")).is_allowed());
+    }
+
+    #[test]
+    fn deny_regions_drops_only_listed_regions() {
+        let f = EventFilter::new(&FilterLists {
+            deny_regions: &["eu-central-1".into()],
+            ..Default::default()
+        });
+        assert_eq!(
+            f.evaluate(&event_in("issue", "EC2", None, Some("eu-central-1"))),
+            FilterDecision::DenyRegion
+        );
+        assert!(
+            f.evaluate(&event_in("issue", "EC2", None, Some("ap-northeast-2")))
+                .is_allowed()
+        );
+    }
+
+    #[test]
+    fn allow_regions_restricts_regions() {
+        let f = EventFilter::new(&FilterLists {
+            allow_regions: &["ap-northeast-2".into()],
+            ..Default::default()
+        });
+        assert!(
+            f.evaluate(&event_in("issue", "EC2", None, Some("ap-northeast-2")))
+                .is_allowed()
+        );
+        assert_eq!(
+            f.evaluate(&event_in("issue", "EC2", None, Some("eu-central-1"))),
+            FilterDecision::NotInAllowedRegions
+        );
+    }
+
+    #[test]
+    fn deny_region_wins_over_allow_region() {
+        let f = EventFilter::new(&FilterLists {
+            allow_regions: &["ap-northeast-2".into()],
+            deny_regions: &["ap-northeast-2".into()],
+            ..Default::default()
+        });
+        assert_eq!(
+            f.evaluate(&event_in("issue", "EC2", None, Some("ap-northeast-2"))),
+            FilterDecision::DenyRegion
+        );
+    }
+
+    #[test]
+    fn region_match_is_case_insensitive() {
+        let f = EventFilter::new(&FilterLists {
+            allow_regions: &["AP-NORTHEAST-2".into()],
+            ..Default::default()
+        });
+        assert!(
+            f.evaluate(&event_in("issue", "EC2", None, Some("ap-northeast-2")))
+                .is_allowed()
+        );
+    }
+
+    #[test]
+    fn missing_or_empty_region_passes_allow_list() {
+        // AWS omitting the field must not cost us a real event.
+        let f = EventFilter::new(&FilterLists {
+            allow_regions: &["ap-northeast-2".into()],
+            ..Default::default()
+        });
+        assert!(
+            f.evaluate(&event_in("issue", "EC2", None, None))
+                .is_allowed()
+        );
+        assert!(
+            f.evaluate(&event_in("issue", "EC2", None, Some("")))
+                .is_allowed()
+        );
+    }
+
+    #[test]
+    fn global_region_passes_allow_list_that_omits_it() {
+        let f = EventFilter::new(&FilterLists {
+            allow_regions: &["ap-northeast-2".into()],
+            ..Default::default()
+        });
+        assert!(
+            f.evaluate(&event_in("issue", "IAM", None, Some("global")))
+                .is_allowed()
+        );
+    }
+
+    #[test]
+    fn global_region_is_deniable() {
+        let f = EventFilter::new(&FilterLists {
+            allow_regions: &["ap-northeast-2".into()],
+            deny_regions: &["global".into()],
+            ..Default::default()
+        });
+        assert_eq!(
+            f.evaluate(&event_in("issue", "IAM", None, Some("global"))),
+            FilterDecision::DenyRegion
+        );
+    }
+
+    #[test]
+    fn effective_allow_regions_appends_global_only_when_configured() {
+        assert!(
+            EventFilter::new(&FilterLists::default())
+                .effective_allow_regions()
+                .is_empty()
+        );
+        assert_eq!(
+            EventFilter::new(&FilterLists {
+                allow_regions: &["ap-northeast-2".into()],
+                ..Default::default()
+            })
+            .effective_allow_regions(),
+            ["ap-northeast-2", "global"]
+        );
+        // Listing it explicitly must not duplicate it.
+        assert_eq!(
+            EventFilter::new(&FilterLists {
+                allow_regions: &["ap-northeast-2".into(), "GLOBAL".into()],
+                ..Default::default()
+            })
+            .effective_allow_regions(),
+            ["ap-northeast-2", "global"]
+        );
+    }
+
+    #[test]
+    fn region_rule_replaces_a_global_event_code_deny() {
+        // The motivating case: Frankfurt Direct Connect noise is dropped on
+        // region while a Seoul Direct Connect outage still pages.
+        let f = EventFilter::new(&FilterLists {
+            allow_regions: &["ap-northeast-2".into()],
+            ..Default::default()
+        });
+        let code = Some("AWS_DIRECTCONNECT_OPERATIONAL_ISSUE");
+        assert_eq!(
+            f.evaluate(&event_in(
+                "issue",
+                "DIRECTCONNECT",
+                code,
+                Some("eu-central-1")
+            )),
+            FilterDecision::NotInAllowedRegions
+        );
+        assert!(
+            f.evaluate(&event_in(
+                "issue",
+                "DIRECTCONNECT",
+                code,
+                Some("ap-northeast-2")
+            ))
+            .is_allowed()
+        );
     }
 
     fn catalogs(services: &[&str], event_codes: &[&str]) -> Catalogs {
@@ -539,12 +815,15 @@ mod tests {
     fn validate_passes_for_known_values() {
         let cat = catalogs(&["EC2", "RDS", "KAFKA"], &["VPN/AWS_VPN_REDUNDANCY_LOSS"]);
         let r = validate_filters(
-            &["issue".into()],
-            &["accountNotification".into()],
-            &["ec2".into(), "KAFKA".into()],
-            &["rds".into()],
-            &[],
-            &["vpn/aws_vpn_redundancy_loss".into()],
+            &FilterLists {
+                allow_categories: &["issue".into()],
+                deny_categories: &["accountNotification".into()],
+                allow_services: &["ec2".into(), "KAFKA".into()],
+                deny_services: &["rds".into()],
+                allow_regions: &["ap-northeast-2".into()],
+                deny_event_codes: &["vpn/aws_vpn_redundancy_loss".into()],
+                ..Default::default()
+            },
             &cat,
         );
         assert!(r.is_ok(), "expected ok, got {:?}", r.all_invalid());
@@ -560,12 +839,11 @@ mod tests {
     fn validate_splits_known_and_unknown_services() {
         let cat = catalogs(&["EC2", "KAFKA"], &[]);
         let r = validate_filters(
-            &[],
-            &[],
-            &["EC2".into(), "MSK".into(), "KAFKA".into()],
-            &["BOGUS".into()],
-            &[],
-            &[],
+            &FilterLists {
+                allow_services: &["EC2".into(), "MSK".into(), "KAFKA".into()],
+                deny_services: &["BOGUS".into()],
+                ..Default::default()
+            },
             &cat,
         );
         assert!(!r.is_ok());
@@ -581,7 +859,13 @@ mod tests {
     #[test]
     fn validate_flags_unknown_category() {
         let cat = catalogs(&["EC2"], &[]);
-        let r = validate_filters(&["bogus".into()], &[], &[], &[], &[], &[], &cat);
+        let r = validate_filters(
+            &FilterLists {
+                allow_categories: &["bogus".into()],
+                ..Default::default()
+            },
+            &cat,
+        );
         assert!(!r.is_ok());
         assert_eq!(r.allow_categories.invalid, vec!["bogus"]);
     }
@@ -590,12 +874,11 @@ mod tests {
     fn validate_flags_unknown_event_code() {
         let cat = catalogs(&[], &["VPN/AWS_VPN_REDUNDANCY_LOSS"]);
         let r = validate_filters(
-            &[],
-            &[],
-            &[],
-            &[],
-            &["VPN/AWS_VPN_TYPO".into()],
-            &["VPN/AWS_VPN_REDUNDANCY_LOSS".into()],
+            &FilterLists {
+                allow_event_codes: &["VPN/AWS_VPN_TYPO".into()],
+                deny_event_codes: &["VPN/AWS_VPN_REDUNDANCY_LOSS".into()],
+                ..Default::default()
+            },
             &cat,
         );
         assert!(!r.is_ok());
@@ -615,15 +898,13 @@ mod tests {
         // Bare code (old format) and pair under the wrong service are both invalid.
         let cat = catalogs(&[], &["VPN/AWS_VPN_REDUNDANCY_LOSS"]);
         let r = validate_filters(
-            &[],
-            &[],
-            &[],
-            &[],
-            &[],
-            &[
-                "AWS_VPN_REDUNDANCY_LOSS".into(),
-                "EC2/AWS_VPN_REDUNDANCY_LOSS".into(),
-            ],
+            &FilterLists {
+                deny_event_codes: &[
+                    "AWS_VPN_REDUNDANCY_LOSS".into(),
+                    "EC2/AWS_VPN_REDUNDANCY_LOSS".into(),
+                ],
+                ..Default::default()
+            },
             &cat,
         );
         assert!(!r.is_ok());
@@ -634,19 +915,78 @@ mod tests {
     }
 
     #[test]
+    fn validate_accepts_region_shapes_and_global() {
+        let cat = catalogs(&[], &[]);
+        let r = validate_filters(
+            &FilterLists {
+                allow_regions: &[
+                    "ap-northeast-2".into(),
+                    "us-gov-east-1".into(),
+                    "cn-north-1".into(),
+                    "GLOBAL".into(),
+                ],
+                ..Default::default()
+            },
+            &cat,
+        );
+        assert!(r.is_ok(), "expected ok, got {:?}", r.all_invalid());
+        assert_eq!(r.allow_regions.valid.len(), 4);
+    }
+
+    #[test]
+    fn validate_flags_malformed_regions() {
+        let cat = catalogs(&[], &[]);
+        let r = validate_filters(
+            &FilterLists {
+                allow_regions: &["ap-northeast2".into(), "ap-northeast-2".into()],
+                deny_regions: &["eu_central_1".into()],
+                ..Default::default()
+            },
+            &cat,
+        );
+        assert!(!r.is_ok());
+        assert_eq!(r.allow_regions.valid, vec!["ap-northeast-2"]);
+        assert_eq!(r.allow_regions.invalid, vec!["ap-northeast2"]);
+        assert_eq!(r.deny_regions.invalid, vec!["eu_central_1"]);
+        assert_eq!(
+            r.all_invalid(),
+            vec![
+                "allow_regions 'ap-northeast2'",
+                "deny_regions 'eu_central_1'"
+            ]
+        );
+    }
+
+    #[test]
+    fn region_shape_rejects_near_misses() {
+        assert!(is_region_shaped("ap-northeast-2"));
+        assert!(is_region_shaped("us-gov-east-1"));
+        assert!(is_region_shaped("global"));
+        assert!(!is_region_shaped(""));
+        assert!(!is_region_shaped("ap"));
+        assert!(!is_region_shaped("ap-2"));
+        assert!(!is_region_shaped("apn-northeast-2"));
+        assert!(!is_region_shaped("ap-northeast-22"));
+        assert!(!is_region_shaped("ap--2"));
+        assert!(!is_region_shaped("ap-northeast-x"));
+    }
+
+    #[test]
     fn validate_ignores_empty_entries() {
         let cat = catalogs(&["EC2"], &[]);
         let r = validate_filters(
-            &[String::new()],
-            &[],
-            &["  ".into()],
-            &[],
-            &["  ".into()],
-            &[],
+            &FilterLists {
+                allow_categories: &[String::new()],
+                allow_services: &["  ".into()],
+                allow_regions: &["  ".into()],
+                allow_event_codes: &["  ".into()],
+                ..Default::default()
+            },
             &cat,
         );
         assert!(r.is_ok());
         assert!(r.allow_services.valid.is_empty());
+        assert!(r.allow_regions.valid.is_empty());
         assert!(r.allow_event_codes.valid.is_empty());
     }
 }

@@ -1,6 +1,6 @@
 # Region filtering
 
-Status: proposed. Target: 0.3.0.
+Status: implemented in 0.3.0.
 
 ## Summary
 
@@ -22,9 +22,6 @@ outage is a real incident.
 
 - Drop events by region with the same allow/deny semantics the other filter
   lists already use: empty allow means allow everything, deny wins over allow.
-- Push the allow list to the AWS Health API as a server-side filter, the way
-  services and categories are already pushed, so events from unused regions are
-  never fetched.
 - Never lose an event because its region is unknown. An event with no region
   must not be dropped by an allow list.
 - Keep global-scope events (`region: global`) reachable without forcing every
@@ -34,6 +31,8 @@ outage is a real incident.
 
 ## Non-goals
 
+- Pushing the allow list to the AWS Health API as a server-side `regions`
+  narrowing. Deferred, see [Server-side narrowing](#server-side-narrowing).
 - Filtering by affected entity region or by resource ARN. The filter stays at
   event granularity, matching `DescribeEvents`.
 - Per-region routing, such as sending `eu-central-1` events to a different
@@ -78,27 +77,21 @@ without an extra `DescribeEventDetails` call.
 Adding region filtering is therefore a change to the filter and its wiring, not
 to the event model.
 
-### Server-side filtering is available
+### The API cannot express a deny list
 
-`aws_sdk_health::types::EventFilter` carries a `regions` field, and its builder
-exposes an append-style `regions(impl Into<String>)` setter, the same shape as
-the `services` setter already used in `list_events` and `list_upcoming`. The
-current code passes only services and categories, so region narrowing is a
-matter of one more loop over the configured list.
-
-Server-side narrowing is an allow-list-only mechanism. The API has no "exclude
-these regions" input, so a deny list must be evaluated in process, exactly as
-`denyServices` is today.
+`aws_sdk_health::types::EventFilter` carries a `regions` field, but it is an
+allow-list-only mechanism: the API has no "exclude these regions" input. A deny
+list must therefore be evaluated in process regardless, exactly as
+`denyServices` is today, so in-process is where both lists live.
 
 ## Architecture
 
 ![Architecture](region-filtering.svg)
 
-The allow list is applied twice. `DescribeEvents` carries it as a server-side
-narrowing, so events from unused regions are never fetched, and
-`EventFilter.evaluate` applies it again in process, where the deny list also
-lives because the API has no exclusion input. The in-process check is the
-enforcement point; the server-side one only saves work.
+Both lists are evaluated in one place, `EventFilter::evaluate`. `DescribeEvents`
+is called exactly as before, without a `regions` narrowing, so every event the
+account can see is still fetched and the filter decides on it locally. That
+keeps one enforcement point and one set of semantics.
 
 ## Semantics
 
@@ -160,11 +153,28 @@ effective allow list rather than required from the operator. It stays deniable,
 so an operator who genuinely wants global events gone can list `global` in
 `denyRegions`.
 
-Both the in-process allow list and the server-side `regions` narrowing must
-include `global`, otherwise `DescribeEvents` would never return the events the
-in-process rule intends to keep.
+`global` is a literal, not a region code, so startup validation accepts it
+alongside well-formed region codes.
 
 ## Configuration
+
+### Filter constructor
+
+`EventFilter::new` and `validate_filters` take one list per parameter today, six
+and seven positional arguments respectively. A fourth dimension pushes both past
+the `clippy::too_many_arguments` threshold, and eight same-typed `&[String]`
+arguments in a row are a real mis-ordering hazard at the call site.
+
+Both therefore take a single borrowed `FilterLists` struct with one named field
+per list. `Default` gives the empty-list case, so a test that exercises one
+dimension names only that field:
+
+```rust
+EventFilter::new(&FilterLists {
+    allow_regions: &["ap-northeast-2".into()],
+    ..Default::default()
+})
+```
 
 ### Environment
 
@@ -218,25 +228,27 @@ Frankfurt outage is dropped on region; a Seoul outage still pages.
 
 ## Server-side narrowing
 
-`list_events` and `list_upcoming` in `src/aws/health.rs` gain a `regions`
-parameter alongside `services` and `categories`, populated from
-`PollerCfg`, and pass it through:
+`aws_sdk_health::types::EventFilter` carries a `regions` field, so the allow
+list could also be pushed into `DescribeEvents` the way `services` and
+`categories` already are. That is deliberately left out of this change.
 
-```rust
-for r in regions.iter().filter(|r| !r.is_empty()) {
-    builder = builder.regions(r.clone());
-}
-```
+The gain is not measurable. One account polled every 60 seconds returns a
+handful of event summaries, and the region check is a string compare on a list
+of one or two entries.
 
-`PollerCfg` gains a `regions: Vec<String>` field, set to the allow list plus
-`global` when the allow list is non-empty, and left empty otherwise. The
-existing `services` and `categories` fields are populated the same way from
-their allow lists, so this follows the established convention.
+The risk is a silent loss. The narrowing would have to carry `global` for
+global-scope events to survive an allow list, and if the API rejects or ignores
+`global` as a `regions` value, those events are never fetched. The in-process
+rule that intends to keep them then never sees them, which is exactly the
+failure mode [Missing region](#missing-region) and [Global events](#global-events)
+are written to avoid, except undetectable from the filter metrics.
 
-Narrowing server-side is an optimization, not the enforcement point. The
-in-process check stays authoritative, which keeps the deny list meaningful and
-keeps behaviour identical if a future call site forgets to pass the regions
-through.
+Adding it later is additive and needs no semantic change, because the
+in-process check is already authoritative: `list_events` and `list_upcoming`
+would gain a `regions` parameter fed from a new `PollerCfg.regions` field, set
+to the allow list plus `global`, and the filter would keep deciding. It should
+be done only after confirming against the real API that a `regions` filter
+containing `global` still returns global-scope events.
 
 ## Startup validation
 
@@ -262,7 +274,11 @@ whereas a stale static list is a startup failure with no workaround short of a
 new image.
 
 Validation failure keeps the current behaviour: log the invalid values and
-abort startup from `validate_against_catalog` in `src/server.rs`.
+abort startup from `validate_against_catalog` in `src/server.rs`. Regions add no
+`DescribeEventTypes` call, so the `queried_service_count` and
+`queried_event_code_count` fields on the validation log line are unchanged. The
+failure message names service codes and event type codes only and is reworded to
+cover regions.
 
 ## Observability
 
@@ -270,6 +286,21 @@ abort startup from `validate_against_catalog` in `src/server.rs`.
   `docs/metrics.md`.
 - The startup `"filter validation result"` log line gains the region lists,
   matching the existing per-list valid/invalid count pairs.
+- The earlier `"filter configured"` line gains `allow_regions`, `deny_regions`,
+  and `allow_regions_effective`, the enforced allow set including the implicitly
+  appended `global`:
+
+```
+filter configured ... allow_regions=["ap-northeast-2"] allow_regions_effective=["ap-northeast-2", "global"]
+```
+
+  `allow_regions_effective` is empty when `allow_regions` is empty, because
+  allow-all has no effective set to report. This is how an operator sees that
+  `global` was added, without every deployment paying for a warning about a rule
+  it never touches.
+- Region values dropped at runtime are not logged per event. A single outage in
+  an unused region would otherwise print a line every poll cycle; the
+  `reason` label on `aws_health_event_filtered_total` carries it instead.
 - No new metric. `aws_health_event_received_total` already carries a `region`
   label, so the events a new allow list would drop can be measured before the
   list is turned on:
@@ -312,13 +343,16 @@ allow-all, so an existing deployment behaves identically until an operator sets
 one. Removing an event code from `denyEventCodes` in favour of a region rule is
 a separate, deliberate change on the deployment side.
 
-## Open questions
+## Resolved questions
 
-- Should `global` be silently appended to the allow list, or should an operator
-  who omits it get a startup warning that global events will still arrive? A
-  warning is more honest but adds noise to every deployment that never thinks
-  about global events.
-- Is an `allowRegions` entry that never matches anything over a long window
-  worth surfacing, for example as a startup log line listing regions with no
-  events seen? It would catch a region code that is well formed but wrong,
-  which is exactly what shape validation cannot catch.
+**Should `global` be appended silently, or should omitting it produce a startup
+warning?** Silently, with the effective list logged. `allow_regions_effective`
+on the existing validation line shows exactly what is in force, and a warning on
+every deployment that never thinks about global events is noise about a rule
+nobody wants to change.
+
+**Should a well-formed but never-matching `allowRegions` entry be surfaced?**
+No. `sum by (region) (increase(aws_health_event_received_total[7d]))` already
+answers it from data, and shape validation cannot tell `ap-northeast-9` from a
+region that simply had no events this week. A background matcher would be a
+second, weaker source of the same answer.
