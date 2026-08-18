@@ -27,6 +27,15 @@ The credential is instance wide for the same reason Airflow keeps connections
 apart from DAGs: duplicating it per schedule would mean rotating a token in as
 many places as there are scans.
 
+## Architecture
+
+![Stale Branches architecture](./architecture.svg)
+
+The frontend only calls the backend, which owns every outbound call. A request
+picks a GitLab from the list app-config names, never an address of its own. One
+scheduler tick drives every schedule, and each run writes its own record, so an
+older run still reads back what it found rather than what the newest one would.
+
 ## Main page
 
 The schedule list is the landing page. Each row carries a pause toggle, the
