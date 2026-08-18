@@ -61,6 +61,7 @@ if (!disableGitlab) {
 
 if (!disableGitlab) {
   backend.add(import('@internal/plugin-forklift-coverage-backend'));
+backend.add(import('@internal/plugin-stale-branches-backend'));
 }
 
 backend.add(import('@internal/plugin-opencost-backend'));

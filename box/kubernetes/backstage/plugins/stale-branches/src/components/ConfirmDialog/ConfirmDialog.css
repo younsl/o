@@ -1,0 +1,37 @@
+/* DialogTrigger needs a trigger element even when open state is controlled
+   from outside, so this one is present but never rendered to anybody. */
+.sb-hidden-trigger {
+  display: none;
+}
+
+.sb-confirm-dialog {
+  max-width: 460px;
+}
+
+/* BUI has no danger button variant, so the primary one is recoloured for a
+   delete rather than shipping a second button component. */
+.sb-danger-button {
+  background: #dc2626 !important;
+  border-color: #dc2626 !important;
+  color: #fff !important;
+  cursor: pointer;
+}
+
+.sb-danger-button:hover:not([data-disabled]):not(:disabled) {
+  background: #b91c1c !important;
+  border-color: #b91c1c !important;
+}
+
+/* Locked, the button stops looking like a button that fires. A dimmed red is
+   still red, and a solid red rectangle beside a typed-name field reads as the
+   thing to press whatever its opacity says. So the fill goes entirely: an
+   outline in muted text colour is armed by nothing and cannot be mistaken for
+   the armed state sitting next to it in the same dialog. */
+.sb-danger-button[data-disabled],
+.sb-danger-button:disabled {
+  background: transparent !important;
+  border-color: var(--bui-color-border-default, rgba(255, 255, 255, 0.18)) !important;
+  color: var(--bui-color-text-secondary, #9ca3af) !important;
+  opacity: 1 !important;
+  cursor: not-allowed !important;
+}

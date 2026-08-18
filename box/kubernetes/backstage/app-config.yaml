@@ -13,6 +13,7 @@ app:
     grafanaDashboardMap: true
     gitlabTokenAudit: true
     forkliftCoverage: true
+    staleBranches: true
     opensearchAccount: true
     opensearchViewer: true
     opensearchScaling: true

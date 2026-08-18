@@ -1,0 +1,138 @@
+/* Shared chrome for every screen under the plugin. Layout that belongs to one
+   screen lives beside that screen instead. */
+
+/* Icon-only button used for row actions, search, and edit. */
+.sb-icon-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  height: 30px;
+  border-radius: 6px;
+  border: 1px solid var(--bui-color-border-default, rgba(255, 255, 255, 0.12));
+  background: transparent;
+  color: var(--bui-color-text-secondary, #9ca3af);
+  cursor: pointer;
+  transition: background-color 0.12s, color 0.12s, border-color 0.12s;
+}
+
+.sb-icon-button:hover:not(:disabled) {
+  background-color: rgba(128, 128, 128, 0.12);
+  color: var(--bui-color-text-default, #e0e0e0);
+}
+
+.sb-icon-button:focus-visible {
+  outline: 2px solid var(--bui-border-accent, #3b82f6);
+  outline-offset: 2px;
+}
+
+.sb-icon-button:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+/* Delete only turns red on hover, so a row of actions does not read as a
+   warning when nothing is wrong. */
+.sb-icon-danger:hover:not(:disabled) {
+  color: #ef4444;
+  border-color: #ef4444;
+}
+
+.sb-search-open {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 30px;
+  padding: 0 10px;
+  border-radius: 6px;
+  border: 1px solid var(--bui-border-accent, #3b82f6);
+  background: transparent;
+  min-width: 240px;
+}
+
+.sb-search-icon {
+  flex-shrink: 0;
+  color: var(--bui-color-text-secondary, #9ca3af);
+}
+
+.sb-search-input {
+  flex: 1;
+  min-width: 0;
+  border: none;
+  background: transparent;
+  outline: none;
+  color: var(--bui-color-text-default, #e0e0e0);
+  font: inherit;
+  font-size: 13px;
+}
+
+.sb-search-input::placeholder {
+  color: var(--bui-color-text-secondary, #9ca3af);
+}
+
+/* Age filters. The count rides inside the chip so the label and the number
+   cannot wrap apart from each other. */
+.sb-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 28px;
+  padding: 0 10px;
+  border-radius: 14px;
+  border: 1px solid var(--bui-color-border-default, rgba(255, 255, 255, 0.12));
+  background: transparent;
+  color: var(--bui-color-text-secondary, #9ca3af);
+  font: inherit;
+  font-size: 12px;
+  cursor: pointer;
+  transition: background-color 0.12s, color 0.12s, border-color 0.12s;
+}
+
+.sb-chip:hover {
+  background-color: rgba(128, 128, 128, 0.12);
+  color: var(--bui-color-text-default, #e0e0e0);
+}
+
+.sb-chip:focus-visible {
+  outline: 2px solid var(--bui-border-accent, #3b82f6);
+  outline-offset: 2px;
+}
+
+.sb-chip-selected {
+  border-color: var(--bui-border-accent, #3b82f6);
+  color: var(--bui-color-text-default, #e0e0e0);
+}
+
+.sb-chip-count {
+  padding: 0 6px;
+  border-radius: 8px;
+  background: rgba(128, 128, 128, 0.18);
+  font-variant-numeric: tabular-nums;
+}
+
+/* Shown while a run is in flight, next to whatever it is waiting on. */
+.sb-spinner {
+  width: 12px;
+  height: 12px;
+  flex-shrink: 0;
+  border-radius: 50%;
+  border: 2px solid rgba(156, 163, 175, 0.35);
+  border-top-color: var(--bui-border-accent, #3b82f6);
+  animation: sb-spin 0.7s linear infinite;
+}
+
+@keyframes sb-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .sb-spinner {
+    animation: none;
+  }
+
+  .sb-strip-running {
+    animation: none;
+  }
+}

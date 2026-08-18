@@ -1,0 +1,177 @@
+/* Run history as a table of its own. Every row is a button, so the grid is
+   declared once here and each row inherits it rather than nesting a layout
+   inside a control. */
+.sb-runs {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  margin-top: 8px;
+  max-height: 320px;
+  overflow-y: auto;
+  /* The gutter is reserved whether or not a scrollbar is showing. A run added
+     mid-poll can push the content past the cap, and on a platform with classic
+     scrollbars that appearance narrows the content, re-resolves every row grid
+     inside, and can bounce the scrollbar back off. That oscillation is exactly
+     what a ResizeObserver reports as an undelivered-notification loop. */
+  scrollbar-gutter: stable;
+}
+
+.sb-run {
+  display: grid;
+  grid-template-columns:
+    14px minmax(0, 1.6fr) minmax(0, 1fr)
+    minmax(0, 0.8fr) minmax(0, 0.8fr) minmax(0, 0.9fr) minmax(0, 0.7fr);
+  align-items: center;
+  gap: 10px;
+  padding: 7px 8px;
+  border: none;
+  border-radius: 6px;
+  background: transparent;
+  cursor: pointer;
+  text-align: left;
+  color: inherit;
+  width: 100%;
+}
+
+/* Counts are compared down the column, so they align on their right edge and
+   share a digit width. */
+.sb-num {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+.sb-run-head {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  cursor: default;
+  background: var(--bui-bg-surface-1, #1b1b1b);
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--bui-color-text-secondary, #9ca3af);
+}
+
+.sb-run:not(.sb-run-head):hover {
+  background-color: rgba(128, 128, 128, 0.1);
+}
+
+.sb-run:focus-visible {
+  outline: 2px solid var(--bui-border-accent, #3b82f6);
+  outline-offset: -2px;
+}
+
+.sb-run-selected {
+  background-color: rgba(59, 130, 246, 0.14);
+}
+
+.sb-run-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.sb-run-when {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  min-width: 0;
+}
+
+.sb-runs-empty {
+  padding: 16px 8px;
+}
+
+@media (max-width: 800px) {
+  /* Duration is the first to go: it explains a run rather than qualifying its
+     counts, which are what the columns exist for. */
+  .sb-run {
+    grid-template-columns:
+      14px minmax(0, 1.6fr) minmax(0, 1fr)
+      minmax(0, 0.8fr) minmax(0, 0.9fr) minmax(0, 0.7fr);
+  }
+
+  .sb-run > :nth-child(4) {
+    display: none;
+  }
+}
+
+.sb-back {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 0;
+  border: none;
+  background: transparent;
+  cursor: pointer;
+  font: inherit;
+  font-size: 12px;
+  color: var(--bui-color-text-secondary, #9ca3af);
+}
+
+.sb-back:hover {
+  color: var(--bui-color-text-default, #e0e0e0);
+}
+
+.sb-link-button {
+  padding: 0;
+  border: none;
+  background: transparent;
+  cursor: pointer;
+  font: inherit;
+  font-size: 11px;
+  color: var(--bui-border-accent, #3b82f6);
+}
+
+.sb-link-button:hover {
+  text-decoration: underline;
+}
+
+/* Always on. Revealing it on hover hid it from anyone scanning the column for
+   a way to take a name with them, and from every input that does not hover.
+
+   BUI sizes even its small icon button at 32px, which wrapped a 13px glyph in
+   nine points of nothing on each side and set the floor for the row height.
+   Sized to the icon instead: the control is one of twenty-three in a column,
+   so what it costs in width is paid on every row. */
+.sb-copy {
+  flex-shrink: 0;
+  width: 20px !important;
+  height: 20px !important;
+  min-width: 20px !important;
+  min-height: 20px !important;
+  padding: 0 !important;
+}
+
+/* ---- Branch table: one line per value ------------------------------------ */
+
+/* A wrapped branch name pushes its row to two lines, and one long name in a
+   list of thirty re-rules the whole table. Every value stays on one line and
+   ends in an ellipsis instead; the full text is on the element's title, so
+   nothing is lost by clipping it. */
+.sb-branch-table [role='rowheader'],
+.sb-branch-table [role='gridcell'] {
+  white-space: nowrap;
+}
+
+/* Ellipsis needs the overflow on whatever box actually holds the text, which
+   here is the link, the label, or the stacked pair in the author column. */
+.sb-branch-table [role='rowheader'] a,
+.sb-branch-table [role='gridcell'] a,
+.sb-branch-table [role='rowheader'] > * > *,
+.sb-branch-table [role='gridcell'] > * > * {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* The tags and the copy control keep their full width: they are fixed size and
+   sit at the end of the branch cell, so the name is what gives way. */
+.sb-branch-table [role='rowheader'] [class*='TagGroup'],
+.sb-branch-table [role='rowheader'] [class*='TagList'],
+.sb-branch-table .sb-copy {
+  flex-shrink: 0;
+  overflow: visible;
+}

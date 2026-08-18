@@ -18,8 +18,21 @@ import DashboardIcon from '@material-ui/icons/Dashboard';
 import VpnKeyIcon from '@material-ui/icons/VpnKey';
 import TrendingUpIcon from '@material-ui/icons/TrendingUp';
 import LocalShippingIcon from '@material-ui/icons/LocalShipping';
+import { RiBrush3Line } from '@remixicon/react';
 import { siApachekafka, siArgo, siGitlab, siKubernetes } from 'simple-icons';
 import { createIcon } from '@dweber019/backstage-plugin-simple-icons';
+
+// Remixicon ships plain SVG components while Backstage types a sidebar icon as
+// one that takes Material UI's `fontSize`, so the two are bridged here. The
+// sizes are what MUI renders those keywords at, which is what keeps this icon
+// on the same optical line as the ones above and below it.
+const StaleBranchIcon = (props: {
+  fontSize?: 'inherit' | 'small' | 'medium' | 'large';
+}) => (
+  <RiBrush3Line
+    size={props.fontSize === 'large' ? 35 : props.fontSize === 'small' ? 20 : 24}
+  />
+);
 
 const ApacheKafkaIcon = createIcon(siApachekafka, false);
 const ArgocdIcon = createIcon(siArgo, false);
@@ -412,6 +425,7 @@ export const Root = ({ children }: PropsWithChildren<{}>) => {
   const grafanaDashboardMapEnabled = config.getOptionalBoolean('app.plugins.grafanaDashboardMap') ?? true;
   const gitlabTokenAuditEnabled = config.getOptionalBoolean('app.plugins.gitlabTokenAudit') ?? true;
   const forkliftCoverageEnabled = config.getOptionalBoolean('app.plugins.forkliftCoverage') ?? true;
+  const staleBranchesEnabled = config.getOptionalBoolean('app.plugins.staleBranches') ?? true;
   const opensearchAccountEnabled = config.getOptionalBoolean('app.plugins.opensearchAccount') ?? true;
   const opensearchScalingEnabled = config.getOptionalBoolean('app.plugins.opensearchScaling') ?? true;
 
@@ -441,6 +455,14 @@ export const Root = ({ children }: PropsWithChildren<{}>) => {
           <SidebarItem icon={ArgocdIcon} to="argocd-appset" text="ArgoCD" />
         )}
         {gitlabTokenAuditEnabled && <GitlabTokenAuditSidebarItem />}
+        {staleBranchesEnabled && (
+          <SidebarItem
+            className="sidebar-item-wide"
+            icon={StaleBranchIcon}
+            to="stale-branches"
+            text="Stale Branch"
+          />
+        )}
         {forkliftCoverageEnabled && (
           <SidebarItem
             className="sidebar-item-wide"

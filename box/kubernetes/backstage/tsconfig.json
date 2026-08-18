@@ -104,6 +104,12 @@
     },
     {
       "path": "plugins/s3-log-extract-backend"
+    },
+    {
+      "path": "plugins/stale-branches"
+    },
+    {
+      "path": "plugins/stale-branches-backend"
     }
   ],
   "files": []
