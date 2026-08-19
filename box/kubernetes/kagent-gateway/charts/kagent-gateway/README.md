@@ -168,6 +168,7 @@ The following table lists the configurable parameters and their default values.
 | nodeSelector | object | `{}` | Node selector for pod scheduling |
 | tolerations | list | `[]` | Tolerations for pod scheduling |
 | affinity | object | `{}` | Affinity rules for pod scheduling |
+| topologySpreadConstraints | list | `[]` | Topology spread constraints for pod scheduling. `labelSelector` is filled in with the chart's selector labels when a constraint omits it, so spreading replicas across zones needs only the topologyKey. |
 | dnsPolicy | string | `""` | Pod DNS policy, e.g. ClusterFirst or None; empty omits the field |
 | dnsConfig | object | `{}` | Pod DNS config (used with dnsPolicy None); empty omits the field |
 | extraObjects | list | `[]` | Additional Kubernetes manifests rendered verbatim |
