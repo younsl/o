@@ -1,1 +1,0 @@
-export { ScheduleDetailPage } from './ScheduleDetailPage';

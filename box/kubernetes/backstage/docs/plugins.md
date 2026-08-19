@@ -58,10 +58,8 @@ Most custom plugins ship as `<name>` (frontend) plus `<name>-backend` (backend).
 | Catalog Health | `catalog-health` | Track `catalog-info.yaml` coverage across GitLab projects |
 | OpenCost | `opencost` | Multi-cluster Kubernetes cost visualization |
 | S3 Log Extract | `s3-log-extract` | S3-based Java log extraction with approval workflow |
-| Grafana Dashboard Map | `grafana-dashboard-map` | Map Grafana dashboards onto a system architecture diagram |
 | GitLab Token Audit | `gitlab-token-audit` | Audit GitLab personal/project/group access tokens with expiry alerts via Slack webhook |
 | Forklift Coverage | `forklift-coverage` | Track Forklift artifact repository adoption across GitLab CI projects, with Slack summaries and an admin pipeline viewer |
-| Stale Branch | `stale-branches` | Scheduled GitLab stale-branch scans with an Airflow-style run history, per-schedule Slack reports, and UI-managed credentials |
 | OpenSearch | `opensearch-account` | Self-service OpenSearch Security internal user create/list/delete/modify with admin approval, RBAC, and audit trail |
 | Capacity | `opensearch-scaling` | Self-service reserved scaling of OpenSearch Service domains (instance type, node count, EBS) at a scheduled time with in-progress pre-validation |
 | Build Info | — | Settings page showing build metadata, installed plugins, BUI migration progress |

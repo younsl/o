@@ -44,10 +44,8 @@ import { IamUserAuditPage } from '@internal/plugin-iam-user-audit';
 import { S3LogExtractPage } from '@internal/plugin-s3-log-extract';
 import { CatalogHealthPage, GenerateCatalogInfoPage } from '@internal/plugin-catalog-health';
 import { ForkliftCoveragePage } from '@internal/plugin-forklift-coverage';
-import { StaleBranchesPage } from '@internal/plugin-stale-branches';
 import { KafkaTopicPage } from '@internal/plugin-kafka-topic';
 import { OpenCostPage, CostAdjustPage } from '@internal/plugin-opencost';
-import { GrafanaDashboardMapPage } from '@internal/plugin-grafana-dashboard-map';
 import {
   OpenSearchAccountPage,
   OpenSearchAccountCreatePage,
@@ -142,10 +140,8 @@ const routes = (
     <Route path="/catalog-health" element={<CatalogHealthPage />} />
     <Route path="/catalog-health/generate" element={<GenerateCatalogInfoPage />} />
     <Route path="/forklift-coverage/*" element={<ForkliftCoveragePage />} />
-    <Route path="/stale-branches/*" element={<StaleBranchesPage />} />
     <Route path="/cost-report" element={<OpenCostPage />} />
     <Route path="/cost-report/custom-export" element={<CostAdjustPage />} />
-    <Route path="/grafana-dashboard-map" element={<GrafanaDashboardMapPage />} />
     <Route path="/opensearch" element={<OpenSearchAccountPage />} />
     <Route path="/opensearch/create" element={<OpenSearchAccountCreatePage />} />
     <Route path="/opensearch/approvals" element={<OpenSearchAccountApprovalsPage />} />

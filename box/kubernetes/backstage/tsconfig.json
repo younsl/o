@@ -49,12 +49,6 @@
       "path": "plugins/gitlab-token-audit-backend"
     },
     {
-      "path": "plugins/grafana-dashboard-map"
-    },
-    {
-      "path": "plugins/grafana-dashboard-map-backend"
-    },
-    {
       "path": "plugins/iam-user-audit"
     },
     {
@@ -104,12 +98,6 @@
     },
     {
       "path": "plugins/s3-log-extract-backend"
-    },
-    {
-      "path": "plugins/stale-branches"
-    },
-    {
-      "path": "plugins/stale-branches-backend"
     }
   ],
   "files": []

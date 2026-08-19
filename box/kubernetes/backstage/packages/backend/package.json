@@ -39,7 +39,6 @@
     "@internal/plugin-catalog-health-backend": "workspace:*",
     "@internal/plugin-forklift-coverage-backend": "workspace:*",
     "@internal/plugin-gitlab-token-audit-backend": "workspace:*",
-    "@internal/plugin-grafana-dashboard-map-backend": "workspace:*",
     "@internal/plugin-iam-user-audit-backend": "workspace:*",
     "@internal/plugin-kafka-topic-backend": "workspace:*",
     "@internal/plugin-openapi-registry-backend": "workspace:*",
@@ -49,7 +48,6 @@
     "@internal/plugin-opensearch-viewer-backend": "workspace:*",
     "@internal/plugin-platforms-backend": "workspace:*",
     "@internal/plugin-s3-log-extract-backend": "workspace:*",
-    "@internal/plugin-stale-branches-backend": "workspace:*",
     "better-sqlite3": "^12.6.2",
     "pg": "^8.11.3"
   },

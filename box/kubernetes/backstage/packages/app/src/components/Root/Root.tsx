@@ -14,25 +14,11 @@ import SecurityIcon from '@material-ui/icons/Security';
 import StorageIcon from '@material-ui/icons/Storage';
 import AttachMoneyIcon from '@material-ui/icons/AttachMoney';
 import FindInPageIcon from '@material-ui/icons/FindInPage';
-import DashboardIcon from '@material-ui/icons/Dashboard';
 import VpnKeyIcon from '@material-ui/icons/VpnKey';
 import TrendingUpIcon from '@material-ui/icons/TrendingUp';
 import LocalShippingIcon from '@material-ui/icons/LocalShipping';
-import { RiBrush3Line } from '@remixicon/react';
 import { siApachekafka, siArgo, siGitlab, siKubernetes } from 'simple-icons';
 import { createIcon } from '@dweber019/backstage-plugin-simple-icons';
-
-// Remixicon ships plain SVG components while Backstage types a sidebar icon as
-// one that takes Material UI's `fontSize`, so the two are bridged here. The
-// sizes are what MUI renders those keywords at, which is what keeps this icon
-// on the same optical line as the ones above and below it.
-const StaleBranchIcon = (props: {
-  fontSize?: 'inherit' | 'small' | 'medium' | 'large';
-}) => (
-  <RiBrush3Line
-    size={props.fontSize === 'large' ? 35 : props.fontSize === 'small' ? 20 : 24}
-  />
-);
 
 const ApacheKafkaIcon = createIcon(siApachekafka, false);
 const ArgocdIcon = createIcon(siArgo, false);
@@ -308,41 +294,6 @@ const S3LogExtractSidebarItem = () => {
   );
 };
 
-const GrafanaDashboardMapSidebarItem = () => {
-  const discoveryApi = useApi(discoveryApiRef);
-  const fetchApi = useApi(fetchApiRef);
-  const [count, setCount] = useState(0);
-
-  useEffect(() => {
-    const fetchCount = async () => {
-      try {
-        const baseUrl = await discoveryApi.getBaseUrl('grafana-dashboard-map');
-        const response = await fetchApi.fetch(`${baseUrl}/dashboards`);
-        if (!response.ok) return;
-        const data = await response.json();
-        setCount(Array.isArray(data?.dashboards) ? data.dashboards.length : 0);
-      } catch {
-        /* ignore */
-      }
-    };
-    fetchCount();
-    const interval = setInterval(fetchCount, 60_000);
-    return () => clearInterval(interval);
-  }, [discoveryApi, fetchApi]);
-
-  return (
-    <SidebarItem icon={DashboardIcon} to="grafana-dashboard-map" text="Dashboard Map">
-      <span
-        className={
-          count > 0 ? 'sidebar-badge' : 'sidebar-badge sidebar-badge-zero'
-        }
-      >
-        {count}
-      </span>
-    </SidebarItem>
-  );
-};
-
 const GitlabTokenAuditSidebarItem = () => {
   const discoveryApi = useApi(discoveryApiRef);
   const fetchApi = useApi(fetchApiRef);
@@ -422,10 +373,8 @@ export const Root = ({ children }: PropsWithChildren<{}>) => {
   const kafkaTopicEnabled = config.getOptionalBoolean('app.plugins.kafkaTopic') ?? true;
   const s3LogExtractEnabled = config.getOptionalBoolean('app.plugins.s3LogExtract') ?? true;
   const opencostEnabled = config.getOptionalBoolean('app.plugins.opencost') ?? true;
-  const grafanaDashboardMapEnabled = config.getOptionalBoolean('app.plugins.grafanaDashboardMap') ?? true;
   const gitlabTokenAuditEnabled = config.getOptionalBoolean('app.plugins.gitlabTokenAudit') ?? true;
   const forkliftCoverageEnabled = config.getOptionalBoolean('app.plugins.forkliftCoverage') ?? true;
-  const staleBranchesEnabled = config.getOptionalBoolean('app.plugins.staleBranches') ?? true;
   const opensearchAccountEnabled = config.getOptionalBoolean('app.plugins.opensearchAccount') ?? true;
   const opensearchScalingEnabled = config.getOptionalBoolean('app.plugins.opensearchScaling') ?? true;
 
@@ -440,7 +389,6 @@ export const Root = ({ children }: PropsWithChildren<{}>) => {
 
       <FoldableSection title="Resources" icon={<CategoryIcon />} defaultOpen={false}>
         <PlatformsSidebarItem />
-        {grafanaDashboardMapEnabled && <GrafanaDashboardMapSidebarItem />}
         <SidebarItem icon={CategoryIcon} to="catalog" text="Catalog" />
         <SidebarItem icon={ExtensionIcon} to="api-docs" text="APIs" />
         <SidebarItem icon={CloudUploadIcon} to="openapi-registry" text="API Registry" />
@@ -455,14 +403,6 @@ export const Root = ({ children }: PropsWithChildren<{}>) => {
           <SidebarItem icon={ArgocdIcon} to="argocd-appset" text="ArgoCD" />
         )}
         {gitlabTokenAuditEnabled && <GitlabTokenAuditSidebarItem />}
-        {staleBranchesEnabled && (
-          <SidebarItem
-            className="sidebar-item-wide"
-            icon={StaleBranchIcon}
-            to="stale-branches"
-            text="Stale Branch"
-          />
-        )}
         {forkliftCoverageEnabled && (
           <SidebarItem
             className="sidebar-item-wide"

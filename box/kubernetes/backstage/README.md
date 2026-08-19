@@ -33,5 +33,4 @@ Authentication is Keycloak OIDC only. Guest login is disabled.
 - [Kafka Topic](docs/plugins/kafka-topic/overview.md)
 - [OpenCost](docs/plugins/opencost/overview.md)
 - [OpenCost ERD](docs/plugins/opencost/erd.md)
-- [Grafana Dashboard Map ERD](docs/plugins/grafana-dashboard-map/erd.md)
 - [OpenSearch Account](docs/plugins/opensearch-account/overview.md)

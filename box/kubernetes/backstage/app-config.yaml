@@ -10,10 +10,8 @@ app:
     kafkaTopic: true
     s3LogExtract: true
     opencost: true
-    grafanaDashboardMap: true
     gitlabTokenAudit: true
     forkliftCoverage: true
-    staleBranches: true
     opensearchAccount: true
     opensearchViewer: true
     opensearchScaling: true
@@ -292,11 +290,6 @@ opencost:
     - name: prd
       title: Production
       url: ${OPENCOST_PRD_URL}
-
-grafanaDashboardMap:
-  url: https://grafana.example.com
-  apiToken: ${GRAFANA_API_TOKEN}
-  cacheTtlSeconds: 60
 
 opensearchAccount:
   # -- (string) OpenSearch base URL exposing the Security API
