@@ -1,1 +1,0 @@
-{{ include "kagent-alert-bridge.fullname" . }} is deployed in {{ .Release.Namespace }}: parent mode {{ .Values.slack.parentMode }}, channel {{ .Values.slack.defaultChannel }}, agent {{ .Values.kagent.agent }}.

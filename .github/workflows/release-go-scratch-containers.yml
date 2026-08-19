@@ -8,7 +8,7 @@ on:
       - 'box/kubernetes/external-ebs-autoresizer/Dockerfile'
       - 'box/kubernetes/ec2-metadata-exporter/Dockerfile'
       - 'box/kubernetes/aws-vpn-maintenance-handler/Dockerfile'
-      - 'box/kubernetes/kagent-alert-bridge/Dockerfile'
+      - 'box/kubernetes/kagent-gateway/Dockerfile'
       - 'box/kubernetes/filesystem-cleaner/Dockerfile'
   workflow_dispatch:
     inputs:
@@ -20,7 +20,7 @@ on:
           - external-ebs-autoresizer
           - ec2-metadata-exporter
           - aws-vpn-maintenance-handler
-          - kagent-alert-bridge
+          - kagent-gateway
           - filesystem-cleaner
       force:
         description: "Rebuild even if the version already exists on GHCR (overwrites the tag)"
@@ -80,7 +80,7 @@ jobs:
             "external-ebs-autoresizer:external-ebs-autoresizer"
             "ec2-metadata-exporter:ec2-metadata-exporter"
             "aws-vpn-maintenance-handler:aws-vpn-maintenance-handler"
-            "kagent-alert-bridge:kagent-alert-bridge"
+            "kagent-gateway:kagent-gateway"
             "filesystem-cleaner:filesystem-cleaner"
           )
 

@@ -1,0 +1,19 @@
+apiVersion: v2
+name: kagent-gateway
+description: Posts Alertmanager alerts to Slack and replies in-thread with an analysis from a kagent agent over A2A
+type: application
+version: 0.1.0
+appVersion: "0.1.0"
+keywords:
+  - alertmanager
+  - slack
+  - kagent
+  - a2a
+  - incident-response
+home: https://github.com/younsl/o
+sources:
+  - https://github.com/younsl/o/tree/main/box/kubernetes/kagent-gateway
+maintainers:
+  - name: younsl
+    email: cysl@kakao.com
+    url: https://github.com/younsl
