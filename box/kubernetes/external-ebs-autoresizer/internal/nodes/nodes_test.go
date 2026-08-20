@@ -15,13 +15,11 @@ import (
 
 func newNode(name, providerID, instanceType, zone string, annotations map[string]string) *corev1.Node {
 	return &corev1.Node{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:        name,
-			Annotations: annotations,
-			Labels: map[string]string{
-				instanceTypeLabel: instanceType,
-				zoneLabel:         zone,
-			},
+		Name:        name,
+		Annotations: annotations,
+		Labels: map[string]string{
+			instanceTypeLabel: instanceType,
+			zoneLabel:         zone,
 		},
 		Spec: corev1.NodeSpec{ProviderID: providerID},
 	}

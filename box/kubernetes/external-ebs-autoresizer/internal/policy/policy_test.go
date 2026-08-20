@@ -45,7 +45,7 @@ func TestResolveTagMatch(t *testing.T) {
 		InstanceSelector: config.InstanceSelector{Tags: map[string]string{"Role": "database"}},
 		Resize: config.ResizeSpec{
 			UsageThresholdPercent: new(70),
-			GrowMode:              ptrStr(config.GrowModeAbsolute),
+			GrowMode:              new(config.GrowModeAbsolute),
 			GrowAmount:            new("50GiB"),
 		},
 	}}
@@ -221,7 +221,7 @@ func TestCompileAbsoluteInheritsDefaultAmount(t *testing.T) {
 	// GrowAmountGiB, so it must validate.
 	cfg := baseCfg()
 	cfg.Policies = []config.ResizePolicy{{
-		Name: "abs", InstanceSelector: config.InstanceSelector{NameRegex: ".*"}, Resize: config.ResizeSpec{GrowMode: ptrStr(config.GrowModeAbsolute)},
+		Name: "abs", InstanceSelector: config.InstanceSelector{NameRegex: ".*"}, Resize: config.ResizeSpec{GrowMode: new(config.GrowModeAbsolute)},
 	}}
 	r, err := New(cfg)
 	if err != nil {
@@ -239,7 +239,7 @@ func TestCompileAbsoluteRejectsZeroDefaultAmount(t *testing.T) {
 	cfg := baseCfg()
 	cfg.GrowAmountGiB = 0
 	cfg.Policies = []config.ResizePolicy{{
-		Name: "abs", InstanceSelector: config.InstanceSelector{NameRegex: ".*"}, Resize: config.ResizeSpec{GrowMode: ptrStr(config.GrowModeAbsolute)},
+		Name: "abs", InstanceSelector: config.InstanceSelector{NameRegex: ".*"}, Resize: config.ResizeSpec{GrowMode: new(config.GrowModeAbsolute)},
 	}}
 	if _, err := New(cfg); err == nil {
 		t.Error("absolute mode with zero default amount = nil error, want error")
