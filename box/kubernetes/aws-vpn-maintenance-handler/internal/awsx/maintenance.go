@@ -108,8 +108,7 @@ func isDefiniteRejection(err error) bool {
 // isDryRunSuccess reports whether err is the DryRunOperation code AWS returns
 // when a dry-run request would have been permitted.
 func isDryRunSuccess(err error) bool {
-	var ae smithy.APIError
-	if errors.As(err, &ae) {
+	if ae, ok := errors.AsType[smithy.APIError](err); ok {
 		return ae.ErrorCode() == "DryRunOperation"
 	}
 	return false

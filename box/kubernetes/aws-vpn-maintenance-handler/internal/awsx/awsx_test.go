@@ -3,6 +3,7 @@ package awsx
 import (
 	"context"
 	"errors"
+	"slices"
 	"testing"
 	"time"
 
@@ -345,10 +346,8 @@ func hasFilter(filters []types.Filter, name, value string) bool {
 		if aws.ToString(f.Name) != name {
 			continue
 		}
-		for _, v := range f.Values {
-			if v == value {
-				return true
-			}
+		if slices.Contains(f.Values, value) {
+			return true
 		}
 	}
 	return false

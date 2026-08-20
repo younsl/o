@@ -296,8 +296,8 @@ func TestRemoveApprovalLeavesTheOthers(t *testing.T) {
 // crash the controller on startup.
 func TestLoadToleratesAnEmptyKey(t *testing.T) {
 	client := fake.NewSimpleClientset(&corev1.ConfigMap{
-		ObjectMeta: metav1.ObjectMeta{Name: name, Namespace: ns},
-		Data:       map[string]string{"unrelated": "value"},
+		Name: name, Namespace: ns,
+		Data: map[string]string{"unrelated": "value"},
 	})
 	store := NewStore(client, ns, name)
 
@@ -314,8 +314,8 @@ func TestLoadToleratesAnEmptyKey(t *testing.T) {
 // in-flight replacement would leave a tunnel down with nobody watching.
 func TestLoadRejectsCorruptState(t *testing.T) {
 	client := fake.NewSimpleClientset(&corev1.ConfigMap{
-		ObjectMeta: metav1.ObjectMeta{Name: name, Namespace: ns},
-		Data:       map[string]string{dataKey: "{not json"},
+		Name: name, Namespace: ns,
+		Data: map[string]string{dataKey: "{not json"},
 	})
 	store := NewStore(client, ns, name)
 

@@ -5,6 +5,7 @@ import (
 	"errors"
 	"io"
 	"log/slog"
+	"slices"
 	"strings"
 	"sync"
 	"testing"
@@ -204,12 +205,7 @@ func (f *fakeEvents) Warning(reason, _ string, _ ...any) {
 func (f *fakeEvents) saw(reason string) bool {
 	f.mu.Lock()
 	defer f.mu.Unlock()
-	for _, r := range f.reasons {
-		if r == reason {
-			return true
-		}
-	}
-	return false
+	return slices.Contains(f.reasons, reason)
 }
 
 // fakeExec records the replacement requests it received.

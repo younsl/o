@@ -180,8 +180,7 @@ func TestMetricsServeExposesTheRegistry(t *testing.T) {
 	m.SetTunnel(sample())
 
 	port := freePort(t)
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
+	ctx := t.Context()
 	go func() { _ = m.Serve(ctx, port) }()
 
 	body := get(t, port, "/metrics")
@@ -201,8 +200,7 @@ func TestMetricsServeExposesTheRegistry(t *testing.T) {
 func TestHealthLivenessIsAlwaysOK(t *testing.T) {
 	h := NewHealth()
 	port := freePort(t)
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
+	ctx := t.Context()
 	go func() { _ = h.Serve(ctx, port) }()
 
 	if code, _ := status(t, port, "/healthz"); code != http.StatusOK {
@@ -215,8 +213,7 @@ func TestHealthLivenessIsAlwaysOK(t *testing.T) {
 func TestHealthReadinessRequiresSlack(t *testing.T) {
 	h := NewHealth()
 	port := freePort(t)
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
+	ctx := t.Context()
 	go func() { _ = h.Serve(ctx, port) }()
 
 	if code, _ := status(t, port, "/readyz"); code != http.StatusServiceUnavailable {

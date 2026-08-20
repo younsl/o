@@ -142,8 +142,8 @@ func (s *Store) Mutate(ctx context.Context, fn func(*Snapshot)) (Snapshot, error
 				return err
 			}
 			_, err = s.client.CoreV1().ConfigMaps(s.namespace).Create(ctx, &corev1.ConfigMap{
-				ObjectMeta: metav1.ObjectMeta{Name: s.name, Namespace: s.namespace},
-				Data:       map[string]string{dataKey: encoded},
+				Name: s.name, Namespace: s.namespace,
+				Data: map[string]string{dataKey: encoded},
 			}, metav1.CreateOptions{})
 			if err != nil {
 				return fmt.Errorf("create state configmap %s/%s: %w", s.namespace, s.name, err)

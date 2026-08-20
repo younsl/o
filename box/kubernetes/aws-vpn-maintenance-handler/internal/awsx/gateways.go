@@ -3,6 +3,7 @@ package awsx
 import (
 	"context"
 	"log/slog"
+	"slices"
 	"sync"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
@@ -96,10 +97,8 @@ func appendUnresolved(cache *gatewayNames, ids []string, id string) []string {
 	if id == "" || cache.known(id) {
 		return ids
 	}
-	for _, existing := range ids {
-		if existing == id {
-			return ids
-		}
+	if slices.Contains(ids, id) {
+		return ids
 	}
 	return append(ids, id)
 }
