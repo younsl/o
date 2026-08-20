@@ -1,3 +1,3 @@
 module github.com/younsl/o/box/kubernetes/filesystem-cleaner
 
-go 1.26.6
+go 1.27.0
