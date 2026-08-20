@@ -1,0 +1,127 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "argocd-promotion-gate.fullname" . }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "argocd-promotion-gate.labels" . | nindent 4 }}
+spec:
+  replicas: {{ .Values.replicaCount }}
+  selector:
+    matchLabels:
+      {{- include "argocd-promotion-gate.selectorLabels" . | nindent 6 }}
+  template:
+    metadata:
+      annotations:
+        # A config change has to restart the pods: the file is read once at
+        # startup so a partially reloaded fleet can never disagree on a verdict.
+        checksum/config: {{ include "argocd-promotion-gate.config" . | sha256sum }}
+        {{- with .Values.podAnnotations }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
+      labels:
+        {{- include "argocd-promotion-gate.selectorLabels" . | nindent 8 }}
+        {{- with .Values.podLabels }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
+    spec:
+      {{- with .Values.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      serviceAccountName: {{ include "argocd-promotion-gate.serviceAccountName" . }}
+      securityContext:
+        {{- toYaml .Values.podSecurityContext | nindent 8 }}
+      containers:
+        - name: gate
+          image: {{ include "argocd-promotion-gate.image" . }}
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          args:
+            - --config=/etc/argocd-promotion-gate/config.yaml
+            - --webhook-addr=:8443
+            - --admin-addr=:8080
+            - --tls-cert-file=/etc/argocd-promotion-gate/tls/tls.crt
+            - --tls-key-file=/etc/argocd-promotion-gate/tls/tls.key
+            - --log-level={{ .Values.logging.level }}
+            - --log-format={{ .Values.logging.format }}
+            # Only affects the debug copy served on the admin port. The script
+            # argocd-server loads is written by the install-extension init
+            # container, which takes the same name.
+            - --extension-name={{ .Values.uiExtension.name }}
+          ports:
+            - name: webhook
+              containerPort: 8443
+              protocol: TCP
+            - name: admin
+              containerPort: 8080
+              protocol: TCP
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: admin
+          readinessProbe:
+            httpGet:
+              path: /readyz
+              port: admin
+          securityContext:
+            {{- toYaml .Values.securityContext | nindent 12 }}
+          resources:
+            {{- toYaml .Values.resources | nindent 12 }}
+          volumeMounts:
+            - name: config
+              mountPath: /etc/argocd-promotion-gate/config.yaml
+              subPath: config.yaml
+              readOnly: true
+            - name: tls
+              mountPath: /etc/argocd-promotion-gate/tls
+              readOnly: true
+            {{- if .Values.gate.imageTag.enabled }}
+            - name: token
+              mountPath: /etc/argocd-promotion-gate/token
+              readOnly: true
+            {{- if and .Values.gate.argocd.caSecret.enabled (not .Values.gate.argocd.insecureSkipVerify) }}
+            - name: argocd-ca
+              mountPath: /etc/argocd-promotion-gate/argocd-ca
+              readOnly: true
+            {{- end }}
+            {{- end }}
+      volumes:
+        - name: config
+          configMap:
+            name: {{ include "argocd-promotion-gate.fullname" . }}
+        - name: tls
+          secret:
+            secretName: {{ printf "%s-tls" (include "argocd-promotion-gate.fullname" .) }}
+        {{- if .Values.gate.imageTag.enabled }}
+        - name: token
+          secret:
+            secretName: {{ .Values.gate.argocd.tokenSecret.name }}
+            # Optional so the pod still starts before the token exists. A
+            # missing token then surfaces as a lookup failure resolved by
+            # gate.imageTag.onError, not as a crash loop.
+            optional: true
+        {{- if and .Values.gate.argocd.caSecret.enabled (not .Values.gate.argocd.insecureSkipVerify) }}
+        - name: argocd-ca
+          secret:
+            secretName: {{ .Values.gate.argocd.caSecret.name }}
+            items:
+              - key: {{ .Values.gate.argocd.caSecret.key }}
+                path: {{ .Values.gate.argocd.caSecret.key }}
+        {{- end }}
+        {{- end }}
+      {{- with .Values.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.topologySpreadConstraints }}
+      topologySpreadConstraints:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.affinity }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}

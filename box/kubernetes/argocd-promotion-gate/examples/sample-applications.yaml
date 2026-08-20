@@ -1,0 +1,176 @@
+# Sample Applications for exercising the promotion gate end to end.
+#
+# The pair is deliberately boring: one public Helm chart, one throwaway
+# namespace, and no automated sync policy. Nothing here is applied until you
+# apply it, and nothing outside the promotion-gate-test namespace is touched.
+#
+# The version knob is targetRevision, the chart version, and the podinfo chart
+# ships the matching image tag. Driving the version that way rather than through
+# a helm parameter gives every deploy its own Argo CD revision, which is what
+# makes a rollback identifiable: the gate recognises a sync whose target
+# revision this environment has already deployed.
+#
+# Prerequisite: the AppProjects named beta and prd have to exist, restricted to
+# the destination below. The gate is what keeps the blast radius small, because
+# its webhook is registered with a match condition that only fires for the
+# projects in gate.gatedEnvs.
+#
+# Apply:
+#   kubectl --context shared apply -f sample-applications.yaml
+#
+# Remove, including everything the apps deployed:
+#   kubectl --context shared -n argocd delete application beta-sample-app prd-sample-app
+#
+---
+# Upstream of the pair, the beta environment. Sync this one first to give the
+# gate something to compare against.
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: beta-sample-app
+  namespace: argocd
+  labels:
+    app.kubernetes.io/managed-by: argocd-promotion-gate-test
+  annotations:
+    # Read by a person, not by Argo CD.
+    promotion-gate.younsl.github.io/purpose: >-
+      Upstream half of the promotion gate test pair. Safe to delete.
+  finalizers:
+    # Deleting the Application also removes what it deployed, so teardown is
+    # one command and leaves nothing behind.
+    - resources-finalizer.argocd.argoproj.io
+spec:
+  project: beta
+  source:
+    repoURL: https://stefanprodan.github.io/podinfo
+    chart: podinfo
+    targetRevision: 6.7.1
+    helm:
+      releaseName: beta-sample-app
+      parameters:
+        - name: replicaCount
+          value: "1"
+        # Nothing about this test needs to be reachable.
+        - name: serviceMonitor.enabled
+          value: "false"
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: promotion-gate-test
+  syncPolicy:
+    # Manual on purpose. An automated policy would both deploy without being
+    # asked and bypass the gate, since Argo CD marks its own syncs automated.
+    syncOptions:
+      - CreateNamespace=true
+      - ServerSideApply=true
+---
+# Downstream half, the prd environment. This is the Application the gate refuses
+# to sync while beta is behind.
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: prd-sample-app
+  namespace: argocd
+  labels:
+    app.kubernetes.io/managed-by: argocd-promotion-gate-test
+  annotations:
+    promotion-gate.younsl.github.io/purpose: >-
+      Downstream half of the promotion gate test pair. Safe to delete.
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+spec:
+  project: prd
+  source:
+    repoURL: https://stefanprodan.github.io/podinfo
+    chart: podinfo
+    # Set to 6.7.0 to stage a downgrade that the gate refuses, or roll back
+    # through the Argo CD UI to see the rollback allowance instead.
+    targetRevision: 6.7.1
+    helm:
+      releaseName: prd-sample-app
+      parameters:
+        - name: replicaCount
+          value: "1"
+        - name: serviceMonitor.enabled
+          value: "false"
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: promotion-gate-test
+  syncPolicy:
+    syncOptions:
+      - CreateNamespace=true
+      - ServerSideApply=true
+---
+# The documented exception, in one Application.
+#
+# This one lives in the gated environment but has no counterpart in beta, so
+# there is nothing it could have been promoted from. Blocking it would leave it
+# permanently undeployable, which is why the gate always allows this case.
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: prd-standalone-app
+  namespace: argocd
+  labels:
+    app.kubernetes.io/managed-by: argocd-promotion-gate-test
+  annotations:
+    promotion-gate.younsl.github.io/purpose: >-
+      Gated environment with no upstream counterpart. Safe to delete.
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+spec:
+  project: prd
+  source:
+    repoURL: https://stefanprodan.github.io/podinfo
+    chart: podinfo
+    targetRevision: 6.7.1
+    helm:
+      releaseName: prd-standalone-app
+      parameters:
+        - name: replicaCount
+          value: "1"
+        - name: serviceMonitor.enabled
+          value: "false"
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: promotion-gate-test
+  syncPolicy:
+    syncOptions:
+      - CreateNamespace=true
+      - ServerSideApply=true
+---
+# The other end of the chain, for contrast.
+#
+# beta is the chain head, so it has nothing upstream to wait for and the gate
+# never applies to it no matter what state anything else is in.
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: beta-only-app
+  namespace: argocd
+  labels:
+    app.kubernetes.io/managed-by: argocd-promotion-gate-test
+  annotations:
+    promotion-gate.younsl.github.io/purpose: >-
+      Chain head with no downstream counterpart. Safe to delete.
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+spec:
+  project: beta
+  source:
+    repoURL: https://stefanprodan.github.io/podinfo
+    chart: podinfo
+    targetRevision: 6.7.1
+    helm:
+      releaseName: beta-only-app
+      parameters:
+        - name: replicaCount
+          value: "1"
+        - name: serviceMonitor.enabled
+          value: "false"
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: promotion-gate-test
+  syncPolicy:
+    syncOptions:
+      - CreateNamespace=true
+      - ServerSideApply=true

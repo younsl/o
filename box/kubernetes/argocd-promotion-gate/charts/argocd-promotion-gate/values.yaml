@@ -1,0 +1,198 @@
+# -- (int) Number of gate replicas. Keep above one while `webhook.failurePolicy` is `Fail`
+replicaCount: 1
+
+image:
+  # -- (string) Container image registry host
+  registry: ghcr.io
+  # -- (string) Container image repository path without registry prefix
+  repository: younsl/argocd-promotion-gate
+  # -- (string) Image tag; defaults to the chart appVersion when empty
+  tag: ""
+  # -- (string) Image pull policy
+  pullPolicy: IfNotPresent
+
+# -- (list) Image pull secrets for private registries
+imagePullSecrets: []
+# -- (string) Overrides the chart name used in resource names
+nameOverride: ""
+# -- (string) Overrides the full generated resource name
+fullnameOverride: ""
+
+serviceAccount:
+  # -- (bool) Create a ServiceAccount for the gate
+  create: true
+  # -- (object) Annotations added to the ServiceAccount
+  annotations: {}
+  # -- (string) Existing ServiceAccount name when `create` is false
+  name: ""
+
+rbac:
+  # -- (bool) Create the Role and RoleBinding granting read-only access to Applications
+  create: true
+
+# -- (object) Annotations added to the gate pods
+podAnnotations: {}
+# -- (object) Labels added to the gate pods
+podLabels: {}
+
+# -- (object) Pod-level security context
+podSecurityContext:
+  runAsNonRoot: true
+  runAsUser: 65532
+  runAsGroup: 65532
+  seccompProfile:
+    type: RuntimeDefault
+
+# -- (object) Container-level security context
+securityContext:
+  allowPrivilegeEscalation: false
+  readOnlyRootFilesystem: true
+  capabilities:
+    drop:
+      - ALL
+
+# -- (object) Resource requests and limits. No CPU limit: throttling admission turns latency into failed syncs
+resources:
+  requests:
+    cpu: 20m
+    memory: 64Mi
+  limits:
+    memory: 128Mi
+
+# -- (object) Node selector for the gate pods
+nodeSelector: {}
+# -- (list) Tolerations for the gate pods
+tolerations: []
+
+# -- (list) Topology spread constraints. Spreading replicas keeps one node loss from failing every gated sync
+topologySpreadConstraints:
+  - maxSkew: 1
+    topologyKey: kubernetes.io/hostname
+    whenUnsatisfiable: ScheduleAnyway
+    labelSelector:
+      matchLabels:
+        app.kubernetes.io/name: argocd-promotion-gate
+
+# -- (object) Affinity rules for the gate pods
+affinity: {}
+
+podDisruptionBudget:
+  # -- (bool) Create a PodDisruptionBudget
+  enabled: true
+  # -- (int/string) Minimum available replicas during voluntary disruption
+  minAvailable: 1
+
+service:
+  # -- (string) Service type
+  type: ClusterIP
+  # -- (string) Endpoint routing preference. `PreferSameZone` or `PreferSameNode`, or the deprecated `PreferClose`. Empty leaves it unset
+  trafficDistribution: ""
+  # -- (int) Port the API server calls for admission review
+  webhookPort: 443
+  # -- (int) Port serving probes, metrics, and the UI extension API
+  adminPort: 8080
+
+serviceMonitor:
+  # -- (bool) Create a Prometheus Operator ServiceMonitor
+  enabled: false
+  # -- (string) Scrape interval
+  interval: 30s
+  # -- (string) Scrape timeout
+  scrapeTimeout: 10s
+  # -- (object) Extra labels for Prometheus Operator selection
+  labels: {}
+
+logging:
+  # -- (string) Log level: debug, info, warn, error
+  level: info
+  # -- (string) Log format: json or text
+  format: json
+
+webhook:
+  # -- (string) `Fail` keeps the gate from being bypassed by an outage. `Ignore` trades enforcement for availability
+  failurePolicy: Fail
+  # -- (int) Admission timeout. Keep above `gate.argocd.timeoutSeconds`
+  timeoutSeconds: 5
+  # -- (int) Serving certificate lifetime in days. The Secret is reused across upgrades
+  certValidityDays: 3650
+  # -- (list) Extra CEL match conditions appended to the generated ones
+  extraMatchConditions: []
+
+uiExtension:
+  # -- (string) Name argocd-server proxies under `/extensions/<name>/...`. Must match argocd-cm
+  name: promotion-gate
+
+gate:
+  # -- (list) Promotion order lowest first. Env names are Argo CD projects and apps are named `<project>-<app>`
+  chain:
+    - stage
+    - prod
+
+  # -- (list) Environments the gate enforces. Empty means the whole chain except its head
+  gatedEnvs:
+    - prod
+
+  require:
+    # -- (bool) Upstream must report `status.sync.status: Synced`
+    sync: true
+    # -- (bool) Upstream must report `status.health.status: Healthy`
+    health: true
+
+  imageTag:
+    # -- (bool) Compare image tags on top of the upstream sync and health checks
+    enabled: true
+    # -- (string) `warn` reports a mismatch and lets the sync through. `enforce` denies it
+    mode: warn
+    # -- (list) Workload kinds queried for desired images
+    kinds:
+      - Deployment
+      - StatefulSet
+      - DaemonSet
+      - CronJob
+      - Rollout
+    # -- (list) Repository basenames excluded from comparison. A trailing `*` globs
+    ignoreRepos: []
+    # -- (string) Verdict when the desired image lookup fails: `allow` or `deny`
+    onError: deny
+
+  rollback:
+    # -- (bool) Allow a sync whose target revision this Application already deployed. This is what makes rollback possible
+    allowPreviouslyDeployedRevision: true
+
+  exempt:
+    # -- (list) Principals whose sync requests bypass the gate. Keep the application controller listed
+    usernames:
+      - system:serviceaccount:argocd:argocd-application-controller
+    # -- (bool) Bypass the gate when Argo CD marks the operation automated
+    automated: true
+    # -- (string) Application annotation that opts one app out when set to `"true"`
+    annotation: promotion-gate.younsl.github.io/skip
+
+  argocd:
+    # -- (string) Namespace holding the Application resources
+    namespace: argocd
+    # -- (string) Base URL of argocd-server. Its certificate has no SAN for the fully qualified name
+    serverAddress: https://argocd-server
+    # -- (bool) Disable TLS verification against argocd-server. Prefer `caSecret`
+    insecureSkipVerify: false
+    # -- (int) Per-request timeout for argocd-server calls
+    timeoutSeconds: 3
+    # -- (int) How long a desired image lookup is reused
+    cacheTtlSeconds: 30
+
+    caSecret:
+      # -- (bool) Mount a CA bundle for argocd-server
+      enabled: true
+      # -- (string) Secret holding the CA. Argo CD's certificate is its own issuer
+      name: argocd-secret
+      # -- (string) Key inside the Secret
+      key: tls.crt
+
+    tokenSecret:
+      # -- (string) Secret holding the Argo CD API token for the desired image lookup
+      name: argocd-promotion-gate-token
+      # -- (string) Key inside the Secret
+      key: token
+
+# -- (list) Extra manifests rendered as-is and templated with the release context
+extraObjects: []

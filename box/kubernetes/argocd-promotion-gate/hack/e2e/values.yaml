@@ -1,0 +1,35 @@
+# Gate values for the local cluster.
+replicaCount: 1
+
+image:
+  # Empty so the chart renders a bare local reference rather than prefixing a
+  # registry that has nothing to serve.
+  registry: ""
+  repository: localhost/argocd-promotion-gate
+  tag: e2e
+  # The image is side loaded into the node, so pulling would only fail.
+  pullPolicy: Never
+
+podDisruptionBudget:
+  # One replica plus a budget of one would refuse every eviction.
+  enabled: false
+
+logging:
+  level: debug
+  format: text
+
+webhook:
+  # Fail is the production default and the interesting one to test: a broken
+  # gate has to block rather than wave things through.
+  failurePolicy: Fail
+
+gate:
+  chain: [beta, prd]
+  gatedEnvs: [prd]
+  require:
+    sync: true
+    health: true
+  imageTag:
+    # Off for the webhook tier. Tag comparison needs an Argo CD API to ask, and
+    # that is covered separately by hack/e2e/tag-test.sh against a stub.
+    enabled: false

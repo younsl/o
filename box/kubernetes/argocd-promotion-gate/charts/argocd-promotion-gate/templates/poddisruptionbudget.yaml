@@ -1,0 +1,16 @@
+{{- if .Values.podDisruptionBudget.enabled }}
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: {{ include "argocd-promotion-gate.fullname" . }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "argocd-promotion-gate.labels" . | nindent 4 }}
+spec:
+  # Enforcement depends on the webhook being reachable while failurePolicy is
+  # Fail, so voluntary disruption must never drain the last replica.
+  minAvailable: {{ .Values.podDisruptionBudget.minAvailable }}
+  selector:
+    matchLabels:
+      {{- include "argocd-promotion-gate.selectorLabels" . | nindent 6 }}
+{{- end }}

@@ -1,0 +1,23 @@
+apiVersion: v2
+name: argocd-promotion-gate
+description: Admission gate that blocks an Argo CD Application sync until the same app is promoted in the upstream environment
+type: application
+deprecated: false
+version: 0.1.0
+appVersion: "0.1.0"
+kubeVersion: ">=1.30.0-0"
+home: https://github.com/younsl/o
+sources:
+  - https://github.com/younsl/o/tree/main/box/kubernetes/argocd-promotion-gate
+maintainers:
+  - name: younsl
+    email: cysl@kakao.com
+    url: https://github.com/younsl
+keywords:
+  - argocd
+  - gitops
+  - admission-webhook
+  - promotion
+  - governance
+annotations:
+  artifacthub.io/license: Apache-2.0

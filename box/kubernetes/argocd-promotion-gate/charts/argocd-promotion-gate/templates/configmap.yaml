@@ -1,0 +1,10 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "argocd-promotion-gate.fullname" . }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "argocd-promotion-gate.labels" . | nindent 4 }}
+data:
+  config.yaml: |
+    {{- include "argocd-promotion-gate.config" . | nindent 4 }}

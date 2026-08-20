@@ -1,0 +1,82 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 900 600" font-family="-apple-system, 'Segoe UI', Helvetica, Arial, sans-serif">
+  <defs>
+    <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M 0 0 L 10 5 L 0 10 z" fill="#111111"/>
+    </marker>
+  </defs>
+
+  <!-- background -->
+  <rect x="0" y="0" width="900" height="600" fill="#ffffff"/>
+
+  <!-- cluster boundary -->
+  <rect x="20" y="24" width="860" height="552" rx="12" fill="none" stroke="#111111" stroke-width="1.5" stroke-dasharray="7 5"/>
+  <text x="44" y="52" font-size="15" font-weight="600" fill="#111111">Kubernetes Cluster</text>
+
+  <!-- browser -->
+  <rect x="76" y="104" width="168" height="64" rx="6" fill="#ffffff" stroke="#111111" stroke-width="1.5"/>
+  <text x="160" y="132" font-size="14" font-weight="600" fill="#111111" text-anchor="middle">browser</text>
+  <text x="160" y="152" font-size="11.5" fill="#6b6b6b" text-anchor="middle">UI extension panel</text>
+
+  <!-- argo cd group -->
+  <rect x="276" y="72" width="548" height="112" rx="10" fill="#f4f4f4" stroke="#111111" stroke-width="1.5"/>
+  <text x="298" y="94" font-size="14" font-weight="600" fill="#111111">Argo CD</text>
+
+  <rect x="300" y="104" width="240" height="64" rx="6" fill="#ffffff" stroke="#111111" stroke-width="1.5"/>
+  <text x="420" y="132" font-size="14" font-weight="600" fill="#111111" text-anchor="middle">argocd-server</text>
+  <text x="420" y="152" font-size="11.5" fill="#6b6b6b" text-anchor="middle">UI &#183; CLI &#183; REST API</text>
+
+  <rect x="560" y="104" width="240" height="64" rx="6" fill="#ffffff" stroke="#111111" stroke-width="1.5"/>
+  <text x="680" y="132" font-size="14" font-weight="600" fill="#111111" text-anchor="middle">application controller</text>
+  <text x="680" y="152" font-size="11.5" fill="#6b6b6b" text-anchor="middle">auto-sync &#183; exempt by default</text>
+
+  <!-- kube-apiserver -->
+  <rect x="276" y="236" width="548" height="64" rx="6" fill="#ffffff" stroke="#111111" stroke-width="1.5"/>
+  <text x="550" y="264" font-size="14" font-weight="600" fill="#111111" text-anchor="middle">kube-apiserver</text>
+  <text x="550" y="284" font-size="11.5" fill="#6b6b6b" text-anchor="middle">admission &#183; Application object</text>
+
+  <!-- gate pod -->
+  <rect x="76" y="352" width="748" height="196" rx="10" fill="#f4f4f4" stroke="#111111" stroke-width="1.5"/>
+  <text x="100" y="376" font-size="14" font-weight="600" fill="#111111">Pod</text>
+  <text x="138" y="376" font-size="12.5" fill="#6b6b6b">argocd-promotion-gate</text>
+
+  <rect x="100" y="384" width="200" height="64" rx="6" fill="#ffffff" stroke="#111111" stroke-width="1.5"/>
+  <text x="200" y="412" font-size="13.5" font-weight="600" fill="#111111" text-anchor="middle">extension API</text>
+  <text x="200" y="432" font-size="11.5" fill="#6b6b6b" text-anchor="middle">HTTP :8080 &#183; read-only</text>
+
+  <rect x="540" y="384" width="272" height="64" rx="6" fill="#111111" stroke="#111111" stroke-width="1.5"/>
+  <text x="676" y="412" font-size="13.5" font-weight="600" fill="#ffffff" text-anchor="middle">admission webhook</text>
+  <text x="676" y="432" font-size="11.5" fill="#bdbdbd" text-anchor="middle">HTTPS :8443 &#183; enforces the gate</text>
+
+  <rect x="300" y="470" width="300" height="58" rx="6" fill="#ffffff" stroke="#111111" stroke-width="1.5"/>
+  <text x="450" y="494" font-size="13.5" font-weight="600" fill="#111111" text-anchor="middle">gate engine</text>
+  <text x="450" y="514" font-size="11.5" fill="#6b6b6b" text-anchor="middle">chain &#183; annotation &#183; sync &#183; health &#183; image tag</text>
+
+  <!-- browser to argocd-server -->
+  <path d="M 244 132 L 300 132" fill="none" stroke="#111111" stroke-width="1.5" marker-end="url(#arrow)"/>
+  <text x="272" y="122" font-size="11" fill="#6b6b6b" text-anchor="middle">proxy</text>
+
+  <!-- writes into the api server -->
+  <path d="M 420 184 L 420 236" fill="none" stroke="#111111" stroke-width="1.5" marker-end="url(#arrow)"/>
+  <text x="430" y="214" font-size="11.5" fill="#6b6b6b" text-anchor="start">sets .operation</text>
+
+  <path d="M 680 184 L 680 236" fill="none" stroke="#111111" stroke-width="1.5" marker-end="url(#arrow)"/>
+  <text x="690" y="214" font-size="11.5" fill="#6b6b6b" text-anchor="start">sets .operation</text>
+
+  <!-- admission round trip -->
+  <path d="M 676 300 L 676 384" fill="none" stroke="#111111" stroke-width="1.5" marker-start="url(#arrow)" marker-end="url(#arrow)"/>
+  <text x="664" y="328" font-size="11.5" fill="#6b6b6b" text-anchor="end">AdmissionReview</text>
+  <text x="664" y="344" font-size="11.5" fill="#6b6b6b" text-anchor="end">allow or deny 403</text>
+
+  <!-- listeners into the engine -->
+  <path d="M 676 448 L 676 499 L 600 499" fill="none" stroke="#111111" stroke-width="1.5" marker-end="url(#arrow)"/>
+  <path d="M 200 448 L 200 499 L 300 499" fill="none" stroke="#111111" stroke-width="1.5" marker-end="url(#arrow)"/>
+
+  <!-- engine reads the upstream application -->
+  <path d="M 340 470 L 340 300" fill="none" stroke="#111111" stroke-width="1.5" marker-end="url(#arrow)"/>
+  <text x="330" y="320" font-size="11.5" fill="#6b6b6b" text-anchor="end">GET upstream Application</text>
+  <text x="330" y="338" font-size="11.5" fill="#6b6b6b" text-anchor="end">sync &#183; health &#183; running images</text>
+
+  <!-- engine resolves desired images through the argo cd api -->
+  <path d="M 500 470 L 500 312 L 856 312 L 856 200 L 480 200 L 480 168" fill="none" stroke="#111111" stroke-width="1.5" marker-end="url(#arrow)"/>
+  <text x="840" y="197" font-size="11.5" fill="#6b6b6b" text-anchor="end">GET managed-resources</text>
+</svg>

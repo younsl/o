@@ -1,0 +1,22 @@
+# Applied as a second values file once the gate is running.
+#
+# Kept separate because the init container fetches the extension script from the
+# gate, so argocd-server cannot finish starting until the gate is serving. On a
+# first install the gate is not there yet, which would leave argocd-server
+# restarting for no reason.
+server:
+  initContainers:
+    - name: promotion-gate-extension
+      image: quay.io/argoprojlabs/argocd-extension-installer:v1.0.1
+      env:
+        - name: EXTENSION_URL
+          value: http://argocd-promotion-gate.argocd.svc.cluster.local:8080/api/v1/extension.tar
+      volumeMounts:
+        - name: extensions
+          mountPath: /tmp/extensions/
+  volumes:
+    - name: extensions
+      emptyDir: {}
+  volumeMounts:
+    - name: extensions
+      mountPath: /tmp/extensions

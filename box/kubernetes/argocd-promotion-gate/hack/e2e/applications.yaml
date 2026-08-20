@@ -1,0 +1,72 @@
+# Test fixtures for the local cluster.
+#
+# Statuses are set here rather than by a controller, so a test can put the
+# upstream into any state it wants and trust that nothing moves it back.
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: beta-sample-app
+  namespace: argocd
+spec:
+  project: beta
+  source:
+    repoURL: https://stefanprodan.github.io/podinfo
+    chart: podinfo
+    targetRevision: 6.7.1
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: promotion-gate-test
+status:
+  sync:
+    status: OutOfSync
+  health:
+    status: Healthy
+  summary:
+    images:
+      - ghcr.io/stefanprodan/podinfo:6.7.1
+---
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: prd-sample-app
+  namespace: argocd
+spec:
+  project: prd
+  source:
+    repoURL: https://stefanprodan.github.io/podinfo
+    chart: podinfo
+    targetRevision: 6.7.1
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: promotion-gate-test
+status:
+  sync:
+    status: OutOfSync
+  health:
+    status: Healthy
+  summary:
+    images:
+      - ghcr.io/stefanprodan/podinfo:6.7.0
+---
+# No beta counterpart on purpose. Exercises the exception that an application
+# which exists in no upstream environment is not promotable and must not be
+# blocked.
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: prd-orphan-app
+  namespace: argocd
+spec:
+  project: prd
+  source:
+    repoURL: https://stefanprodan.github.io/podinfo
+    chart: podinfo
+    targetRevision: 6.7.1
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: promotion-gate-test
+status:
+  sync:
+    status: OutOfSync
+  health:
+    status: Healthy

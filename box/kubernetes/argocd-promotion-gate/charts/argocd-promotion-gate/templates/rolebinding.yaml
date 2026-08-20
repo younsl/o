@@ -1,0 +1,17 @@
+{{- if .Values.rbac.create }}
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: {{ include "argocd-promotion-gate.fullname" . }}
+  namespace: {{ .Values.gate.argocd.namespace }}
+  labels:
+    {{- include "argocd-promotion-gate.labels" . | nindent 4 }}
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: {{ include "argocd-promotion-gate.fullname" . }}
+subjects:
+  - kind: ServiceAccount
+    name: {{ include "argocd-promotion-gate.serviceAccountName" . }}
+    namespace: {{ .Release.Namespace }}
+{{- end }}

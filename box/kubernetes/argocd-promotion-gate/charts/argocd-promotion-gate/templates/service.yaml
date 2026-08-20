@@ -1,0 +1,32 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "argocd-promotion-gate.fullname" . }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "argocd-promotion-gate.labels" . | nindent 4 }}
+spec:
+  type: {{ .Values.service.type }}
+  {{- with .Values.service.trafficDistribution }}
+  # A hint rather than a guarantee, and worth setting on a multi-zone cluster
+  # because this Service sits on the admission path where a cross-zone hop is
+  # latency the API server pays on every gated sync.
+  #
+  # The API server accepts PreferSameZone, PreferSameNode, and PreferClose. The
+  # last one still works but is deprecated in favour of PreferSameZone, and
+  # PreferSameZone and PreferSameNode need Kubernetes 1.33 or newer.
+  trafficDistribution: {{ . }}
+  {{- end }}
+  selector:
+    {{- include "argocd-promotion-gate.selectorLabels" . | nindent 4 }}
+  ports:
+    - name: webhook
+      port: {{ .Values.service.webhookPort }}
+      targetPort: webhook
+      protocol: TCP
+    # argocd-server proxies the UI extension API to this port, and Prometheus
+    # scrapes /metrics from it.
+    - name: admin
+      port: {{ .Values.service.adminPort }}
+      targetPort: admin
+      protocol: TCP

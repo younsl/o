@@ -1,0 +1,41 @@
+# The two environments of the test chain.
+#
+# Both are scoped to one namespace and one repository, so a mistake in a test
+# fixture cannot deploy anything unexpected even on a local cluster.
+apiVersion: argoproj.io/v1alpha1
+kind: AppProject
+metadata:
+  name: beta
+  namespace: argocd
+spec:
+  description: Upstream environment of the promotion test chain, beta
+  sourceRepos:
+    - https://stefanprodan.github.io/podinfo
+  destinations:
+    - server: https://kubernetes.default.svc
+      namespace: promotion-gate-test
+  clusterResourceWhitelist:
+    - group: ""
+      kind: Namespace
+  namespaceResourceWhitelist:
+    - group: "*"
+      kind: "*"
+---
+apiVersion: argoproj.io/v1alpha1
+kind: AppProject
+metadata:
+  name: prd
+  namespace: argocd
+spec:
+  description: Gated environment of the promotion test chain, prd
+  sourceRepos:
+    - https://stefanprodan.github.io/podinfo
+  destinations:
+    - server: https://kubernetes.default.svc
+      namespace: promotion-gate-test
+  clusterResourceWhitelist:
+    - group: ""
+      kind: Namespace
+  namespaceResourceWhitelist:
+    - group: "*"
+      kind: "*"

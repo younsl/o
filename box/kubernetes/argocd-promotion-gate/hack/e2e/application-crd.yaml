@@ -1,0 +1,44 @@
+# Minimal stand-in for the Argo CD Application CRD.
+#
+# The gate reads a handful of paths out of an Application and writes nothing, so
+# a schema that preserves unknown fields is enough to exercise it. Installing
+# Argo CD itself would add a controller that overwrites the statuses these tests
+# set by hand, which is the opposite of what a deterministic test wants.
+#
+# One detail is copied from the real CRD on purpose: there is no status
+# subresource. That means Argo CD's constant status writes go through admission
+# on the main resource, which is exactly why the webhook needs match conditions
+# to stay off that traffic.
+apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata:
+  name: applications.argoproj.io
+spec:
+  group: argoproj.io
+  scope: Namespaced
+  names:
+    kind: Application
+    listKind: ApplicationList
+    plural: applications
+    singular: application
+    shortNames:
+      - app
+      - apps
+  versions:
+    - name: v1alpha1
+      served: true
+      storage: true
+      schema:
+        openAPIV3Schema:
+          type: object
+          x-kubernetes-preserve-unknown-fields: true
+      additionalPrinterColumns:
+        - name: Project
+          type: string
+          jsonPath: .spec.project
+        - name: Sync
+          type: string
+          jsonPath: .status.sync.status
+        - name: Health
+          type: string
+          jsonPath: .status.health.status
