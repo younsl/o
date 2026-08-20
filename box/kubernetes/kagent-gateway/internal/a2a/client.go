@@ -21,6 +21,7 @@ import (
 	"io"
 	"log/slog"
 	"net/http"
+	"slices"
 	"strings"
 	"time"
 
@@ -427,11 +428,11 @@ func answer(out response) string {
 			return strings.TrimSpace(b.String())
 		}
 	}
-	for i := len(out.Result.History) - 1; i >= 0; i-- {
-		if out.Result.History[i].Role != "agent" {
+	for _, v := range slices.Backward(out.Result.History) {
+		if v.Role != "agent" {
 			continue
 		}
-		writeParts(&b, out.Result.History[i].Parts)
+		writeParts(&b, v.Parts)
 		if b.Len() > 0 {
 			return strings.TrimSpace(b.String())
 		}
