@@ -49,6 +49,7 @@ The chart generates its own serving certificate, so cert-manager is not required
 
 ## Docs
 
-- [docs/configuration.md](docs/configuration.md) for every setting, the Argo CD token, metrics, failure modes, rollout order
+- [docs/configuration.md](docs/configuration.md) for every setting, the Argo CD token, failure modes, rollout order
+- [docs/metrics.md](docs/metrics.md) for the metric set, label values, and queries
 - [docs/ui-extension.md](docs/ui-extension.md) for wiring the panel into argocd-server
 - [docs/development.md](docs/development.md) for build, test, live-cluster runs

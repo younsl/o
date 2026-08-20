@@ -1,5 +1,11 @@
 # Development
 
+## Overview
+
+Where the code lives, what each package is allowed to depend on, how to run the gate against a real cluster, and the end to end tier. Also the tests that pin decisions which are easy to undo by accident.
+
+For anyone changing the code. Behaviour and settings live in [docs/configuration.md](configuration.md) instead.
+
 ```bash
 make          # fmt, vet, lint, test, build
 make test     # go test -race ./...

@@ -1,5 +1,11 @@
 # Configuration
 
+## Overview
+
+Every setting the gate reads, what it does, and the ones whose default is a deliberate choice rather than a convenience. Also the two things the chart cannot do for you: the Argo CD API token and the order to enable checks in.
+
+For cluster operators installing or tuning the gate. Reading it end to end is not the point, the full example below is the index.
+
 The binary reads one YAML file, mounted from a ConfigMap the chart renders out of `.Values.gate`. Unknown keys are rejected at startup, so a misspelled setting fails the pod rather than silently disabling a check.
 
 ## Full example
@@ -132,7 +138,7 @@ Argo CD's self-signed serving certificate is its own issuer and carries SANs for
 Enabling everything at once is the one way to make this component look broken. In an estate that has never enforced tag equality, most gated applications are not sitting on the upstream tag, and `enforce` blocks all of them on day one.
 
 1. **Install with `imageTag.mode: warn`.** Upstream sync and health are enforced immediately; tag mismatches are only reported.
-2. **Watch the metric.** `argocd_promotion_gate_decisions_total{code="ImageTagMismatch"}` counts what `enforce` would have blocked. The warning attached to each allowed sync names the repository and both tags.
+2. **Watch the metric.** `argocd_promotion_gate_decisions_total{code="ImageTagMismatch"}` counts what `enforce` would have blocked. [docs/metrics.md](metrics.md) has the query. The warning attached to each allowed sync names the repository and both tags.
 3. **Populate `ignoreRepos`.** Sidecars that differ per environment by design (`nginx`, `autoinstrumentation-*`) belong here, not in the comparison.
 4. **Switch to `enforce`** once the remaining mismatches are ones you actually want blocked.
 
@@ -172,15 +178,3 @@ matchConditions:
 ```
 
 This matters at scale. Argo CD writes status to every Application constantly; without the first condition the webhook would be consulted on all of it. The handler re-checks every one of these conditions anyway, so a mistake in the registration cannot turn into a wrong verdict, only into wasted calls.
-
-## Metrics
-
-The admin listener serves `/metrics` on port 8080 alongside `/healthz` and `/readyz`.
-
-| Metric | Labels |
-| --- | --- |
-| `argocd_promotion_gate_decisions_total` | `env`, `code`, `allowed` |
-| `argocd_promotion_gate_admission_requests_total` | `outcome` |
-| `argocd_promotion_gate_lookup_failures_total` | `kind` |
-
-Application names are deliberately absent from the labels. A denial costs one log line, but one time series per Application would last forever.

@@ -1,5 +1,11 @@
 # UI extension
 
+## Overview
+
+What the panel shows, why it is JavaScript rather than Go, and the four pieces of argocd-server configuration it needs. The wiring is the bulk of it.
+
+For Argo CD operators adding the panel to an existing install.
+
 The panel is optional. The gate enforces with or without it. What the panel adds is seeing the verdict on the Application page instead of discovering it in an error toast after pressing Sync.
 
 ![how the UI extension works](assets/ui-extension.svg)
