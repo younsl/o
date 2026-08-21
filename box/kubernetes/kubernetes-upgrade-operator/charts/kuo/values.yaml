@@ -201,6 +201,20 @@ eksUpgrades: []
   #     assumeRoleArn: arn:aws:iam::123456789012:role/kuo-target-role
   #     dryRun: false
 
+mcp:
+  # -- (bool) Whether to serve the MCP endpoint for kagent on its own port. Requires a bearer token: set `token` or `existingSecret`, otherwise the operator refuses to start the listener.
+  enabled: false
+  # -- (int) MCP listener port, exposed on the Service when enabled.
+  port: 8082
+  # -- (int) TTL in seconds for the AWS read cache in front of the MCP tools.
+  cacheTtlSeconds: 30
+  # -- (string) Bearer token value. The chart renders it into a Secret. For production prefer existingSecret.
+  token: ""
+  # -- (string) Name of a Secret you manage holding the token. Takes precedence over token. Point this at the target of an ExternalSecret in `extraObjects` to source it from AWS Secrets Manager.
+  existingSecret: ""
+  # -- (string) Key holding the token within the Secret.
+  existingSecretKey: "token"
+
 # -- (list) Additional Kubernetes resources to create alongside the chart.
 extraObjects: []
   # - apiVersion: v1

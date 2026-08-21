@@ -8,6 +8,13 @@ rules:
   - apiGroups: ["kuo.io"]
     resources: ["eksupgrades"]
     verbs: ["get", "list", "watch"]
+  {{- if .Values.mcp.enabled }}
+  # MCP mutating tools (plan_upgrade, retry_upgrade, promote_dry_run) write
+  # EKSUpgrade resources; the reconcile path alone never needs these verbs.
+  - apiGroups: ["kuo.io"]
+    resources: ["eksupgrades"]
+    verbs: ["create", "patch", "update"]
+  {{- end }}
   - apiGroups: ["kuo.io"]
     resources: ["eksupgrades/status"]
     verbs: ["get", "patch", "update"]

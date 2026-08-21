@@ -11,6 +11,7 @@ mod crd;
 mod eks;
 mod error;
 mod k8s;
+mod mcp;
 mod notify;
 mod phases;
 mod render;
@@ -103,6 +104,9 @@ async fn run() -> Result<()> {
     let mut registry = prometheus_client::registry::Registry::default();
     telemetry::metrics::register_build_info(&mut registry, VERSION, COMMIT, RUSTC_VERSION, ARCH);
     let metrics = Arc::new(telemetry::metrics::Metrics::new(&mut registry));
+    // MCP metric families register unconditionally so the registry is frozen
+    // once; they simply stay at zero while the endpoint is disabled.
+    let mcp_metrics = Arc::new(mcp::metrics::McpMetrics::new(&mut registry));
     let registry = Arc::new(registry);
 
     // Start health server (port 8080)
@@ -130,6 +134,25 @@ async fn run() -> Result<()> {
             info!("Slack notifications enabled");
             Arc::new(notify::SlackNotifier::new(url))
         });
+
+    // Start the MCP server for kagent (if enabled). A half-configured MCP
+    // endpoint (enabled but tokenless) is fatal rather than silently open:
+    // mutating tools are always registered, so authentication is not optional.
+    if let Some(mcp_config) = mcp::Config::from_env()? {
+        let mcp_ctx = Arc::new(mcp::tools::McpContext::new(
+            client.clone(),
+            mcp::cache::Cache::new(mcp_config.cache_ttl),
+            slack.clone(),
+            mcp_metrics,
+        ));
+        tokio::spawn(async move {
+            if let Err(e) = mcp::server::serve(mcp_config, mcp_ctx).await {
+                error!("MCP server failed: {}", e);
+            }
+        });
+    } else {
+        info!("MCP server disabled");
+    }
 
     // Initialize the Grafana annotator (if annotating is enabled). A
     // half-configured annotator is fatal here rather than silently dropping

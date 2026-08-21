@@ -1,6 +1,6 @@
 # kuo
 
-![Version: 0.6.0](https://img.shields.io/badge/Version-0.6.0-informational?style=flat-square) ![Type: application](https://img.shields.io/badge/Type-application-informational?style=flat-square) ![AppVersion: 0.5.0](https://img.shields.io/badge/AppVersion-0.5.0-informational?style=flat-square)
+![Version: 0.7.0](https://img.shields.io/badge/Version-0.7.0-informational?style=flat-square) ![Type: application](https://img.shields.io/badge/Type-application-informational?style=flat-square) ![AppVersion: 0.6.0](https://img.shields.io/badge/AppVersion-0.6.0-informational?style=flat-square)
 
 Kubernetes Upgrade Operator for EKS clusters
 
@@ -39,7 +39,7 @@ helm install kuo oci://ghcr.io/younsl/charts/kuo -f values.yaml
 Install a specific version:
 
 ```console
-helm install kuo oci://ghcr.io/younsl/charts/kuo --version 0.6.0
+helm install kuo oci://ghcr.io/younsl/charts/kuo --version 0.7.0
 ```
 
 ### Install from local chart
@@ -47,7 +47,7 @@ helm install kuo oci://ghcr.io/younsl/charts/kuo --version 0.6.0
 Download kuo chart and install from local directory:
 
 ```console
-helm pull oci://ghcr.io/younsl/charts/kuo --untar --version 0.6.0
+helm pull oci://ghcr.io/younsl/charts/kuo --untar --version 0.7.0
 helm install kuo ./kuo
 ```
 
@@ -118,6 +118,12 @@ The following table lists the configurable parameters and their default values.
 | grafanaAnnotation.existingSecretKey | string | `"token"` | Key holding the token, within existingSecret or whichever Secret the chart generates. |
 | grafanaAnnotation.secretAnnotations | object | `{}` | Annotations to add to the Secret the chart generates from apiToken. Has no effect when existingSecret is set, since the chart does not own that Secret. Use for `helm.sh/resource-policy: keep`, or for Secret replication annotations such as reflector's. |
 | eksUpgrades | list | `[]` | EKSUpgrade custom resources to create. Each entry creates an EKSUpgrade CR that the operator will reconcile. |
+| mcp.enabled | bool | `false` | Whether to serve the MCP endpoint for kagent on its own port. Requires a bearer token: set `token` or `existingSecret`, otherwise the operator refuses to start the listener. |
+| mcp.port | int | `8082` | MCP listener port, exposed on the Service when enabled. |
+| mcp.cacheTtlSeconds | int | `30` | TTL in seconds for the AWS read cache in front of the MCP tools. |
+| mcp.token | string | `""` | Bearer token value. The chart renders it into a Secret. For production prefer existingSecret. |
+| mcp.existingSecret | string | `""` | Name of a Secret you manage holding the token. Takes precedence over token. Point this at the target of an ExternalSecret in `extraObjects` to source it from AWS Secrets Manager. |
+| mcp.existingSecretKey | string | `"token"` | Key holding the token within the Secret. |
 | extraObjects | list | `[]` | Additional Kubernetes resources to create alongside the chart. |
 
 ## Source Code

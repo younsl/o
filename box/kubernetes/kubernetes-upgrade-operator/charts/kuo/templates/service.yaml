@@ -12,5 +12,11 @@ spec:
       targetPort: metrics
       protocol: TCP
       name: metrics
+    {{- if .Values.mcp.enabled }}
+    - port: {{ .Values.mcp.port }}
+      targetPort: mcp
+      protocol: TCP
+      name: mcp
+    {{- end }}
   selector:
     {{- include "kuo.selectorLabels" . | nindent 4 }}

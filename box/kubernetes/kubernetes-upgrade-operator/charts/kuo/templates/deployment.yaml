@@ -35,7 +35,7 @@ spec:
         - name: kuo
           image: "{{ .Values.image.registry }}/{{ .Values.image.repository }}:{{ .Values.image.tag | default .Chart.AppVersion }}"
           imagePullPolicy: {{ .Values.image.pullPolicy }}
-          {{- if or .Values.slack.enabled .Values.grafanaAnnotation.enabled }}
+          {{- if or .Values.slack.enabled .Values.grafanaAnnotation.enabled .Values.mcp.enabled }}
           env:
             {{- if .Values.slack.enabled }}
             - name: SLACK_WEBHOOK_URL
@@ -62,6 +62,20 @@ spec:
                   optional: true
             {{- end }}
             {{- end }}
+            {{- if .Values.mcp.enabled }}
+            - name: MCP_ENABLED
+              value: "true"
+            {{- if ne (int .Values.mcp.port) 8082 }}
+            - name: MCP_PORT
+              value: {{ .Values.mcp.port | quote }}
+            {{- end }}
+            {{- if ne (int .Values.mcp.cacheTtlSeconds) 30 }}
+            - name: MCP_CACHE_TTL_SECONDS
+              value: {{ .Values.mcp.cacheTtlSeconds | quote }}
+            {{- end }}
+            - name: MCP_TOKEN_FILE
+              value: /var/run/secrets/kuo-mcp/{{ .Values.mcp.existingSecretKey }}
+            {{- end }}
           {{- end }}
           ports:
             - name: health
@@ -70,6 +84,11 @@ spec:
             - name: metrics
               containerPort: 8081
               protocol: TCP
+            {{- if .Values.mcp.enabled }}
+            - name: mcp
+              containerPort: {{ .Values.mcp.port }}
+              protocol: TCP
+            {{- end }}
           livenessProbe:
             httpGet:
               path: /healthz
@@ -90,6 +109,18 @@ spec:
           {{- end }}
           securityContext:
             {{- toYaml .Values.securityContext | nindent 12 }}
+          {{- if .Values.mcp.enabled }}
+          volumeMounts:
+            - name: mcp-token
+              mountPath: /var/run/secrets/kuo-mcp
+              readOnly: true
+          {{- end }}
+      {{- if .Values.mcp.enabled }}
+      volumes:
+        - name: mcp-token
+          secret:
+            secretName: {{ .Values.mcp.existingSecret | default (printf "%s-mcp-token" (include "kuo.fullname" .)) }}
+      {{- end }}
       {{- with .Values.nodeSelector }}
       nodeSelector:
         {{- toYaml . | nindent 8 }}

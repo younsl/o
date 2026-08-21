@@ -1,8 +1,8 @@
 [package]
 name = "kuo"
-version = "0.5.0"
+version = "0.6.0"
 edition = "2024"
-rust-version = "1.97.1"
+rust-version = "1.98.0"
 authors = ["Younsung Lee <cysl@kakao.com>"]
 license = "Apache-2.0"
 description = "Kubernetes Upgrade Operator for EKS clusters"
@@ -42,6 +42,9 @@ reqwest = { version = "0.12", default-features = false, features = ["json", "rus
 
 # Metrics
 prometheus-client = "0.23"
+
+# MCP server (kagent integration)
+rmcp = { version = "3.1", features = ["transport-streamable-http-server"] }
 
 # Serialization
 serde = { version = "1.0", features = ["derive"] }

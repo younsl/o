@@ -215,3 +215,19 @@ sum(rate(kuo_phase_transition_total[5m])) by (phase)
   annotations:
     summary: "EKS upgrade failed for {{ $labels.cluster_name }} in {{ $labels.region }}"
 ```
+
+## MCP endpoint metrics
+
+Present when `mcp.enabled` is set. Logs carry the per-call audit detail, these carry the aggregates.
+
+### kuo_mcp_tool_calls_total
+
+Counter of MCP tool calls by `tool` and `result` (`ok`, `error`, `denied`). A rising `denied` rate flags an agent repeatedly hitting a state gate, such as retrying a resource that is not Failed.
+
+### kuo_mcp_tool_duration_seconds
+
+Histogram of tool call duration by `tool`. Buckets run to 30s, matching kagent's request timeout, so a degrading AWS-backed tool shows here before the agent starts timing out.
+
+### kuo_mcp_cache_lookups_total
+
+Counter of TTL-cache lookups by `tool` and `outcome` (`hit`, `miss`). A flat hit rate says the cache is not absorbing the agent's retry pattern.
