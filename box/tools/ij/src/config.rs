@@ -7,6 +7,7 @@ use crate::file_config::FileConfig;
 const VERSION: &str = env!("CARGO_PKG_VERSION");
 const COMMIT: &str = env!("BUILD_COMMIT");
 const BUILD_DATE: &str = env!("BUILD_DATE");
+const RUSTC_VERSION: &str = env!("BUILD_RUSTC_VERSION");
 
 /// Subcommands.
 #[derive(Subcommand, Debug, Clone, PartialEq)]
@@ -22,8 +23,8 @@ pub enum Command {
 #[command(name = "ij")]
 #[command(about = "EC2 operations CLI for SSM connect and AMI cleanup")]
 #[command(version = const_format::formatcp!(
-    "{} (commit: {}, build date: {})",
-    VERSION, COMMIT, BUILD_DATE
+    "{} (commit: {}, build date: {}, rustc: {})",
+    VERSION, COMMIT, BUILD_DATE, RUSTC_VERSION
 ))]
 pub struct Args {
     /// Subcommand (e.g., init)
