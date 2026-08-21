@@ -2,7 +2,7 @@
 name = "ij"
 version = "0.5.1"
 edition = "2024"
-rust-version = "1.96.0"
+rust-version = "1.98.0"
 authors = ["Younsung Lee <cysl@kakao.com>"]
 license = "Apache-2.0"
 description = "EC2 operations CLI for SSM connect and AMI cleanup"
