@@ -40,7 +40,6 @@
     "@internal/plugin-forklift-coverage-backend": "workspace:*",
     "@internal/plugin-gitlab-token-audit-backend": "workspace:*",
     "@internal/plugin-iam-user-audit-backend": "workspace:*",
-    "@internal/plugin-kafka-topic-backend": "workspace:*",
     "@internal/plugin-openapi-registry-backend": "workspace:*",
     "@internal/plugin-opencost-backend": "workspace:*",
     "@internal/plugin-opensearch-account-backend": "workspace:*",

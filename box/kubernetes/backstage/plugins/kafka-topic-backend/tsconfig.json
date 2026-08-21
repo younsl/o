@@ -1,9 +1,0 @@
-{
-  "extends": "../../tsconfig.json",
-  "compilerOptions": {
-    "outDir": "../../dist-types/plugins/kafka-topic-backend",
-    "composite": true
-  },
-  "include": ["src/**/*.ts"],
-  "exclude": ["node_modules"]
-}

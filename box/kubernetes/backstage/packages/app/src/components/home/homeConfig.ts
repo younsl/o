@@ -7,7 +7,6 @@ import {
   CloudUploadIcon,
   SecurityIcon,
   HealthIcon,
-  KafkaIcon,
   CostIcon,
 } from './icons';
 
@@ -28,7 +27,6 @@ export const quickLinks: QuickLinkItem[] = [
   // Operations
   { url: '/catalog-health', label: 'Catalog Health', Icon: HealthIcon, description: 'Analyze catalog-info.yaml coverage' },
   { url: '/argocd-appset', label: 'ArgoCD', Icon: ArgocdIcon, description: 'Manage ArgoCD ApplicationSets' },
-  { url: '/kafka-topic', label: 'Kafka Topic', Icon: KafkaIcon, description: 'Browse and search Kafka topics' },
   { url: '/cost-report', label: 'Cost Report', Icon: CostIcon, description: 'View cluster cost breakdown' },
   { url: '/iam-user-audit', label: 'IAM Audit', Icon: SecurityIcon, description: 'Audit IAM users and manage credentials' },
 ];

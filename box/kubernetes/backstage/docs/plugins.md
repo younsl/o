@@ -54,7 +54,6 @@ Most custom plugins ship as `<name>` (frontend) plus `<name>-backend` (backend).
 | OpenAPI Registry | `openapi-registry` | Register external OpenAPI specs by URL with search and filters |
 | ArgoCD AppSets | `argocd-appset` | View/manage ArgoCD ApplicationSets with mute/unmute, Slack alerts, audit log |
 | IAM User Audit | `iam-user-audit` | AWS IAM inactive user monitoring with password reset and Slack DM |
-| Kafka Topic | `kafka-topic` | Self-service Kafka topic creation with in-app approval workflow |
 | Catalog Health | `catalog-health` | Track `catalog-info.yaml` coverage across GitLab projects |
 | OpenCost | `opencost` | Multi-cluster Kubernetes cost visualization |
 | S3 Log Extract | `s3-log-extract` | S3-based Java log extraction with approval workflow |

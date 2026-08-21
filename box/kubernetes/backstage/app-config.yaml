@@ -7,7 +7,6 @@ app:
     catalogHealth: true
     argocdAppSet: true
     iamUserAudit: true
-    kafkaTopic: true
     s3LogExtract: true
     opencost: true
     gitlabTokenAudit: true
@@ -255,22 +254,6 @@ permission:
     # - user:development/guest
     - user:default/admin1
     - user:default/admin2
-
-kafka:
-  clusters:
-    dev:
-      brokers: []
-      tls: true
-      requiresApproval: true 
-      topicConfig:
-        nonprd:
-          numPartitions: 2
-          replicationFactor: 2
-          configEntries:
-            - name: min.insync.replicas
-              value: '1'
-            - name: retention.ms
-              value: '86400000'
 
 opencost:
   timezone: Asia/Seoul

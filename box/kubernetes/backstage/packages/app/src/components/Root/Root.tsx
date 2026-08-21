@@ -17,10 +17,9 @@ import FindInPageIcon from '@material-ui/icons/FindInPage';
 import VpnKeyIcon from '@material-ui/icons/VpnKey';
 import TrendingUpIcon from '@material-ui/icons/TrendingUp';
 import LocalShippingIcon from '@material-ui/icons/LocalShipping';
-import { siApachekafka, siArgo, siGitlab, siKubernetes } from 'simple-icons';
+import { siArgo, siGitlab, siKubernetes } from 'simple-icons';
 import { createIcon } from '@dweber019/backstage-plugin-simple-icons';
 
-const ApacheKafkaIcon = createIcon(siApachekafka, false);
 const ArgocdIcon = createIcon(siArgo, false);
 const GitlabIcon = createIcon(siGitlab, false);
 const KubernetesIcon = createIcon(siKubernetes, false);
@@ -370,7 +369,6 @@ export const Root = ({ children }: PropsWithChildren<{}>) => {
   const catalogHealthEnabled = config.getOptionalBoolean('app.plugins.catalogHealth') ?? true;
   const argocdAppSetEnabled = config.getOptionalBoolean('app.plugins.argocdAppSet') ?? true;
   const iamUserAuditEnabled = config.getOptionalBoolean('app.plugins.iamUserAudit') ?? true;
-  const kafkaTopicEnabled = config.getOptionalBoolean('app.plugins.kafkaTopic') ?? true;
   const s3LogExtractEnabled = config.getOptionalBoolean('app.plugins.s3LogExtract') ?? true;
   const opencostEnabled = config.getOptionalBoolean('app.plugins.opencost') ?? true;
   const gitlabTokenAuditEnabled = config.getOptionalBoolean('app.plugins.gitlabTokenAudit') ?? true;
@@ -410,9 +408,6 @@ export const Root = ({ children }: PropsWithChildren<{}>) => {
             to="forklift-coverage"
             text="Forklift Coverage"
           />
-        )}
-        {kafkaTopicEnabled && (
-          <SidebarItem icon={ApacheKafkaIcon} to="kafka-topic" text="Kafka Topic" />
         )}
         {opencostEnabled && (
           <SidebarItem icon={AttachMoneyIcon} to="cost-report" text="Cost Report" />

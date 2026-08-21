@@ -51,7 +51,6 @@ backend.add(import('@internal/plugin-argocd-appset-backend'));
 
 backend.add(import('@internal/plugin-iam-user-audit-backend'));
 
-backend.add(import('@internal/plugin-kafka-topic-backend'));
 
 backend.add(import('@internal/plugin-s3-log-extract-backend'));
 

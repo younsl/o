@@ -26,11 +26,6 @@ export interface Config {
        */
       s3LogExtract?: boolean;
       /**
-       * Enable or disable Kafka Topic plugin
-       * @visibility frontend
-       */
-      kafkaTopic?: boolean;
-      /**
        * Enable or disable OpenCost plugin
        * @visibility frontend
        */
