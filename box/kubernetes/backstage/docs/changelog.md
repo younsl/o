@@ -14,7 +14,7 @@ Tags released before this file existed (`1.51.0-1` through `1.53.0-3`) are not r
 
 Released 2026-08-21. Built on Backstage [v1.54.0](https://github.com/backstage/backstage/releases/tag/v1.54.0) as the base version, the same base as `1.54.0-1`, so this tag differs only by the changes below.
 
-- Kafka Topic removed. The `kafka-topic` and `kafka-topic-backend` plugins are deleted along with the sidebar entry, the `/kafka-topic` route, the home quick link, the `app.plugins.kafkaTopic` flag, and the root `kafka` config block that carried the per-cluster broker lists and topic presets. The `kafkajs` dependency goes with them, so the image no longer ships a Kafka client at all.
+- Kafka Topic removed. Topic creation is already served by a ticket-based request flow owned by the team that operates the clusters, so a second self-service entry point split the same request across two channels and left neither with the full history. The plugin is dropped rather than kept as a read-only view, since a browser for topics nobody requests through here has no audience. The `kafka-topic` and `kafka-topic-backend` plugins are deleted along with the sidebar entry, the `/kafka-topic` route, the home quick link, the `app.plugins.kafkaTopic` flag, and the root `kafka` config block that carried the per-cluster broker lists and topic presets. The `kafkajs` dependency goes with them, so the image no longer ships a Kafka client at all.
 - The plugin held its approval requests in a `kafka_topic_requests` table inside its own `backstage_plugin_kafka-topic` database. Removing the backend plugin stops it being read but does not drop it, so an operator upgrading to this tag keeps the request history until they drop it by hand. Nothing in the image will recreate it.
 
 ## 1.54.0-2
