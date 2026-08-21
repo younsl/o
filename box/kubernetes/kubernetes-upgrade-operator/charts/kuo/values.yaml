@@ -11,10 +11,10 @@ replicaCount: 1
 revisionHistoryLimit: 5
 
 image:
-  # -- (string) Optional registry host prefixed to `repository` when set. Leave empty when `repository` already carries the full path.
-  registry: ""
-  # -- (string) Container image repository. Full path including the registry host, unless `registry` is set separately.
-  repository: ghcr.io/younsl/kuo
+  # -- (string) Container image registry host, prefixed to `repository`. Set empty when `repository` carries the full path.
+  registry: ghcr.io
+  # -- (string) Container image repository path without registry prefix.
+  repository: younsl/kuo
   # -- (string) Image pull policy.
   pullPolicy: IfNotPresent
   # -- (string) Image tag. Defaults to `.Chart.AppVersion` if empty.
