@@ -30,6 +30,10 @@ async fn run() -> Result<()> {
     logger::init_logger(&config.log_level);
     info!("Starting GHES Schedule Scanner");
     info!("Version: {}", env!("CARGO_PKG_VERSION"));
+    info!(
+        "Rust Version: {}",
+        option_env!("RUSTC_VERSION").unwrap_or(env!("CARGO_PKG_RUST_VERSION"))
+    );
 
     // Log configuration summary
     info!(
