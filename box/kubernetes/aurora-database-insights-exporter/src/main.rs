@@ -22,6 +22,7 @@ use crate::types::AuroraInstance;
 const VERSION: &str = env!("CARGO_PKG_VERSION");
 const COMMIT: &str = env!("BUILD_COMMIT");
 const BUILD_DATE: &str = env!("BUILD_DATE");
+const RUSTC_VERSION: &str = env!("BUILD_RUSTC_VERSION");
 
 #[tokio::main]
 async fn main() {
@@ -49,6 +50,7 @@ async fn main() {
         version = VERSION,
         commit = COMMIT,
         build_date = BUILD_DATE,
+        rustc = RUSTC_VERSION,
         config_path = %args.config.display(),
         "Starting aurora-database-insights-exporter"
     );
