@@ -10,6 +10,15 @@ Headings are image tags, not Backstage versions. A rebuild at the same Backstage
 
 Tags released before this file existed (`1.51.0-1` through `1.53.0-3`) are not recorded here.
 
+## 1.54.0-2
+
+Released 2026-08-21. Built on Backstage [v1.54.0](https://github.com/backstage/backstage/releases/tag/v1.54.0) as the base version, the same base as `1.54.0-1`, so this tag differs only by the changes below.
+
+- Forklift Coverage: the setup wizard carries a Stay quiet at full coverage toggle, which drops the scheduled Slack post when the scan left nothing to act on. Nothing to act on means at least one target project, every one of them applied, and no partial, not applied, or errored project, since a scan error hides a verdict rather than reporting a good one. A scan that found no target project at all still posts, because an empty target usually means the scope is wrong rather than the work being done. The toggle is off by default, so an existing instance keeps posting on every scheduled scan until someone turns it on.
+- Forklift Coverage: Send now ignores the toggle. A report someone asked for is not noise, and once coverage is full it is the only way left to check that a webhook still reaches the channel, which a disabled button would take away. A skipped post is indistinguishable from a broken one when read from Slack, so the wizard states that the result currently on screen is the reason the next scheduled post will not arrive.
+- Forklift Coverage: the toggle is stored per instance in a new nullable `webhook_skip_full_coverage` column, added to an existing settings table rather than recreated. While it is unset, `forkliftCoverage.webhook.skipWhenFullCoverage` in app-config decides, so the behavior can be pinned by config on an instance nobody has opened the wizard on.
+- Forklift Coverage: the wizard's toggle rows lead with the switch instead of ending with it, so a column of toggles reads down one edge rather than making the eye track to the end of each label. The whole row stays one click target.
+
 ## 1.54.0-1
 
 Released 2026-08-19, rebuilt and overwritten in place on 2026-08-20. Built on Backstage [v1.54.0](https://github.com/backstage/backstage/releases/tag/v1.54.0) as the base version, up from `1.53.1`.
