@@ -2,7 +2,7 @@
 name = "aws-health-event-notifier"
 version = "0.3.0"
 edition = "2024"
-rust-version = "1.96.0"
+rust-version = "1.98.0"
 authors = ["younsl <cysl@kakao.com>"]
 license = "Apache-2.0"
 description = "Receives AWS Health events and posts them to a notification channel (Slack)"
