@@ -30,6 +30,7 @@ async fn main() -> Result<()> {
         version = env!("CARGO_PKG_VERSION"),
         commit = env!("VERGEN_GIT_SHA"),
         build_date = env!("VERGEN_BUILD_TIMESTAMP"),
+        rustc = env!("VERGEN_RUSTC_SEMVER"),
         mode = %config.mode,
         cluster = %config.cluster_name,
         "trivy-collector starting"
