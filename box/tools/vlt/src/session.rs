@@ -268,4 +268,3 @@ pub fn clear() {
         let _ = std::fs::remove_file(path);
     }
 }
-
