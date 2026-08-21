@@ -398,7 +398,7 @@ mod tests {
     #[test]
     fn test_console_formatter_empty_result() {
         let result = ScanResult::new();
-        let formatter = ConsoleFormatter::default();
+        let formatter = ConsoleFormatter;
         let output = formatter.format(&result).unwrap();
         assert!(output.contains("Total: 0 scheduled workflows"));
     }
