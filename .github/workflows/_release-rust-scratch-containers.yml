@@ -257,7 +257,9 @@ jobs:
         # in statically linked musl builds, growing RSS until OOMKill. The same
         # source built with zig 0.15.2 (LLVM 20) holds a flat RSS. Bump only after
         # verifying RSS stays flat on a rebuilt exporter over 24h.
-        run: pip install ziglang==0.15.2 && cargo install cargo-zigbuild --version 0.22.1 --locked
+        # cargo-zigbuild needs >= 0.23.0 to filter the --fix-cortex-a53-843419
+        # linker arg that rustc 1.98 passes for aarch64-linux targets.
+        run: pip install ziglang==0.15.2 && cargo install cargo-zigbuild --version 0.23.0 --locked
 
       - name: Cache cargo registry
         uses: actions/cache@v5
