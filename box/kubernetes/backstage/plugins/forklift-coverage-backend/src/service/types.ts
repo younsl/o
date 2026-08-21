@@ -145,6 +145,11 @@ export interface CoverageSnapshot {
 export interface WebhookConfig {
   url: string;
   enabled: boolean;
+  /**
+   * True skips the scheduled post when every target project is applied, since
+   * a report nobody has to act on is noise. Manual sends ignore it.
+   */
+  skipWhenFullCoverage: boolean;
 }
 
 /** Runtime settings, editable in the UI and stored in the database. */
@@ -152,6 +157,8 @@ export interface ForkliftSettings {
   forkliftHost: string | null;
   webhookUrl: string | null;
   webhookEnabled: boolean;
+  /** Null falls back to app-config and then the built-in default. */
+  webhookSkipWhenFullCoverage: boolean | null;
   /** Null falls back to app-config and then the built-in default. */
   scanCron: string | null;
   timezone: string | null;
@@ -173,6 +180,7 @@ export interface SettingsResponse {
   /** Masked for display. The raw URL never leaves the backend. */
   webhookUrlMasked: string | null;
   webhookEnabled: boolean;
+  webhookSkipWhenFullCoverage: boolean;
   schedule: ScheduleSettings;
   /** Where the effective values come from. */
   source: 'database' | 'app-config' | 'unset';

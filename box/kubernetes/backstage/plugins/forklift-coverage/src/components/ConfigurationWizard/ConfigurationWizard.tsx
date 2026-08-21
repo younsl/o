@@ -22,7 +22,7 @@ import { useApi } from '@backstage/core-plugin-api';
 import { useAsyncRetry } from 'react-use';
 import { forkliftCoveragePlugin } from '../../plugin';
 import { forkliftCoverageApiRef } from '../../api';
-import { HostProbeResult } from '../../api/types';
+import { CoverageResponse, HostProbeResult } from '../../api/types';
 import { SlackPreview } from './SlackPreview';
 import './ConfigurationWizard.css';
 
@@ -96,19 +96,38 @@ const localHostError = (raw: string): string | null => {
   return null;
 };
 
-/** Label and rationale on the left, switch on the right, one tap target. */
+/**
+ * Mirrors the backend rule for a scan that leaves nothing to act on, so the
+ * form can say whether the skip applies to the result already on screen.
+ */
+const isFullCoverage = (coverage: CoverageResponse): boolean =>
+  coverage.target > 0 &&
+  coverage.partial === 0 &&
+  coverage.notApplied === 0 &&
+  coverage.errored === 0;
+
+/** Switch on the left, label and rationale after it, one tap target. */
 const ToggleRow = ({
   title,
   description,
   isSelected,
+  isDisabled,
   onChange,
 }: {
   title: string;
   description: string;
   isSelected: boolean;
+  isDisabled?: boolean;
   onChange: (next: boolean) => void;
 }) => (
   <label className="fc-toggle-row">
+    <Switch
+      aria-label={title}
+      isSelected={isSelected}
+      isDisabled={isDisabled}
+      onChange={onChange}
+      className="fc-switch"
+    />
     <span className="fc-toggle-copy">
       <Text as="span" variant="body-small" weight="bold">
         {title}
@@ -117,12 +136,6 @@ const ToggleRow = ({
         {description}
       </Text>
     </span>
-    <Switch
-      aria-label={title}
-      isSelected={isSelected}
-      onChange={onChange}
-      className="fc-switch"
-    />
   </label>
 );
 
@@ -161,6 +174,7 @@ export const ConfigurationWizard = ({
   const [host, setHost] = useState('');
   const [webhookUrl, setWebhookUrl] = useState('');
   const [webhookEnabled, setWebhookEnabled] = useState(false);
+  const [skipWhenFullCoverage, setSkipWhenFullCoverage] = useState(false);
   const [autoScanEnabled, setAutoScanEnabled] = useState(true);
   const [scanCron, setScanCron] = useState('0 10 * * 1-5');
   const [timezone, setTimezone] = useState('UTC');
@@ -200,6 +214,7 @@ export const ConfigurationWizard = ({
     setHost(settings.forkliftHost ?? '');
     setWebhookEnabled(settings.webhookEnabled);
     setSavedWebhookEnabled(settings.webhookEnabled);
+    setSkipWhenFullCoverage(settings.webhookSkipWhenFullCoverage);
     setAutoScanEnabled(settings.schedule.autoScanEnabled);
     setScanCron(settings.schedule.cron);
     setTimezone(settings.schedule.timezone);
@@ -293,6 +308,7 @@ export const ConfigurationWizard = ({
         forkliftHost: host,
         webhookUrl: webhookUrl.trim() || undefined,
         webhookEnabled,
+        webhookSkipWhenFullCoverage: skipWhenFullCoverage,
         scanCron,
         timezone,
         autoScanEnabled,
@@ -315,6 +331,7 @@ export const ConfigurationWizard = ({
     host,
     webhookUrl,
     webhookEnabled,
+    skipWhenFullCoverage,
     scanCron,
     timezone,
     autoScanEnabled,
@@ -364,6 +381,15 @@ export const ConfigurationWizard = ({
     if (!coverage?.lastScannedAt) return 'Run a scan before sending a report';
     return null;
   })();
+
+  // The toggle only bites on a result that has nothing left to act on, and the
+  // form state is what the admin is about to save, so the note follows it
+  // rather than the stored value.
+  const skipQuietNow =
+    webhookEnabled &&
+    skipWhenFullCoverage &&
+    !!coverage?.lastScannedAt &&
+    isFullCoverage(coverage);
 
   // Live counts, refreshed by the poll above, so the wait has a visible end.
   // Listing has no total yet, so it carries no percentage.
@@ -503,6 +529,23 @@ export const ConfigurationWizard = ({
               isSelected={webhookEnabled}
               onChange={setWebhookEnabled}
             />
+            {/* Only the scheduled post is dropped. Send now stays available,
+                since a report someone asked for is never noise. */}
+            <ToggleRow
+              title="Stay quiet at full coverage"
+              description="Skip the scheduled post when every target project is applied, with no partial, missing, or errored project left to act on"
+              isSelected={skipWhenFullCoverage}
+              isDisabled={!webhookEnabled}
+              onChange={setSkipWhenFullCoverage}
+            />
+            {/* A skipped post looks the same as a broken one from the channel,
+                so the page says when the current result is the reason. */}
+            {skipQuietNow && (
+              <Text variant="body-x-small" color="secondary">
+                Coverage is 100%, so the scheduled post is skipped while this is
+                on. Send now still works.
+              </Text>
+            )}
 
             <Flex direction="column" gap="1">
               <Text variant="body-medium" weight="bold">

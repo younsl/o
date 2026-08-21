@@ -16,6 +16,7 @@ adopted across GitLab projects that have CI.
 - Group breakdown so a team can see its own adoption at a glance
 - 90 day coverage trend chart backed by one snapshot per scan
 - Scheduled scan that posts a summary and the not applied list to Slack, plus a manual send
+- Optional silence at full coverage, so the scheduled post is dropped when nothing is left to act on
 - Pipeline viewer for administrators that renders GitLab CI files only, never application source
 - Repository owners can opt out with a GitLab topic, without a change to this repository
 - Setup wizard for the Forklift host, the Slack webhook, and the scan schedule, with the host verified before it is saved
@@ -126,6 +127,7 @@ wizard. A value stored through the wizard wins over app-config.
 | `schedule.scanOnStart` | `true`, and only when no scan is stored yet |
 | `webhook.url` | unset, notifications disabled |
 | `webhook.enabled` | `true` when a URL is set |
+| `webhook.skipWhenFullCoverage` | `false`, the summary is posted on every scheduled scan |
 
 Pinning `forkliftCoverage.forkliftHost` in app-config makes it the fallback the
 wizard reports as managed by config.
@@ -137,6 +139,13 @@ lists projects the token is a member of.
 `scan.useSearch` turns on the blob search fast path for the default branch. It
 needs Elasticsearch on the GitLab instance and runs on a much lower rate limit
 than the plain API, so it stays off by default.
+
+`webhook.skipWhenFullCoverage` drops the scheduled post when the scan leaves
+nothing to act on: at least one target project, all of them applied, and no
+partial, not applied, or errored project. A scan that found no target at all
+still posts, since that usually means the scope is wrong rather than the work
+being done. `POST /notify` ignores the setting, so a manual send always goes
+out.
 
 The host is probed with a plain `GET https://<host>/` before a save is
 accepted. Any HTTP status counts as reachable, including 401 and 404, since an

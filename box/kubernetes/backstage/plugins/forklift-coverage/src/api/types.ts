@@ -120,6 +120,8 @@ export interface SettingsResponse {
   /** Masked for display. The raw URL never leaves the backend. */
   webhookUrlMasked: string | null;
   webhookEnabled: boolean;
+  /** True skips the scheduled post when coverage leaves nothing to act on. */
+  webhookSkipWhenFullCoverage: boolean;
   schedule: ScheduleSettings;
   source: 'database' | 'app-config' | 'unset';
   configured: boolean;

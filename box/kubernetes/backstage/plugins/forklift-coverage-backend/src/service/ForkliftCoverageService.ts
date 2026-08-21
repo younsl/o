@@ -285,15 +285,29 @@ export class ForkliftCoverageService {
   }
 
   /** Effective webhook, database first and app-config second. */
-  async getEffectiveWebhook(): Promise<{ url: string | null; enabled: boolean }> {
+  async getEffectiveWebhook(): Promise<{
+    url: string | null;
+    enabled: boolean;
+    skipWhenFullCoverage: boolean;
+  }> {
     const stored = await this.settingsStore.read();
-    if (stored && stored.webhookUrl) {
-      return { url: stored.webhookUrl, enabled: stored.webhookEnabled };
-    }
     const fromConfig = readWebhookFromConfig(this.config);
+    if (stored && stored.webhookUrl) {
+      return {
+        url: stored.webhookUrl,
+        enabled: stored.webhookEnabled,
+        // Null means the wizard never wrote the toggle, so app-config still
+        // decides rather than the stored URL forcing the built-in default.
+        skipWhenFullCoverage:
+          stored.webhookSkipWhenFullCoverage ??
+          fromConfig?.skipWhenFullCoverage ??
+          false,
+      };
+    }
     return {
       url: fromConfig?.url ?? null,
       enabled: fromConfig?.enabled ?? false,
+      skipWhenFullCoverage: fromConfig?.skipWhenFullCoverage ?? false,
     };
   }
 

@@ -1,9 +1,11 @@
 /* Toggle row: copy on the left, switch on the right, whole row is the target. */
+/* Switch first, so a column of toggles reads down one edge instead of the
+   eye tracking to the end of each label. */
 .fc-toggle-row {
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  gap: 16px;
+  justify-content: flex-start;
+  gap: 12px;
   padding: 10px 12px;
   border: 1px solid var(--bui-color-border-default, rgba(255, 255, 255, 0.12));
   border-radius: 8px;
@@ -19,6 +21,7 @@
   flex-direction: column;
   gap: 2px;
   min-width: 0;
+  flex: 1;
 }
 
 /* Minimal switch: a flat track with a plain knob, no gradient or shadow.

@@ -31,6 +31,7 @@ export class SettingsStore {
         table.string('forklift_host').nullable();
         table.text('webhook_url').nullable();
         table.boolean('webhook_enabled').notNullable().defaultTo(false);
+        table.boolean('webhook_skip_full_coverage').nullable();
         table.string('scan_cron').nullable();
         table.string('timezone').nullable();
         table.boolean('auto_scan_enabled').nullable();
@@ -40,12 +41,16 @@ export class SettingsStore {
       return;
     }
 
-    // The schedule columns landed after the first release, so an existing
-    // deployment gets them added rather than recreated.
+    // The schedule and skip columns landed after the first release, so an
+    // existing deployment gets them added rather than recreated.
     const added: Array<[string, (t: any) => void]> = [
       ['scan_cron', t => t.string('scan_cron').nullable()],
       ['timezone', t => t.string('timezone').nullable()],
       ['auto_scan_enabled', t => t.boolean('auto_scan_enabled').nullable()],
+      [
+        'webhook_skip_full_coverage',
+        t => t.boolean('webhook_skip_full_coverage').nullable(),
+      ],
     ];
     for (const [column, build] of added) {
       if (!(await this.db.schema.hasColumn(TABLE_NAME, column))) {
@@ -61,6 +66,11 @@ export class SettingsStore {
       forkliftHost: (row.forklift_host as string | null) || null,
       webhookUrl: (row.webhook_url as string | null) || null,
       webhookEnabled: !!row.webhook_enabled,
+      webhookSkipWhenFullCoverage:
+        row.webhook_skip_full_coverage === null ||
+        row.webhook_skip_full_coverage === undefined
+          ? null
+          : !!row.webhook_skip_full_coverage,
       scanCron: (row.scan_cron as string | null) || null,
       timezone: (row.timezone as string | null) || null,
       autoScanEnabled:
@@ -81,6 +91,7 @@ export class SettingsStore {
       forklift_host: settings.forkliftHost,
       webhook_url: settings.webhookUrl,
       webhook_enabled: settings.webhookEnabled,
+      webhook_skip_full_coverage: settings.webhookSkipWhenFullCoverage,
       scan_cron: settings.scanCron,
       timezone: settings.timezone,
       auto_scan_enabled: settings.autoScanEnabled,

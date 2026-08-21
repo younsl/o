@@ -1,7 +1,12 @@
 import fetch from 'node-fetch';
 import { Config } from '@backstage/config';
 import { LoggerService } from '@backstage/backend-plugin-api';
-import { CoverageResponse, ForkliftProject, WebhookConfig } from './types';
+import {
+  CoverageResponse,
+  CoverageSummary,
+  ForkliftProject,
+  WebhookConfig,
+} from './types';
 
 /** Slack rejects very long messages, so the list is capped. */
 const MAX_LISTED_PROJECTS = 50;
@@ -16,7 +21,26 @@ export function readWebhookFromConfig(config: Config): WebhookConfig | null {
     url,
     enabled:
       config.getOptionalBoolean('forkliftCoverage.webhook.enabled') ?? true,
+    skipWhenFullCoverage:
+      config.getOptionalBoolean(
+        'forkliftCoverage.webhook.skipWhenFullCoverage',
+      ) ?? false,
   };
+}
+
+/**
+ * True when the last scan left nothing to act on: every target project is
+ * applied, with no partial, no missing, and no scan error hiding a verdict.
+ * A scan that found no target at all is not full coverage, since that usually
+ * means the scope is wrong rather than the work being done.
+ */
+export function isFullCoverage(coverage: CoverageSummary): boolean {
+  return (
+    coverage.target > 0 &&
+    coverage.partial === 0 &&
+    coverage.notApplied === 0 &&
+    coverage.errored === 0
+  );
 }
 
 function percent(value: number, total: number): string {

@@ -192,6 +192,7 @@ export async function createRouter(options: RouterOptions): Promise<Router> {
         forkliftHost: service.getForkliftHost(),
         webhookUrlMasked: maskWebhook(webhook.url),
         webhookEnabled: webhook.enabled,
+        webhookSkipWhenFullCoverage: webhook.skipWhenFullCoverage,
         schedule: service.getSchedule(),
         source: stored?.forkliftHost
           ? 'database'
@@ -227,6 +228,7 @@ export async function createRouter(options: RouterOptions): Promise<Router> {
         forkliftHost,
         webhookUrl,
         webhookEnabled,
+        webhookSkipWhenFullCoverage,
         scanCron,
         timezone,
         autoScanEnabled,
@@ -234,6 +236,7 @@ export async function createRouter(options: RouterOptions): Promise<Router> {
         forkliftHost?: string;
         webhookUrl?: string | null;
         webhookEnabled?: boolean;
+        webhookSkipWhenFullCoverage?: boolean;
         scanCron?: string;
         timezone?: string;
         autoScanEnabled?: boolean;
@@ -280,6 +283,10 @@ export async function createRouter(options: RouterOptions): Promise<Router> {
         // does not wipe a URL the admin cannot see in full.
         webhookUrl: rawWebhook || existing?.webhookUrl || null,
         webhookEnabled: webhookEnabled ?? existing?.webhookEnabled ?? false,
+        webhookSkipWhenFullCoverage:
+          webhookSkipWhenFullCoverage ??
+          existing?.webhookSkipWhenFullCoverage ??
+          null,
         scanCron: cron || existing?.scanCron || null,
         timezone: tz || existing?.timezone || null,
         autoScanEnabled: autoScanEnabled ?? existing?.autoScanEnabled ?? null,

@@ -9,7 +9,11 @@ import { CoverageHistoryStore } from './service/CoverageHistoryStore';
 import { SettingsStore } from './service/SettingsStore';
 import { ResultStore } from './service/ResultStore';
 import { ExclusionStore } from './service/ExclusionStore';
-import { SlackNotifier, buildSummaryText } from './service/SlackNotifier';
+import {
+  SlackNotifier,
+  buildSummaryText,
+  isFullCoverage,
+} from './service/SlackNotifier';
 
 export const forkliftCoveragePlugin = createBackendPlugin({
   pluginId: 'forklift-coverage',
@@ -76,6 +80,15 @@ export const forkliftCoveragePlugin = createBackendPlugin({
           if (!webhook.url || !webhook.enabled) return;
           try {
             const coverage = service.getCoverage();
+            // A full-coverage report asks the channel to do nothing, so the
+            // scheduled post is dropped when the admin opted into that. A
+            // manual send still goes out, since someone asked for it.
+            if (webhook.skipWhenFullCoverage && isFullCoverage(coverage)) {
+              logger.info(
+                `[forklift-coverage] slack notify skipped: coverage is full (${coverage.applied}/${coverage.target})`,
+              );
+              return;
+            }
             await notifier.send(
               webhook.url,
               buildSummaryText(coverage, service.getNotAppliedProjects()),

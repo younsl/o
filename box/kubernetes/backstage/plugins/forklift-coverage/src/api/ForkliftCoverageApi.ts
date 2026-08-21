@@ -15,6 +15,7 @@ export interface SaveSettingsInput {
   /** Empty keeps the stored URL, which the UI only ever sees masked. */
   webhookUrl?: string;
   webhookEnabled?: boolean;
+  webhookSkipWhenFullCoverage?: boolean;
   scanCron?: string;
   timezone?: string;
   autoScanEnabled?: boolean;
