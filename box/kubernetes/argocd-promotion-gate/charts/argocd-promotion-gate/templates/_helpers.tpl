@@ -102,10 +102,12 @@ is not deterministic, so calling it twice would hand the API server a CA that do
 not match the certificate the pod serves.
 
 An existing Secret is reused so `helm upgrade` does not rotate the certificate out
-from under a running API server.
+from under a running API server. That reuse depends on `lookup`, which a renderer
+without cluster access answers with nothing, so `webhook.certManager.enabled` skips
+this path entirely and leaves the pair to cert-manager.
 */}}
 {{- define "argocd-promotion-gate.certs" -}}
-{{- if not (hasKey .Values "generatedCerts") -}}
+{{- if and (not .Values.webhook.certManager.enabled) (not (hasKey .Values "generatedCerts")) -}}
 {{- $fullName := include "argocd-promotion-gate.fullname" . -}}
 {{- $secretName := printf "%s-tls" $fullName -}}
 {{- $existing := lookup "v1" "Secret" .Release.Namespace $secretName -}}

@@ -118,6 +118,20 @@ webhook:
   # -- (list) Extra CEL match conditions appended to the generated ones
   extraMatchConditions: []
 
+  certManager:
+    # -- (bool) Hand the serving certificate to cert-manager instead of minting
+    # one with `genCA`. The chart reuses an existing pair through `lookup`, which
+    # returns nothing under renderers that have no cluster access such as Argo CD
+    # repo-server. Every render then mints a new CA while the running pod keeps
+    # the one it read at startup, and a `Fail` webhook rejects everything until
+    # someone restarts the pod. cert-manager owns the rotation and `cainjector`
+    # keeps `caBundle` in step, so the two can no longer drift apart
+    enabled: false
+    # -- (object) Issue from an existing issuer, for example
+    # `{kind: ClusterIssuer, name: internal-ca}`. Empty makes the chart create a
+    # self-signed Issuer and a CA Issuer of its own in the release namespace
+    issuerRef: {}
+
 uiExtension:
   # -- (string) Name argocd-server proxies under `/extensions/<name>/...`. Must match argocd-cm
   name: promotion-gate

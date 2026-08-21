@@ -3,6 +3,12 @@ apiVersion: admissionregistration.k8s.io/v1
 kind: ValidatingWebhookConfiguration
 metadata:
   name: {{ include "argocd-promotion-gate.fullname" . }}
+  {{- if .Values.webhook.certManager.enabled }}
+  annotations:
+    # cainjector copies ca.crt out of the Certificate's Secret into caBundle
+    # below, which is why the chart leaves that field unset on this path.
+    cert-manager.io/inject-ca-from: {{ printf "%s/%s" .Release.Namespace (include "argocd-promotion-gate.fullname" .) }}
+  {{- end }}
   labels:
     {{- include "argocd-promotion-gate.labels" . | nindent 4 }}
 webhooks:
@@ -18,7 +24,9 @@ webhooks:
         namespace: {{ .Release.Namespace }}
         path: /validate
         port: {{ .Values.service.webhookPort }}
+      {{- if not .Values.webhook.certManager.enabled }}
       caBundle: {{ .Values.generatedCerts.ca }}
+      {{- end }}
     rules:
       # A sync is a write to the Application itself, setting its top-level
       # operation field. There is no subresource to watch instead.

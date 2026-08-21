@@ -1,0 +1,81 @@
+{{- if .Values.webhook.certManager.enabled }}
+{{- $fullName := include "argocd-promotion-gate.fullname" . -}}
+{{- $duration := printf "%dh" (mul (int .Values.webhook.certValidityDays) 24) -}}
+{{- if not .Values.webhook.certManager.issuerRef }}
+apiVersion: cert-manager.io/v1
+kind: Issuer
+metadata:
+  name: {{ printf "%s-selfsigned" $fullName }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "argocd-promotion-gate.labels" . | nindent 4 }}
+spec:
+  selfSigned: {}
+---
+# The serving certificate is signed by a CA of its own rather than being
+# self-signed, so cainjector has a ca.crt to publish into caBundle.
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: {{ printf "%s-ca" $fullName }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "argocd-promotion-gate.labels" . | nindent 4 }}
+spec:
+  isCA: true
+  commonName: {{ printf "%s-ca" $fullName }}
+  secretName: {{ printf "%s-ca" $fullName }}
+  duration: {{ $duration }}
+  privateKey:
+    algorithm: RSA
+    size: 2048
+    rotationPolicy: Always
+  issuerRef:
+    kind: Issuer
+    group: cert-manager.io
+    name: {{ printf "%s-selfsigned" $fullName }}
+---
+apiVersion: cert-manager.io/v1
+kind: Issuer
+metadata:
+  name: {{ printf "%s-ca" $fullName }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "argocd-promotion-gate.labels" . | nindent 4 }}
+spec:
+  ca:
+    secretName: {{ printf "%s-ca" $fullName }}
+---
+{{- end }}
+# Named after the release so the inject-ca-from annotation on the webhook can
+# address it as <namespace>/<fullname>.
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: {{ $fullName }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "argocd-promotion-gate.labels" . | nindent 4 }}
+spec:
+  # Written to the same Secret the Deployment already mounts, so the pod spec
+  # does not change when this path is turned on.
+  secretName: {{ printf "%s-tls" $fullName }}
+  duration: {{ $duration }}
+  privateKey:
+    algorithm: RSA
+    size: 2048
+    rotationPolicy: Always
+  dnsNames:
+    - {{ $fullName }}
+    - {{ printf "%s.%s" $fullName .Release.Namespace }}
+    - {{ printf "%s.%s.svc" $fullName .Release.Namespace }}
+    - {{ printf "%s.%s.svc.cluster.local" $fullName .Release.Namespace }}
+  issuerRef:
+    {{- if .Values.webhook.certManager.issuerRef }}
+    {{- toYaml .Values.webhook.certManager.issuerRef | nindent 4 }}
+    {{- else }}
+    kind: Issuer
+    group: cert-manager.io
+    name: {{ printf "%s-ca" $fullName }}
+    {{- end }}
+{{- end }}

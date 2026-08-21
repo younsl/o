@@ -114,6 +114,8 @@ The following table lists the configurable parameters and their default values.
 | webhook.timeoutSeconds | int | `5` | Admission timeout. Keep above `gate.argocd.timeoutSeconds` |
 | webhook.certValidityDays | int | `3650` | Serving certificate lifetime in days. The Secret is reused across upgrades |
 | webhook.extraMatchConditions | list | `[]` | Extra CEL match conditions appended to the generated ones |
+| webhook.certManager.enabled | bool | `false` | Hand the serving certificate to cert-manager instead of minting one with `genCA`. The chart reuses an existing pair through `lookup`, which returns nothing under renderers that have no cluster access such as Argo CD repo-server. Every render then mints a new CA while the running pod keeps the one it read at startup, and a `Fail` webhook rejects everything until someone restarts the pod. cert-manager owns the rotation and `cainjector` keeps `caBundle` in step, so the two can no longer drift apart |
+| webhook.certManager.issuerRef | object | `{}` | Issue from an existing issuer, for example `{kind: ClusterIssuer, name: internal-ca}`. Empty makes the chart create a self-signed Issuer and a CA Issuer of its own in the release namespace |
 | uiExtension.name | string | `"promotion-gate"` | Name argocd-server proxies under `/extensions/<name>/...`. Must match argocd-cm |
 | gate.chain | list | `["stage","prod"]` | Promotion order lowest first. Env names are Argo CD projects and apps are named `<project>-<app>` |
 | gate.gatedEnvs | list | `["prod"]` | Environments the gate enforces. Empty means the whole chain except its head |
