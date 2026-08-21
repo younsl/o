@@ -1,6 +1,6 @@
 # kuo
 
-![Version: 0.7.0](https://img.shields.io/badge/Version-0.7.0-informational?style=flat-square) ![Type: application](https://img.shields.io/badge/Type-application-informational?style=flat-square) ![AppVersion: 0.6.0](https://img.shields.io/badge/AppVersion-0.6.0-informational?style=flat-square)
+![Version: 0.7.1](https://img.shields.io/badge/Version-0.7.1-informational?style=flat-square) ![Type: application](https://img.shields.io/badge/Type-application-informational?style=flat-square) ![AppVersion: 0.6.0](https://img.shields.io/badge/AppVersion-0.6.0-informational?style=flat-square)
 
 Kubernetes Upgrade Operator for EKS clusters
 
@@ -39,7 +39,7 @@ helm install kuo oci://ghcr.io/younsl/charts/kuo -f values.yaml
 Install a specific version:
 
 ```console
-helm install kuo oci://ghcr.io/younsl/charts/kuo --version 0.7.0
+helm install kuo oci://ghcr.io/younsl/charts/kuo --version 0.7.1
 ```
 
 ### Install from local chart
@@ -47,7 +47,7 @@ helm install kuo oci://ghcr.io/younsl/charts/kuo --version 0.7.0
 Download kuo chart and install from local directory:
 
 ```console
-helm pull oci://ghcr.io/younsl/charts/kuo --untar --version 0.7.0
+helm pull oci://ghcr.io/younsl/charts/kuo --untar --version 0.7.1
 helm install kuo ./kuo
 ```
 
@@ -77,8 +77,8 @@ The following table lists the configurable parameters and their default values.
 | crds.annotations | object | `{}` | Annotations to add to the CRD resources. |
 | replicaCount | int | `1` | Number of operator replicas to run. |
 | revisionHistoryLimit | int | `5` | Number of old ReplicaSets to retain for rollback. |
-| image.registry | string | `"ghcr.io"` | Container image registry host. |
-| image.repository | string | `"younsl/kuo"` | Container image repository path without registry prefix. |
+| image.registry | string | `""` | Optional registry host prefixed to `repository` when set. Leave empty when `repository` already carries the full path. |
+| image.repository | string | `"ghcr.io/younsl/kuo"` | Container image repository. Full path including the registry host, unless `registry` is set separately. |
 | image.pullPolicy | string | `"IfNotPresent"` | Image pull policy. |
 | image.tag | string | `""` | Image tag. Defaults to `.Chart.AppVersion` if empty. |
 | imagePullSecrets | list | `[]` | Image pull secrets for private registries. |
